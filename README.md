@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HunterDog - ระบบจัดการร้านหมาล่า
 
-## Getting Started
+ระบบหลังบ้านและหน้าสั่งอาหารสำหรับร้านหมาล่า สร้างด้วย **Next.js** + **PostgreSQL** + **Prisma**
 
-First, run the development server:
+## บทบาทผู้ใช้
+
+| บทบาท | เข้าผ่าน | หน้าที่ |
+|--------|----------|---------|
+| **Admin** | `/admin/login` | จัดการสาขา, เมนู, พื้นที่ส่ง, เบอร์พนักงาน, ค้นหาลูกค้า |
+| **Staff** | `/staff/login` (เบอร์โทร) | ดูออเดอร์หน้าเดียว, อัปเดตสถานะตาม role |
+| **ลูกค้า** | `/order` (เบอร์โทร) | สั่งอาหาร, ดูประวัติสถานะ |
+
+## สถานะออเดอร์ (ใช้สีแยก)
+
+- 🟡 รอคิว (`QUEUED`)
+- 🟠 กำลังทำ (`PREPARING`)
+- 🔵 รอการจัดส่ง (`READY_FOR_DELIVERY`)
+- 🟣 กำลังจัดส่ง (`DELIVERING`)
+- 🟢 ส่งเสร็จ (`DELIVERED`)
+
+**คนขาย** เปลี่ยนได้: รอคิว → กำลังทำ → รอการจัดส่ง  
+**คนส่ง** เห็นและเปลี่ยนได้: รอการจัดส่ง → กำลังจัดส่ง → ส่งเสร็จ  
+**เบอร์เดียวทั้งสองหน้าที่** เปลี่ยนสถานะได้ครบทุกขั้น
+
+## เริ่มใช้งาน
+
+### 1. ติดตั้ง dependencies
+
+```bash
+npm install
+```
+
+### 2. ตั้งค่า PostgreSQL
+
+แก้ไข `.env`:
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/hunterdog?schema=public"
+JWT_SECRET="change-me-to-a-long-random-string"
+```
+
+### 3. สร้างฐานข้อมูล
+
+```bash
+npm run db:push
+npm run db:seed
+```
+
+### 4. รัน dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+เปิด [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ข้อมูลทดสอบ (หลัง seed)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Admin:** `admin` / `admin123`
+- **พนักงานขาย:** เบอร์ `0811111111`
+- **พนักงานส่ง:** เบอร์ `0822222222`
+- **ลูกค้า:** กรอกเบอร์ใดก็ได้ที่ `/order`
 
-## Learn More
+## โครงสร้างหลัก
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/app/
+  admin/          # หลังบ้าน admin
+  staff/          # หน้าพนักงาน (ออเดอร์บอร์ด)
+  order/          # หน้าลูกค้าสั่งอาหาร
+  api/            # REST API
+prisma/
+  schema.prisma   # โมเดลฐานข้อมูล
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## สมมติฐานที่ใช้ใน MVP นี้
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **ลูกค้าและพนักงาน** login ด้วยเบอร์โทร (ไม่มี OTP ในเวอร์ชันแรก)
+2. **Admin** login ด้วย username/password
+3. **เมนู** สร้างกลางแล้วกำหนดว่าสาขาไหนขายอะไร
+4. **Staff board** refresh อัตโนมัติทุก 5 วินาที (ยังไม่มี WebSocket)
+5. **ไม่มีระบบชำระเงิน** ในเวอร์ชันแรก
 
-## Deploy on Vercel
+## คำถามที่อาจต้องตัดสินใจเพิ่มภายหลัง
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- ต้องการ OTP ยืนยันเบอร์ลูกค้า/พนักงานหรือไม่?
+- ออเดอร์หนึ่งสั่งได้หลายสาขาพร้อมกันหรือทีละสาขา? (ปัจจุบัน: ทีละสาขาต่อออเดอร์)
+- ต้องการแจ้งเตือน real-time (WebSocket/Push) หรือไม่?

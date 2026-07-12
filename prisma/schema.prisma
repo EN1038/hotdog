@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  QUEUED
+  PREPARING
+  READY_FOR_DELIVERY
+  DELIVERING
+  DELIVERED
+}
+
+enum StaffRole {
+  SELLER
+  DELIVERY
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+model Branch {
+  id                String             @id @default(cuid())
+  name              String
+  createdAt         DateTime           @default(now())
+  staff             Staff[]
+  menuItems         BranchMenuItem[]
+  deliveryLocations DeliveryLocation[]
+  orders            Order[]
+}
+
+model Staff {
+  id        String   @id @default(cuid())
+  branchId  String
+  phone     String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  roles     StaffRoleAssignment[]
+}
+
+model StaffRoleAssignment {
+  id      String    @id @default(cuid())
+  staffId String
+  role    StaffRole
+  staff   Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, role])
+}
+
+model BranchMenuItem {
+  id          String   @id @default(cuid())
+  branchId    String
+  name        String
+  price       Decimal  @db.Decimal(10, 2)
+  description String?
+  isHidden    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
+}
+
+model DeliveryLocation {
+  id       String  @id @default(cuid())
+  branchId String
+  name     String
+  branch   Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orders   Order[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
+model Order {
+  id                 String           @id @default(cuid())
+  customerId         String
+  branchId           String
+  deliveryLocationId String
+  addressDetail      String
+  status             OrderStatus      @default(QUEUED)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  customer           Customer         @relation(fields: [customerId], references: [id])
+  branch             Branch           @relation(fields: [branchId], references: [id])
+  deliveryLocation   DeliveryLocation @relation(fields: [deliveryLocationId], references: [id])
+  items              OrderItem[]
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  branchMenuItemId String
+  itemName   String
+  quantity   Int
+  unitPrice  Decimal  @db.Decimal(10, 2)
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  branchMenuItem BranchMenuItem @relation(fields: [branchMenuItemId], references: [id])
+}

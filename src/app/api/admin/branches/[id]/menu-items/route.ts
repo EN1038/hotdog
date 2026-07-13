@@ -9,7 +9,10 @@ const createSchema = z.object({
   name: z.string().min(1),
   price: z.number().positive(),
   description: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  imageUrl: z.string().optional().nullable(),
   isHidden: z.boolean().optional(),
+  isOutOfStock: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });
 
@@ -22,6 +25,12 @@ export async function GET(_request: Request, { params }: Params) {
 
     const items = await prisma.branchMenuItem.findMany({
       where: { branchId },
+      include: {
+        optionGroups: {
+          include: { options: { orderBy: { sortOrder: "asc" } } },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
       orderBy: [{ isHidden: "asc" }, { sortOrder: "asc" }, { createdAt: "desc" }],
     });
     return jsonOk(items);
@@ -44,7 +53,10 @@ export async function POST(request: Request, { params }: Params) {
         name: body.name,
         price: body.price,
         description: body.description ?? null,
+        category: body.category ?? null,
+        imageUrl: body.imageUrl ?? null,
         isHidden: body.isHidden ?? false,
+        isOutOfStock: body.isOutOfStock ?? false,
         sortOrder: body.sortOrder ?? 0,
       },
     });
@@ -53,4 +65,3 @@ export async function POST(request: Request, { params }: Params) {
     return handleApiError(error);
   }
 }
-

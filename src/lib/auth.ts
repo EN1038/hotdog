@@ -17,6 +17,7 @@ export type SessionPayload = {
   branchName?: string;
   customerPhone?: string;
   customerId?: string;
+  customerName?: string;
 };
 
 export async function createSession(payload: SessionPayload) {

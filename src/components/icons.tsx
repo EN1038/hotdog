@@ -1,0 +1,458 @@
+import type { SVGProps } from "react";
+
+type IconProps = SVGProps<SVGSVGElement> & {
+  size?: number;
+};
+
+function baseProps({ size = 20, className, ...props }: IconProps) {
+  return {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    overflow: "visible",
+    xmlns: "http://www.w3.org/2000/svg",
+    className: className ? `block shrink-0 ${className}` : "block shrink-0",
+    "aria-hidden": props["aria-hidden"] ?? true,
+    ...props,
+  };
+}
+
+export function IconBack(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M15 18l-6-6 6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconClose(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconCheck(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M5 12l4 4 10-10"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconRefresh(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M20 12a8 8 0 10-2.3 5.7M20 12V7m0 5h-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconChevronRight(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M9 6l6 6-6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconArrowRight(props: IconProps) {
+  return <IconChevronRight {...props} />;
+}
+
+export function IconUser(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M5 20c1.5-3 4-4.5 7-4.5s5.5 1.5 7 4.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconPhone(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M6.6 3.4A2 2 0 018.2 3h2.2c.7 0 1.3.4 1.6 1l1.2 2.4a2 2 0 01-.5 2.2l-1 1a16 16 0 006.9 6.9l1-1a2 2 0 012.2-.5l2.4 1.2a2 2 0 011 1.6v2.2a2 2 0 01-2 2C10.3 21.5 2.5 13.7 2.5 4.2a2 2 0 012.1-1.8z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconPin(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M12 21s7-4.5 7-11a7 7 0 10-14 0c0 6.5 7 11 7 11z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <circle cx="12" cy="10" r="2.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M12 7v5l3 2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconNote(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M6 4h12v16l-3-2-3 2-3-2-3 2V4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 8h6M9 12h4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconStore(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M4 10h16l-1.2 9H5.2L4 10z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 10V7a4 4 0 018 0v3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconDelivery(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <circle cx="7" cy="17" r="2" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="17" cy="17" r="2" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M9 17h6M5 17H3V9h12v8h-2M15 9l2-4h3v4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconBag(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M7 8V6a5 5 0 0110 0v2M5 8h14l-1.2 12H6.2L5 8z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconCash(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <rect
+        x="3"
+        y="6"
+        width="18"
+        height="12"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+export function IconBank(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path d="M4 10h16M6 10V18M10 10V18M14 10V18M18 10V18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M3 10l9-5 9 5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconCard(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M3 10h18M7 15h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconTrash(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path d="M4 7h16M9 7V5h6v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M7 7l1 12h8l1-12"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconBell(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M12 4a4 4 0 00-4 4v2.5L6 13h12l-2-2.5V8a4 4 0 00-4-4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M10 17a2 2 0 004 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconMinus(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path d="M6 12h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconPlus(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconLock(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 11V8a4 4 0 118 0v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconCalendar(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 3v4M16 3v4M4 10h16" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+export function IconHome(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1h-5v-6H10v6H5a1 1 0 01-1-1v-9.5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconMoney(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M12 7.5v9M9.5 10a2.5 2.5 0 015 0c0 1.5-2.5 1.5-2.5 3a2.5 2.5 0 005 0"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconPackage(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+export function IconReceipt(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M8 4h8v16l-2-1.5L12 20l-2-1.5L8 20V4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 8h4M10 11h4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** placeholder สำหรับรูปสาขา */
+export function IconBranchPlaceholder({ size = 40, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      aria-hidden
+    >
+      <rect x="6" y="10" width="28" height="22" rx="4" fill="#fecaca" />
+      <path d="M10 10c0-5 5-8 10-8s10 3 10 8" stroke="#ef4444" strokeWidth="2" fill="#fee2e2" />
+      <circle cx="20" cy="22" r="6" fill="#f97316" opacity="0.85" />
+      <path d="M14 30h12" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** placeholder สำหรับรูปเมนู */
+export function IconSkewerPlaceholder({ size = 40, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      aria-hidden
+    >
+      <line x1="12" y1="34" x2="16" y2="8" stroke="#a16207" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="16" cy="6" r="4" fill="#ef4444" />
+      <line x1="22" y1="34" x2="24" y2="10" stroke="#a16207" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="24" cy="8" r="4" fill="#f97316" />
+      <line x1="28" y1="34" x2="30" y2="12" stroke="#a16207" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="30" cy="10" r="3.5" fill="#dc2626" />
+    </svg>
+  );
+}
+
+/** ไอคอน + ข้อความแนวนอน */
+export function IconLabel({
+  icon: Icon,
+  children,
+  className = "",
+  iconClassName = "text-gray-500",
+  size = 16,
+}: {
+  icon: React.ComponentType<IconProps>;
+  children: React.ReactNode;
+  className?: string;
+  iconClassName?: string;
+  size?: number;
+}) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${className}`}>
+      <Icon size={size} className={`shrink-0 ${iconClassName}`} />
+      <span>{children}</span>
+    </span>
+  );
+}

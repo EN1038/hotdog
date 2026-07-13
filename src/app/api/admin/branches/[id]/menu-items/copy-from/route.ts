@@ -33,6 +33,12 @@ export async function POST(request: Request, { params }: Params) {
         branchId: body.sourceBranchId,
         ...(body.itemIds?.length ? { id: { in: body.itemIds } } : {}),
       },
+      include: {
+        optionGroups: {
+          include: { options: { orderBy: { sortOrder: "asc" } } },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
       orderBy: [{ isHidden: "asc" }, { sortOrder: "asc" }, { createdAt: "desc" }],
     });
 
@@ -44,20 +50,41 @@ export async function POST(request: Request, { params }: Params) {
       await prisma.branchMenuItem.deleteMany({ where: { branchId: targetBranchId } });
     }
 
-    const created = await prisma.branchMenuItem.createMany({
-      data: sourceItems.map((i) => ({
-        branchId: targetBranchId,
-        name: i.name,
-        price: i.price,
-        description: i.description,
-        isHidden: i.isHidden,
-        sortOrder: i.sortOrder,
-      })),
-    });
+    let copied = 0;
+    for (const item of sourceItems) {
+      await prisma.branchMenuItem.create({
+        data: {
+          branchId: targetBranchId,
+          name: item.name,
+          price: item.price,
+          description: item.description,
+          category: item.category,
+          imageUrl: item.imageUrl,
+          isHidden: item.isHidden,
+          isOutOfStock: item.isOutOfStock,
+          sortOrder: item.sortOrder,
+          optionGroups: {
+            create: item.optionGroups.map((g) => ({
+              name: g.name,
+              required: g.required,
+              maxSelect: g.maxSelect,
+              sortOrder: g.sortOrder,
+              options: {
+                create: g.options.map((o) => ({
+                  name: o.name,
+                  priceDelta: o.priceDelta,
+                  sortOrder: o.sortOrder,
+                })),
+              },
+            })),
+          },
+        },
+      });
+      copied += 1;
+    }
 
-    return jsonOk({ ok: true, copied: created.count });
+    return jsonOk({ ok: true, copied });
   } catch (error) {
     return handleApiError(error);
   }
 }
-

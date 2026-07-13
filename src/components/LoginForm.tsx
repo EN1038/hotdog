@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 type LoginFormProps = {
-  type: "admin" | "staff" | "customer";
+  type: "admin" | "staff";
   title: string;
   redirectTo: string;
 };

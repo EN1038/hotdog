@@ -9,7 +9,7 @@ export async function GET() {
     const orders = await prisma.order.findMany({
       where: {
         branchId: session.branchId,
-        status: { not: OrderStatus.DELIVERED },
+        status: { notIn: [OrderStatus.COMPLETED, OrderStatus.CANCELLED] },
       },
       include: {
         customer: true,

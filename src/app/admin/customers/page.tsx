@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { OrderCard, type OrderCardData } from "@/components/OrderCard";
+import { IconBack } from "@/components/icons";
 
 type Customer = {
   id: string;
@@ -33,8 +34,9 @@ export default function AdminCustomersPage() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
-      <Link href="/admin" className="text-sm text-red-600 hover:underline">
-        ← กลับ
+      <Link href="/admin" className="inline-flex items-center gap-1 text-sm text-red-600 hover:underline">
+        <IconBack size={16} />
+        กลับ
       </Link>
       <h1 className="mt-2 text-2xl font-bold">ค้นหาลูกค้า</h1>
 

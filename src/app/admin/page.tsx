@@ -3,11 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { logout } from "@/components/LoginForm";
+import {
+  adminInputClass,
+  adminLabelClass,
+} from "@/components/admin/AdminShell";
+
+type Brand = { id: string; name: string; code: string };
 
 type Branch = {
   id: string;
   name: string;
+  code: string | null;
+  brand: Brand | null;
   _count: {
     staff: number;
     menuItems: number;
@@ -19,22 +26,25 @@ type Branch = {
 export default function AdminDashboard() {
   const router = useRouter();
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [name, setName] = useState("");
+  const [brandId, setBrandId] = useState("");
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/admin/branches")
-      .then((res) => {
-        if (res.status === 401) {
-          router.push("/admin/login");
-          return null;
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (data) setBranches(data);
-        setLoading(false);
-      });
+    Promise.all([
+      fetch("/api/admin/branches"),
+      fetch("/api/admin/brands"),
+    ]).then(async ([branchRes, brandRes]) => {
+      if (branchRes.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (branchRes.ok) setBranches(await branchRes.json());
+      if (brandRes.ok) setBrands(await brandRes.json());
+      setLoading(false);
+    });
   }, [router]);
 
   async function createBranch(e: React.FormEvent) {
@@ -44,77 +54,87 @@ export default function AdminDashboard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name,
+        brandId: brandId || null,
+        code: code.trim() || null,
       }),
     });
     if (res.ok) {
       const branch = await res.json();
       setBranches((prev) => [branch, ...prev]);
       setName("");
+      setCode("");
     }
   }
 
   if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">กำลังโหลด...</p>
-      </main>
-    );
+    return <p className="text-gray-500">กำลังโหลด...</p>;
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-        <div className="flex gap-4 text-sm">
-          <Link href="/admin/menu" className="text-red-600 hover:underline">
-            จัดการเมนู
-          </Link>
-          <Link href="/admin/customers" className="text-red-600 hover:underline">
-            ลูกค้า
-          </Link>
-          <button
-            type="button"
-            onClick={() => logout()}
-            className="text-gray-500 hover:underline"
-          >
-            ออกจากระบบ
-          </button>
-        </div>
-      </header>
+    <div>
+      <h2 className="text-xl font-bold text-gray-900">แดชบอร์ดสาขา</h2>
 
-      <section className="mb-8 rounded-lg border bg-white p-4">
-        <h2 className="mb-3 font-semibold">เพิ่มสาขาใหม่</h2>
+      <section className="mt-6 rounded-xl border bg-white p-4">
+        <h3 className="mb-3 font-semibold">เพิ่มสาขาใหม่</h3>
         <form onSubmit={createBranch} className="grid gap-3 md:grid-cols-4">
-          <input
-            className="rounded border px-3 py-2"
-            placeholder="ชื่อสาขา"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-          <div className="md:col-span-2" />
-          <button
-            type="submit"
-            className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-          >
-            เพิ่มสาขา
-          </button>
+          <div>
+            <label className={adminLabelClass}>ชื่อสาขา</label>
+            <input
+              className={adminInputClass}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className={adminLabelClass}>แบรนด์</label>
+            <select
+              className={adminInputClass}
+              value={brandId}
+              onChange={(e) => setBrandId(e.target.value)}
+            >
+              <option value="">— ไม่ระบุ —</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={adminLabelClass}>รหัสสาขา (URL)</label>
+            <input
+              className={adminInputClass}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="klong6"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              className="w-full rounded-lg bg-red-600 py-2 text-sm font-semibold text-white"
+            >
+              เพิ่มสาขา
+            </button>
+          </div>
         </form>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="font-semibold">สาขาทั้งหมด</h2>
+      <section className="mt-6 space-y-3">
+        <h3 className="font-semibold">สาขาทั้งหมด</h3>
         {branches.map((branch) => (
           <Link
             key={branch.id}
             href={`/admin/branches/${branch.id}`}
-            className="block rounded-lg border bg-white p-4 hover:border-red-300"
+            className="block rounded-xl border bg-white p-4 hover:border-red-300"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-medium text-gray-900">{branch.name}</p>
                 <p className="text-sm text-gray-500">
-                  พนักงาน {branch._count.staff} คน
+                  {branch.brand?.name ?? "ไม่มีแบรนด์"}
+                  {branch.code && ` • /${branch.brand?.code ?? "?"}/${branch.code}`}
                 </p>
               </div>
               <div className="text-right text-sm text-gray-500">
@@ -126,6 +146,6 @@ export default function AdminDashboard() {
           </Link>
         ))}
       </section>
-    </main>
+    </div>
   );
 }

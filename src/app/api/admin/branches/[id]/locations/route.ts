@@ -7,6 +7,11 @@ const locationSchema = z.object({
   name: z.string().min(1),
 });
 
+const patchSchema = z.object({
+  locationId: z.string().min(1),
+  name: z.string().min(1),
+});
+
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, { params }: Params) {
@@ -22,6 +27,22 @@ export async function POST(request: Request, { params }: Params) {
       data: { branchId, name: body.name },
     });
     return jsonOk(location, 201);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+export async function PATCH(request: Request, { params }: Params) {
+  try {
+    await requireAdmin();
+    const { id: branchId } = await params;
+    const body = patchSchema.parse(await request.json());
+
+    const location = await prisma.deliveryLocation.update({
+      where: { id: body.locationId, branchId },
+      data: { name: body.name },
+    });
+    return jsonOk(location);
   } catch (error) {
     return handleApiError(error);
   }

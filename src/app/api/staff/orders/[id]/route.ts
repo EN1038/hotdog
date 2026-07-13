@@ -23,7 +23,9 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
 
     const roles = session.staffRoles ?? [];
-    if (!canStaffUpdateStatus(roles, order.status, body.status)) {
+    if (
+      !canStaffUpdateStatus(roles, order.status, body.status, order.fulfillmentType)
+    ) {
       return jsonError("ไม่มีสิทธิ์เปลี่ยนสถานะนี้", 403);
     }
 

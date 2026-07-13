@@ -10,7 +10,7 @@ export default function HomePage() {
         </div>
         <div className="space-y-3">
           <Link
-            href="/order"
+            href="/malawaiwai"
             className="block rounded-lg bg-red-600 px-6 py-4 font-medium text-white hover:bg-red-700"
           >
             สั่งอาหาร (ลูกค้า)

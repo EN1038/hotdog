@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { IconBack } from "@/components/icons";
 
 export default function AdminMenuPage() {
   const router = useRouter();
@@ -24,8 +25,9 @@ export default function AdminMenuPage() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
-      <Link href="/admin" className="text-sm text-red-600 hover:underline">
-        ← กลับ
+      <Link href="/admin" className="inline-flex items-center gap-1 text-sm text-red-600 hover:underline">
+        <IconBack size={16} />
+        กลับ
       </Link>
       <h1 className="mt-2 text-2xl font-bold">จัดการเมนู (ต่อสาขา)</h1>
       <p className="text-sm text-gray-500">

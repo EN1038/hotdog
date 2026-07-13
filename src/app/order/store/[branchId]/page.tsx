@@ -1,0 +1,523 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import type { FulfillmentType } from "@prisma/client";
+import { formatPrice } from "@/lib/constants";
+import type { BranchData, MenuItemData } from "@/lib/customer-types";
+import { lineTotal } from "@/lib/customer-types";
+import { useCustomer } from "@/components/customer/CustomerProvider";
+import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
+import {
+  IconBack,
+  IconBranchPlaceholder,
+  IconPhone,
+  IconPlus,
+  IconSkewerPlaceholder,
+} from "@/components/icons";
+import { pillTabButtonClass } from "@/components/customer/CustomerOrderHistoryList";
+
+type MainTab = "menu" | "history";
+
+function BackIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M15 18l-6-6 6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 21s7-4.5 7-11a7 7 0 10-14 0c0 6.5 7 11 7 11z"
+        stroke="#9ca3af"
+        strokeWidth="1.8"
+      />
+      <circle cx="12" cy="10" r="2.2" fill="#9ca3af" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path
+        d="M8 11V8a4 4 0 118 0v3"
+        stroke="white"
+        strokeWidth="2"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 12l4 4 10-10"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="4"
+        y="5"
+        width="16"
+        height="15"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path d="M8 3v4M16 3v4M4 10h16" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="#ea580c" strokeWidth="1.8" />
+      <path
+        d="M12 7v5l3 2"
+        stroke="#ea580c"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function StorefrontIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 10h16l-1.2 9H5.2L4 10z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        className={active ? "text-orange-500" : "text-gray-400"}
+      />
+      <path
+        d="M8 10V7a4 4 0 018 0v3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className={active ? "text-orange-500" : "text-gray-400"}
+      />
+    </svg>
+  );
+}
+
+function DeliveryIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle
+        cx="7"
+        cy="17"
+        r="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className={active ? "text-orange-500" : "text-gray-400"}
+      />
+      <circle
+        cx="17"
+        cy="17"
+        r="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className={active ? "text-orange-500" : "text-gray-400"}
+      />
+      <path
+        d="M9 17h6M5 17H3V9h12v8h-2M15 9l2-4h3v4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        className={active ? "text-orange-500" : "text-gray-400"}
+      />
+    </svg>
+  );
+}
+
+function FulfillmentToggle({
+  value,
+  onChange,
+  deliveryAvailable,
+}: {
+  value: FulfillmentType;
+  onChange: (v: FulfillmentType) => void;
+  deliveryAvailable: boolean;
+}) {
+  return (
+    <div className="mx-4 mt-3 grid grid-cols-2 gap-2 rounded-2xl bg-white p-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
+      <button
+        type="button"
+        onClick={() => onChange("PICKUP")}
+        className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
+          value === "PICKUP"
+            ? "border-orange-400 bg-orange-50/50"
+            : "border-transparent bg-white"
+        }`}
+      >
+        <StorefrontIcon active={value === "PICKUP"} />
+        <span
+          className={`text-sm font-semibold ${
+            value === "PICKUP" ? "text-orange-500" : "text-gray-400"
+          }`}
+        >
+          รับที่ร้าน
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => deliveryAvailable && onChange("DELIVERY")}
+        disabled={!deliveryAvailable}
+        className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors disabled:opacity-40 ${
+          value === "DELIVERY"
+            ? "border-orange-400 bg-orange-50/50"
+            : "border-transparent bg-white"
+        }`}
+      >
+        <DeliveryIcon active={value === "DELIVERY"} />
+        <span
+          className={`text-sm font-semibold ${
+            value === "DELIVERY" ? "text-orange-500" : "text-gray-400"
+          }`}
+        >
+          จัดส่ง
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function MainTabs({
+  active,
+  onChange,
+}: {
+  active: MainTab;
+  onChange: (tab: MainTab) => void;
+}) {
+  return (
+    <div className="flex border-b border-gray-200 bg-white pt-3">
+      <button
+        type="button"
+        onClick={() => onChange("menu")}
+        className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
+          active === "menu" ? "text-orange-500" : "text-gray-400"
+        }`}
+      >
+        เมนูสินค้า
+        {active === "menu" && (
+          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-orange-500" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("history")}
+        className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
+          active === "history" ? "text-orange-500" : "text-gray-400"
+        }`}
+      >
+        ประวัติ
+        {active === "history" && (
+          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-orange-500" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+export default function StorePage() {
+  const { branchId } = useParams<{ branchId: string }>();
+  const router = useRouter();
+  const { cart, cartBranchId, fulfillment, setFulfillment } = useCustomer();
+
+  const [branch, setBranch] = useState<BranchData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState<string>("ทั้งหมด");
+  const [mainTab, setMainTab] = useState<MainTab>("menu");
+
+  useEffect(() => {
+    fetch("/api/customer/branches")
+      .then((res) => res.json())
+      .then((data: BranchData[] | unknown) => {
+        const branches = Array.isArray(data) ? data : [];
+        setBranch(branches.find((b) => b.id === branchId) ?? null);
+      })
+      .finally(() => setLoading(false));
+  }, [branchId]);
+
+  const deliveryAvailable = (branch?.deliveryLocations.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (!deliveryAvailable && fulfillment === "DELIVERY") {
+      setFulfillment("PICKUP");
+    }
+  }, [deliveryAvailable, fulfillment, setFulfillment]);
+
+  const categories = useMemo(() => {
+    if (!branch) return [];
+    const set = new Set<string>();
+    for (const item of branch.menuItems) {
+      if (item.category) set.add(item.category);
+    }
+    return ["ทั้งหมด", ...set];
+  }, [branch]);
+
+  const items = useMemo(() => {
+    if (!branch) return [];
+    if (category === "ทั้งหมด") return branch.menuItems;
+    return branch.menuItems.filter((i) => i.category === category);
+  }, [branch, category]);
+
+  const cartForThisBranch = cartBranchId === branchId ? cart : [];
+  const cartCount = cartForThisBranch.reduce((s, l) => s + l.quantity, 0);
+  const cartTotal = cartForThisBranch.reduce((s, l) => s + lineTotal(l), 0);
+
+  const backHref = "/order";
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6]">
+        <p className="text-sm text-gray-400">กำลังโหลด...</p>
+      </main>
+    );
+  }
+
+  if (!branch) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
+        <p className="text-gray-500">ไม่พบสาขานี้</p>
+        <Link href="/order" className="text-orange-500 underline">
+          กลับไปเลือกสาขา
+        </Link>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[#f5f5f6] pb-28">
+      <header className="bg-white px-4 pb-4 pt-3">
+        <Link
+          href={backHref}
+          className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
+          aria-label="กลับ"
+        >
+          <BackIcon />
+        </Link>
+
+        <div className="flex gap-3">
+          {branch.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branch.imageUrl}
+              alt={branch.name}
+              className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
+            />
+          ) : (
+            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-100 to-orange-50">
+              <IconSkewerPlaceholder size={40} />
+            </div>
+          )}
+
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-bold leading-snug text-gray-900">
+              {branch.name}
+            </p>
+            {branch.address && (
+              <div className="mt-1 flex items-start gap-1">
+                <PinIcon />
+                <p className="line-clamp-2 text-[11px] leading-relaxed text-gray-500">
+                  {branch.address}
+                </p>
+              </div>
+            )}
+            {branch.phone && (
+              <a
+                href={`tel:${branch.phone}`}
+                className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-medium leading-none text-gray-600 hover:bg-gray-50"
+              >
+                <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                  <IconPhone size={14} className="text-gray-600" />
+                </span>
+                โทรร้าน
+              </a>
+            )}
+          </div>
+
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            {branch.isOpen ? (
+              <>
+                <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">
+                  <CheckIcon />
+                  ร้านเปิด
+                </span>
+                {branch.closesAt && (
+                  <span className="text-[10px] text-gray-500">
+                    เปิดถึง {branch.closesAt}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="inline-flex items-center gap-0.5 rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  <LockIcon />
+                  ร้านปิด
+                </span>
+                {branch.opensAt && (
+                  <span className="text-[10px] text-gray-500">
+                    เปิดอีกครั้ง {branch.opensAt}
+                  </span>
+                )}
+              </>
+            )}
+            {!branch.isOpen && branch.allowAdvanceOrder && (
+              <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-200">
+                <CalendarIcon />
+                สั่งล่วงหน้าได้
+              </span>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {!branch.isOpen && branch.allowAdvanceOrder && (
+        <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
+          <ClockIcon />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-orange-600">
+              ขณะนี้ร้านปิด แต่สามารถเลือกเมนูและสั่งล่วงหน้าได้
+            </p>
+            <p className="mt-0.5 text-xs text-orange-500/80">
+              ระบบจะเริ่มทำออเดอร์เมื่อร้านเปิด
+            </p>
+          </div>
+        </div>
+      )}
+
+      <FulfillmentToggle
+        value={fulfillment}
+        onChange={setFulfillment}
+        deliveryAvailable={deliveryAvailable}
+      />
+
+      <div className="mx-4 mt-5 overflow-hidden rounded-t-2xl bg-white">
+        <MainTabs active={mainTab} onChange={setMainTab} />
+
+        {mainTab === "menu" ? (
+          <>
+            {categories.length > 1 && (
+              <div className="filter-scroll-row flex gap-2 overflow-x-auto px-4 py-3">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCategory(c)}
+                    className={pillTabButtonClass(category === c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="space-y-2 px-4 pb-4">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
+                >
+                  {item.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-100 to-orange-50">
+                      <IconSkewerPlaceholder size={40} />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-bold text-gray-900">
+                      {item.name}
+                    </p>
+                    {item.description && (
+                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-400">
+                        {item.description}
+                      </p>
+                    )}
+                    <p className="mt-1 text-sm font-bold text-orange-500">
+                      ฿{formatPrice(item.price)}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    {item.isOutOfStock ? (
+                      <span className="text-xs text-gray-400">หมด</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/order/store/${branch.id}/item/${item.id}`)
+                        }
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-xl font-light text-white shadow-sm transition-transform active:scale-95 hover:bg-orange-600"
+                        aria-label={`เพิ่ม ${item.name}`}
+                      >
+                        <IconPlus size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {items.length === 0 && (
+                <p className="py-8 text-center text-sm text-gray-400">
+                  ไม่มีเมนูในหมวดนี้
+                </p>
+              )}
+            </div>
+          </>
+        ) : (
+          <StoreHistoryTab branchId={branch.id} />
+        )}
+      </div>
+
+      {cartCount > 0 && mainTab === "menu" && (
+        <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+          <button
+            type="button"
+            onClick={() => router.push("/order/checkout")}
+            className="flex w-full items-center justify-between rounded-xl bg-orange-500 px-4 py-3.5 font-semibold text-white hover:bg-orange-600"
+          >
+            <span className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-orange-500">
+                {cartCount}
+              </span>
+              ดูตะกร้า
+            </span>
+            <span>฿{formatPrice(cartTotal)}</span>
+          </button>
+        </div>
+      )}
+
+    </main>
+  );
+}

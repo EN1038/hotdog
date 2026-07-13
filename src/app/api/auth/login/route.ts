@@ -17,6 +17,7 @@ const staffSchema = z.object({
 
 const customerSchema = z.object({
   phone: z.string().min(9),
+  name: z.string().trim().min(1, "กรุณากรอกชื่อ").optional(),
 });
 
 export async function POST(request: Request) {
@@ -73,19 +74,29 @@ export async function POST(request: Request) {
     }
 
     if (type === "customer") {
-      const { phone } = customerSchema.parse(body);
+      const { phone, name } = customerSchema.parse(body);
       const normalized = normalizePhone(phone);
+      const existing = await prisma.customer.findUnique({
+        where: { phone: normalized },
+      });
+
+      if (!existing && !name) {
+        return jsonOk({ needsName: true });
+      }
+
+      const finalName = name ?? existing!.name;
       const customer = await prisma.customer.upsert({
         where: { phone: normalized },
-        update: {},
-        create: { phone: normalized },
+        update: { name: finalName },
+        create: { phone: normalized, name: finalName },
       });
       await createSession({
         type: "customer",
         customerPhone: normalized,
         customerId: customer.id,
+        customerName: finalName ?? undefined,
       });
-      return jsonOk({ ok: true });
+      return jsonOk({ ok: true, name: finalName, phone: normalized });
     }
 
     return jsonError("ประเภทการเข้าสู่ระบบไม่ถูกต้อง");

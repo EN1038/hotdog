@@ -9,9 +9,32 @@ const patchSchema = z.object({
   name: z.string().min(1).optional(),
   price: z.number().positive().optional(),
   description: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  imageUrl: z.string().optional().nullable(),
   isHidden: z.boolean().optional(),
+  isOutOfStock: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });
+
+export async function GET(_request: Request, { params }: Params) {
+  try {
+    await requireAdmin();
+    const { id: branchId, itemId } = await params;
+    const item = await prisma.branchMenuItem.findFirst({
+      where: { id: itemId, branchId },
+      include: {
+        optionGroups: {
+          include: { options: { orderBy: { sortOrder: "asc" } } },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+    });
+    if (!item) return jsonError("ไม่พบเมนู", 404);
+    return jsonOk(item);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
@@ -30,7 +53,10 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.price !== undefined && { price: body.price }),
         ...(body.description !== undefined && { description: body.description }),
+        ...(body.category !== undefined && { category: body.category }),
+        ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
         ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
+        ...(body.isOutOfStock !== undefined && { isOutOfStock: body.isOutOfStock }),
         ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
       },
     });
@@ -55,4 +81,3 @@ export async function DELETE(_request: Request, { params }: Params) {
     return handleApiError(error);
   }
 }
-

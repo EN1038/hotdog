@@ -130,6 +130,47 @@ export function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
+/** Keep digits only, capped for Thai numbers (max 10). */
+export function phoneDigits(phone: string, max = 10): string {
+  return normalizePhone(phone).slice(0, max);
+}
+
+/**
+ * Format Thai phone for display as you type.
+ * Mobile 10 digits → 081-234-5678
+ * Shorter lengths fill groups progressively.
+ */
+export function formatThaiPhone(phone: string): string {
+  const d = phoneDigits(phone);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+export function telHref(phone: string): string {
+  const d = normalizePhone(phone);
+  return d ? `tel:${d}` : "#";
+}
+
+/** Accept optional HH:mm (24h). Empty string is valid (not set). */
+export function isValidClockTime(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+}
+
+/** Normalize to HH:mm or empty */
+export function normalizeClockTime(value: string): string {
+  const v = value.trim();
+  if (!v) return "";
+  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return v;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return v;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
 export function formatPrice(price: number | string): string {
   const num = typeof price === "string" ? parseFloat(price) : price;
   return num.toLocaleString("th-TH", { minimumFractionDigits: 0 });

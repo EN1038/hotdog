@@ -23,7 +23,7 @@ export type MenuItemData = {
   name: string;
   price: string;
   description: string | null;
-  category: string | null;
+  category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;
   isOutOfStock: boolean;
   optionGroups: MenuOptionGroupData[];
@@ -33,14 +33,35 @@ export type BranchData = {
   id: string;
   code: string | null;
   name: string;
+  nameTh?: string | null;
+  nameEn?: string | null;
   imageUrl: string | null;
   address: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   phone: string | null;
+  primaryCategory?: string | null;
+  secondaryCategories?: string[];
+  priceRange?: string | null;
+  ownerMessage?: string | null;
+  extraMessage?: string | null;
   isOpen: boolean;
+  /** @deprecated Prefer storefrontHours */
   opensAt: string | null;
+  /** @deprecated Prefer deliveryHours / storefrontHours */
   closesAt: string | null;
+  storefrontHours?: unknown;
+  deliveryHours?: unknown;
   allowAdvanceOrder: boolean;
-  brand: { id: string; code: string; name: string; logoUrl: string | null } | null;
+  autoAcceptOrders?: boolean;
+  brand: {
+    id: string;
+    code: string;
+    name: string;
+    nameTh?: string | null;
+    nameEn?: string | null;
+    logoUrl: string | null;
+  } | null;
   menuItems: MenuItemData[];
   deliveryLocations: { id: string; name: string }[];
 };

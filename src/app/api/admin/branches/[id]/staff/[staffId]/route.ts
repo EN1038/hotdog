@@ -7,8 +7,14 @@ import { StaffRole } from "@prisma/client";
 
 type Params = { params: Promise<{ id: string; staffId: string }> };
 
+const genderSchema = z.enum(["male", "female", "other"]).nullable().optional();
+
 const patchSchema = z.object({
   phone: z.string().min(9).optional(),
+  name: z.string().trim().nullable().optional(),
+  gender: genderSchema,
+  age: z.number().int().min(1).max(120).nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   roles: z.array(z.nativeEnum(StaffRole)).min(1).optional(),
 });
@@ -25,10 +31,33 @@ export async function PATCH(request: Request, { params }: Params) {
     });
     if (!existing) return jsonError("ไม่พบพนักงาน", 404);
 
+    let nextPhone: string | undefined;
+    if (body.phone !== undefined) {
+      nextPhone = normalizePhone(body.phone);
+      if (nextPhone.length < 9) {
+        return jsonError("เบอร์โทรไม่ถูกต้อง");
+      }
+      if (nextPhone !== existing.phone) {
+        const duplicate = await prisma.staff.findUnique({
+          where: { phone: nextPhone },
+        });
+        if (duplicate) {
+          return jsonError("เบอร์โทรนี้ถูกใช้ในระบบแล้ว", 409);
+        }
+      }
+    }
+
     const updated = await prisma.staff.update({
       where: { id: staffId },
       data: {
-        ...(body.phone !== undefined && { phone: normalizePhone(body.phone) }),
+        ...(nextPhone !== undefined && { phone: nextPhone }),
+
+        ...(body.name !== undefined && {
+          name: body.name?.trim() ? body.name.trim() : null,
+        }),
+        ...(body.gender !== undefined && { gender: body.gender }),
+        ...(body.age !== undefined && { age: body.age }),
+        ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
         ...(body.isActive !== undefined && { isActive: body.isActive }),
         ...(body.roles !== undefined && {
           roles: {
@@ -60,4 +89,3 @@ export async function DELETE(_request: Request, { params }: Params) {
     return handleApiError(error);
   }
 }
-

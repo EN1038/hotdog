@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -12,8 +13,16 @@ const patchSchema = z.object({
     .regex(/^[a-z0-9-]+$/)
     .optional(),
   name: z.string().min(1).optional(),
+  nameTh: z.string().nullable().optional(),
+  nameEn: z.string().nullable().optional(),
   logoUrl: z.string().nullable().optional(),
+  color: z.string().optional(),
 });
+
+function normalizeColor(input: string) {
+  const parsed = parseHexColor(input);
+  return parsed?.hex ?? DEFAULT_BRAND_COLOR;
+}
 
 export async function GET(_request: Request, { params }: Params) {
   try {
@@ -51,7 +60,14 @@ export async function PATCH(request: Request, { params }: Params) {
       data: {
         ...(body.code !== undefined && { code: body.code }),
         ...(body.name !== undefined && { name: body.name }),
+        ...(body.nameTh !== undefined && {
+          nameTh: body.nameTh?.trim() || null,
+        }),
+        ...(body.nameEn !== undefined && {
+          nameEn: body.nameEn?.trim() || null,
+        }),
         ...(body.logoUrl !== undefined && { logoUrl: body.logoUrl }),
+        ...(body.color !== undefined && { color: normalizeColor(body.color) }),
       },
     });
     return jsonOk(brand);

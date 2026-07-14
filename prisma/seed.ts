@@ -1,7 +1,8 @@
 import "dotenv/config";
-import { PrismaClient, StaffRole } from "@prisma/client";
+import { Prisma, PrismaClient, StaffRole } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import { migrateLegacyHours } from "../src/lib/branch-hours";
 
 const adapter = new PrismaPg(
   { connectionString: process.env.DATABASE_URL },
@@ -11,44 +12,41 @@ const prisma = new PrismaClient({ adapter });
 
 const img = (seed: string) => `https://picsum.photos/seed/${seed}/400/300`;
 
-const SPICE_GROUP = {
-  name: "ระดับความเผ็ด",
-  required: true,
-  maxSelect: 1,
-  sortOrder: 1,
-  options: [
-    { name: "ไม่เผ็ด", priceDelta: 0, sortOrder: 1 },
-    { name: "เผ็ดน้อย", priceDelta: 0, sortOrder: 2 },
-    { name: "เผ็ดกลาง", priceDelta: 0, sortOrder: 3 },
-    { name: "เผ็ดมาก", priceDelta: 0, sortOrder: 4 },
-  ],
-};
-
-const SAUCE_GROUP = {
-  name: "เลือกซอส",
-  required: false,
-  maxSelect: 2,
-  sortOrder: 2,
-  options: [
-    { name: "ไม่ใส่ซอส", priceDelta: 0, sortOrder: 1 },
-    { name: "ซอสหม่าล่า", priceDelta: 0, sortOrder: 2 },
-    { name: "ซอสหวาน", priceDelta: 0, sortOrder: 3 },
-    { name: "ซอสศรีราชา", priceDelta: 0, sortOrder: 4 },
-    { name: "ซอสพริกเผา", priceDelta: 5, sortOrder: 5 },
-  ],
-};
-
-const DIP_GROUP = {
-  name: "น้ำจิ้ม",
-  required: false,
-  maxSelect: 1,
-  sortOrder: 3,
-  options: [
-    { name: "ไม่เอาน้ำจิ้ม", priceDelta: 0, sortOrder: 1 },
-    { name: "แยกน้ำจิ้ม", priceDelta: 0, sortOrder: 2 },
-    { name: "ราดน้ำจิ้ม", priceDelta: 0, sortOrder: 3 },
-  ],
-};
+const OPTION_LIBRARY = [
+  {
+    name: "ระดับความเผ็ด",
+    required: true,
+    maxSelect: 1,
+    options: [
+      { name: "ไม่เผ็ด", priceDelta: 0 },
+      { name: "เผ็ดน้อย", priceDelta: 0 },
+      { name: "เผ็ดกลาง", priceDelta: 0 },
+      { name: "เผ็ดมาก", priceDelta: 0 },
+    ],
+  },
+  {
+    name: "เลือกซอส",
+    required: false,
+    maxSelect: 2,
+    options: [
+      { name: "ไม่ใส่ซอส", priceDelta: 0 },
+      { name: "ซอสหม่าล่า", priceDelta: 0 },
+      { name: "ซอสหวาน", priceDelta: 0 },
+      { name: "ซอสศรีราชา", priceDelta: 0 },
+      { name: "ซอสพริกเผา", priceDelta: 5 },
+    ],
+  },
+  {
+    name: "น้ำจิ้ม",
+    required: false,
+    maxSelect: 1,
+    options: [
+      { name: "ไม่เอาน้ำจิ้ม", priceDelta: 0 },
+      { name: "แยกน้ำจิ้ม", priceDelta: 0 },
+      { name: "ราดน้ำจิ้ม", priceDelta: 0 },
+    ],
+  },
+];
 
 const MENU = [
   { name: "ไส้กรอกชีส", price: 10, description: "ชีสเยิ้ม อร่อยเต็มคำ", category: "เมนูปิ้ง" },
@@ -85,13 +83,16 @@ async function main() {
 
   const brand = await prisma.brand.upsert({
     where: { code: "malawaiwai" },
-    update: { name: "หม่าล่า ไวไว" },
+    update: { name: "หม่าล่า ไวไว", color: "#dc2626" },
     create: {
       code: "malawaiwai",
       name: "หม่าล่า ไวไว",
       logoUrl: img("mala-logo"),
+      color: "#dc2626",
     },
   });
+
+  const categoryNames = [...new Set(MENU.map((m) => m.category))];
 
   const branchDefs = [
     {
@@ -127,6 +128,7 @@ async function main() {
   ];
 
   for (const [bi, def] of branchDefs.entries()) {
+    const hours = migrateLegacyHours(def.opensAt, def.closesAt) as unknown as Prisma.InputJsonValue;
     const branch = await prisma.branch.upsert({
       where: { id: def.id },
       update: {
@@ -138,6 +140,8 @@ async function main() {
         isOpen: def.isOpen,
         opensAt: def.opensAt,
         closesAt: def.closesAt,
+        storefrontHours: hours,
+        deliveryHours: hours,
         imageUrl: img(`branch-${bi + 1}`),
         allowAdvanceOrder: true,
       },
@@ -151,15 +155,74 @@ async function main() {
         isOpen: def.isOpen,
         opensAt: def.opensAt,
         closesAt: def.closesAt,
+        storefrontHours: hours,
+        deliveryHours: hours,
         imageUrl: img(`branch-${bi + 1}`),
       },
     });
+
+    const categoryByName = new Map<string, string>();
+    for (const [i, catName] of categoryNames.entries()) {
+      const catId = `seed-${def.id}-cat-${i + 1}`;
+      const cat = await prisma.menuCategory.upsert({
+        where: { id: catId },
+        update: { name: catName, sortOrder: i + 1 },
+        create: {
+          id: catId,
+          branchId: branch.id,
+          name: catName,
+          sortOrder: i + 1,
+        },
+      });
+      categoryByName.set(catName, cat.id);
+    }
+
+    const libraryGroupIds: string[] = [];
+    for (const [gi, g] of OPTION_LIBRARY.entries()) {
+      const groupId = `seed-${def.id}-optgroup-${gi + 1}`;
+      await prisma.branchOptionGroup.upsert({
+        where: { id: groupId },
+        update: {
+          name: g.name,
+          required: g.required,
+          maxSelect: g.maxSelect,
+        },
+        create: {
+          id: groupId,
+          branchId: branch.id,
+          name: g.name,
+          required: g.required,
+          maxSelect: g.maxSelect,
+          options: {
+            create: g.options.map((o, oi) => ({
+              id: `seed-${def.id}-opt-${gi + 1}-${oi + 1}`,
+              name: o.name,
+              priceDelta: o.priceDelta,
+            })),
+          },
+        },
+      });
+      // Ensure options exist on update path
+      const existingOpts = await prisma.branchOption.count({
+        where: { groupId },
+      });
+      if (existingOpts === 0) {
+        await prisma.branchOption.createMany({
+          data: g.options.map((o, oi) => ({
+            id: `seed-${def.id}-opt-${gi + 1}-${oi + 1}`,
+            groupId,
+            name: o.name,
+            priceDelta: o.priceDelta,
+          })),
+        });
+      }
+      libraryGroupIds.push(groupId);
+    }
 
     for (const [mi, m] of MENU.entries()) {
       const itemId = `seed-${def.id}-menu-${mi + 1}`;
       const existing = await prisma.branchMenuItem.findUnique({
         where: { id: itemId },
-        include: { optionGroups: true },
       });
       if (!existing) {
         await prisma.branchMenuItem.create({
@@ -169,20 +232,24 @@ async function main() {
             name: m.name,
             price: m.price,
             description: m.description,
-            category: m.category,
+            categoryId: categoryByName.get(m.category) ?? null,
             imageUrl: img(`food-${mi + 1}`),
             sortOrder: mi + 1,
-            optionGroups: {
-              create: [SPICE_GROUP, SAUCE_GROUP, DIP_GROUP].map((g) => ({
-                name: g.name,
-                required: g.required,
-                maxSelect: g.maxSelect,
-                sortOrder: g.sortOrder,
-                options: { create: g.options },
-              })),
+            optionGroupLinks: {
+              create: libraryGroupIds.map((groupId) => ({ groupId })),
             },
           },
         });
+      } else {
+        for (const groupId of libraryGroupIds) {
+          await prisma.branchMenuItemOptionGroup.upsert({
+            where: {
+              menuItemId_groupId: { menuItemId: itemId, groupId },
+            },
+            update: {},
+            create: { menuItemId: itemId, groupId },
+          });
+        }
       }
     }
 

@@ -1,9 +1,15 @@
-import { FulfillmentType, PaymentMethod, Prisma } from "@prisma/client";
+import {
+  FulfillmentType,
+  OrderStatus,
+  PaymentMethod,
+  Prisma,
+} from "@prisma/client";
 import { z } from "zod";
 import { requireCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { generateOrderNumber } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import { getBranchServiceStatus, isSameBangkokDay } from "@/lib/branch-hours";
 
 const orderItemSchema = z.object({
   branchMenuItemId: z.string(),
@@ -61,8 +67,27 @@ export async function POST(request: Request) {
       where: { id: body.branchId },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
-    if (!branch.isOpen && !branch.allowAdvanceOrder) {
-      return jsonError("สาขาปิดอยู่และไม่รับออเดอร์ล่วงหน้า");
+
+    const service = getBranchServiceStatus(branch, body.fulfillmentType);
+    if (!service.acceptingOrders) {
+      return jsonError(service.reason);
+    }
+    if (!service.openNow) {
+      if (!body.scheduledAt) {
+        return jsonError(
+          "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้",
+        );
+      }
+      const scheduled = new Date(body.scheduledAt);
+      if (Number.isNaN(scheduled.getTime())) {
+        return jsonError("เวลานัดรับ/ส่งไม่ถูกต้อง");
+      }
+      if (!isSameBangkokDay(scheduled, new Date())) {
+        return jsonError("สั่งล่วงหน้าได้เฉพาะภายในวันนี้เท่านั้น");
+      }
+      if (scheduled.getTime() <= Date.now()) {
+        return jsonError("เวลานัดรับ/ส่งต้องเป็นเวลาหลังจากนี้");
+      }
     }
 
     const branchMenu = await prisma.branchMenuItem.findMany({
@@ -72,7 +97,11 @@ export async function POST(request: Request) {
         id: { in: body.items.map((i) => i.branchMenuItemId) },
       },
       include: {
-        optionGroups: { include: { options: true } },
+        optionGroupLinks: {
+          include: {
+            group: { include: { options: true } },
+          },
+        },
       },
     });
 
@@ -90,17 +119,47 @@ export async function POST(request: Request) {
       if (!location) return jsonError("พื้นที่จัดส่งไม่ถูกต้อง");
     }
 
-    const orderItems = body.items.map((item) => {
+    const orderItems: Array<{
+      branchMenuItemId: string;
+      itemName: string;
+      quantity: number;
+      unitPrice: Prisma.Decimal;
+      optionsText: string | null;
+      optionsPrice: Prisma.Decimal;
+      note: string | null;
+    }> = [];
+
+    for (const item of body.items) {
       const menu = itemMap.get(item.branchMenuItemId)!;
-      const allOptions = menu.optionGroups.flatMap((g) => g.options);
+      const groups = menu.optionGroupLinks.map((l) => l.group);
+      const allOptions = groups.flatMap((g) => g.options);
       const chosen = item.optionIds
         .map((id) => allOptions.find((o) => o.id === id))
         .filter((o): o is NonNullable<typeof o> => Boolean(o));
+
+      if (chosen.length !== item.optionIds.length) {
+        return jsonError(`ตัวเลือกของ "${menu.name}" ไม่ถูกต้อง`);
+      }
+
+      for (const group of groups) {
+        const selectedInGroup = chosen.filter((o) =>
+          group.options.some((go) => go.id === o.id),
+        );
+        if (group.required && selectedInGroup.length < 1) {
+          return jsonError(`กรุณาเลือก "${group.name}"`);
+        }
+        if (selectedInGroup.length > group.maxSelect) {
+          return jsonError(
+            `"${group.name}" เลือกได้สูงสุด ${group.maxSelect} รายการ`,
+          );
+        }
+      }
+
       const optionsPrice = chosen.reduce(
         (sum, o) => sum.add(o.priceDelta),
         new Prisma.Decimal(0),
       );
-      return {
+      orderItems.push({
         branchMenuItemId: item.branchMenuItemId,
         itemName: menu.name,
         quantity: item.quantity,
@@ -108,8 +167,8 @@ export async function POST(request: Request) {
         optionsText: chosen.map((o) => o.name).join(", ") || null,
         optionsPrice,
         note: item.note?.trim() || null,
-      };
-    });
+      });
+    }
 
     let order = null;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -134,6 +193,9 @@ export async function POST(request: Request) {
             scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
             note: body.note?.trim() || null,
             paymentMethod: body.paymentMethod,
+            status: branch.autoAcceptOrders
+              ? OrderStatus.PREPARING
+              : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
             items: { create: orderItems },
           },
           include: {

@@ -395,6 +395,52 @@ export function IconReceipt(props: IconProps) {
   );
 }
 
+export function IconImage(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="14"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <circle cx="9" cy="10" r="1.75" fill="currentColor" />
+      <path
+        d="M4.5 16.5l4.5-4.5 3 3 2.5-2.5 5 5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconUpload(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M12 16V5m0 0l-4 4m4-4l4 4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 16.5V18a2 2 0 002 2h12a2 2 0 002-2v-1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** placeholder สำหรับรูปสาขา */
 export function IconBranchPlaceholder({ size = 40, className }: IconProps) {
   return (

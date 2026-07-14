@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Prompt } from "next/font/google";
 import { getSiteSettings } from "@/lib/site-settings";
+import { AppProviders } from "@/components/AppProviders";
 import "./globals.css";
 
 const prompt = Prompt({
@@ -30,7 +31,9 @@ export default function RootLayout({
       lang="th"
       className={`${prompt.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   adminInputClass,
   adminLabelClass,
+  btnPrimary,
 } from "@/components/admin/AdminShell";
 
 type SiteSettings = {
@@ -155,7 +156,7 @@ export default function SiteSettingsPage() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className={btnPrimary}
         >
           {saving ? "กำลังบันทึก..." : "บันทึกการตั้งค่าเว็บ"}
         </button>

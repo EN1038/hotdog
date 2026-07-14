@@ -7,6 +7,15 @@ import type { FulfillmentType } from "@prisma/client";
 import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
+import {
+  formatTodayHoursSummary,
+  getBranchServiceStatus,
+} from "@/lib/branch-hours";
+import {
+  localizedName,
+  priceRangeLabel,
+  restaurantCategoryLabel,
+} from "@/lib/localized";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
 import {
@@ -275,22 +284,47 @@ export default function StorePage() {
 
   const categories = useMemo(() => {
     if (!branch) return [];
-    const set = new Set<string>();
+    const byName = new Map<string, number>();
     for (const item of branch.menuItems) {
-      if (item.category) set.add(item.category);
+      if (item.category?.name) {
+        byName.set(item.category.name, item.category.sortOrder ?? 0);
+      }
     }
-    return ["ทั้งหมด", ...set];
+    const sorted = [...byName.entries()]
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0], "th"))
+      .map(([name]) => name);
+    return ["ทั้งหมด", ...sorted];
   }, [branch]);
 
   const items = useMemo(() => {
     if (!branch) return [];
     if (category === "ทั้งหมด") return branch.menuItems;
-    return branch.menuItems.filter((i) => i.category === category);
+    return branch.menuItems.filter((i) => i.category?.name === category);
   }, [branch, category]);
 
   const cartForThisBranch = cartBranchId === branchId ? cart : [];
   const cartCount = cartForThisBranch.reduce((s, l) => s + l.quantity, 0);
   const cartTotal = cartForThisBranch.reduce((s, l) => s + lineTotal(l), 0);
+
+  const service = useMemo(() => {
+    if (!branch) return null;
+    return getBranchServiceStatus(branch, fulfillment);
+  }, [branch, fulfillment]);
+
+  const displayName = branch
+    ? localizedName(branch.name, branch.nameTh, branch.nameEn)
+    : "";
+  const categoryLine = branch
+    ? [
+        restaurantCategoryLabel(branch.primaryCategory),
+        ...(branch.secondaryCategories ?? []).map(restaurantCategoryLabel),
+        priceRangeLabel(branch.priceRange)
+          ? `฿${priceRangeLabel(branch.priceRange)}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   const backHref = "/order";
 
@@ -329,7 +363,7 @@ export default function StorePage() {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={branch.imageUrl}
-              alt={branch.name}
+              alt={displayName}
               className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
             />
           ) : (
@@ -340,8 +374,11 @@ export default function StorePage() {
 
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-bold leading-snug text-gray-900">
-              {branch.name}
+              {displayName}
             </p>
+            {categoryLine ? (
+              <p className="mt-0.5 text-[11px] text-gray-500">{categoryLine}</p>
+            ) : null}
             {branch.address && (
               <div className="mt-1 flex items-start gap-1">
                 <PinIcon />
@@ -364,32 +401,32 @@ export default function StorePage() {
           </div>
 
           <div className="flex shrink-0 flex-col items-end gap-1.5">
-            {branch.isOpen ? (
+            {service?.openNow ? (
               <>
                 <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">
                   <CheckIcon />
-                  ร้านเปิด
+                  {fulfillment === "DELIVERY" ? "เปิดส่ง" : "ร้านเปิด"}
                 </span>
-                {branch.closesAt && (
-                  <span className="text-[10px] text-gray-500">
-                    เปิดถึง {branch.closesAt}
-                  </span>
-                )}
+                <span className="max-w-[9rem] text-right text-[10px] text-gray-500">
+                  {service
+                    ? formatTodayHoursSummary(service.schedule)
+                    : ""}
+                </span>
               </>
             ) : (
               <>
                 <span className="inline-flex items-center gap-0.5 rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                   <LockIcon />
-                  ร้านปิด
+                  {fulfillment === "DELIVERY" ? "ปิดส่ง" : "ร้านปิด"}
                 </span>
-                {branch.opensAt && (
-                  <span className="text-[10px] text-gray-500">
-                    เปิดอีกครั้ง {branch.opensAt}
-                  </span>
-                )}
+                <span className="max-w-[9rem] text-right text-[10px] text-gray-500">
+                  {service
+                    ? formatTodayHoursSummary(service.schedule)
+                    : ""}
+                </span>
               </>
             )}
-            {!branch.isOpen && branch.allowAdvanceOrder && (
+            {!service?.openNow && service?.acceptingOrders && (
               <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-200">
                 <CalendarIcon />
                 สั่งล่วงหน้าได้
@@ -399,17 +436,54 @@ export default function StorePage() {
         </div>
       </header>
 
-      {!branch.isOpen && branch.allowAdvanceOrder && (
+      {!service?.openNow && service?.acceptingOrders && (
         <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
           <ClockIcon />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-orange-600">
-              ขณะนี้ร้านปิด แต่สามารถเลือกเมนูและสั่งล่วงหน้าได้
+              {service.reason}
             </p>
             <p className="mt-0.5 text-xs text-orange-500/80">
-              ระบบจะเริ่มทำออเดอร์เมื่อร้านเปิด
+              ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
             </p>
           </div>
+        </div>
+      )}
+
+      {service && !service.acceptingOrders && (
+        <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3.5">
+          <LockIcon />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-red-600">{service.reason}</p>
+            <p className="mt-0.5 text-xs text-red-500/80">
+              ตอนนี้ยังสั่งซื้อไม่ได้ — ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
+            </p>
+          </div>
+        </div>
+      )}
+
+      {(branch.ownerMessage || branch.extraMessage) && (
+        <div className="mx-4 mt-3 space-y-2">
+          {branch.ownerMessage ? (
+            <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+              <p className="text-[11px] font-semibold text-orange-600">
+                ข้อความจากเจ้าของร้าน
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                {branch.ownerMessage}
+              </p>
+            </div>
+          ) : null}
+          {branch.extraMessage ? (
+            <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+              <p className="text-[11px] font-semibold text-gray-500">
+                ข้อความเพิ่มเติม
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                {branch.extraMessage}
+              </p>
+            </div>
+          ) : null}
         </div>
       )}
 

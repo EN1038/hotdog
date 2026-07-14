@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PhoneInput } from "@/components/PhoneInput";
 
 type LoginFormProps = {
   type: "admin" | "staff";
@@ -78,12 +79,10 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
             <label className="mb-1 block text-sm text-gray-600">
               เบอร์โทรศัพท์
             </label>
-            <input
-              type="tel"
-              className="w-full rounded border border-gray-300 px-3 py-2"
+            <PhoneInput
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0812345678"
+              onChange={setPhone}
+              className="w-full rounded border border-gray-300 px-3 py-2"
               required
             />
           </div>

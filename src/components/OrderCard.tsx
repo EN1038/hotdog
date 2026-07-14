@@ -7,6 +7,7 @@ import {
   type StaffRole,
 } from "@/lib/constants";
 import { IconArrowRight, IconLabel, IconNote } from "@/components/icons";
+import { PhoneCallButton } from "@/components/PhoneCallButton";
 
 type OrderItem = {
   id: string;
@@ -78,8 +79,12 @@ export function OrderCard({
           )}
           <p className="text-xs text-gray-500">
             ลูกค้า: {order.customerName || order.customer?.name || "-"}
-            {order.customer?.phone ? ` (${order.customer.phone})` : ""}
           </p>
+          {order.customer?.phone && (
+            <div className="mt-1.5">
+              <PhoneCallButton phone={order.customer.phone} showNumber size={14} />
+            </div>
+          )}
           {order.note && (
             <p className="text-xs text-orange-600">
               <IconLabel icon={IconNote} size={12} iconClassName="text-orange-600">

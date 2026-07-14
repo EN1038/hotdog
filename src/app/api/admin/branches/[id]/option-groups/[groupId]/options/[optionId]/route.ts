@@ -4,35 +4,33 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 
 type Params = {
-  params: Promise<{ id: string; itemId: string; optionId: string }>;
+  params: Promise<{ id: string; groupId: string; optionId: string }>;
 };
 
 const patchSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   priceDelta: z.number().optional(),
-  sortOrder: z.number().int().optional(),
 });
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
     await requireAdmin();
-    const { id: branchId, itemId, optionId } = await params;
-    const body = patchSchema.parse(await request.json());
-
-    const existing = await prisma.menuOption.findFirst({
+    const { id: branchId, groupId, optionId } = await params;
+    const option = await prisma.branchOption.findFirst({
       where: {
         id: optionId,
-        group: { menuItem: { id: itemId, branchId } },
+        groupId,
+        group: { branchId },
       },
     });
-    if (!existing) return jsonError("ไม่พบตัวเลือก", 404);
+    if (!option) return jsonError("ไม่พบตัวเลือก", 404);
 
-    const updated = await prisma.menuOption.update({
+    const body = patchSchema.parse(await request.json());
+    const updated = await prisma.branchOption.update({
       where: { id: optionId },
       data: {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.priceDelta !== undefined && { priceDelta: body.priceDelta }),
-        ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
       },
     });
     return jsonOk(updated);
@@ -44,16 +42,17 @@ export async function PATCH(request: Request, { params }: Params) {
 export async function DELETE(_request: Request, { params }: Params) {
   try {
     await requireAdmin();
-    const { id: branchId, itemId, optionId } = await params;
-    const existing = await prisma.menuOption.findFirst({
+    const { id: branchId, groupId, optionId } = await params;
+    const option = await prisma.branchOption.findFirst({
       where: {
         id: optionId,
-        group: { menuItem: { id: itemId, branchId } },
+        groupId,
+        group: { branchId },
       },
     });
-    if (!existing) return jsonError("ไม่พบตัวเลือก", 404);
+    if (!option) return jsonError("ไม่พบตัวเลือก", 404);
 
-    await prisma.menuOption.delete({ where: { id: optionId } });
+    await prisma.branchOption.delete({ where: { id: optionId } });
     return jsonOk({ ok: true });
   } catch (error) {
     return handleApiError(error);

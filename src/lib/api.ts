@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 
 export function jsonOk<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
@@ -9,12 +10,34 @@ export function jsonError(message: string, status = 400) {
 }
 
 export function handleApiError(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      const fields = Array.isArray(error.meta?.target)
+        ? (error.meta.target as string[]).join(", ")
+        : "";
+      if (fields.includes("phone")) {
+        return jsonError("เบอร์โทรนี้ถูกใช้ในระบบแล้ว", 409);
+      }
+      return jsonError("ข้อมูลซ้ำในระบบ", 409);
+    }
+    if (error.code === "P2025") {
+      return jsonError("ไม่พบข้อมูล", 404);
+    }
+  }
+
+  if (error instanceof Prisma.PrismaClientValidationError) {
+    return jsonError("ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", 400);
+  }
+
   if (error instanceof Error) {
     if (error.message === "UNAUTHORIZED") {
       return jsonError("ไม่มีสิทธิ์เข้าถึง", 401);
     }
     if (error.message === "NOT_FOUND") {
       return jsonError("ไม่พบข้อมูล", 404);
+    }
+    if (error.message.includes("Invalid `") || error.message.length > 180) {
+      return jsonError("บันทึกไม่สำเร็จ กรุณาลองใหม่", 400);
     }
     return jsonError(error.message, 400);
   }

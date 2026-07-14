@@ -1,0 +1,176 @@
+"use client";
+
+import Link from "next/link";
+import type { FulfillmentType, OrderStatus } from "@prisma/client";
+import {
+  FULFILLMENT_LABELS,
+  ORDER_STATUS_BADGE,
+  ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+} from "@/lib/constants";
+import { orderGrandTotal } from "@/lib/order-totals";
+import { PhoneCallButton } from "@/components/PhoneCallButton";
+
+export type AdminOrderRow = {
+  id: string;
+  orderNumber?: string;
+  status: OrderStatus;
+  fulfillmentType?: FulfillmentType;
+  paymentMethod?: keyof typeof PAYMENT_METHOD_LABELS;
+  addressDetail: string | null;
+  customerName?: string;
+  createdAt: string;
+  deliveryFee?: string | number;
+  discountAmount?: string | number;
+  customer?: { phone: string; name?: string | null } | null;
+  deliveryLocation: { name: string } | null;
+  items: Array<{
+    id: string;
+    quantity: number;
+    unitPrice: string | number;
+    optionsPrice?: string | number;
+    itemName: string;
+  }>;
+};
+
+type OrdersTableProps = {
+  orders: AdminOrderRow[];
+  emptyText?: string;
+};
+
+function formatMoney(n: number) {
+  return n.toLocaleString("th-TH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatDateTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("th-TH", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+export function OrdersTable({
+  orders,
+  emptyText = "ยังไม่มีออเดอร์",
+}: OrdersTableProps) {
+  if (orders.length === 0) {
+    return (
+      <p className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
+        {emptyText}
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      <table className="min-w-full text-left text-sm">
+        <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+          <tr>
+            <th className="whitespace-nowrap px-3 py-3 font-semibold">เลขที่</th>
+            <th className="whitespace-nowrap px-3 py-3 font-semibold">เวลา</th>
+            <th className="whitespace-nowrap px-3 py-3 font-semibold">ลูกค้า</th>
+            <th className="whitespace-nowrap px-3 py-3 font-semibold">ช่องทาง</th>
+            <th className="whitespace-nowrap px-3 py-3 font-semibold">รายการ</th>
+            <th className="whitespace-nowrap px-3 py-3 font-semibold">ยอด</th>
+            <th className="whitespace-nowrap px-3 py-3 font-semibold">สถานะ</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {orders.map((order) => {
+            const total = orderGrandTotal(
+              order.items,
+              order.deliveryFee,
+              order.discountAmount,
+            );
+            const itemCount = order.items.reduce(
+              (n, it) => n + it.quantity,
+              0,
+            );
+            const channel =
+              order.fulfillmentType === "PICKUP"
+                ? FULFILLMENT_LABELS.PICKUP
+                : (order.deliveryLocation?.name ??
+                  FULFILLMENT_LABELS.DELIVERY);
+            const href = `/admin/orders/${order.id}`;
+
+            return (
+              <tr key={order.id} className="group hover:bg-red-50/40">
+                <td className="whitespace-nowrap px-3 py-3 font-medium text-gray-900">
+                  <Link
+                    href={href}
+                    className="font-medium text-red-700 underline-offset-2 group-hover:underline"
+                  >
+                    {order.orderNumber
+                      ? `#${order.orderNumber}`
+                      : order.id.slice(-6)}
+                  </Link>
+                </td>
+                <td className="whitespace-nowrap px-3 py-3 text-gray-600">
+                  <Link href={href} className="block">
+                    {formatDateTime(order.createdAt)}
+                  </Link>
+                </td>
+                <td className="px-3 py-3">
+                  <Link href={href} className="block">
+                    <p className="font-medium text-gray-900">
+                      {order.customerName || order.customer?.name || "—"}
+                    </p>
+                  </Link>
+                  {order.customer?.phone ? (
+                    <div
+                      className="mt-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <PhoneCallButton
+                        phone={order.customer.phone}
+                        showNumber
+                        size={14}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">—</p>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-gray-700">
+                  <Link href={href} className="block">
+                    <p>{channel}</p>
+                    {order.paymentMethod && (
+                      <p className="text-xs text-gray-500">
+                        {PAYMENT_METHOD_LABELS[order.paymentMethod]}
+                      </p>
+                    )}
+                  </Link>
+                </td>
+                <td className="whitespace-nowrap px-3 py-3 text-gray-600">
+                  <Link href={href}>{itemCount} ชิ้น</Link>
+                </td>
+                <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-900">
+                  <Link href={href}>{formatMoney(total)} ฿</Link>
+                </td>
+                <td className="whitespace-nowrap px-3 py-3">
+                  <Link href={href}>
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${ORDER_STATUS_BADGE[order.status]}`}
+                    >
+                      {ORDER_STATUS_LABELS[order.status]}
+                    </span>
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
+        กดที่เลขที่ออเดอร์หรือแถวเพื่อดูรายละเอียด
+      </p>
+    </div>
+  );
+}

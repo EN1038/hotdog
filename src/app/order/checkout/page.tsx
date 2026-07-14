@@ -7,6 +7,8 @@ import type { FulfillmentType, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS, formatPrice } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
+import { getBranchServiceStatus } from "@/lib/branch-hours";
+import { localizedName } from "@/lib/localized";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import {
   IconBack,
@@ -310,12 +312,40 @@ export default function CheckoutPage() {
       setError("กรุณาเลือกพื้นที่จัดส่งและกรอกที่อยู่");
       return;
     }
+    if (branch) {
+      const service = getBranchServiceStatus(branch, fulfillment);
+      if (!service.acceptingOrders) {
+        setError(service.reason);
+        return;
+      }
+      if (!service.openNow && !scheduledTime.trim()) {
+        setError(
+          "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้",
+        );
+        return;
+      }
+    }
     const parsedScheduledTime = scheduledTime
       ? parseThaiTime(scheduledTime)
       : null;
     if (scheduledTime && !parsedScheduledTime) {
       setError("กรุณากรอกเวลารับสินค้าแบบ 24 ชั่วโมง เช่น 18:30");
       return;
+    }
+    if (branch && !getBranchServiceStatus(branch, fulfillment).openNow) {
+      if (!parsedScheduledTime) {
+        setError("กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้");
+        return;
+      }
+      const scheduledAtPreview = toBangkokScheduledAt(
+        parsedScheduledTime.hours,
+        parsedScheduledTime.minutes,
+      );
+      const scheduledDate = new Date(scheduledAtPreview);
+      if (scheduledDate.getTime() <= Date.now()) {
+        setError("เวลานัดรับ/ส่งต้องเป็นเวลาหลังจากนี้ในวันนี้");
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -401,9 +431,20 @@ export default function CheckoutPage() {
             </div>
           )}
           <div>
-            <p className="font-semibold text-gray-900">{branch.name}</p>
+            <p className="font-semibold text-gray-900">
+              {localizedName(branch.name, branch.nameTh, branch.nameEn)}
+            </p>
             <p className="text-xs text-gray-500">
-              {branch.isOpen ? "ร้านเปิด" : "ร้านปิด • สั่งล่วงหน้าได้"}
+              {(() => {
+                const s = getBranchServiceStatus(branch, fulfillment);
+                if (s.openNow) {
+                  return fulfillment === "DELIVERY"
+                    ? "เปิดรับเดลิเวอรี"
+                    : "ร้านเปิด";
+                }
+                if (s.acceptingOrders) return `${s.reason}`;
+                return s.reason;
+              })()}
             </p>
           </div>
         </div>

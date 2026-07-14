@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CustomerLoginScreen } from "./CustomerLoginScreen";
 import { useCustomer } from "./CustomerProvider";
+import { localizedName } from "@/lib/localized";
 
 type CustomerEntryGateProps = {
   brandCode: string;
@@ -34,7 +35,10 @@ export function CustomerEntryGate({
         const branches = Array.isArray(data) ? data : [];
         const brand = branches[0]?.brand;
         if (brand?.name) {
-          setBrandInfo({ name: brand.name, logoUrl: brand.logoUrl ?? null });
+          setBrandInfo({
+            name: localizedName(brand.name, brand.nameTh, brand.nameEn),
+            logoUrl: brand.logoUrl ?? null,
+          });
         }
         if (branchCode) {
           if (branches[0]?.id) {

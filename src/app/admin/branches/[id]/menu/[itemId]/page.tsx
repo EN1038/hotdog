@@ -7,46 +7,50 @@ import { IconBack } from "@/components/icons";
 import {
   adminInputClass,
   adminLabelClass,
+  btnOutline,
+  btnPrimary,
 } from "@/components/admin/AdminShell";
-
-type MenuOption = {
-  id: string;
-  name: string;
-  priceDelta: string;
-  sortOrder: number;
-};
-
-type MenuOptionGroup = {
-  id: string;
-  name: string;
-  required: boolean;
-  maxSelect: number;
-  sortOrder: number;
-  options: MenuOption[];
-};
+import { ImageField } from "@/components/admin/ImageField";
+import { useToast } from "@/components/admin/Toast";
+import type { BranchOptionGroup } from "@/components/admin/BranchOptionLibrary";
 
 type MenuItemDetail = {
   id: string;
   name: string;
   price: string;
   description: string | null;
-  category: string | null;
+  categoryId: string | null;
+  category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: number;
-  optionGroups: MenuOptionGroup[];
+  optionGroups: BranchOptionGroup[];
+  optionGroupIds?: string[];
 };
 
-const sectionClass = "mt-6 rounded-xl border bg-white p-4";
-const btnPrimary =
-  "rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white";
-const btnDark =
-  "rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white";
-const btnOutline =
-  "rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700";
-const btnDanger =
-  "rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700";
+type MenuCategoryOption = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+const EMPTY_ITEM: MenuItemDetail = {
+  id: "new",
+  name: "",
+  price: "",
+  description: null,
+  categoryId: null,
+  category: null,
+  imageUrl: null,
+  isHidden: false,
+  isOutOfStock: false,
+  sortOrder: 0,
+  optionGroups: [],
+  optionGroupIds: [],
+};
+
+const sectionClass = "rounded-xl border border-gray-200 bg-white p-4";
 
 export default function MenuItemEditorPage() {
   const { id: branchId, itemId } = useParams<{
@@ -54,49 +58,62 @@ export default function MenuItemEditorPage() {
     itemId: string;
   }>();
   const router = useRouter();
-  const [item, setItem] = useState<MenuItemDetail | null>(null);
+  const toast = useToast();
+  const isCreate = itemId === "new";
+
+  const [item, setItem] = useState<MenuItemDetail | null>(
+    isCreate ? EMPTY_ITEM : null,
+  );
+  const [library, setLibrary] = useState<BranchOptionGroup[]>([]);
+  const [categories, setCategories] = useState<MenuCategoryOption[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
 
   const [form, setForm] = useState({
     name: "",
     price: "",
     description: "",
-    category: "",
+    categoryId: "",
     imageUrl: "",
-    sortOrder: "0",
     isHidden: false,
     isOutOfStock: false,
   });
 
-  const [newGroup, setNewGroup] = useState({
-    name: "",
-    required: false,
-    maxSelect: "1",
-    sortOrder: "0",
-  });
+  function applyItem(data: MenuItemDetail) {
+    setItem(data);
+    setForm({
+      name: data.name,
+      price: String(data.price),
+      description: data.description ?? "",
+      categoryId: data.categoryId ?? "",
+      imageUrl: data.imageUrl ?? "",
+      isHidden: data.isHidden,
+      isOutOfStock: data.isOutOfStock,
+    });
+    const ids = data.optionGroupIds ?? data.optionGroups.map((g) => g.id);
+    setSelectedGroupIds(ids);
+  }
 
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [editGroup, setEditGroup] = useState({
-    name: "",
-    required: false,
-    maxSelect: "1",
-    sortOrder: "0",
-  });
+  async function loadLibrary() {
+    const res = await fetch(`/api/admin/branches/${branchId}/option-groups`);
+    if (res.status === 401) {
+      router.push("/admin/login");
+      return;
+    }
+    if (res.ok) setLibrary(await res.json());
+  }
 
-  const [newOptionGroupId, setNewOptionGroupId] = useState<string | null>(null);
-  const [newOption, setNewOption] = useState({
-    name: "",
-    priceDelta: "0",
-    sortOrder: "0",
-  });
+  async function loadCategories() {
+    const res = await fetch(`/api/admin/branches/${branchId}/categories`);
+    if (res.ok) setCategories(await res.json());
+  }
 
-  const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
-  const [editOption, setEditOption] = useState({
-    name: "",
-    priceDelta: "0",
-    sortOrder: "0",
-  });
-
-  async function load() {
+  async function loadItem() {
+    if (isCreate) {
+      setItem(EMPTY_ITEM);
+      setSelectedGroupIds([]);
+      return;
+    }
     const res = await fetch(
       `/api/admin/branches/${branchId}/menu-items/${itemId}`,
     );
@@ -104,613 +121,393 @@ export default function MenuItemEditorPage() {
       router.push("/admin/login");
       return;
     }
-    if (!res.ok) return;
-    const data: MenuItemDetail = await res.json();
-    setItem(data);
-    setForm({
-      name: data.name,
-      price: String(data.price),
-      description: data.description ?? "",
-      category: data.category ?? "",
-      imageUrl: data.imageUrl ?? "",
-      sortOrder: String(data.sortOrder),
-      isHidden: data.isHidden,
-      isOutOfStock: data.isOutOfStock,
-    });
+    if (!res.ok) {
+      toast.error("โหลดเมนูไม่สำเร็จ");
+      return;
+    }
+    applyItem(await res.json());
   }
 
   useEffect(() => {
-    load();
+    loadLibrary();
+    loadCategories();
+    loadItem();
   }, [branchId, itemId, router]);
 
-  async function saveItem(e: React.FormEvent) {
-    e.preventDefault();
-    await fetch(`/api/admin/branches/${branchId}/menu-items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: form.name,
+  function toggleGroup(groupId: string) {
+    setSelectedGroupIds((prev) =>
+      prev.includes(groupId)
+        ? prev.filter((id) => id !== groupId)
+        : [...prev, groupId],
+    );
+  }
+
+  async function saveItem() {
+    if (!form.name.trim()) {
+      toast.error("กรอกชื่อเมนู");
+      return;
+    }
+    if (!form.price || Number.isNaN(parseFloat(form.price))) {
+      toast.error("กรอกราคา");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
         price: parseFloat(form.price),
-        description: form.description || null,
-        category: form.category || null,
+        description: form.description.trim() || null,
+        categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
-        sortOrder: parseInt(form.sortOrder || "0", 10),
         isHidden: form.isHidden,
         isOutOfStock: form.isOutOfStock,
-      }),
-    });
-    load();
+        optionGroupIds: selectedGroupIds,
+      };
+
+      const res = await fetch(
+        isCreate
+          ? `/api/admin/branches/${branchId}/menu-items`
+          : `/api/admin/branches/${branchId}/menu-items/${itemId}`,
+        {
+          method: isCreate ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("บันทึกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      toast.success(isCreate ? "สร้างเมนูแล้ว" : "บันทึกแล้ว");
+      if (isCreate) {
+        router.replace(`/admin/branches/${branchId}/menu/${data.id}`);
+      } else {
+        applyItem(data);
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function addGroup(e: React.FormEvent) {
-    e.preventDefault();
-    await fetch(
-      `/api/admin/branches/${branchId}/menu-items/${itemId}/option-groups`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newGroup.name,
-          required: newGroup.required,
-          maxSelect: parseInt(newGroup.maxSelect || "1", 10),
-          sortOrder: parseInt(newGroup.sortOrder || "0", 10),
-        }),
-      },
-    );
-    setNewGroup({ name: "", required: false, maxSelect: "1", sortOrder: "0" });
-    load();
-  }
-
-  function startEditGroup(group: MenuOptionGroup) {
-    setEditingGroupId(group.id);
-    setEditGroup({
-      name: group.name,
-      required: group.required,
-      maxSelect: String(group.maxSelect),
-      sortOrder: String(group.sortOrder),
-    });
-  }
-
-  async function saveGroup(groupId: string) {
-    await fetch(
-      `/api/admin/branches/${branchId}/menu-items/${itemId}/option-groups/${groupId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editGroup.name,
-          required: editGroup.required,
-          maxSelect: parseInt(editGroup.maxSelect || "1", 10),
-          sortOrder: parseInt(editGroup.sortOrder || "0", 10),
-        }),
-      },
-    );
-    setEditingGroupId(null);
-    load();
-  }
-
-  async function deleteGroup(groupId: string) {
-    if (!window.confirm("ลบกลุ่มตัวเลือกนี้?")) return;
-    await fetch(
-      `/api/admin/branches/${branchId}/menu-items/${itemId}/option-groups/${groupId}`,
-      { method: "DELETE" },
-    );
-    load();
-  }
-
-  async function addOption(e: React.FormEvent, groupId: string) {
-    e.preventDefault();
-    await fetch(
-      `/api/admin/branches/${branchId}/menu-items/${itemId}/option-groups/${groupId}/options`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newOption.name,
-          priceDelta: parseFloat(newOption.priceDelta || "0"),
-          sortOrder: parseInt(newOption.sortOrder || "0", 10),
-        }),
-      },
-    );
-    setNewOption({ name: "", priceDelta: "0", sortOrder: "0" });
-    setNewOptionGroupId(null);
-    load();
-  }
-
-  function startEditOption(option: MenuOption) {
-    setEditingOptionId(option.id);
-    setEditOption({
-      name: option.name,
-      priceDelta: String(option.priceDelta),
-      sortOrder: String(option.sortOrder),
-    });
-  }
-
-  async function saveOption(optionId: string) {
-    await fetch(
-      `/api/admin/branches/${branchId}/menu-items/${itemId}/options/${optionId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editOption.name,
-          priceDelta: parseFloat(editOption.priceDelta || "0"),
-          sortOrder: parseInt(editOption.sortOrder || "0", 10),
-        }),
-      },
-    );
-    setEditingOptionId(null);
-    load();
-  }
-
-  async function deleteOption(optionId: string) {
-    if (!window.confirm("ลบตัวเลือกนี้?")) return;
-    await fetch(
-      `/api/admin/branches/${branchId}/menu-items/${itemId}/options/${optionId}`,
-      { method: "DELETE" },
-    );
-    load();
+  async function saveAttachedGroups() {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/menu-items/${itemId}/option-groups`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ groupIds: selectedGroupIds }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("บันทึกการผูกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      applyItem(data);
+      toast.success("อัปเดตหัวข้อของเมนูแล้ว");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!item) {
-    return <p className="text-gray-500">กำลังโหลด...</p>;
+    return <p className="text-sm text-gray-500">กำลังโหลด...</p>;
   }
+
+  const attachedGroups = selectedGroupIds
+    .map((id) => library.find((g) => g.id === id))
+    .filter((g): g is BranchOptionGroup => Boolean(g));
+
+  const optionsTabHref = `/admin/branches/${branchId}?tab=options`;
 
   return (
     <div>
-      <Link
-        href={`/admin/branches/${branchId}`}
-        className="inline-flex items-center gap-1 text-sm text-red-600 hover:underline"
-      >
-        <IconBack size={16} />
-        กลับไปหน้าสาขา
-      </Link>
-      <h2 className="mt-2 text-xl font-bold text-gray-900">แก้ไขเมนู</h2>
-      <p className="text-sm text-gray-500">{item.name}</p>
+      <div className="mb-4 flex items-center gap-3">
+        <Link
+          href={`/admin/branches/${branchId}?tab=menu`}
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+          aria-label="กลับ"
+        >
+          <IconBack size={20} />
+        </Link>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">
+            {isCreate ? "เพิ่มเมนู" : "แก้ไขเมนู"}
+          </h2>
+          <p className="text-sm text-gray-500">
+            {isCreate
+              ? "เลือกหัวข้อตัวเลือกจากคลังสาขา"
+              : item.name || "—"}
+          </p>
+        </div>
+      </div>
 
-      <section className={sectionClass}>
-        <h3 className="mb-3 font-semibold">ข้อมูลเมนู</h3>
-        <form onSubmit={saveItem} className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className={adminLabelClass}>ชื่อเมนู</label>
-            <input
-              className={adminInputClass}
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              required
-            />
-          </div>
-          <div>
-            <label className={adminLabelClass}>ราคา</label>
-            <input
-              type="number"
-              step="0.01"
-              className={adminInputClass}
-              value={form.price}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, price: e.target.value }))
-              }
-              required
-            />
-          </div>
-          <div>
-            <label className={adminLabelClass}>หมวดหมู่</label>
-            <input
-              className={adminInputClass}
-              value={form.category}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, category: e.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <label className={adminLabelClass}>ลำดับ</label>
-            <input
-              type="number"
-              className={adminInputClass}
-              value={form.sortOrder}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, sortOrder: e.target.value }))
-              }
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className={adminLabelClass}>รายละเอียด</label>
-            <textarea
-              className={adminInputClass}
-              rows={2}
-              value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
-              }
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className={adminLabelClass}>URL รูปภาพ</label>
-            <input
-              className={adminInputClass}
-              value={form.imageUrl}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, imageUrl: e.target.value }))
-              }
-              placeholder="https://..."
-            />
-          </div>
-          {form.imageUrl && (
-            <div className="md:col-span-2">
-              <img
-                src={form.imageUrl}
-                alt=""
-                className="h-24 w-24 rounded object-cover"
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className={sectionClass}>
+          <h3 className="mb-3 font-semibold text-gray-900">ข้อมูลเมนู</h3>
+          <div className="space-y-3">
+            <div>
+              <label className={adminLabelClass}>ชื่อเมนู</label>
+              <input
+                className={adminInputClass}
+                value={form.name}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
               />
             </div>
-          )}
-          <div className="flex flex-wrap items-center gap-4 md:col-span-2">
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+            <div>
+              <label className={adminLabelClass}>ราคา (บาท)</label>
               <input
-                type="checkbox"
-                checked={form.isHidden}
+                type="number"
+                step="0.01"
+                className={adminInputClass}
+                value={form.price}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, isHidden: e.target.checked }))
+                  setForm((f) => ({ ...f, price: e.target.value }))
                 }
               />
-              ซ่อนเมนู
-            </label>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={form.isOutOfStock}
+            </div>
+            <div>
+              <label className={adminLabelClass}>คำอธิบาย</label>
+              <textarea
+                className={adminInputClass}
+                rows={2}
+                value={form.description}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, isOutOfStock: e.target.checked }))
+                  setForm((f) => ({ ...f, description: e.target.value }))
                 }
               />
-              หมด
-            </label>
-          </div>
-          <div className="md:col-span-2">
-            <button type="submit" className={btnPrimary}>
-              บันทึกเมนู
+            </div>
+            <div>
+              <label className={adminLabelClass}>หมวดหมู่</label>
+              <select
+                className={adminInputClass}
+                value={form.categoryId}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, categoryId: e.target.value }))
+                }
+              >
+                <option value="">— ไม่ระบุ —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <ImageField
+              label="รูปเมนู"
+              value={form.imageUrl}
+              onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
+            />
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={form.isHidden}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, isHidden: e.target.checked }))
+                  }
+                />
+                ซ่อนจากลูกค้า
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={form.isOutOfStock}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, isOutOfStock: e.target.checked }))
+                  }
+                />
+                หมดชั่วคราว
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={saveItem}
+              className={btnPrimary}
+            >
+              {isCreate ? "สร้างเมนู" : "บันทึกเมนู"}
             </button>
           </div>
-        </form>
-      </section>
+        </section>
 
-      <section className={sectionClass}>
-        <h3 className="mb-3 font-semibold">กลุ่มตัวเลือก</h3>
+        <div className="space-y-6">
+          <section className={sectionClass}>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="font-semibold text-gray-900">ใช้กับเมนูนี้</h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  ติ๊กหัวข้อจากคลัง — สร้าง/แก้ที่แท็บตัวเลือกของสาขา
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/admin/branches/${branchId}?tab=categories`}
+                  className={btnOutline}
+                >
+                  หมวดหมู่
+                </Link>
+                <Link href={optionsTabHref} className={btnOutline}>
+                  คลังตัวเลือก
+                </Link>
+              </div>
+            </div>
 
-        <form
-          onSubmit={addGroup}
-          className="mb-4 grid gap-3 rounded-lg border border-dashed p-3 md:grid-cols-5"
-        >
-          <div className="md:col-span-2">
-            <label className={adminLabelClass}>ชื่อกลุ่มใหม่</label>
-            <input
-              className={adminInputClass}
-              value={newGroup.name}
-              onChange={(e) =>
-                setNewGroup((g) => ({ ...g, name: e.target.value }))
-              }
-              placeholder="เช่น ท็อปปิ้ง"
-              required
-            />
-          </div>
-          <div>
-            <label className={adminLabelClass}>เลือกได้สูงสุด</label>
-            <input
-              type="number"
-              min="1"
-              className={adminInputClass}
-              value={newGroup.maxSelect}
-              onChange={(e) =>
-                setNewGroup((g) => ({ ...g, maxSelect: e.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <label className={adminLabelClass}>ลำดับ</label>
-            <input
-              type="number"
-              className={adminInputClass}
-              value={newGroup.sortOrder}
-              onChange={(e) =>
-                setNewGroup((g) => ({ ...g, sortOrder: e.target.value }))
-              }
-            />
-          </div>
-          <div className="flex items-end gap-3">
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={newGroup.required}
-                onChange={(e) =>
-                  setNewGroup((g) => ({ ...g, required: e.target.checked }))
-                }
-              />
-              บังคับเลือก
-            </label>
-            <button type="submit" className={btnDark}>
-              เพิ่มกลุ่ม
-            </button>
-          </div>
-        </form>
-
-        <div className="space-y-4">
-          {item.optionGroups.map((group) => (
-            <div key={group.id} className="rounded-lg border p-3">
-              {editingGroupId === group.id ? (
-                <div className="grid gap-3 md:grid-cols-4">
-                  <div className="md:col-span-2">
-                    <label className={adminLabelClass}>ชื่อกลุ่ม</label>
-                    <input
-                      className={adminInputClass}
-                      value={editGroup.name}
-                      onChange={(e) =>
-                        setEditGroup((g) => ({ ...g, name: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className={adminLabelClass}>เลือกได้สูงสุด</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className={adminInputClass}
-                      value={editGroup.maxSelect}
-                      onChange={(e) =>
-                        setEditGroup((g) => ({
-                          ...g,
-                          maxSelect: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className={adminLabelClass}>ลำดับ</label>
-                    <input
-                      type="number"
-                      className={adminInputClass}
-                      value={editGroup.sortOrder}
-                      onChange={(e) =>
-                        setEditGroup((g) => ({
-                          ...g,
-                          sortOrder: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 md:col-span-4">
-                    <label className="flex items-center gap-2 text-sm">
+            {library.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                ยังไม่มีหัวข้อในคลัง —{" "}
+                <Link
+                  href={optionsTabHref}
+                  className="text-red-600 hover:underline"
+                >
+                  ไปสร้างที่แท็บตัวเลือก
+                </Link>
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {library.map((group) => {
+                  const on = selectedGroupIds.includes(group.id);
+                  return (
+                    <label
+                      key={group.id}
+                      className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${
+                        on
+                          ? "border-red-300 bg-red-50 text-red-900"
+                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
                       <input
                         type="checkbox"
-                        checked={editGroup.required}
-                        onChange={(e) =>
-                          setEditGroup((g) => ({
-                            ...g,
-                            required: e.target.checked,
-                          }))
-                        }
+                        className="sr-only"
+                        checked={on}
+                        onChange={() => toggleGroup(group.id)}
                       />
-                      บังคับเลือก
+                      <span
+                        className={`flex h-4 w-4 items-center justify-center rounded border text-[10px] ${
+                          on
+                            ? "border-red-500 bg-red-500 text-white"
+                            : "border-gray-300 bg-white"
+                        }`}
+                        aria-hidden
+                      >
+                        {on ? "✓" : ""}
+                      </span>
+                      {group.name}
+                      {group.required ? (
+                        <span className="text-red-500">*</span>
+                      ) : null}
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => saveGroup(group.id)}
-                      className={btnPrimary}
-                    >
-                      บันทึก
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingGroupId(null)}
-                      className={btnOutline}
-                    >
-                      ยกเลิก
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{group.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {group.required ? "บังคับเลือก" : "ไม่บังคับ"} • เลือกได้{" "}
-                      {group.maxSelect} • ลำดับ {group.sortOrder}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => startEditGroup(group)}
-                      className={btnOutline}
-                    >
-                      แก้ไข
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteGroup(group.id)}
-                      className={btnDanger}
-                    >
-                      ลบ
-                    </button>
-                  </div>
-                </div>
-              )}
+                  );
+                })}
+              </div>
+            )}
 
-              <ul className="mt-3 space-y-2 border-t pt-3">
-                {group.options.map((opt) => (
-                  <li
-                    key={opt.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded border bg-gray-50 px-2 py-1.5"
-                  >
-                    {editingOptionId === opt.id ? (
-                      <div className="flex flex-1 flex-wrap items-end gap-2">
-                        <div className="min-w-[120px] flex-1">
-                          <input
-                            className={adminInputClass}
-                            value={editOption.name}
-                            onChange={(e) =>
-                              setEditOption((o) => ({
-                                ...o,
-                                name: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="w-24">
-                          <input
-                            type="number"
-                            step="0.01"
-                            className={adminInputClass}
-                            value={editOption.priceDelta}
-                            onChange={(e) =>
-                              setEditOption((o) => ({
-                                ...o,
-                                priceDelta: e.target.value,
-                              }))
-                            }
-                            placeholder="+ราคา"
-                          />
-                        </div>
-                        <div className="w-20">
-                          <input
-                            type="number"
-                            className={adminInputClass}
-                            value={editOption.sortOrder}
-                            onChange={(e) =>
-                              setEditOption((o) => ({
-                                ...o,
-                                sortOrder: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => saveOption(opt.id)}
-                          className={btnPrimary}
-                        >
-                          บันทึก
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingOptionId(null)}
-                          className={btnOutline}
-                        >
-                          ยกเลิก
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="text-sm">
-                          {opt.name}
-                          {Number(opt.priceDelta) !== 0 && (
-                            <span className="text-gray-500">
+            {isCreate && attachedGroups.length > 0 && (
+              <p className="mt-3 text-xs text-amber-800">
+                หัวข้อที่เลือกจะถูกผูกเมื่อกด “สร้างเมนู”
+              </p>
+            )}
+
+            {!isCreate && (
+              <button
+                type="button"
+                disabled={saving}
+                className={`mt-3 ${btnOutline}`}
+                onClick={saveAttachedGroups}
+              >
+                บันทึกหัวข้อที่ใช้กับเมนูนี้
+              </button>
+            )}
+          </section>
+
+          <section className={sectionClass}>
+            <h3 className="mb-1 font-semibold text-gray-900">
+              ตัวอย่างที่ลูกค้าจะเห็น
+            </h3>
+            <p className="mb-3 text-sm text-gray-500">
+              ดูอย่างเดียว — อยากแก้รายการให้ไปที่คลังตัวเลือกของสาขา
+            </p>
+
+            {attachedGroups.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">
+                ยังไม่ได้เลือกหัวข้อ — ติ๊กด้านบนเพื่อดูตัวอย่าง
+              </p>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+                {attachedGroups.map((group, gi) => {
+                  const isSingle = group.maxSelect <= 1;
+                  return (
+                    <div
+                      key={group.id}
+                      className={gi > 0 ? "border-t border-gray-100" : ""}
+                    >
+                      <div className="px-4 pb-1 pt-4">
+                        <p className="text-[15px] font-bold text-orange-500">
+                          {group.name}
+                          {group.required ? (
+                            <span className="ml-0.5 text-orange-400">*</span>
+                          ) : (
+                            <span className="text-sm font-normal text-gray-400">
                               {" "}
-                              (+{Number(opt.priceDelta).toLocaleString("th-TH")}{" "}
-                              บาท)
+                              (ไม่บังคับ)
                             </span>
                           )}
-                          <span className="ml-2 text-xs text-gray-400">
-                            ลำดับ {opt.sortOrder}
-                          </span>
-                        </span>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => startEditOption(opt)}
-                            className={btnOutline}
-                          >
-                            แก้ไข
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteOption(opt.id)}
-                            className={btnDanger}
-                          >
-                            ลบ
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-
-              {newOptionGroupId === group.id ? (
-                <form
-                  onSubmit={(e) => addOption(e, group.id)}
-                  className="mt-2 flex flex-wrap items-end gap-2 border-t pt-2"
-                >
-                  <div className="min-w-[120px] flex-1">
-                    <label className={adminLabelClass}>ชื่อตัวเลือก</label>
-                    <input
-                      className={adminInputClass}
-                      value={newOption.name}
-                      onChange={(e) =>
-                        setNewOption((o) => ({ ...o, name: e.target.value }))
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="w-24">
-                    <label className={adminLabelClass}>+ราคา</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className={adminInputClass}
-                      value={newOption.priceDelta}
-                      onChange={(e) =>
-                        setNewOption((o) => ({
-                          ...o,
-                          priceDelta: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="w-20">
-                    <label className={adminLabelClass}>ลำดับ</label>
-                    <input
-                      type="number"
-                      className={adminInputClass}
-                      value={newOption.sortOrder}
-                      onChange={(e) =>
-                        setNewOption((o) => ({
-                          ...o,
-                          sortOrder: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <button type="submit" className={btnDark}>
-                    เพิ่ม
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewOptionGroupId(null)}
-                    className={btnOutline}
-                  >
-                    ยกเลิก
-                  </button>
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewOptionGroupId(group.id);
-                    setNewOption({ name: "", priceDelta: "0", sortOrder: "0" });
-                  }}
-                  className={`mt-2 ${btnOutline}`}
-                >
-                  + เพิ่มตัวเลือก
-                </button>
-              )}
-            </div>
-          ))}
-          {item.optionGroups.length === 0 && (
-            <p className="text-sm text-gray-500">ยังไม่มีกลุ่มตัวเลือก</p>
-          )}
+                        </p>
+                        {!isSingle && (
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            เลือกได้สูงสุด {group.maxSelect}
+                          </p>
+                        )}
+                      </div>
+                      <ul className="pb-2">
+                        {group.options.length === 0 ? (
+                          <li className="px-4 py-3 text-sm text-gray-400">
+                            หัวข้อนี้ยังไม่มีรายการ — ไปเพิ่มที่คลังตัวเลือก
+                          </li>
+                        ) : (
+                          group.options.map((opt) => (
+                            <li
+                              key={opt.id}
+                              className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="text-[15px] text-gray-800">
+                                  {opt.name}
+                                </span>
+                                {Number(opt.priceDelta) > 0 && (
+                                  <span className="ml-1.5 text-[15px] font-medium text-orange-500">
+                                    +฿
+                                    {Number(opt.priceDelta).toLocaleString(
+                                      "th-TH",
+                                    )}
+                                  </span>
+                                )}
+                              </span>
+                              <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center border border-gray-300 ${
+                                  isSingle ? "rounded-full" : "rounded"
+                                }`}
+                                aria-hidden
+                              />
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

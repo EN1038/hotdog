@@ -15,6 +15,7 @@ import {
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { OrderTimeline } from "@/components/customer/OrderTimeline";
 import {
   IconBack,
@@ -95,6 +96,7 @@ export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const router = useRouter();
   const { addLine, setFulfillment } = useCustomer();
+  const { confirm } = useConfirm();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -115,7 +117,12 @@ export default function OrderDetailPage() {
   }, [load]);
 
   async function cancelOrder() {
-    if (!window.confirm("ยืนยันยกเลิกออเดอร์นี้?")) return;
+    const ok = await confirm({
+      title: "ยกเลิกออเดอร์?",
+      message: "ยืนยันยกเลิกออเดอร์นี้ — การกระทำนี้อาจไม่สามารถย้อนกลับได้",
+      confirmLabel: "ยกเลิกออเดอร์",
+    });
+    if (!ok) return;
     setError("");
     setCancelling(true);
     try {

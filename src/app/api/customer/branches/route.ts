@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonOk } from "@/lib/api";
+import {
+  flattenMenuItemOptionGroups,
+  menuItemOptionGroupInclude,
+} from "@/lib/menu-option-groups";
 
 export async function GET(request: Request) {
   try {
@@ -20,17 +24,20 @@ export async function GET(request: Request) {
           where: { isHidden: false },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
           include: {
-            optionGroups: {
-              orderBy: { sortOrder: "asc" },
-              include: { options: { orderBy: { sortOrder: "asc" } } },
-            },
+            category: { select: { id: true, name: true, sortOrder: true } },
+            ...menuItemOptionGroupInclude,
           },
         },
         deliveryLocations: { orderBy: { name: "asc" } },
       },
       orderBy: { name: "asc" },
     });
-    return jsonOk(branches);
+    return jsonOk(
+      branches.map((b) => ({
+        ...b,
+        menuItems: b.menuItems.map(flattenMenuItemOptionGroups),
+      })),
+    );
   } catch (error) {
     return handleApiError(error);
   }

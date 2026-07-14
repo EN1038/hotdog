@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useCustomer } from "./CustomerProvider";
 import { SiteLogo } from "./SiteLogo";
 import { useSiteBranding } from "./SiteBrandingProvider";
+import { PhoneInput } from "@/components/PhoneInput";
 
 type CustomerLoginScreenProps = {
   onSuccess?: () => void;
@@ -271,12 +272,11 @@ export function CustomerLoginScreen({
               <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2">
                 <PhoneIcon />
               </span>
-              <input
-                type="tel"
-                className="w-full rounded-xl border border-red-200 bg-white py-3 pr-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
+              <PhoneInput
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="เช่น 081 234 5678"
+                onChange={setPhone}
+                className="w-full rounded-xl border border-red-200 bg-white py-3 pr-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
+                placeholder="เช่น 081-234-5678"
                 required
               />
             </div>

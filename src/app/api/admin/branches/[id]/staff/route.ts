@@ -7,8 +7,14 @@ import { StaffRole } from "@prisma/client";
 
 type Params = { params: Promise<{ id: string }> };
 
+const genderSchema = z.enum(["male", "female", "other"]).nullable().optional();
+
 const createSchema = z.object({
   phone: z.string().min(9),
+  name: z.string().trim().nullable().optional(),
+  gender: genderSchema,
+  age: z.number().int().min(1).max(120).nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   roles: z
     .array(z.nativeEnum(StaffRole))
     .min(1)
@@ -42,11 +48,26 @@ export async function POST(request: Request, { params }: Params) {
 
     const body = createSchema.parse(await request.json());
     const phone = normalizePhone(body.phone);
+    if (phone.length < 9) {
+      return jsonError("เบอร์โทรไม่ถูกต้อง");
+    }
+
+    const duplicate = await prisma.staff.findUnique({ where: { phone } });
+    if (duplicate) {
+      return jsonError("เบอร์โทรนี้ถูกใช้ในระบบแล้ว", 409);
+    }
+
+    const name = body.name?.trim() ? body.name.trim() : null;
 
     const staff = await prisma.staff.create({
+
       data: {
         branchId,
         phone,
+        name,
+        gender: body.gender ?? null,
+        age: body.age ?? null,
+        imageUrl: body.imageUrl ?? null,
         roles: {
           create: body.roles.map((role) => ({ role })),
         },
@@ -58,4 +79,3 @@ export async function POST(request: Request, { params }: Params) {
     return handleApiError(error);
   }
 }
-

@@ -3,6 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { BranchData } from "@/lib/customer-types";
+import {
+  formatTodayHoursSummary,
+  getBranchServiceStatus,
+} from "@/lib/branch-hours";
+import {
+  localizedName,
+  priceRangeLabel,
+  restaurantCategoryLabel,
+} from "@/lib/localized";
 import { IconBranchPlaceholder } from "@/components/icons";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 
@@ -240,19 +249,28 @@ function DeliveryBagIllustration() {
 
 function sortBranches(branches: BranchData[]): BranchData[] {
   return [...branches].sort((a, b) => {
-    if (a.isOpen !== b.isOpen) return a.isOpen ? -1 : 1;
+    const aOpen = getBranchServiceStatus(a, "PICKUP").openNow;
+    const bOpen = getBranchServiceStatus(b, "PICKUP").openNow;
+    if (aOpen !== bOpen) return aOpen ? -1 : 1;
     return a.name.localeCompare(b.name, "th");
   });
 }
 
 function BranchCard({ branch }: { branch: BranchData }) {
+  const service = getBranchServiceStatus(branch, "PICKUP");
+  const displayName = localizedName(branch.name, branch.nameTh, branch.nameEn);
+  const categoryBits = [
+    restaurantCategoryLabel(branch.primaryCategory),
+    ...(branch.secondaryCategories ?? []).map(restaurantCategoryLabel),
+  ].filter(Boolean);
+  const range = priceRangeLabel(branch.priceRange);
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
       {branch.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={branch.imageUrl}
-          alt={branch.name}
+          alt={displayName}
           className="h-[84px] w-[84px] shrink-0 rounded-xl object-cover"
         />
       ) : (
@@ -263,8 +281,14 @@ function BranchCard({ branch }: { branch: BranchData }) {
 
       <div className="min-w-0 flex-1">
         <p className="text-[15px] font-bold leading-snug text-gray-900">
-          {branch.name}
+          {displayName}
         </p>
+
+        {(categoryBits.length > 0 || range) && (
+          <p className="mt-0.5 text-[11px] text-gray-500">
+            {[...categoryBits, range ? `฿${range}` : ""].filter(Boolean).join(" · ")}
+          </p>
+        )}
 
         {branch.address && (
           <div className="mt-1 flex items-start gap-1 text-[11px] leading-relaxed text-gray-500">
@@ -275,13 +299,15 @@ function BranchCard({ branch }: { branch: BranchData }) {
 
         <div className="mt-2 flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            {branch.isOpen ? (
+            {service.openNow ? (
               <>
                 <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">
                   <CheckIcon />
                   ร้านเปิด
                 </span>
-                <span className="text-[10px] text-gray-500">พร้อมรับออเดอร์</span>
+                <span className="text-[10px] text-gray-500">
+                  {formatTodayHoursSummary(service.schedule)}
+                </span>
               </>
             ) : (
               <>
@@ -289,16 +315,14 @@ function BranchCard({ branch }: { branch: BranchData }) {
                   <LockIcon />
                   ร้านปิด
                 </span>
-                {branch.opensAt && (
-                  <span className="text-[10px] text-gray-500">
-                    เปิดอีกครั้ง {branch.opensAt}
-                  </span>
-                )}
+                <span className="text-[10px] text-gray-500">
+                  {formatTodayHoursSummary(service.schedule)}
+                </span>
               </>
             )}
           </div>
 
-          {!branch.isOpen && branch.allowAdvanceOrder && (
+          {!service.openNow && service.acceptingOrders && (
             <span className="inline-flex w-fit items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-200">
               <CalendarIcon />
               สั่งล่วงหน้าได้
@@ -375,10 +399,10 @@ export default function BranchListPage() {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-orange-600">
-            สาขาที่ปิดอยู่ยังสามารถสั่งล่วงหน้าได้
+            ยังไม่ถึงเวลาเปิด — สั่งล่วงหน้าได้เฉพาะวันนี้
           </p>
           <p className="mt-0.5 text-xs text-orange-500/80">
-            ระบบจะเริ่มทำออเดอร์เมื่อร้านเปิด
+            หลังร้านปิดรอบสุดท้ายของวันแล้วจะสั่งไม่ได้
           </p>
         </div>
         <DeliveryBagIllustration />

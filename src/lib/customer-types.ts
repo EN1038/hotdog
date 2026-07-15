@@ -63,7 +63,12 @@ export type BranchData = {
     logoUrl: string | null;
   } | null;
   menuItems: MenuItemData[];
-  deliveryLocations: { id: string; name: string }[];
+  deliveryLocations: {
+    id: string;
+    name: string;
+    deliveryFee: string;
+    address?: string | null;
+  }[];
 };
 
 export type CartLine = {

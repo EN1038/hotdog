@@ -10,6 +10,7 @@ import { lineTotal } from "@/lib/customer-types";
 import { getBranchServiceStatus } from "@/lib/branch-hours";
 import { localizedName } from "@/lib/localized";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
   IconBank,
@@ -36,7 +37,7 @@ import {
 
 const ALLOWED_PAYMENT_METHODS: PaymentMethod[] = ["CASH", "TRANSFER"];
 const CHECKOUT_PATH = "/order/checkout";
-const PENDING_SUBMIT_KEY = "hunterdog_checkout_pending_submit";
+const PENDING_SUBMIT_KEY = "skillsale_checkout_pending_submit";
 
 const SWIPE_ACTION_WIDTH = 84;
 
@@ -232,6 +233,7 @@ export default function CheckoutPage() {
   } = useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
+  const [branchLoading, setBranchLoading] = useState(false);
   const [locationId, setLocationId] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -272,14 +274,28 @@ export default function CheckoutPage() {
   }
 
   useEffect(() => {
-    if (!cartBranchId) return;
+    if (!cartBranchId) {
+      setBranch(null);
+      setBranchLoading(false);
+      return;
+    }
+    setBranchLoading(true);
     fetch("/api/customer/branches")
       .then((res) => res.json())
       .then((data: BranchData[] | unknown) => {
         const branches = Array.isArray(data) ? data : [];
         setBranch(branches.find((b) => b.id === cartBranchId) ?? null);
-      });
+      })
+      .finally(() => setBranchLoading(false));
   }, [cartBranchId]);
+
+  const deliveryAvailable = (branch?.deliveryLocations.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (!deliveryAvailable && fulfillment === "DELIVERY") {
+      setFulfillment("PICKUP");
+    }
+  }, [deliveryAvailable, fulfillment, setFulfillment]);
 
   useEffect(() => {
     if (!session) return;
@@ -293,7 +309,11 @@ export default function CheckoutPage() {
     () => cart.reduce((s, l) => s + lineTotal(l), 0),
     [cart],
   );
-  const deliveryFee = 0;
+  const deliveryFee = useMemo(() => {
+    if (fulfillment !== "DELIVERY" || !branch || !locationId) return 0;
+    const loc = branch.deliveryLocations.find((l) => l.id === locationId);
+    return loc ? Number(loc.deliveryFee) : 0;
+  }, [fulfillment, branch, locationId]);
   const discount = 0;
   const grandTotal = itemsTotal + deliveryFee - discount;
 
@@ -306,6 +326,11 @@ export default function CheckoutPage() {
     const customerName = session.name?.trim() ?? "";
     if (!customerName) {
       goToLogin({ pendingSubmit: true });
+      return;
+    }
+    if (fulfillment === "DELIVERY" && !deliveryAvailable) {
+      setError("สาขานี้ยังไม่เปิดจัดส่ง — กรุณาเลือกรับที่ร้าน");
+      setFulfillment("PICKUP");
       return;
     }
     if (fulfillment === "DELIVERY" && (!locationId || !addressDetail.trim())) {
@@ -387,6 +412,14 @@ export default function CheckoutPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (!sessionChecked || (cart.length > 0 && branchLoading && !branch)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <LoadingState className="w-full max-w-sm" />
+      </main>
+    );
   }
 
   if (sessionChecked && cart.length === 0) {
@@ -555,8 +588,9 @@ export default function CheckoutPage() {
           </button>
           <button
             type="button"
-            onClick={() => setFulfillment("DELIVERY")}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium ${
+            onClick={() => deliveryAvailable && setFulfillment("DELIVERY")}
+            disabled={!deliveryAvailable}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
               fulfillment === "DELIVERY"
                 ? "border-red-500 bg-red-50 text-red-600"
                 : "border-gray-300 text-gray-600"
@@ -567,6 +601,11 @@ export default function CheckoutPage() {
             {fulfillment === "DELIVERY" && <IconCheck size={14} />}
           </button>
         </div>
+        {!deliveryAvailable && branch && !branchLoading && (
+          <p className="mt-2 text-xs text-gray-500">
+            สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น
+          </p>
+        )}
 
         <div className="mt-3 overflow-hidden rounded-xl border border-gray-100">
           {session?.name ? (
@@ -657,25 +696,61 @@ export default function CheckoutPage() {
               <ExpandableFulfillmentRow
                 icon={IconPin}
                 label="พื้นที่จัดส่ง"
-                summary={
-                  branch.deliveryLocations.find((l) => l.id === locationId)
-                    ?.name || "เลือกพื้นที่"
-                }
+                summary={(() => {
+                  const loc = branch.deliveryLocations.find(
+                    (l) => l.id === locationId,
+                  );
+                  if (!loc) return "เลือกพื้นที่";
+                  const fee = Number(loc.deliveryFee);
+                  return fee > 0
+                    ? `${loc.name} · ค่าส่ง ฿${formatPrice(fee)}`
+                    : loc.name;
+                })()}
                 expanded={expandedField === "location"}
                 onToggle={() => toggleExpanded("location")}
               >
-                <select
-                  className={fieldInputClass}
-                  value={locationId}
-                  onChange={(e) => setLocationId(e.target.value)}
-                >
-                  <option value="">-- เลือกพื้นที่ --</option>
-                  {branch.deliveryLocations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-2" role="radiogroup" aria-label="พื้นที่จัดส่ง">
+                  {branch.deliveryLocations.map((loc) => {
+                    const fee = Number(loc.deliveryFee);
+                    const selected = locationId === loc.id;
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setLocationId(loc.id)}
+                        className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                          selected
+                            ? "border-red-300 bg-red-50/70 ring-1 ring-red-200"
+                            : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        <span
+                          className={`mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+                            selected
+                              ? "border-red-500 bg-red-500"
+                              : "border-gray-300 bg-white"
+                          }`}
+                          aria-hidden
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-gray-900">
+                            {loc.name}
+                          </span>
+                          {loc.address ? (
+                            <span className="mt-0.5 block text-xs leading-snug text-gray-500">
+                              {loc.address}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="shrink-0 pt-0.5 text-right text-sm font-semibold text-gray-800">
+                          {fee > 0 ? `฿${formatPrice(fee)}` : "ฟรี"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </ExpandableFulfillmentRow>
 
               <div className="h-px bg-gray-100" />

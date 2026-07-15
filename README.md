@@ -1,6 +1,6 @@
-# HunterDog - ระบบจัดการร้านหมาล่า
+# SkillSale - ระบบสั่งอาหารออนไลน์หลายแบรนด์
 
-ระบบหลังบ้านและหน้าสั่งอาหารสำหรับร้านหมาล่า สร้างด้วย **Next.js** + **PostgreSQL** + **Prisma**
+ระบบหลังบ้านและหน้าสั่งอาหารสำหรับร้านค้า สร้างด้วย **Next.js** + **PostgreSQL** + **Prisma**
 
 ## บทบาทผู้ใช้
 
@@ -8,7 +8,7 @@
 |--------|----------|---------|
 | **Admin** | `/admin/login` | จัดการสาขา, เมนู, พื้นที่ส่ง, เบอร์พนักงาน, ค้นหาลูกค้า |
 | **Staff** | `/staff/login` (เบอร์โทร) | ดูออเดอร์หน้าเดียว, อัปเดตสถานะตาม role |
-| **ลูกค้า** | `/order` | เลือกสาขา, ชมเมนูได้โดยไม่ต้อง login, สั่งอาหาร (login ด้วยเบอร์โทร + ชื่อ ตอนเลือกสินค้า) |
+| **ลูกค้า** | `/order` | เลือกสาขา, ชมเมนูได้โดยไม่ต้อง login, สั่งอาหาร (login ด้วยเบอร์โทร + OTP SMS ตอนเข้าสู่ระบบ) |
 
 ## เส้นทางหลักฝั่งลูกค้า
 
@@ -48,8 +48,20 @@ npm install
 แก้ไข `.env`:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/hunterdog?schema=public"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/skillsale?schema=public"
 JWT_SECRET="change-me-to-a-long-random-string"
+```
+
+สำหรับอัปโหลดรูปไป DigitalOcean Spaces ให้ใส่ค่าใน `.env.local` (ดูตัวอย่างใน `.env.example`) — path จะเป็น  
+`SkillSale/Orders/{รหัสร้าน}/Products/` สำหรับรูปเมนู (และ `Branch` / `Staff` สำหรับรูปสาขา/พนักงาน)  
+ถ้ายังไม่ตั้ง S3 จะเก็บลง `public/uploads` ชั่วคราวเหมือนเดิม
+
+สำหรับ OTP ล็อกอินลูกค้า (Taximail) ใส่ใน `.env.local`:
+
+```env
+TAXIMAIL_API_KEY=...
+TAXIMAIL_SECRET_KEY=...
+TAXIMAIL_OTP_TEMPLATE_KEY=SkillSaleOTP
 ```
 
 ### 3. สร้างฐานข้อมูล

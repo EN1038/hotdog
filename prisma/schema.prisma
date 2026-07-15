@@ -32,6 +32,11 @@ enum StaffRole {
   DELIVERY
 }
 
+enum BrandMemberRole {
+  OWNER
+  MANAGER
+}
+
 enum PriceRange {
   UNDER_100
   FROM_101_250
@@ -41,33 +46,91 @@ enum PriceRange {
 }
 
 model Admin {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
+  id              String             @id @default(cuid())
+  username        String             @unique
+  passwordHash    String
+  isPlatformAdmin Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  brandMembers    BrandMember[]
+  activityLogs    AdminActivityLog[]
 }
 
 model Brand {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  nameTh    String?
-  nameEn    String?
-  logoUrl   String?
-  color     String   @default("#dc2626")
-  createdAt DateTime @default(now())
-  branches  Branch[]
+  id              String             @id @default(cuid())
+  code            String             @unique
+  name            String
+  nameTh          String?
+  nameEn          String?
+  siteTitle       String?
+  siteDescription String?
+  logoUrl         String?
+  color           String             @default("#dc2626")
+  createdAt       DateTime           @default(now())
+  branches        Branch[]
+  members         BrandMember[]
+  activityLogs    AdminActivityLog[]
 }
 
+/** Audit trail for platform + brand admin mutations */
+model AdminActivityLog {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  adminId       String?
+  adminUsername String
+  action        String
+  summary       String
+  brandId       String?
+  brandName     String?
+  branchId      String?
+  branchName    String?
+  entityType    String?
+  entityId      String?
+  entityName    String?
+  metadata      Json?
+  admin         Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  brand         Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  branch        Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([brandId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([action, createdAt])
+  @@index([adminId, createdAt])
+}
+
+model BrandMember {
+  id        String          @id @default(cuid())
+  adminId   String
+  brandId   String
+  role      BrandMemberRole @default(OWNER)
+  createdAt DateTime        @default(now())
+  admin     Admin           @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  brand     Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([adminId, brandId])
+}
+
+/** Platform-level settings (marketplace shell). Brand identity lives on Brand. */
 model SiteSettings {
   id              String   @id @default("default")
-  siteName        String   @default("HunterDog")
-  siteTitle       String   @default("HunterDog - ระบบสั่งอาหาร")
+  siteName        String   @default("Hotdog")
+  siteTitle       String   @default("Hotdog - ระบบจัดการร้านค้า")
   siteDescription String?
   logoUrl         String?
   faviconUrl      String?
   primaryColor    String   @default("#dc2626")
   updatedAt       DateTime @updatedAt
+}
+
+/** Store type tags for branch primary/secondary category (e.g. อาหารไทย). */
+model RestaurantType {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Branch {
@@ -105,6 +168,7 @@ model Branch {
   deliveryLocations  DeliveryLocation[]
   orders             Order[]
   shareCodes         BranchShareCode[]
+  activityLogs       AdminActivityLog[]
 
   @@unique([brandId, code])
 }
@@ -206,11 +270,15 @@ model BranchMenuItemOptionGroup {
 }
 
 model DeliveryLocation {
-  id       String  @id @default(cuid())
-  branchId String
-  name     String
-  branch   Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  orders   Order[]
+  id          String  @id @default(cuid())
+  branchId    String
+  name        String
+  deliveryFee Decimal @default(0) @db.Decimal(10, 2)
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  branch      Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orders      Order[]
 }
 
 model Customer {
@@ -219,6 +287,21 @@ model Customer {
   name      String?
   createdAt DateTime @default(now())
   orders    Order[]
+}
+
+/// Pending Taximail OTP challenge for customer phone login
+model CustomerOtpChallenge {
+  id          String   @id @default(cuid())
+  phone       String
+  messageId   String
+  otpRefNo    String?
+  pendingName String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  consumedAt  DateTime?
+
+  @@index([phone, createdAt])
+  @@index([messageId])
 }
 
 model Order {

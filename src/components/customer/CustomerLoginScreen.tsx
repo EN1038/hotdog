@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCustomer } from "./CustomerProvider";
 import { SiteLogo } from "./SiteLogo";
 import { useSiteBranding } from "./SiteBrandingProvider";
 import { PhoneInput } from "@/components/PhoneInput";
+import { getRememberedCustomerPhone } from "@/lib/customer-remember";
+import { formatThaiPhone } from "@/lib/constants";
 
 type CustomerLoginScreenProps = {
   onSuccess?: () => void;
@@ -180,24 +182,106 @@ export function CustomerLoginScreen({
   brandName,
   brandLogoUrl,
 }: CustomerLoginScreenProps) {
-  const { login } = useCustomer();
+  const { login, sendOtp, verifyOtp } = useCustomer();
   const { siteName } = useSiteBranding();
   const displayName = brandName ?? siteName;
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [showName, setShowName] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [otpRefNo, setOtpRefNo] = useState<string | null>(null);
+  const [otpStep, setOtpStep] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rememberedPhone, setRememberedPhone] = useState("");
+
+  useEffect(() => {
+    const saved = getRememberedCustomerPhone();
+    if (saved) {
+      setPhone(saved);
+      setRememberedPhone(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = window.setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [resendIn]);
+
+  async function requestOtp(nextName?: string) {
+    setError("");
+    setLoading(true);
+    const result = await sendOtp(phone, nextName ?? (showName ? name : undefined));
+    setLoading(false);
+
+    if (!result.ok) {
+      if (result.needsName || result.error === "NEEDS_NAME") {
+        setShowName(true);
+        setOtpStep(false);
+        return;
+      }
+      // Taximail not configured → fall back to passwordless login (local/dev)
+      if (result.error.includes("ยังไม่ได้ตั้งค่า")) {
+        const err = await login(phone, showName ? name : nextName);
+        if (err === "NEEDS_NAME") {
+          setShowName(true);
+          return;
+        }
+        if (err) {
+          setError(err);
+          return;
+        }
+        onSuccess?.();
+        return;
+      }
+      setError(result.error);
+      return;
+    }
+
+    setChallengeId(result.challengeId);
+    setOtpRefNo(result.otpRefNo);
+    setOtpStep(true);
+    setOtpCode("");
+    setResendIn(result.resendIn);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (!otpStep) {
+      if (showName && !name.trim()) {
+        setError("กรุณากรอกชื่อ");
+        return;
+      }
+      await requestOtp(showName ? name : undefined);
+      return;
+    }
+
+    if (!challengeId) {
+      setError("กรุณาขอรหัส OTP ใหม่");
+      return;
+    }
+    if (!otpCode.trim()) {
+      setError("กรุณากรอกรหัส OTP");
+      return;
+    }
+
     setLoading(true);
-    const err = await login(phone, showName ? name : undefined);
+    const err = await verifyOtp(
+      phone,
+      otpCode.trim(),
+      challengeId,
+      showName ? name : undefined,
+    );
     setLoading(false);
 
     if (err === "NEEDS_NAME") {
       setShowName(true);
+      setOtpStep(false);
       return;
     }
     if (err) {
@@ -235,10 +319,12 @@ export function CustomerLoginScreen({
             className={`min-w-0 flex-1 pr-24 pt-0.5 ${showBackButton ? "" : "pl-1"}`}
           >
             <h1 className="text-[22px] font-bold leading-tight tracking-tight text-gray-900">
-              เข้าสู่ระบบ
+              {otpStep ? "ยืนยันรหัส OTP" : "เข้าด้วยเบอร์โทร"}
             </h1>
             <p className="mt-1 text-sm leading-snug text-gray-500">
-              เข้าสู่ระบบเพื่อสั่งอาหารจากร้านที่คุณชอบ
+              {otpStep
+                ? "กรอกรหัสที่ส่งไปทาง SMS เพื่อยืนยันตัวตน"
+                : "เบอร์โทรคือบัญชีของคุณ — ติดตามออเดอร์และดูประวัติได้ทันที"}
             </p>
           </div>
 
@@ -256,33 +342,44 @@ export function CustomerLoginScreen({
 
         <div className="mt-8 text-center">
           <h2 className="text-base font-bold text-gray-900">
-            เข้าสู่ระบบด้วยเบอร์โทรศัพท์
+            {otpStep
+              ? `ส่งรหัสไปที่ ${formatThaiPhone(phone)}`
+              : "ใส่เบอร์โทรเพื่อเข้าใช้งาน"}
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            กรุณาใส่เบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ
+            {otpStep
+              ? otpRefNo
+                ? `เลขอ้างอิง ${otpRefNo} — เทียบกับข้อความ SMS`
+                : "กรอกรหัส 4–6 หลักจากข้อความ SMS"
+              : rememberedPhone
+                ? `จำเบอร์ ${formatThaiPhone(rememberedPhone)} จากครั้งก่อนไว้แล้ว — กดขอรหัส OTP หรือแก้เป็นเบอร์อื่น`
+                : "ระบบจะส่งรหัส OTP ไปยืนยันเบอร์ก่อนเข้าใช้งาน"}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              เบอร์โทรศัพท์
-            </label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2">
-                <PhoneIcon />
-              </span>
-              <PhoneInput
-                value={phone}
-                onChange={setPhone}
-                className="w-full rounded-xl border border-red-200 bg-white py-3 pr-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
-                placeholder="เช่น 081-234-5678"
-                required
-              />
+          {!otpStep && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                เบอร์โทรศัพท์
+              </label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2">
+                  <PhoneIcon />
+                </span>
+                <PhoneInput
+                  value={phone}
+                  onChange={setPhone}
+                  className="w-full rounded-xl border border-red-200 bg-white py-3 pr-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
+                  placeholder="เช่น 081-234-5678"
+                  required
+                  autoFocus={!rememberedPhone}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          {showName && (
+          {!otpStep && showName && (
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">
                 ชื่อ <span className="text-red-500">*</span>
@@ -293,7 +390,51 @@ export function CustomerLoginScreen({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="ชื่อสำหรับติดต่อ"
                 required
+                autoFocus
               />
+            </div>
+          )}
+
+          {otpStep && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                รหัส OTP
+              </label>
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={8}
+                className="w-full rounded-xl border border-red-200 bg-white px-4 py-3 text-center text-lg font-semibold tracking-[0.35em] text-gray-900 placeholder:text-gray-400 placeholder:tracking-normal focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
+                value={otpCode}
+                onChange={(e) =>
+                  setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 8))
+                }
+                placeholder="••••••"
+                required
+                autoFocus
+              />
+              <div className="mt-3 flex items-center justify-between gap-2 text-sm">
+                <button
+                  type="button"
+                  className="font-medium text-gray-500 hover:text-gray-800"
+                  onClick={() => {
+                    setOtpStep(false);
+                    setOtpCode("");
+                    setChallengeId(null);
+                    setError("");
+                  }}
+                >
+                  เปลี่ยนเบอร์
+                </button>
+                <button
+                  type="button"
+                  disabled={loading || resendIn > 0}
+                  className="font-medium text-site-primary hover:opacity-80 disabled:opacity-40"
+                  onClick={() => void requestOtp(showName ? name : undefined)}
+                >
+                  {resendIn > 0 ? `ขอรหัสใหม่ใน ${resendIn}s` : "ขอรหัสใหม่"}
+                </button>
+              </div>
             </div>
           )}
 
@@ -304,11 +445,19 @@ export function CustomerLoginScreen({
             disabled={loading}
             className="w-full rounded-xl bg-site-primary py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+            {loading
+              ? otpStep
+                ? "กำลังยืนยัน..."
+                : "กำลังส่งรหัส..."
+              : otpStep
+                ? "ยืนยัน OTP"
+                : showName
+                  ? "ส่งรหัส OTP"
+                  : "ขอรหัส OTP"}
           </button>
         </form>
 
-        {showBrowseOption && onBrowseShop && (
+        {showBrowseOption && onBrowseShop && !otpStep && (
           <>
             <div className="my-6 flex items-center gap-3">
               <div className="h-px flex-1 bg-gray-200" />
@@ -334,9 +483,9 @@ export function CustomerLoginScreen({
           <div className="flex items-start justify-center gap-1.5 text-xs leading-relaxed text-gray-400">
             <LockIcon />
             <p>
-              เราจะเก็บข้อมูลของคุณเป็นความลับ
+              เบอร์โทรใช้เป็นรหัสลูกค้าเพื่อติดตามออเดอร์และประวัติการสั่ง
               <br />
-              และจะไม่เผยแพร่ให้บุคคลที่สามทราบ
+              เรายืนยันด้วย OTP และไม่เผยแพร่ข้อมูลให้บุคคลที่สาม
             </p>
           </div>
           <button

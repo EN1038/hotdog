@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { ForbiddenError } from "@/lib/admin-access";
 
 export function jsonOk<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
@@ -10,6 +11,10 @@ export function jsonError(message: string, status = 400) {
 }
 
 export function handleApiError(error: unknown) {
+  if (error instanceof ForbiddenError) {
+    return jsonError(error.message || "ไม่มีสิทธิ์เข้าถึง", 403);
+  }
+
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") {
       const fields = Array.isArray(error.meta?.target)
@@ -35,6 +40,9 @@ export function handleApiError(error: unknown) {
     }
     if (error.message === "NOT_FOUND") {
       return jsonError("ไม่พบข้อมูล", 404);
+    }
+    if (error.message === "FORBIDDEN") {
+      return jsonError("ไม่มีสิทธิ์เข้าถึง", 403);
     }
     if (error.message.includes("Invalid `") || error.message.length > 180) {
       return jsonError("บันทึกไม่สำเร็จ กรุณาลองใหม่", 400);

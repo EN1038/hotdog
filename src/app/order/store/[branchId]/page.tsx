@@ -18,6 +18,7 @@ import {
 } from "@/lib/localized";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
+import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
   IconBranchPlaceholder,
@@ -330,8 +331,8 @@ export default function StorePage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6]">
-        <p className="text-sm text-gray-400">กำลังโหลด...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
+        <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
       </main>
     );
   }
@@ -492,6 +493,11 @@ export default function StorePage() {
         onChange={setFulfillment}
         deliveryAvailable={deliveryAvailable}
       />
+      {!deliveryAvailable && (
+        <p className="mx-4 mt-1.5 text-center text-xs text-gray-400">
+          สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น
+        </p>
+      )}
 
       <div className="mx-4 mt-5 overflow-hidden rounded-t-2xl bg-white">
         <MainTabs active={mainTab} onChange={setMainTab} />

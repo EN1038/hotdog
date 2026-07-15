@@ -29,9 +29,20 @@ export async function PATCH(request: Request, { params }: Params) {
       return jsonError("ไม่มีสิทธิ์เปลี่ยนสถานะนี้", 403);
     }
 
-    const updated = await prisma.order.update({
-      where: { id },
+    const moved = await prisma.order.updateMany({
+      where: {
+        id,
+        branchId: session.branchId,
+        status: order.status,
+      },
       data: { status: body.status },
+    });
+    if (moved.count === 0) {
+      return jsonError("ไม่สามารถเปลี่ยนสถานะได้ สถานะออเดอร์เปลี่ยนไปแล้ว");
+    }
+
+    const updated = await prisma.order.findFirst({
+      where: { id, branchId: session.branchId },
       include: {
         customer: true,
         deliveryLocation: true,

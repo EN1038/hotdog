@@ -1,4 +1,5 @@
 import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminSessionProvider } from "@/components/admin/AdminSessionProvider";
 import { ToastProvider } from "@/components/admin/Toast";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 
@@ -10,7 +11,9 @@ export default function AdminLayout({
   return (
     <ToastProvider>
       <ConfirmProvider>
-        <AdminShell>{children}</AdminShell>
+        <AdminSessionProvider>
+          <AdminShell>{children}</AdminShell>
+        </AdminSessionProvider>
       </ConfirmProvider>
     </ToastProvider>
   );

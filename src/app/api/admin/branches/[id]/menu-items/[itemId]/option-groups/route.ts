@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import {
@@ -20,8 +20,8 @@ const itemInclude = {
 
 export async function PUT(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, itemId } = await params;
+    await requireBranchAccess(branchId);
     const body = putSchema.parse(await request.json());
 
     const item = await prisma.branchMenuItem.findFirst({

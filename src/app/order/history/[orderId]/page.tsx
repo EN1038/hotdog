@@ -17,6 +17,7 @@ import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { OrderTimeline } from "@/components/customer/OrderTimeline";
+import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
   IconBag,
@@ -99,22 +100,36 @@ export default function OrderDetailPage() {
   const { confirm } = useConfirm();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/customer/orders/${orderId}`);
+    if (res.status === 401) {
+      setAuthRequired(true);
+      return;
+    }
     if (!res.ok) {
       setNotFound(true);
       return;
     }
+    setAuthRequired(false);
+    setNotFound(false);
     setOrder(await res.json());
   }, [orderId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!authRequired) return;
+    router.replace(
+      `/order/login?returnTo=${encodeURIComponent(`/order/history/${orderId}`)}`,
+    );
+  }, [authRequired, orderId, router]);
 
   async function cancelOrder() {
     const ok = await confirm({
@@ -168,6 +183,17 @@ export default function OrderDetailPage() {
     }
   }
 
+  if (authRequired) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6] px-4">
+        <LoadingState
+          className="w-full max-w-sm border-0 bg-transparent shadow-none"
+          label="กำลังพาไปหน้าใส่เบอร์เพื่อดูออเดอร์..."
+        />
+      </main>
+    );
+  }
+
   if (notFound) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
@@ -181,8 +207,8 @@ export default function OrderDetailPage() {
 
   if (!order) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6]">
-        <p className="text-sm text-gray-400">กำลังโหลด...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
+        <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
       </main>
     );
   }

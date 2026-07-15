@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CustomerLoginScreen } from "./CustomerLoginScreen";
 import { useCustomer } from "./CustomerProvider";
+import { LoadingState } from "@/components/LoadingState";
 import { localizedName } from "@/lib/localized";
 
 type CustomerEntryGateProps = {
@@ -64,8 +65,8 @@ export function CustomerEntryGate({
 
   if (loading || !sessionChecked) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6]">
-        <p className="text-sm text-gray-400">กำลังโหลด...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
+        <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
       </main>
     );
   }

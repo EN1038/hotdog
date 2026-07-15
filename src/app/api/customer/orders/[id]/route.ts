@@ -36,18 +36,28 @@ export async function PATCH(request: Request, { params }: Params) {
     const { id } = await params;
     patchSchema.parse(await request.json());
 
-    const order = await prisma.order.findFirst({
-      where: { id, customerId: session.customerId },
+    const cancelled = await prisma.order.updateMany({
+      where: {
+        id,
+        customerId: session.customerId,
+        status: OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+      },
+      data: { status: OrderStatus.CANCELLED, cancelledAt: new Date() },
     });
-    if (!order) return jsonError("ไม่พบออเดอร์", 404);
 
-    if (!canCustomerCancel(order.status)) {
-      return jsonError("สามารถยกเลิกออเดอร์ได้ก่อนร้านรับออเดอร์เท่านั้น");
+    if (cancelled.count === 0) {
+      const order = await prisma.order.findFirst({
+        where: { id, customerId: session.customerId },
+      });
+      if (!order) return jsonError("ไม่พบออเดอร์", 404);
+      if (!canCustomerCancel(order.status)) {
+        return jsonError("สามารถยกเลิกออเดอร์ได้ก่อนร้านรับออเดอร์เท่านั้น");
+      }
+      return jsonError("ไม่สามารถยกเลิกได้ สถานะออเดอร์เปลี่ยนไปแล้ว");
     }
 
-    const updated = await prisma.order.update({
-      where: { id },
-      data: { status: OrderStatus.CANCELLED, cancelledAt: new Date() },
+    const updated = await prisma.order.findFirst({
+      where: { id, customerId: session.customerId },
       include: {
         branch: true,
         deliveryLocation: true,

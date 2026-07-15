@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { OrderStatus } from "@prisma/client";
 import { OrderCard, StatusLegend, type OrderCardData } from "@/components/OrderCard";
 import { logout } from "@/components/LoginForm";
+import { LoadingState } from "@/components/LoadingState";
 import type { StaffRole } from "@/lib/constants";
 import {
   playOrderAlertSound,
@@ -13,7 +14,7 @@ import {
   vibrateForNewOrder,
 } from "@/lib/staff-order-alert";
 
-const DEFAULT_DOC_TITLE = "Staff | HunterDog";
+const DEFAULT_DOC_TITLE = "Staff | SkillSale";
 
 export default function StaffPage() {
   const router = useRouter();
@@ -163,8 +164,8 @@ export default function StaffPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">กำลังโหลด...</p>
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <LoadingState className="w-full max-w-sm" />
       </main>
     );
   }

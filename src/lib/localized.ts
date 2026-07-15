@@ -47,6 +47,7 @@ export const RESTAURANT_CATEGORIES = [
 export type RestaurantCategoryId =
   (typeof RESTAURANT_CATEGORIES)[number]["id"];
 
+/** @deprecated Prefer restaurantTypeLabel from restaurant-types + DB list */
 export function restaurantCategoryLabel(id: string | null | undefined): string {
   if (!id) return "";
   return RESTAURANT_CATEGORIES.find((c) => c.id === id)?.label ?? id;

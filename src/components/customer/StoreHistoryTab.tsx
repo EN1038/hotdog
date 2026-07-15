@@ -11,6 +11,7 @@ import {
   type OrderHistoryFilter,
 } from "./CustomerOrderHistoryList";
 import { IconRefresh } from "@/components/icons";
+import { LoadingState } from "@/components/LoadingState";
 
 type StoreHistoryTabProps = {
   branchId: string;
@@ -22,12 +23,18 @@ export function StoreHistoryTab({ branchId }: StoreHistoryTabProps) {
   const { session, sessionChecked } = useCustomer();
   const [orders, setOrders] = useState<OrderData[]>([]);
   const [filter, setFilter] = useState<OrderHistoryFilter>("ALL");
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/customer/orders");
-    if (res.ok) {
-      const data: OrderData[] = await res.json();
-      setOrders(data.filter((o) => o.branch.id === branchId));
+    setLoading(true);
+    try {
+      const res = await fetch("/api/customer/orders");
+      if (res.ok) {
+        const data: OrderData[] = await res.json();
+        setOrders(data.filter((o) => o.branch.id === branchId));
+      }
+    } finally {
+      setLoading(false);
     }
   }, [branchId]);
 
@@ -47,7 +54,17 @@ export function StoreHistoryTab({ branchId }: StoreHistoryTabProps) {
     );
   }
 
-  if (!session && sessionChecked) {
+  if (!sessionChecked) {
+    return (
+      <LoadingState
+        compact
+        label="กำลังโหลดประวัติ"
+        className="justify-center px-4 py-10"
+      />
+    );
+  }
+
+  if (!session) {
     return (
       <div className="px-4 py-12 text-center">
         <p className="text-sm text-gray-400">กรุณาเข้าสู่ระบบเพื่อดูประวัติ</p>
@@ -62,8 +79,14 @@ export function StoreHistoryTab({ branchId }: StoreHistoryTabProps) {
     );
   }
 
-  if (!session) {
-    return null;
+  if (loading && orders.length === 0) {
+    return (
+      <LoadingState
+        compact
+        label="กำลังโหลดประวัติ"
+        className="justify-center px-4 py-10"
+      />
+    );
   }
 
   return (

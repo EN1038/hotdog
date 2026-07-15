@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { generateShareCode } from "@/lib/branch-import";
@@ -8,8 +8,8 @@ type Params = { params: Promise<{ id: string }> };
 /** Get or create a share code for this branch */
 export async function GET(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId } = await params;
+    await requireBranchAccess(branchId);
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
@@ -42,8 +42,8 @@ export async function GET(_request: Request, { params }: Params) {
 /** Regenerate share code */
 export async function POST(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId } = await params;
+    await requireBranchAccess(branchId);
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 

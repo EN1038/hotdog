@@ -5,13 +5,16 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { IconBack } from "@/components/icons";
 import {
+  AdminLoadingState,
   adminInputClass,
   adminLabelClass,
   btnOutline,
   btnPrimary,
 } from "@/components/admin/AdminShell";
 import { ImageField } from "@/components/admin/ImageField";
+import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useToast } from "@/components/admin/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { BranchOptionGroup } from "@/components/admin/BranchOptionLibrary";
 
 type MenuItemDetail = {
@@ -59,6 +62,7 @@ export default function MenuItemEditorPage() {
   }>();
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = useConfirm();
   const isCreate = itemId === "new";
 
   const [item, setItem] = useState<MenuItemDetail | null>(
@@ -78,17 +82,20 @@ export default function MenuItemEditorPage() {
     isHidden: false,
     isOutOfStock: false,
   });
+  const [shopCode, setShopCode] = useState<string | null>(null);
 
   function applyItem(data: MenuItemDetail) {
     setItem(data);
+    const isHidden = data.isHidden;
+    const isOutOfStock = isHidden ? false : data.isOutOfStock;
     setForm({
       name: data.name,
       price: String(data.price),
       description: data.description ?? "",
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
-      isHidden: data.isHidden,
-      isOutOfStock: data.isOutOfStock,
+      isHidden,
+      isOutOfStock,
     });
     const ids = data.optionGroupIds ?? data.optionGroups.map((g) => g.id);
     setSelectedGroupIds(ids);
@@ -106,6 +113,16 @@ export default function MenuItemEditorPage() {
   async function loadCategories() {
     const res = await fetch(`/api/admin/branches/${branchId}/categories`);
     if (res.ok) setCategories(await res.json());
+  }
+
+  async function loadShopCode() {
+    const res = await fetch(`/api/admin/branches/${branchId}`);
+    if (!res.ok) return;
+    const data = (await res.json()) as {
+      code?: string | null;
+      brand?: { code?: string | null } | null;
+    };
+    setShopCode(data.code?.trim() || data.brand?.code?.trim() || null);
   }
 
   async function loadItem() {
@@ -132,6 +149,7 @@ export default function MenuItemEditorPage() {
     loadLibrary();
     loadCategories();
     loadItem();
+    loadShopCode();
   }, [branchId, itemId, router]);
 
   function toggleGroup(groupId: string) {
@@ -161,7 +179,8 @@ export default function MenuItemEditorPage() {
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
         isHidden: form.isHidden,
-        isOutOfStock: form.isOutOfStock,
+        // Mutually exclusive with isHidden
+        isOutOfStock: form.isHidden ? false : form.isOutOfStock,
         optionGroupIds: selectedGroupIds,
       };
 
@@ -181,11 +200,7 @@ export default function MenuItemEditorPage() {
         return;
       }
       toast.success(isCreate ? "สร้างเมนูแล้ว" : "บันทึกแล้ว");
-      if (isCreate) {
-        router.replace(`/admin/branches/${branchId}/menu/${data.id}`);
-      } else {
-        applyItem(data);
-      }
+      router.push(`/admin/branches/${branchId}?tab=menu`);
     } finally {
       setSaving(false);
     }
@@ -215,7 +230,7 @@ export default function MenuItemEditorPage() {
   }
 
   if (!item) {
-    return <p className="text-sm text-gray-500">กำลังโหลด...</p>;
+    return <AdminLoadingState />;
   }
 
   const attachedGroups = selectedGroupIds
@@ -223,6 +238,20 @@ export default function MenuItemEditorPage() {
     .filter((g): g is BranchOptionGroup => Boolean(g));
 
   const optionsTabHref = `/admin/branches/${branchId}?tab=options`;
+  const categoriesTabHref = `/admin/branches/${branchId}?tab=categories`;
+
+  async function leaveTo(href: string) {
+    const ok = await confirm({
+      title: "ออกจากหน้านี้?",
+      message:
+        "ข้อมูลที่กรอกไว้ยังไม่ได้บันทึกอาจหายไปถ้าไปหน้าอื่น — ต้องการไปต่อหรือไม่?",
+      confirmLabel: "ยืนยัน",
+      cancelLabel: "ยกเลิก",
+      tone: "primary",
+    });
+    if (!ok) return;
+    router.push(href);
+  }
 
   return (
     <div>
@@ -304,29 +333,38 @@ export default function MenuItemEditorPage() {
               label="รูปเมนู"
               value={form.imageUrl}
               onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
+              shopCode={shopCode}
+              folder="Products"
             />
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={form.isHidden}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, isHidden: e.target.checked }))
-                  }
-                />
-                ซ่อนจากลูกค้า
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={form.isOutOfStock}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, isOutOfStock: e.target.checked }))
-                  }
-                />
-                หมดชั่วคราว
-              </label>
+            <div className="flex flex-wrap gap-2">
+              <AdminToggle
+                checked={form.isHidden}
+                onChange={(next) =>
+                  setForm((f) => ({
+                    ...f,
+                    isHidden: next,
+                    isOutOfStock: next ? false : f.isOutOfStock,
+                  }))
+                }
+                label="ซ่อนจากลูกค้า"
+                size="md"
+              />
+              <AdminToggle
+                checked={form.isOutOfStock}
+                onChange={(next) =>
+                  setForm((f) => ({
+                    ...f,
+                    isOutOfStock: next,
+                    isHidden: next ? false : f.isHidden,
+                  }))
+                }
+                label="หมดชั่วคราว"
+                size="md"
+              />
             </div>
+            <p className="text-xs text-slate-500">
+              เลือกได้อย่างใดอย่างหนึ่ง — เปิดอันหนึ่งจะปิดอีกอันให้อัตโนมัติ
+            </p>
             <button
               type="button"
               disabled={saving}
@@ -348,15 +386,20 @@ export default function MenuItemEditorPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Link
-                  href={`/admin/branches/${branchId}?tab=categories`}
+                <button
+                  type="button"
                   className={btnOutline}
+                  onClick={() => leaveTo(categoriesTabHref)}
                 >
                   หมวดหมู่
-                </Link>
-                <Link href={optionsTabHref} className={btnOutline}>
+                </button>
+                <button
+                  type="button"
+                  className={btnOutline}
+                  onClick={() => leaveTo(optionsTabHref)}
+                >
                   คลังตัวเลือก
-                </Link>
+                </button>
               </div>
             </div>
 

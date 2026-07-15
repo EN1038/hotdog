@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 
@@ -14,8 +14,8 @@ const patchSchema = z.object({
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, groupId, optionId } = await params;
+    await requireBranchAccess(branchId);
     const option = await prisma.branchOption.findFirst({
       where: {
         id: optionId,
@@ -41,8 +41,8 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, groupId, optionId } = await params;
+    await requireBranchAccess(branchId);
     const option = await prisma.branchOption.findFirst({
       where: {
         id: optionId,

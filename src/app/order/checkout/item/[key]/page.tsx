@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
   IconCheck,
@@ -179,8 +180,8 @@ export default function CheckoutItemEditPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6]">
-        <p className="text-sm text-gray-400">กำลังโหลด...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
+        <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
       </main>
     );
   }

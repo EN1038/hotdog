@@ -12,6 +12,10 @@ type ImageFieldProps = {
   /** compact: denser form; thumb: small square (~120px) */
   size?: "default" | "compact" | "thumb";
   className?: string;
+  /** รหัสร้านค้าสำหรับ path บน Spaces เช่น SkillSale/Orders/{shopCode}/Products/ */
+  shopCode?: string | null;
+  /** โฟลเดอร์ปลายทาง: Products | Branch | Staff | Brand | Site */
+  folder?: "Products" | "Branch" | "Staff" | "Brand" | "Site";
 };
 
 export function ImageField({
@@ -21,6 +25,8 @@ export function ImageField({
   aspectClassName = "aspect-[4/3]",
   size = "default",
   className = "",
+  shopCode,
+  folder = "Products",
 }: ImageFieldProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +41,8 @@ export function ImageField({
     try {
       const body = new FormData();
       body.append("file", file);
+      if (shopCode?.trim()) body.append("shopCode", shopCode.trim());
+      if (folder) body.append("folder", folder);
       const res = await fetch("/api/admin/uploads", {
         method: "POST",
         body,

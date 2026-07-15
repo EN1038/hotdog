@@ -112,11 +112,24 @@ export async function POST(request: Request) {
       if (menu.isOutOfStock) return jsonError(`"${menu.name}" หมดชั่วคราว`);
     }
 
+    let deliveryFee = new Prisma.Decimal(0);
     if (body.fulfillmentType === "DELIVERY") {
+      if (!body.deliveryLocationId) {
+        return jsonError("กรุณาเลือกพื้นที่จัดส่ง");
+      }
       const location = await prisma.deliveryLocation.findFirst({
         where: { id: body.deliveryLocationId, branchId: body.branchId },
       });
-      if (!location) return jsonError("พื้นที่จัดส่งไม่ถูกต้อง");
+      if (!location) {
+        const zoneCount = await prisma.deliveryLocation.count({
+          where: { branchId: body.branchId },
+        });
+        if (zoneCount === 0) {
+          return jsonError("สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น");
+        }
+        return jsonError("พื้นที่จัดส่งไม่ถูกต้อง");
+      }
+      deliveryFee = location.deliveryFee;
     }
 
     const orderItems: Array<{
@@ -193,6 +206,7 @@ export async function POST(request: Request) {
             scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
             note: body.note?.trim() || null,
             paymentMethod: body.paymentMethod,
+            deliveryFee,
             status: branch.autoAcceptOrders
               ? OrderStatus.PREPARING
               : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,

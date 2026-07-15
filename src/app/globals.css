@@ -61,6 +61,28 @@ input[type="time"]:not(:focus):invalid {
   display: none;
 }
 
+@keyframes tab-attention-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1.25);
+  }
+}
+
+.tab-attention-dot {
+  animation: tab-attention-pulse 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-attention-dot {
+    animation: none;
+  }
+}
+
 .bg-site-primary {
   background-color: var(--site-primary);
 }

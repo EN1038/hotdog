@@ -18,6 +18,7 @@ import {
 import { OrderTimeline } from "@/components/customer/OrderTimeline";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { IconBack } from "@/components/icons";
+import { LoadingState } from "@/components/LoadingState";
 
 type AdminOrderDetail = {
   id: string;
@@ -75,7 +76,7 @@ export default function AdminOrderDetailPage() {
   }, [load]);
 
   if (loading) {
-    return <p className="text-sm text-gray-500">กำลังโหลด...</p>;
+    return <LoadingState />;
   }
 
   if (notFound || !order) {

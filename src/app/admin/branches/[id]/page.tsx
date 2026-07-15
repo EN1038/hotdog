@@ -1,11 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
+  AdminLoadingState,
   adminInputClass,
   adminLabelClass,
+  adminSelectClass,
   btnDanger,
   btnDark,
   btnOutline,
@@ -20,11 +22,24 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { PhoneInput } from "@/components/PhoneInput";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { BranchLocationPicker } from "@/components/admin/BranchLocationPicker";
+import { AdminMapLocationPicker } from "@/components/admin/AdminMapLocationPicker";
+import type { MapLocationValue } from "@/components/admin/AdminMapLocationField";
 import { BranchHoursEditor } from "@/components/admin/BranchHoursEditor";
 import { BranchOptionLibrary } from "@/components/admin/BranchOptionLibrary";
 import { BranchCategoryLibrary } from "@/components/admin/BranchCategoryLibrary";
 import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
-import { IconBack, IconClose, IconPlus, IconUser } from "@/components/icons";
+import { AdminToggle } from "@/components/admin/AdminToggle";
+import { useAdminSession } from "@/components/admin/AdminSessionProvider";
+import {
+  IconBack,
+  IconChevronRight,
+  IconClose,
+  IconDelivery,
+  IconPin,
+  IconPlus,
+  IconStore,
+  IconUser,
+} from "@/components/icons";
 import {
   formatThaiPhone,
   phoneDigits,
@@ -32,11 +47,11 @@ import {
 import {
   ensureWeeklySchedule,
   formatTodayHoursSummary,
+  getBranchServiceStatus,
   type WeeklySchedule,
 } from "@/lib/branch-hours";
 import {
   PRICE_RANGE_OPTIONS,
-  RESTAURANT_CATEGORIES,
 } from "@/lib/localized";
 import { slugifyCode } from "@/lib/slug";
 import type { PriceRangeId } from "@/lib/localized";
@@ -123,7 +138,16 @@ type BranchDetail = {
     isOutOfStock: boolean;
     sortOrder: number;
   }[];
-  deliveryLocations: { id: string; name: string }[];
+  menuCategories?: { id: string; name: string }[];
+  optionGroups?: { id: string; name: string; options?: unknown[] }[];
+  deliveryLocations: {
+    id: string;
+    name: string;
+    deliveryFee: string | number;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  }[];
   orders: AdminOrderRow[];
   orderStats?: OrderStats;
 };
@@ -141,15 +165,79 @@ type TabId =
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "ภาพรวม" },
+  { id: "orders", label: "ออเดอร์" },
   { id: "menu", label: "เมนู" },
   { id: "categories", label: "หมวดหมู่" },
   { id: "options", label: "ตัวเลือก" },
-  { id: "copy", label: "คัดลอก" },
-  { id: "orders", label: "ออเดอร์" },
   { id: "staff", label: "พนักงาน" },
   { id: "locations", label: "พื้นที่จัดส่ง" },
   { id: "settings", label: "ตั้งค่าสาขา" },
+  { id: "copy", label: "คัดลอก" },
 ];
+
+type TabAttention = {
+  tone: "warn" | "info";
+  title: string;
+  badge?: string;
+};
+
+function hasBranchMapPin(branch: {
+  latitude: number | null;
+  longitude: number | null;
+}) {
+  return (
+    branch.latitude != null &&
+    branch.longitude != null &&
+    Number.isFinite(branch.latitude) &&
+    Number.isFinite(branch.longitude)
+  );
+}
+
+function getTabAttention(
+  tabId: TabId,
+  branch: BranchDetail,
+): TabAttention | null {
+  switch (tabId) {
+    case "orders": {
+      const open = branch.orderStats?.openCount ?? 0;
+      if (open <= 0) return null;
+      return {
+        tone: "info",
+        title: `มีออเดอร์ค้าง ${open} รายการ`,
+        badge: open > 99 ? "99+" : String(open),
+      };
+    }
+    case "menu":
+      if (branch.menuItems.length > 0) return null;
+      return { tone: "warn", title: "ยังไม่มีเมนู" };
+    case "categories":
+      if ((branch.menuCategories?.length ?? 0) > 0) return null;
+      return { tone: "warn", title: "ยังไม่มีหมวดหมู่" };
+    case "staff":
+      if ((branch.staff ?? []).some((s) => s.isActive)) return null;
+      return { tone: "warn", title: "ยังไม่มีพนักงานที่เปิดใช้งาน" };
+    case "locations":
+      if (branch.deliveryLocations.length > 0) return null;
+      return {
+        tone: "warn",
+        title: "ยังไม่มีพื้นที่จัดส่ง — ลูกค้าสั่งได้แค่รับที่ร้าน",
+      };
+    case "settings": {
+      const missing: string[] = [];
+      if (!hasBranchMapPin(branch)) missing.push("หมุดร้าน");
+      if (!branch.phone?.trim()) missing.push("เบอร์โทร");
+      if (!branch.primaryCategory) missing.push("ประเภทอาหาร");
+      if (missing.length === 0) return null;
+      return {
+        tone: "warn",
+        title: `ตั้งค่ายังไม่ครบ: ${missing.join(", ")}`,
+        badge: String(missing.length),
+      };
+    }
+    default:
+      return null;
+  }
+}
 
 const GENDER_OPTIONS = [
   { value: "male" as const, label: "ชาย" },
@@ -170,13 +258,67 @@ const ROLE_LABELS: Record<StaffRole, string> = {
 
 const panelClass = "rounded-2xl border border-gray-200 bg-white p-4 shadow-sm";
 
+function StatusPill({
+  on,
+  onLabel,
+  offLabel,
+}: {
+  on: boolean;
+  onLabel: string;
+  offLabel: string;
+}) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+        on
+          ? "bg-emerald-100 text-emerald-700"
+          : "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {on ? onLabel : offLabel}
+    </span>
+  );
+}
+
+function ServiceHourCard({
+  icon,
+  label,
+  hours,
+  statusLabel,
+  statusTone,
+}: {
+  icon: ReactNode;
+  label: string;
+  hours: string;
+  statusLabel: string;
+  statusTone: "open" | "advance" | "closed";
+}) {
+  const toneClass =
+    statusTone === "open"
+      ? "text-emerald-600"
+      : statusTone === "advance"
+        ? "text-amber-600"
+        : "text-slate-500";
+
+  return (
+    <div className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50/90 to-white p-3">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+        {icon}
+        {label}
+      </div>
+      <p className="mt-1 text-sm font-semibold text-slate-900">{hours}</p>
+      <p className={`mt-0.5 text-xs ${toneClass}`}>{statusLabel}</p>
+    </div>
+  );
+}
+
 function isTabId(value: string | null): value is TabId {
   return TABS.some((t) => t.id === value);
 }
 
 export default function BranchDetailPage() {
   return (
-    <Suspense fallback={<p className="text-gray-500">กำลังโหลด...</p>}>
+    <Suspense fallback={<AdminLoadingState />}>
       <BranchDetailContent />
     </Suspense>
   );
@@ -187,6 +329,7 @@ function BranchDetailContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { session } = useAdminSession();
   const tabParam = searchParams.get("tab");
   const activeTab: TabId = isTabId(tabParam) ? tabParam : "overview";
 
@@ -231,15 +374,34 @@ function BranchDetailContent() {
   const toast = useToast();
   const { confirm } = useConfirm();
 
+  const emptyLocationMap = (): MapLocationValue => ({
+    address: "",
+    latitude: null,
+    longitude: null,
+  });
   const [locationName, setLocationName] = useState("");
+  const [locationFee, setLocationFee] = useState("0");
+  const [locationMap, setLocationMap] = useState<MapLocationValue>(emptyLocationMap);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(
     null,
   );
   const [editLocationName, setEditLocationName] = useState("");
+  const [editLocationFee, setEditLocationFee] = useState("0");
+  const [editLocationMap, setEditLocationMap] =
+    useState<MapLocationValue>(emptyLocationMap);
   const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [menuSetupModalOpen, setMenuSetupModalOpen] = useState(false);
+  const [menuSearch, setMenuSearch] = useState("");
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState("ALL");
+  const [menuStatusFilter, setMenuStatusFilter] = useState<
+    "ALL" | "OUT_OF_STOCK" | "HIDDEN"
+  >("ALL");
   const [codeManual, setCodeManual] = useState(false);
   const [codeFieldOpen, setCodeFieldOpen] = useState(false);
+  const [restaurantTypes, setRestaurantTypes] = useState<
+    { code: string; name: string }[]
+  >([]);
 
   function setTab(next: TabId) {
     const params = new URLSearchParams(searchParams.toString());
@@ -248,9 +410,10 @@ function BranchDetailContent() {
   }
 
   async function load() {
-    const [branchRes, brandsRes] = await Promise.all([
+    const [branchRes, brandsRes, typesRes] = await Promise.all([
       fetch(`/api/admin/branches/${id}`),
       fetch("/api/admin/brands"),
+      fetch("/api/admin/restaurant-types?active=1"),
     ]);
     if (branchRes.status === 401) {
       router.push("/admin/login");
@@ -265,10 +428,23 @@ function BranchDetailContent() {
     setBranch({
       ...data,
       menuItems: data.menuItems ?? [],
+      menuCategories: data.menuCategories ?? [],
+      optionGroups: data.optionGroups ?? [],
       staff: data.staff ?? [],
       deliveryLocations: data.deliveryLocations ?? [],
       orders: data.orders ?? [],
     });
+    if (typesRes.ok) {
+      const types = await typesRes.json();
+      setRestaurantTypes(
+        Array.isArray(types)
+          ? types.map((t: { code: string; name: string }) => ({
+              code: t.code,
+              name: t.name,
+            }))
+          : [],
+      );
+    }
     setSettings({
       name: data.name,
       nameTh: data.nameTh ?? "",
@@ -377,6 +553,20 @@ function BranchDetailContent() {
         "ใช้ตัวพิมพ์เล็ก a-z ตัวเลข และขีด (-) เท่านั้น",
       );
       return;
+    }
+    if (branch && branch.deliveryLocations.length === 0) {
+      const ok = await confirm({
+        title: "ยังไม่มีพื้นที่จัดส่ง",
+        message:
+          "ลูกค้าสั่งได้แค่รับที่ร้านจนกว่าจะเพิ่มพื้นที่อย่างน้อย 1 โซน — เวลาเปิด–ปิดเดลิเวอรียังไม่มีผลจนกว่าจะมีพื้นที่",
+        confirmLabel: "บันทึกต่อไป",
+        cancelLabel: "ไปเพิ่มพื้นที่",
+        tone: "primary",
+      });
+      if (!ok) {
+        setTab("locations");
+        return;
+      }
     }
 
     const res = await fetch(`/api/admin/branches/${id}`, {
@@ -601,12 +791,47 @@ function BranchDetailContent() {
   }
 
   async function toggleHidden(menuId: string, isHidden: boolean) {
-    await fetch(`/api/admin/branches/${id}/menu-items/${menuId}`, {
+    const patch = isHidden
+      ? { isHidden: true, isOutOfStock: false }
+      : { isHidden: false };
+    setBranch((prev) =>
+      prev
+        ? {
+            ...prev,
+            menuItems: prev.menuItems.map((m) =>
+              m.id === menuId ? { ...m, ...patch } : m,
+            ),
+          }
+        : prev,
+    );
+    const res = await fetch(`/api/admin/branches/${id}/menu-items/${menuId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isHidden }),
+      body: JSON.stringify(patch),
     });
-    load();
+    if (!res.ok) load();
+  }
+
+  async function toggleOutOfStock(menuId: string, isOutOfStock: boolean) {
+    const patch = isOutOfStock
+      ? { isOutOfStock: true, isHidden: false }
+      : { isOutOfStock: false };
+    setBranch((prev) =>
+      prev
+        ? {
+            ...prev,
+            menuItems: prev.menuItems.map((m) =>
+              m.id === menuId ? { ...m, ...patch } : m,
+            ),
+          }
+        : prev,
+    );
+    const res = await fetch(`/api/admin/branches/${id}/menu-items/${menuId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) load();
   }
 
   async function deleteMenu(menuId: string) {
@@ -622,33 +847,81 @@ function BranchDetailContent() {
     load();
   }
 
+  function branchReferencePin() {
+    if (
+      branch?.latitude == null ||
+      branch?.longitude == null ||
+      !Number.isFinite(branch.latitude) ||
+      !Number.isFinite(branch.longitude)
+    ) {
+      return null;
+    }
+    return {
+      latitude: branch.latitude,
+      longitude: branch.longitude,
+      label: branch.name,
+    };
+  }
+
   async function addLocation(e: React.FormEvent) {
     e.preventDefault();
-    await fetch(`/api/admin/branches/${id}/locations`, {
+    const fee = Number(locationFee);
+    const res = await fetch(`/api/admin/branches/${id}/locations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: locationName }),
+      body: JSON.stringify({
+        name: locationName.trim(),
+        deliveryFee: Number.isFinite(fee) && fee >= 0 ? fee : 0,
+        address: locationMap.address.trim() || null,
+        latitude: locationMap.latitude,
+        longitude: locationMap.longitude,
+      }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error("เพิ่มพื้นที่ไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+      return;
+    }
     setLocationName("");
+    setLocationFee("0");
+    setLocationMap(emptyLocationMap());
     setLocationModalOpen(false);
+    toast.success("เพิ่มพื้นที่จัดส่งแล้ว");
     load();
   }
 
-  async function renameLocation(locationId: string) {
+  async function saveLocation(locationId: string) {
     if (!editLocationName.trim()) return;
-    await fetch(`/api/admin/branches/${id}/locations`, {
+    const fee = Number(editLocationFee);
+    const res = await fetch(`/api/admin/branches/${id}/locations`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locationId, name: editLocationName.trim() }),
+      body: JSON.stringify({
+        locationId,
+        name: editLocationName.trim(),
+        deliveryFee: Number.isFinite(fee) && fee >= 0 ? fee : 0,
+        address: editLocationMap.address.trim() || null,
+        latitude: editLocationMap.latitude,
+        longitude: editLocationMap.longitude,
+      }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error("บันทึกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+      return;
+    }
     setEditingLocationId(null);
+    toast.success("บันทึกพื้นที่แล้ว");
     load();
   }
 
   async function removeLocation(locationId: string) {
+    const isLast = (branch?.deliveryLocations.length ?? 0) <= 1;
     const ok = await confirm({
       title: "ลบพื้นที่จัดส่ง?",
-      message: "ลบพื้นที่นี้ออกจากสาขา",
+      message: isLast
+        ? "นี่คือพื้นที่สุดท้าย — หลังลบลูกค้าจะสั่งได้แค่รับที่ร้าน จนกว่าจะเพิ่มพื้นที่ใหม่"
+        : "ลบพื้นที่นี้ออกจากสาขา",
       confirmLabel: "ลบ",
     });
     if (!ok) return;
@@ -659,67 +932,180 @@ function BranchDetailContent() {
     load();
   }
 
-  if (!branch) {
-    return <p className="text-gray-500">กำลังโหลด...</p>;
-  }
-
-  const outOfStockCount = (branch.menuItems ?? []).filter(
+  const outOfStockCount = (branch?.menuItems ?? []).filter(
     (m) => m.isOutOfStock,
   ).length;
-  const hiddenCount = (branch.menuItems ?? []).filter((m) => m.isHidden).length;
+  const hiddenCount = (branch?.menuItems ?? []).filter((m) => m.isHidden).length;
+  const menuCategoryOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of branch?.menuCategories ?? []) {
+      map.set(c.id, c.name);
+    }
+    for (const m of branch?.menuItems ?? []) {
+      if (m.category) map.set(m.category.id, m.category.name);
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "th"));
+  }, [branch?.menuCategories, branch?.menuItems]);
+
+  const filteredMenuItems = useMemo(() => {
+    const q = menuSearch.trim().toLowerCase();
+    return (branch?.menuItems ?? []).filter((m) => {
+      if (q && !m.name.toLowerCase().includes(q)) return false;
+      if (menuCategoryFilter === "NONE") {
+        if (m.category) return false;
+      } else if (menuCategoryFilter !== "ALL") {
+        if (m.category?.id !== menuCategoryFilter) return false;
+      }
+      if (menuStatusFilter === "OUT_OF_STOCK" && !m.isOutOfStock) return false;
+      if (menuStatusFilter === "HIDDEN" && !m.isHidden) return false;
+      return true;
+    });
+  }, [
+    branch?.menuItems,
+    menuSearch,
+    menuCategoryFilter,
+    menuStatusFilter,
+  ]);
+
+  if (!branch) {
+    return <AdminLoadingState />;
+  }
+
   const activeStaff = (branch.staff ?? []).filter((s) => s.isActive).length;
   const stats = branch.orderStats;
   const money = (n: number) =>
     n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
+  const storefrontSchedule = ensureWeeklySchedule(
+    branch.storefrontHours,
+    branch.opensAt,
+    branch.closesAt,
+  );
+  const deliverySchedule = ensureWeeklySchedule(
+    branch.deliveryHours,
+    branch.opensAt,
+    branch.closesAt,
+  );
+  const hoursBranch = {
+    isOpen: branch.isOpen,
+    allowAdvanceOrder: branch.allowAdvanceOrder,
+    storefrontHours: storefrontSchedule,
+    deliveryHours: deliverySchedule,
+    opensAt: branch.opensAt,
+    closesAt: branch.closesAt,
+  };
+  const storefrontStatus = getBranchServiceStatus(hoursBranch, "PICKUP");
+  const deliveryStatus = getBranchServiceStatus(hoursBranch, "DELIVERY");
+  const serviceStatusLabel = (status: typeof storefrontStatus) => {
+    if (status.openNow) return "เปิดรับออเดอร์";
+    if (status.advanceOnly) return "สั่งล่วงหน้าได้";
+    return status.reason;
+  };
+  const serviceStatusTone = (
+    status: typeof storefrontStatus,
+  ): "open" | "advance" | "closed" => {
+    if (status.openNow) return "open";
+    if (status.advanceOnly) return "advance";
+    return "closed";
+  };
 
   return (
     <div>
       <Link
-        href="/admin"
+        href={
+          session?.isPlatformAdmin && branch.brandId
+            ? `/admin/brands/${branch.brandId}`
+            : "/admin"
+        }
         className="inline-flex items-center gap-1 text-sm text-red-600 hover:underline"
       >
         <IconBack size={16} />
-        กลับ
+        {session?.isPlatformAdmin && branch.brandId
+          ? "กลับไปสาขาของแบรนด์"
+          : "กลับ"}
       </Link>
 
       <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-bold text-gray-900">{branch.name}</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">
+              {branch.name}
+            </h2>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                 branch.isOpen
                   ? "bg-emerald-100 text-emerald-700"
-                  : "bg-gray-200 text-gray-600"
+                  : "bg-slate-200 text-slate-600"
               }`}
             >
               {branch.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
             </span>
           </div>
           {branch.brand && branch.code && (
-            <p className="mt-0.5 text-sm text-gray-500">
+            <p className="mt-0.5 text-sm text-slate-500">
               /{branch.brand.code}/{branch.code}
             </p>
           )}
         </div>
       </div>
 
-      <div className="sticky top-[3.25rem] z-20 -mx-1 mt-4 overflow-x-auto bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.5rem]">
-        <div className="flex min-w-max gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+      <div className="sticky top-[3.25rem] z-20 -mx-1 mt-4 overflow-x-auto filter-scroll-row bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.75rem]">
+        <div className="flex min-w-max gap-0.5 rounded-2xl border border-slate-200 bg-white/90 p-1.5 shadow-sm">
           {TABS.map((tab) => {
             const active = activeTab === tab.id;
+            const attention = getTabAttention(tab.id, branch);
+            const warn = attention?.tone === "warn";
+            const info = attention?.tone === "info";
             return (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setTab(tab.id)}
-                className={`cursor-pointer rounded-lg px-3 py-2 text-sm transition ${
+                title={attention?.title}
+                aria-label={
+                  attention
+                    ? `${tab.label} — ${attention.title}`
+                    : tab.label
+                }
+                className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition ${
                   active
-                    ? "bg-red-600 font-semibold text-white"
-                    : "text-gray-600 hover:bg-gray-100"
+                    ? "bg-red-600 font-semibold text-white shadow-sm shadow-red-600/25"
+                    : warn
+                      ? "font-medium text-amber-800 ring-1 ring-inset ring-amber-200 hover:bg-amber-50"
+                      : info
+                        ? "font-medium text-sky-800 ring-1 ring-inset ring-sky-200 hover:bg-sky-50"
+                        : "font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-800"
                 }`}
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                {attention &&
+                  (attention.badge ? (
+                    <span
+                      className={`inline-flex min-w-[1.15rem] items-center justify-center rounded-full px-1 py-0.5 text-[10px] font-bold leading-none tabular-nums ${
+                        active
+                          ? warn
+                            ? "bg-amber-300 text-amber-950"
+                            : "bg-white/95 text-red-700"
+                          : warn
+                            ? "bg-amber-500 text-white"
+                            : "bg-sky-500 text-white"
+                      }`}
+                    >
+                      {attention.badge}
+                    </span>
+                  ) : (
+                    <span
+                      className={`tab-attention-dot inline-block size-2 shrink-0 rounded-full ${
+                        active
+                          ? "bg-amber-300"
+                          : warn
+                            ? "bg-amber-500"
+                            : "bg-sky-500"
+                      }`}
+                      aria-hidden
+                    />
+                  ))}
               </button>
             );
           })}
@@ -790,72 +1176,156 @@ function BranchDetailContent() {
                 )}
               </div>
 
-              <div className={`${panelClass} grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2`}>
-                <div>
-                  <h3 className="font-semibold text-gray-900">สถานะร้าน</h3>
-                  <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                    <li>
-                      วันนี้ (หน้าร้าน):{" "}
-                      {formatTodayHoursSummary(
-                        ensureWeeklySchedule(
-                          branch.storefrontHours,
-                          branch.opensAt,
-                          branch.closesAt,
-                        ),
-                      )}
-                    </li>
-                    <li>
-                      วันนี้ (เดลิเวอรี):{" "}
-                      {formatTodayHoursSummary(
-                        ensureWeeklySchedule(
-                          branch.deliveryHours,
-                          branch.opensAt,
-                          branch.closesAt,
-                        ),
-                      )}
-                    </li>
-                    <li>
-                      สั่งล่วงหน้า:{" "}
-                      {branch.allowAdvanceOrder ? "รับ" : "ไม่รับ"}
-                    </li>
-                    <li>
-                      รับออเดอร์อัตโนมัติ:{" "}
-                      {branch.autoAcceptOrders ? "เปิด" : "ปิด"}
-                    </li>
-                    <li className="flex flex-wrap items-center gap-2">
-                    เบอร์สาขา:{" "}
-                    {branch.phone ? (
-                      <PhoneCallButton phone={branch.phone} showNumber />
-                    ) : (
-                      "—"
-                    )}
-                  </li>
-                    <li>
-                      พนักงาน: {activeStaff}/{branch.staff.length} · พื้นที่ส่ง{" "}
-                      {branch.deliveryLocations.length}
-                    </li>
-                  </ul>
-                  <button
-                    type="button"
-                    onClick={() => setTab("settings")}
-                    className={`${btnOutline} mt-3`}
-                  >
-                    ไปตั้งค่าสาขา
-                  </button>
-                </div>
-                <div>
-                  {branch.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={branch.imageUrl}
-                      alt=""
-                      className="h-40 w-full rounded-xl object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-40 items-center justify-center rounded-xl bg-gray-100 text-sm text-gray-400">
-                      ยังไม่มีรูปสาขา
+              <div className={`${panelClass} overflow-hidden`}>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="font-semibold text-gray-900">สถานะร้าน</h3>
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            branch.isOpen
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          {branch.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
+                        </span>
+                        {branch.deliveryLocations.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setTab("locations")}
+                            className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 transition hover:bg-amber-200"
+                          >
+                            ปิดจัดส่ง (ยังไม่มีพื้นที่)
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <ServiceHourCard
+                        icon={<IconStore size={14} className="text-slate-400" />}
+                        label="หน้าร้านวันนี้"
+                        hours={formatTodayHoursSummary(storefrontSchedule)}
+                        statusLabel={serviceStatusLabel(storefrontStatus)}
+                        statusTone={serviceStatusTone(storefrontStatus)}
+                      />
+                      <ServiceHourCard
+                        icon={
+                          <IconDelivery size={14} className="text-slate-400" />
+                        }
+                        label="เดลิเวอรีวันนี้"
+                        hours={
+                          branch.deliveryLocations.length === 0
+                            ? "ยังไม่มีพื้นที่จัดส่ง"
+                            : formatTodayHoursSummary(deliverySchedule)
+                        }
+                        statusLabel={
+                          branch.deliveryLocations.length === 0
+                            ? "ปิดจัดส่ง"
+                            : serviceStatusLabel(deliveryStatus)
+                        }
+                        statusTone={
+                          branch.deliveryLocations.length === 0
+                            ? "closed"
+                            : serviceStatusTone(deliveryStatus)
+                        }
+                      />
+                    </div>
+
+                    <dl className="mt-3 divide-y divide-slate-100 text-sm">
+                      <div className="flex items-center justify-between gap-3 py-2">
+                        <dt className="text-slate-500">สั่งล่วงหน้า</dt>
+                        <dd>
+                          <StatusPill
+                            on={branch.allowAdvanceOrder}
+                            onLabel="รับ"
+                            offLabel="ไม่รับ"
+                          />
+                        </dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 py-2">
+                        <dt className="text-slate-500">รับออเดอร์อัตโนมัติ</dt>
+                        <dd>
+                          <StatusPill
+                            on={branch.autoAcceptOrders}
+                            onLabel="เปิด"
+                            offLabel="ปิด"
+                          />
+                        </dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 py-2">
+                        <dt className="text-slate-500">เบอร์สาขา</dt>
+                        <dd className="font-medium text-slate-800">
+                          {branch.phone ? (
+                            <PhoneCallButton phone={branch.phone} showNumber />
+                          ) : (
+                            <span className="text-slate-400">ยังไม่ระบุ</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTab("staff")}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
+                      >
+                        <IconUser size={14} className="text-slate-400" />
+                        พนักงาน {activeStaff}/{branch.staff.length}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTab("locations")}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                          branch.deliveryLocations.length === 0
+                            ? "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white"
+                        }`}
+                      >
+                        <IconPin
+                          size={14}
+                          className={
+                            branch.deliveryLocations.length === 0
+                              ? "text-amber-600"
+                              : "text-slate-400"
+                          }
+                        />
+                        {branch.deliveryLocations.length === 0
+                          ? "ยังไม่มีพื้นที่ส่ง"
+                          : `พื้นที่ส่ง ${branch.deliveryLocations.length}`}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setTab("settings")}
+                      className="mt-4 inline-flex w-fit items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                    >
+                      ไปตั้งค่าสาขา
+                      <IconChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  <div className="flex shrink-0 items-center justify-center sm:w-36 lg:w-44">
+                    {branch.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={branch.imageUrl}
+                        alt=""
+                        className="h-28 w-full max-w-[11rem] rounded-2xl border border-slate-100 bg-slate-50 object-contain p-3 sm:h-full sm:min-h-[10rem]"
+                      />
+                    ) : (
+                      <div className="flex h-28 w-full max-w-[11rem] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center sm:h-full sm:min-h-[10rem]">
+                        <IconStore size={28} className="text-slate-300" />
+                        <span className="text-xs text-slate-400">
+                          ยังไม่มีรูปสาขา
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -878,49 +1348,160 @@ function BranchDetailContent() {
 
         {activeTab === "menu" && (
           <div className={panelClass}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">
-                  เมนูของสาขานี้
-                </h3>
-                <p className="mt-0.5 text-sm text-gray-600">
-                  {branch.menuItems.length} รายการ
-                </p>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-gray-900">
+                    เมนูของสาขานี้
+                  </h3>
+                  <p className="mt-0.5 text-sm text-gray-600">
+                    {filteredMenuItems.length === branch.menuItems.length
+                      ? `${branch.menuItems.length} รายการ`
+                      : `แสดง ${filteredMenuItems.length} จาก ${branch.menuItems.length} รายการ`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTab("copy")}
+                    className={btnOutline}
+                  >
+                    คัดลอกด้วยโค้ด
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const [catRes, optRes] = await Promise.all([
+                        fetch(`/api/admin/branches/${id}/categories`),
+                        fetch(`/api/admin/branches/${id}/option-groups`),
+                      ]);
+                      const cats = catRes.ok ? await catRes.json() : [];
+                      const opts = optRes.ok ? await optRes.json() : [];
+                      const categoryList = Array.isArray(cats)
+                        ? cats
+                        : (cats.categories ?? []);
+                      const optionList = Array.isArray(opts)
+                        ? opts
+                        : (opts.groups ?? opts.optionGroups ?? []);
+                      const missingCategories = categoryList.length === 0;
+                      const missingOptions = optionList.length === 0;
+
+                      setBranch((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              menuCategories: categoryList.map(
+                                (c: { id: string; name: string }) => ({
+                                  id: c.id,
+                                  name: c.name,
+                                }),
+                              ),
+                              optionGroups: optionList.map(
+                                (g: { id: string; name: string }) => ({
+                                  id: g.id,
+                                  name: g.name,
+                                }),
+                              ),
+                            }
+                          : prev,
+                      );
+
+                      if (missingCategories || missingOptions) {
+                        setMenuSetupModalOpen(true);
+                        return;
+                      }
+                      router.push(`/admin/branches/${id}/menu/new`);
+                    }}
+                    className={`inline-flex items-center gap-1.5 ${btnPrimary}`}
+                  >
+                    <IconPlus size={16} />
+                    เพิ่มเมนู
+                  </button>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTab("categories")}
-                  className={btnOutline}
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  id="menu-search"
+                  className={`${adminInputClass} sm:max-w-xs sm:flex-1`}
+                  value={menuSearch}
+                  onChange={(e) => setMenuSearch(e.target.value)}
+                  placeholder="ค้นหาเมนู..."
+                  aria-label="ค้นหาเมนู"
+                />
+                <select
+                  id="menu-category-filter"
+                  className={`${adminSelectClass} sm:w-44`}
+                  value={menuCategoryFilter}
+                  onChange={(e) => setMenuCategoryFilter(e.target.value)}
+                  aria-label="กรองหมวดหมู่"
                 >
-                  หมวดหมู่
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTab("options")}
-                  className={btnOutline}
-                >
-                  ตัวเลือก
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTab("copy")}
-                  className={btnOutline}
-                >
-                  คัดลอกด้วยโค้ด
-                </button>
-                <Link
-                  href={`/admin/branches/${id}/menu/new`}
-                  className={`inline-flex items-center gap-1.5 ${btnPrimary}`}
-                >
-                  <IconPlus size={16} />
-                  เพิ่มเมนู
-                </Link>
+                  <option value="ALL">ทุกหมวดหมู่</option>
+                  <option value="NONE">ไม่มีหมวดหมู่</option>
+                  {menuCategoryOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+                  {(
+                    [
+                      { id: "ALL", label: "ทั้งหมด" },
+                      {
+                        id: "OUT_OF_STOCK",
+                        label: `หมด${outOfStockCount ? ` (${outOfStockCount})` : ""}`,
+                      },
+                      {
+                        id: "HIDDEN",
+                        label: `ซ่อน${hiddenCount ? ` (${hiddenCount})` : ""}`,
+                      },
+                    ] as const
+                  ).map((chip) => {
+                    const active = menuStatusFilter === chip.id;
+                    return (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => setMenuStatusFilter(chip.id)}
+                        className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition ${
+                          active
+                            ? "bg-slate-900 text-white"
+                            : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        {chip.label}
+                      </button>
+                    );
+                  })}
+                  {(menuSearch ||
+                    menuCategoryFilter !== "ALL" ||
+                    menuStatusFilter !== "ALL") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuSearch("");
+                        setMenuCategoryFilter("ALL");
+                        setMenuStatusFilter("ALL");
+                      }}
+                      className="rounded-full px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                    >
+                      ล้าง
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
+            {filteredMenuItems.length === 0 ? (
+              <p className="mt-4 rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
+                {branch.menuItems.length === 0
+                  ? "ยังไม่มีเมนู — กด “เพิ่มเมนู” เพื่อสร้างรายการแรก"
+                  : "ไม่พบเมนูที่ตรงเงื่อนไข"}
+              </p>
+            ) : (
             <ul className="mt-4 space-y-2">
-              {branch.menuItems.map((m) => (
+              {filteredMenuItems.map((m) => (
                 <li
                   key={m.id}
                   className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 px-3 py-2"
@@ -950,24 +1531,30 @@ function BranchDetailContent() {
                       </p>
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      {m.category && (
+                      {m.category ? (
                         <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
                           {m.category.name}
                         </span>
-                      )}
-                      {m.isHidden && (
-                        <span className="rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700">
-                          ซ่อน
+                      ) : (
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                          ไม่มีหมวดหมู่
                         </span>
                       )}
-                      {m.isOutOfStock && (
-                        <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                          หมด
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-slate-500">
                         ลำดับ: {m.sortOrder}
                       </span>
+                    </div>
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      <AdminToggle
+                        checked={m.isHidden}
+                        onChange={(next) => toggleHidden(m.id, next)}
+                        label="ซ่อนจากลูกค้า"
+                      />
+                      <AdminToggle
+                        checked={m.isOutOfStock}
+                        onChange={(next) => toggleOutOfStock(m.id, next)}
+                        label="หมดชั่วคราว"
+                      />
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -979,13 +1566,6 @@ function BranchDetailContent() {
                     </Link>
                     <button
                       type="button"
-                      onClick={() => toggleHidden(m.id, !m.isHidden)}
-                      className={btnOutline}
-                    >
-                      {m.isHidden ? "แสดง" : "ซ่อน"}
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => deleteMenu(m.id)}
                       className={btnDanger}
                     >
@@ -995,6 +1575,7 @@ function BranchDetailContent() {
                 </li>
               ))}
             </ul>
+            )}
           </div>
         )}
 
@@ -1165,6 +1746,8 @@ function BranchDetailContent() {
                       label="รูปโปรไฟล์"
                       value={staffImageUrl}
                       onChange={setStaffImageUrl}
+                      shopCode={branch.code ?? branch.brand?.code}
+                      folder="Staff"
                       aspectClassName="aspect-square"
                       size="compact"
                     />
@@ -1340,62 +1923,156 @@ function BranchDetailContent() {
                   พื้นที่จัดส่ง
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-600">
-                  {branch.deliveryLocations.length} พื้นที่
+                  {branch.deliveryLocations.length} พื้นที่ · ตัวเลือกให้ลูกค้าตอนสั่ง
+                  (รายละเอียดที่อยู่จริงลูกค้าพิมพ์เอง)
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setLocationModalOpen(true)}
+                onClick={() => {
+                  setLocationName("");
+                  setLocationFee("0");
+                  setLocationMap(emptyLocationMap());
+                  setLocationModalOpen(true);
+                }}
                 className={`inline-flex items-center gap-1.5 ${btnPrimary}`}
               >
                 <IconPlus size={16} />
                 เพิ่มพื้นที่
               </button>
             </div>
-            <ul className="space-y-2">
+            {!branchReferencePin() && (
+              <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                ยังไม่มีหมุดร้าน — ไปแท็บตั้งค่าสาขาปักหมุดร้านก่อน
+                จะช่วยจัดกึ่งกลางแผนที่ตอนตั้งพื้นที่จัดส่ง
+              </p>
+            )}
+            {branch.deliveryLocations.length === 0 && (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-900">
+                  ลูกค้าสั่งได้แค่รับที่ร้าน
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  ยังไม่มีพื้นที่จัดส่ง — ปุ่มจัดส่งฝั่งลูกค้าจะถูกปิดจนกว่าจะเพิ่มอย่างน้อย
+                  1 โซน (ไม่บังคับถ้าสาขาเปิดเฉพาะรับที่ร้าน)
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocationName("");
+                    setLocationFee("0");
+                    setLocationMap(emptyLocationMap());
+                    setLocationModalOpen(true);
+                  }}
+                  className={`mt-3 inline-flex items-center gap-1.5 ${btnPrimary}`}
+                >
+                  <IconPlus size={16} />
+                  เพิ่มพื้นที่จัดส่ง
+                </button>
+              </div>
+            )}
+            <ul className="space-y-3">
               {branch.deliveryLocations.map((loc) => (
                 <li
                   key={loc.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3"
                 >
                   {editingLocationId === loc.id ? (
-                    <div className="flex flex-1 gap-2">
-                      <input
-                        className={adminInputClass}
-                        value={editLocationName}
-                        onChange={(e) => setEditLocationName(e.target.value)}
-                        autoFocus
+                    <div className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+                        <div>
+                          <label className={adminLabelClass}>ชื่อพื้นที่</label>
+                          <input
+                            className={adminInputClass}
+                            value={editLocationName}
+                            onChange={(e) => setEditLocationName(e.target.value)}
+                            autoFocus
+                          />
+                        </div>
+                        <div>
+                          <label className={adminLabelClass}>ค่าส่ง (฿)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="1"
+                            className={adminInputClass}
+                            value={editLocationFee}
+                            onChange={(e) => setEditLocationFee(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <AdminMapLocationPicker
+                        value={editLocationMap}
+                        onChange={setEditLocationMap}
+                        addressLabel="ที่อยู่โซน (ไม่บังคับ · ช่วย admin)"
+                        addressPlaceholder="ที่อยู่หรือจุดอ้างอิงของพื้นที่นี้"
+                        referencePin={branchReferencePin()}
+                        onSuggestLabel={(label) => {
+                          if (!editLocationName.trim()) {
+                            setEditLocationName(label);
+                          }
+                        }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => renameLocation(loc.id)}
-                        className={btnPrimary}
-                      >
-                        บันทึก
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingLocationId(null)}
-                        className={btnOutline}
-                      >
-                        ยกเลิก
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingLocationId(null)}
+                          className={btnOutline}
+                        >
+                          ยกเลิก
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => saveLocation(loc.id)}
+                          className={btnPrimary}
+                        >
+                          บันทึก
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <>
-                      <span className="font-medium text-gray-900">
-                        {loc.name}
-                      </span>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900">
+                          {loc.name}
+                          <span className="ml-2 text-sm font-normal text-slate-500">
+                            ค่าส่ง ฿
+                            {Number(loc.deliveryFee || 0).toLocaleString("th-TH")}
+                          </span>
+                        </p>
+                        {loc.address ? (
+                          <p className="mt-1 text-sm text-slate-500 line-clamp-2">
+                            {loc.address}
+                          </p>
+                        ) : null}
+                        {loc.latitude != null && loc.longitude != null ? (
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            {loc.latitude}, {loc.longitude}
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            ยังไม่มีหมุดโซน
+                          </p>
+                        )}
+                      </div>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => {
                             setEditingLocationId(loc.id);
                             setEditLocationName(loc.name);
+                            setEditLocationFee(
+                              String(Number(loc.deliveryFee || 0)),
+                            );
+                            setEditLocationMap({
+                              address: loc.address ?? "",
+                              latitude: loc.latitude ?? null,
+                              longitude: loc.longitude ?? null,
+                            });
                           }}
                           className={btnOutline}
                         >
-                          เปลี่ยนชื่อ
+                          แก้ไข
                         </button>
                         <button
                           type="button"
@@ -1405,7 +2082,7 @@ function BranchDetailContent() {
                           ลบ
                         </button>
                       </div>
-                    </>
+                    </div>
                   )}
                 </li>
               ))}
@@ -1414,21 +2091,46 @@ function BranchDetailContent() {
             <AdminModal
               open={locationModalOpen}
               title="เพิ่มพื้นที่จัดส่ง"
-              description="เช่น หอพัก อาคาร หรือโซนที่ร้านส่งถึง"
+              description="ตั้งชื่อโซน ค่าส่ง และใช้แผนที่ (หมุดร้านอ้างอิง) เพื่อช่วยจัดจุด"
               onClose={() => setLocationModalOpen(false)}
-              maxWidthClassName="max-w-lg"
+              maxWidthClassName="max-w-2xl"
             >
-              <form onSubmit={addLocation} className="p-5">
-                <label className={adminLabelClass}>ชื่อพื้นที่</label>
-                <input
-                  className={adminInputClass}
-                  placeholder="เช่น หอพัก A"
-                  value={locationName}
-                  onChange={(e) => setLocationName(e.target.value)}
-                  required
-                  autoFocus
+              <form onSubmit={addLocation} className="space-y-4 p-5">
+                <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+                  <div>
+                    <label className={adminLabelClass}>ชื่อพื้นที่</label>
+                    <input
+                      className={adminInputClass}
+                      placeholder="เช่น หอพัก A"
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className={adminLabelClass}>ค่าส่ง (บาท)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      className={adminInputClass}
+                      value={locationFee}
+                      onChange={(e) => setLocationFee(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <AdminMapLocationPicker
+                  value={locationMap}
+                  onChange={setLocationMap}
+                  addressLabel="ที่อยู่โซน (ไม่บังคับ · ช่วย admin)"
+                  addressPlaceholder="ค้นหาหรือปักหมุด — ใช้เป็นจุดอ้างอิงโซน"
+                  referencePin={branchReferencePin()}
+                  onSuggestLabel={(label) => {
+                    if (!locationName.trim()) setLocationName(label);
+                  }}
                 />
-                <div className="mt-5 flex justify-end gap-2 border-t border-gray-100 pt-4">
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                   <button
                     type="button"
                     onClick={() => setLocationModalOpen(false)}
@@ -1450,101 +2152,402 @@ function BranchDetailContent() {
             <div className="border-b border-gray-100 bg-gradient-to-r from-red-50 via-white to-orange-50 px-5 py-4">
               <h3 className="font-semibold text-gray-900">ตั้งค่าสาขา</h3>
               <p className="mt-0.5 text-sm text-gray-600">
-                อัปโหลดรูปหน้าร้าน และข้อมูลที่ใช้แสดงฝั่งลูกค้า
+                จัดการสถานะรับออเดอร์ ข้อมูลร้าน แผนที่ และเวลาทำการ
               </p>
             </div>
-            <form onSubmit={saveBranch} className="p-5">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,300px)_1fr]">
-                <ImageField
-                  label="รูปสาขา"
-                  value={settings.imageUrl}
-                  onChange={(url) =>
-                    setSettings((s) => ({ ...s, imageUrl: url }))
+            <form onSubmit={saveBranch} className="space-y-8 p-5">
+              {/* 1. Daily ops status */}
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    สถานะการรับออเดอร์
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    ใช้บ่อย — เปิด/ปิดร้านและวิธีรับออเดอร์
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">
+                        สถานะร้านตอนนี้
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {settings.isOpen
+                          ? "ร้านเปิด — กดปิดร้านถ้าต้องการหยุดรับออเดอร์ชั่วคราว"
+                          : "ร้านปิดชั่วคราว — ลูกค้าสั่งไม่ได้จนกว่าจะเปิดใหม่"}
+                      </p>
+                    </div>
+                    {settings.isOpen ? (
+                      <button
+                        type="button"
+                        className={`${btnDanger} shrink-0`}
+                        onClick={() =>
+                          patchBranchSetting(
+                            { isOpen: false },
+                            {
+                              successMessage: "ปิดร้านแล้ว",
+                              errorTitle: "ปิดร้านไม่สำเร็จ",
+                              confirm: {
+                                title: "ปิดร้าน?",
+                                message:
+                                  "ยืนยันปิดร้านชั่วคราว ลูกค้าจะไม่สามารถสั่งได้จนกว่าคุณจะเปิดร้านอีกครั้ง",
+                                confirmLabel: "ปิดร้าน",
+                              },
+                              onSuccessLocal: () =>
+                                setSettings((s) => ({ ...s, isOpen: false })),
+                            },
+                          )
+                        }
+                      >
+                        ปิดร้าน
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${btnPrimary} shrink-0`}
+                        onClick={() =>
+                          patchBranchSetting(
+                            { isOpen: true },
+                            {
+                              successMessage: "เปิดร้านแล้ว",
+                              errorTitle: "เปิดร้านไม่สำเร็จ",
+                              onSuccessLocal: () =>
+                                setSettings((s) => ({ ...s, isOpen: true })),
+                            },
+                          )
+                        }
+                      >
+                        เปิดร้าน
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">
+                        รับสั่งล่วงหน้า
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {settings.allowAdvanceOrder
+                          ? "เปิดอยู่ — สั่งได้เฉพาะวันเดียวกันก่อนถึงเวลาเปิดรอบถัดไป"
+                          : "ปิดอยู่ — นอกเวลาร้านแล้วลูกค้าสั่งไม่ได้"}
+                      </p>
+                    </div>
+                    {settings.allowAdvanceOrder ? (
+                      <button
+                        type="button"
+                        className={`${btnDanger} shrink-0`}
+                        onClick={() =>
+                          patchBranchSetting(
+                            { allowAdvanceOrder: false },
+                            {
+                              successMessage: "ปิดรับสั่งล่วงหน้าแล้ว",
+                              errorTitle: "บันทึกไม่สำเร็จ",
+                              onSuccessLocal: () =>
+                                setSettings((s) => ({
+                                  ...s,
+                                  allowAdvanceOrder: false,
+                                })),
+                            },
+                          )
+                        }
+                      >
+                        ปิดรับล่วงหน้า
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${btnPrimary} shrink-0`}
+                        onClick={() =>
+                          patchBranchSetting(
+                            { allowAdvanceOrder: true },
+                            {
+                              successMessage: "เปิดรับสั่งล่วงหน้าแล้ว",
+                              errorTitle: "บันทึกไม่สำเร็จ",
+                              onSuccessLocal: () =>
+                                setSettings((s) => ({
+                                  ...s,
+                                  allowAdvanceOrder: true,
+                                })),
+                            },
+                          )
+                        }
+                      >
+                        เปิดรับล่วงหน้า
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">
+                        รับออเดอร์อัตโนมัติ
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {settings.autoAcceptOrders
+                          ? "เปิดอยู่ — ออเดอร์ใหม่เข้าสถานะกำลังเตรียมทันที"
+                          : "ปิดอยู่ — พนักงานต้องกดรับออเดอร์เอง"}
+                      </p>
+                    </div>
+                    {settings.autoAcceptOrders ? (
+                      <button
+                        type="button"
+                        className={`${btnDanger} shrink-0`}
+                        onClick={() =>
+                          patchBranchSetting(
+                            { autoAcceptOrders: false },
+                            {
+                              successMessage: "ปิดรับอัตโนมัติแล้ว",
+                              errorTitle: "บันทึกไม่สำเร็จ",
+                              onSuccessLocal: () =>
+                                setSettings((s) => ({
+                                  ...s,
+                                  autoAcceptOrders: false,
+                                })),
+                            },
+                          )
+                        }
+                      >
+                        ปิดรับอัตโนมัติ
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${btnPrimary} shrink-0`}
+                        onClick={() =>
+                          patchBranchSetting(
+                            { autoAcceptOrders: true },
+                            {
+                              successMessage: "เปิดรับอัตโนมัติแล้ว",
+                              errorTitle: "บันทึกไม่สำเร็จ",
+                              onSuccessLocal: () =>
+                                setSettings((s) => ({
+                                  ...s,
+                                  autoAcceptOrders: true,
+                                })),
+                            },
+                          )
+                        }
+                      >
+                        เปิดรับอัตโนมัติ
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Identity */}
+              <div className="space-y-3 border-t border-slate-100 pt-8">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    ตัวตนสาขา
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    รูป ชื่อ และเบอร์ที่ลูกค้าเห็น
+                  </p>
+                </div>
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,300px)_1fr]">
+                  <ImageField
+                    label="รูปสาขา"
+                    value={settings.imageUrl}
+                    onChange={(url) =>
+                      setSettings((s) => ({ ...s, imageUrl: url }))
+                    }
+                    shopCode={settings.code || branch.code || branch.brand?.code}
+                    folder="Branch"
+                    aspectClassName="aspect-[4/3]"
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2 content-start">
+                    <div className="sm:col-span-2">
+                      <p className="text-xs text-slate-500">
+                        ถ้าไม่กรอกชื่อไทย/อังกฤษ ระบบจะใช้ชื่อหลักแทน
+                      </p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={adminLabelClass}>ชื่อสาขา (หลัก)</label>
+                      <input
+                        className={adminInputClass}
+                        value={settings.name}
+                        onChange={(e) => {
+                          const name = e.target.value;
+                          setSettings((s) => ({
+                            ...s,
+                            name,
+                            ...(!codeManual
+                              ? { code: slugifyCode(name) }
+                              : {}),
+                          }));
+                        }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className={adminLabelClass}>ชื่อสาขาภาษาไทย</label>
+                      <input
+                        className={adminInputClass}
+                        value={settings.nameTh}
+                        onChange={(e) =>
+                          setSettings((s) => ({ ...s, nameTh: e.target.value }))
+                        }
+                        placeholder="ว่าง = ใช้ชื่อหลัก"
+                      />
+                    </div>
+                    <div>
+                      <label className={adminLabelClass}>
+                        ชื่อสาขาภาษาอังกฤษ
+                      </label>
+                      <input
+                        className={adminInputClass}
+                        value={settings.nameEn}
+                        onChange={(e) =>
+                          setSettings((s) => ({ ...s, nameEn: e.target.value }))
+                        }
+                        placeholder="ว่าง = ใช้ชื่อหลัก"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={adminLabelClass}>เบอร์โทรสาขา</label>
+                      <PhoneInput
+                        value={settings.phone}
+                        onChange={(digits) =>
+                          setSettings((s) => ({ ...s, phone: digits }))
+                        }
+                        className={adminInputClass}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Address + map */}
+              <div className="space-y-3 border-t border-slate-100 pt-8">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    ที่อยู่และแผนที่
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    หมุดร้านใช้เป็นจุดอ้างอิงตอนตั้งพื้นที่จัดส่งด้วย
+                  </p>
+                </div>
+                <BranchLocationPicker
+                  value={{
+                    address: settings.address,
+                    latitude: settings.latitude,
+                    longitude: settings.longitude,
+                  }}
+                  onChange={(loc) =>
+                    setSettings((s) => ({
+                      ...s,
+                      address: loc.address,
+                      latitude: loc.latitude,
+                      longitude: loc.longitude,
+                    }))
                   }
-                  aspectClassName="aspect-[4/3]"
                 />
-                <div className="grid gap-3 sm:grid-cols-2 content-start">
-                  <div className="sm:col-span-2">
-                    <p className="text-sm font-semibold text-gray-900">
-                      ชื่อสาขา
-                    </p>
-                    <p className="mt-0.5 text-xs text-gray-500">
-                      ถ้าไม่กรอกชื่อไทย/อังกฤษ ระบบจะใช้ชื่อหลักแทน
-                    </p>
-                  </div>
-                  <div>
-                    <label className={adminLabelClass}>ชื่อสาขา (หลัก)</label>
-                    <input
-                      className={adminInputClass}
-                      value={settings.name}
-                      onChange={(e) => {
-                        const name = e.target.value;
-                        setSettings((s) => ({
-                          ...s,
-                          name,
-                          ...(!codeManual
-                            ? { code: slugifyCode(name) }
-                            : {}),
-                        }));
-                      }}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className={adminLabelClass}>แบรนด์</label>
-                    <select
-                      className={adminInputClass}
-                      value={settings.brandId}
-                      onChange={(e) =>
-                        setSettings((s) => ({ ...s, brandId: e.target.value }))
+              </div>
+
+              {/* 4. Hours */}
+              <div className="space-y-3 border-t border-slate-100 pt-8">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    เวลาทำการ
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    แยกเวลารับที่ร้านกับเดลิเวอรีได้
+                  </p>
+                </div>
+                <div className="space-y-6">
+                  {settings.storefrontHours && (
+                    <BranchHoursEditor
+                      title="เวลาเปิด–ปิดหน้าร้าน"
+                      description="ใช้กับออเดอร์รับที่ร้าน (Pickup)"
+                      value={settings.storefrontHours}
+                      onChange={(storefrontHours) =>
+                        setSettings((s) => ({ ...s, storefrontHours }))
                       }
-                    >
-                      <option value="">— ไม่ระบุ —</option>
-                      {brands.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={adminLabelClass}>ชื่อสาขาภาษาไทย</label>
-                    <input
-                      className={adminInputClass}
-                      value={settings.nameTh}
-                      onChange={(e) =>
-                        setSettings((s) => ({ ...s, nameTh: e.target.value }))
-                      }
-                      placeholder="ว่าง = ใช้ชื่อหลัก"
                     />
-                  </div>
-                  <div>
-                    <label className={adminLabelClass}>ชื่อสาขาภาษาอังกฤษ</label>
-                    <input
-                      className={adminInputClass}
-                      value={settings.nameEn}
-                      onChange={(e) =>
-                        setSettings((s) => ({ ...s, nameEn: e.target.value }))
-                      }
-                      placeholder="ว่าง = ใช้ชื่อหลัก"
-                    />
-                  </div>
+                  )}
+                  {settings.deliveryHours && settings.storefrontHours && (
+                    <div className="space-y-3">
+                      {branch.deliveryLocations.length === 0 && (
+                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                          ยังไม่มีพื้นที่จัดส่ง — ตารางเวลานี้ยังไม่มีผลกับลูกค้า
+                          จนกว่าจะเพิ่มอย่างน้อย 1 โซน{" "}
+                          <button
+                            type="button"
+                            onClick={() => setTab("locations")}
+                            className="font-semibold underline underline-offset-2"
+                          >
+                            ไปเพิ่มพื้นที่
+                          </button>
+                        </p>
+                      )}
+                      <BranchHoursEditor
+                        title="เวลาเปิด–ปิดเดลิเวอรี"
+                        description="ใช้กับออเดอร์จัดส่ง"
+                        value={settings.deliveryHours}
+                        onChange={(deliveryHours) =>
+                          setSettings((s) => ({ ...s, deliveryHours }))
+                        }
+                        extraActions={
+                          <button
+                            type="button"
+                            className={btnOutline}
+                            onClick={() =>
+                              setSettings((s) => ({
+                                ...s,
+                                deliveryHours: s.storefrontHours
+                                  ? s.storefrontHours.map((d) => ({
+                                      ...d,
+                                      slots: d.slots.map((slot) => ({
+                                        ...slot,
+                                      })),
+                                    }))
+                                  : s.deliveryHours,
+                              }))
+                            }
+                          >
+                            คัดลอกจากหน้าร้าน
+                          </button>
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. Types & price */}
+              <div className="space-y-3 border-t border-slate-100 pt-8">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    ประเภทและช่วงราคา
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    แสดงให้ลูกค้าเวลาเลือกร้าน
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className={adminLabelClass}>ประเภทหลัก</label>
                     <select
                       className={adminInputClass}
                       value={settings.primaryCategory}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const value = e.target.value;
                         setSettings((s) => ({
                           ...s,
-                          primaryCategory: e.target.value,
-                        }))
-                      }
+                          primaryCategory: value,
+                          secondaryCategories: s.secondaryCategories.filter(
+                            (c) => c && c !== value,
+                          ),
+                        }));
+                      }}
                     >
                       <option value="">— ไม่ระบุ —</option>
-                      {RESTAURANT_CATEGORIES.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}
+                      {restaurantTypes.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.name}
                         </option>
                       ))}
                     </select>
@@ -1552,8 +2555,8 @@ function BranchDetailContent() {
                   <div className="sm:col-span-2">
                     <label className={adminLabelClass}>
                       ประเภทรอง{" "}
-                      <span className="font-normal text-gray-400">
-                        (ไม่บังคับ · สูงสุด 2)
+                      <span className="font-normal text-slate-400">
+                        (ไม่บังคับ · สูงสุด 2 · ไม่ซ้ำกับหลัก)
                       </span>
                     </label>
                     <div className="mt-1 space-y-2">
@@ -1571,19 +2574,19 @@ function BranchDetailContent() {
                             }
                           >
                             <option value="">— เลือกประเภท —</option>
-                            {RESTAURANT_CATEGORIES.map((c) => (
+                            {restaurantTypes.map((c) => (
                               <option
-                                key={c.id}
-                                value={c.id}
+                                key={c.code}
+                                value={c.code}
                                 disabled={
-                                  c.id === settings.primaryCategory ||
+                                  c.code === settings.primaryCategory ||
                                   (settings.secondaryCategories.includes(
-                                    c.id,
+                                    c.code,
                                   ) &&
-                                    c.id !== catId)
+                                    c.code !== catId)
                                 }
                               >
-                                {c.label}
+                                {c.name}
                               </option>
                             ))}
                           </select>
@@ -1650,7 +2653,21 @@ function BranchDetailContent() {
                       })}
                     </div>
                   </div>
-                  <div className="sm:col-span-2">
+                </div>
+              </div>
+
+              {/* 6. Messages */}
+              <div className="space-y-3 border-t border-slate-100 pt-8">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    ข้อความหน้าร้าน
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    ไม่บังคับ — แสดงถึงลูกค้าบนหน้าร้าน
+                  </p>
+                </div>
+                <div className="grid gap-3">
+                  <div>
                     <label className={adminLabelClass}>ข้อความเจ้าของร้าน</label>
                     <textarea
                       className={`${adminInputClass} min-h-[80px]`}
@@ -1665,7 +2682,7 @@ function BranchDetailContent() {
                       rows={3}
                     />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div>
                     <label className={adminLabelClass}>ข้อความเพิ่มเติม</label>
                     <textarea
                       className={`${adminInputClass} min-h-[80px]`}
@@ -1679,6 +2696,37 @@ function BranchDetailContent() {
                       placeholder="ข้อมูลเสริม เช่น หมายเหตุการสั่ง / จุดสังเกตร้าน"
                       rows={3}
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* 7. Brand + URL (rare) */}
+              <div className="space-y-3 border-t border-slate-100 pt-8">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    แบรนด์และลิงก์สาขา
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    ตั้งค่าน้อยครั้ง — ผูกแบรนด์และรหัส URL ของสาขา
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className={adminLabelClass}>แบรนด์</label>
+                    <select
+                      className={adminInputClass}
+                      value={settings.brandId}
+                      onChange={(e) =>
+                        setSettings((s) => ({ ...s, brandId: e.target.value }))
+                      }
+                    >
+                      <option value="">— ไม่ระบุ —</option>
+                      {brands.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="sm:col-span-2">
                     {!codeFieldOpen ? (
@@ -1776,254 +2824,86 @@ function BranchDetailContent() {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <label className={adminLabelClass}>เบอร์โทรสาขา</label>
-                    <PhoneInput
-                      value={settings.phone}
-                      onChange={(digits) =>
-                        setSettings((s) => ({ ...s, phone: digits }))
-                      }
-                      className={adminInputClass}
-                    />
-                  </div>
-                  <div className="space-y-3 sm:col-span-2">
-                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-gray-900">
-                          สถานะร้านตอนนี้
-                        </p>
-                        <p className="mt-0.5 text-xs text-gray-500">
-                          {settings.isOpen
-                            ? "ร้านเปิด — กดปิดร้านถ้าต้องการหยุดรับออเดอร์ชั่วคราว"
-                            : "ร้านปิดชั่วคราว — ลูกค้าสั่งไม่ได้จนกว่าจะเปิดใหม่"}
-                        </p>
-                      </div>
-                      {settings.isOpen ? (
-                        <button
-                          type="button"
-                          className={`${btnDanger} shrink-0`}
-                          onClick={() =>
-                            patchBranchSetting(
-                              { isOpen: false },
-                              {
-                                successMessage: "ปิดร้านแล้ว",
-                                errorTitle: "ปิดร้านไม่สำเร็จ",
-                                confirm: {
-                                  title: "ปิดร้าน?",
-                                  message:
-                                    "ยืนยันปิดร้านชั่วคราว ลูกค้าจะไม่สามารถสั่งได้จนกว่าคุณจะเปิดร้านอีกครั้ง",
-                                  confirmLabel: "ปิดร้าน",
-                                },
-                                onSuccessLocal: () =>
-                                  setSettings((s) => ({ ...s, isOpen: false })),
-                              },
-                            )
-                          }
-                        >
-                          ปิดร้าน
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`${btnPrimary} shrink-0`}
-                          onClick={() =>
-                            patchBranchSetting(
-                              { isOpen: true },
-                              {
-                                successMessage: "เปิดร้านแล้ว",
-                                errorTitle: "เปิดร้านไม่สำเร็จ",
-                                onSuccessLocal: () =>
-                                  setSettings((s) => ({ ...s, isOpen: true })),
-                              },
-                            )
-                          }
-                        >
-                          เปิดร้าน
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-gray-900">
-                          รับสั่งล่วงหน้า
-                        </p>
-                        <p className="mt-0.5 text-xs text-gray-500">
-                          {settings.allowAdvanceOrder
-                            ? "เปิดอยู่ — สั่งได้เฉพาะวันเดียวกันก่อนถึงเวลาเปิดรอบถัดไป"
-                            : "ปิดอยู่ — นอกเวลาร้านแล้วลูกค้าสั่งไม่ได้"}
-                        </p>
-                      </div>
-                      {settings.allowAdvanceOrder ? (
-                        <button
-                          type="button"
-                          className={`${btnDanger} shrink-0`}
-                          onClick={() =>
-                            patchBranchSetting(
-                              { allowAdvanceOrder: false },
-                              {
-                                successMessage: "ปิดรับสั่งล่วงหน้าแล้ว",
-                                errorTitle: "บันทึกไม่สำเร็จ",
-                                onSuccessLocal: () =>
-                                  setSettings((s) => ({
-                                    ...s,
-                                    allowAdvanceOrder: false,
-                                  })),
-                              },
-                            )
-                          }
-                        >
-                          ปิดรับล่วงหน้า
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`${btnPrimary} shrink-0`}
-                          onClick={() =>
-                            patchBranchSetting(
-                              { allowAdvanceOrder: true },
-                              {
-                                successMessage: "เปิดรับสั่งล่วงหน้าแล้ว",
-                                errorTitle: "บันทึกไม่สำเร็จ",
-                                onSuccessLocal: () =>
-                                  setSettings((s) => ({
-                                    ...s,
-                                    allowAdvanceOrder: true,
-                                  })),
-                              },
-                            )
-                          }
-                        >
-                          เปิดรับล่วงหน้า
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-gray-900">
-                          รับออเดอร์อัตโนมัติ
-                        </p>
-                        <p className="mt-0.5 text-xs text-gray-500">
-                          {settings.autoAcceptOrders
-                            ? "เปิดอยู่ — ออเดอร์ใหม่เข้าสถานะกำลังเตรียมทันที"
-                            : "ปิดอยู่ — พนักงานต้องกดรับออเดอร์เอง"}
-                        </p>
-                      </div>
-                      {settings.autoAcceptOrders ? (
-                        <button
-                          type="button"
-                          className={`${btnDanger} shrink-0`}
-                          onClick={() =>
-                            patchBranchSetting(
-                              { autoAcceptOrders: false },
-                              {
-                                successMessage: "ปิดรับอัตโนมัติแล้ว",
-                                errorTitle: "บันทึกไม่สำเร็จ",
-                                onSuccessLocal: () =>
-                                  setSettings((s) => ({
-                                    ...s,
-                                    autoAcceptOrders: false,
-                                  })),
-                              },
-                            )
-                          }
-                        >
-                          ปิดรับอัตโนมัติ
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`${btnPrimary} shrink-0`}
-                          onClick={() =>
-                            patchBranchSetting(
-                              { autoAcceptOrders: true },
-                              {
-                                successMessage: "เปิดรับอัตโนมัติแล้ว",
-                                errorTitle: "บันทึกไม่สำเร็จ",
-                                onSuccessLocal: () =>
-                                  setSettings((s) => ({
-                                    ...s,
-                                    autoAcceptOrders: true,
-                                  })),
-                              },
-                            )
-                          }
-                        >
-                          เปิดรับอัตโนมัติ
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="sm:col-span-2 space-y-6 border-t border-gray-100 pt-5">
-                    <BranchLocationPicker
-                      value={{
-                        address: settings.address,
-                        latitude: settings.latitude,
-                        longitude: settings.longitude,
-                      }}
-                      onChange={(loc) =>
-                        setSettings((s) => ({
-                          ...s,
-                          address: loc.address,
-                          latitude: loc.latitude,
-                          longitude: loc.longitude,
-                        }))
-                      }
-                    />
-                    {settings.storefrontHours && (
-                      <BranchHoursEditor
-                        title="เวลาเปิด–ปิดหน้าร้าน"
-                        description="ใช้กับออเดอร์รับที่ร้าน (Pickup)"
-                        value={settings.storefrontHours}
-                        onChange={(storefrontHours) =>
-                          setSettings((s) => ({ ...s, storefrontHours }))
-                        }
-                      />
-                    )}
-                    {settings.deliveryHours && settings.storefrontHours && (
-                      <BranchHoursEditor
-                        title="เวลาเปิด–ปิดเดลิเวอรี"
-                        description="ใช้กับออเดอร์จัดส่ง"
-                        value={settings.deliveryHours}
-                        onChange={(deliveryHours) =>
-                          setSettings((s) => ({ ...s, deliveryHours }))
-                        }
-                        extraActions={
-                          <button
-                            type="button"
-                            className={btnOutline}
-                            onClick={() =>
-                              setSettings((s) => ({
-                                ...s,
-                                deliveryHours: s.storefrontHours
-                                  ? s.storefrontHours.map((d) => ({
-                                      ...d,
-                                      slots: d.slots.map((slot) => ({
-                                        ...slot,
-                                      })),
-                                    }))
-                                  : s.deliveryHours,
-                              }))
-                            }
-                          >
-                            คัดลอกจากหน้าร้าน
-                          </button>
-                        }
-                      />
-                    )}
-                  </div>
-                  <div className="sm:col-span-2">
-                    <button type="submit" className={`${btnPrimary} w-full`}>
-                      บันทึกตั้งค่า
-                    </button>
-                  </div>
                 </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-5">
+                <button type="submit" className={`${btnPrimary} w-full sm:w-auto`}>
+                  บันทึกตั้งค่า
+                </button>
               </div>
             </form>
           </section>
         )}
       </div>
+
+      <AdminModal
+        open={menuSetupModalOpen}
+        title="ยังตั้งค่าเมนูไม่ครบ"
+        description="ก่อนเพิ่มเมนู ต้องมีหมวดหมู่และชุดตัวเลือกอย่างน้อยอย่างละ 1 รายการ กดการ์ดด้านล่างเพื่อไปสร้าง"
+        onClose={() => setMenuSetupModalOpen(false)}
+        maxWidthClassName="max-w-lg"
+      >
+        <div className="space-y-3 p-5">
+          {(branch.menuCategories?.length ?? 0) === 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setMenuSetupModalOpen(false);
+                setTab("categories");
+              }}
+              className="flex w-full items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
+            >
+              <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 shadow-sm">
+                #
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-slate-900">
+                  ยังไม่มีหมวดหมู่
+                </span>
+                <span className="mt-0.5 block text-sm text-slate-600">
+                  ไปแท็บหมวดหมู่เพื่อสร้าง เช่น เมนูปิ้ง ลูกชิ้น เครื่องดื่ม
+                </span>
+                <span className="mt-2 inline-block text-sm font-medium text-red-600">
+                  ไปสร้างหมวดหมู่ →
+                </span>
+              </span>
+            </button>
+          )}
+          {(branch.optionGroups?.length ?? 0) === 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setMenuSetupModalOpen(false);
+                setTab("options");
+              }}
+              className="flex w-full items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-left transition hover:border-sky-300 hover:bg-sky-50"
+            >
+              <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">
+                ≡
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-slate-900">
+                  ยังไม่มีตัวเลือก
+                </span>
+                <span className="mt-0.5 block text-sm text-slate-600">
+                  ไปแท็บตัวเลือกเพื่อสร้างชุด เช่น ระดับความเผ็ด ซอส
+                </span>
+                <span className="mt-2 inline-block text-sm font-medium text-red-600">
+                  ไปสร้างตัวเลือก →
+                </span>
+              </span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMenuSetupModalOpen(false)}
+            className={`w-full ${btnOutline}`}
+          >
+            ปิด
+          </button>
+        </div>
+      </AdminModal>
     </div>
   );
 }

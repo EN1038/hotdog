@@ -12,16 +12,23 @@ import {
   type OrderHistoryFilter,
 } from "@/components/customer/CustomerOrderHistoryList";
 import { IconBack, IconRefresh } from "@/components/icons";
+import { LoadingState } from "@/components/LoadingState";
 
 export default function HistoryPage() {
   const router = useRouter();
   const { session, sessionChecked } = useCustomer();
   const [orders, setOrders] = useState<OrderData[]>([]);
   const [filter, setFilter] = useState<OrderHistoryFilter>("ALL");
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/customer/orders");
-    if (res.ok) setOrders(await res.json());
+    setLoading(true);
+    try {
+      const res = await fetch("/api/customer/orders");
+      if (res.ok) setOrders(await res.json());
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -40,6 +47,14 @@ export default function HistoryPage() {
     () => orders.filter((o) => matchesOrderHistoryFilter(o.status, filter)),
     [orders, filter],
   );
+
+  if (!sessionChecked || (session && loading)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
+        <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#f5f5f6] pb-8">

@@ -1,43 +1,48 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/components/LoginForm";
+import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import {
   IconClose,
   IconHome,
-  IconPackage,
+  IconReceipt,
   IconStore,
   IconUser,
 } from "@/components/icons";
 
-export const adminInputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400";
-
-export const adminLabelClass = "mb-1 block text-sm font-semibold text-gray-800";
-
-/** Shared admin button styles (desktop hover via `@media (hover: hover)`) */
-export const btnPrimary =
-  "cursor-pointer rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 hover:shadow active:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50";
-
-export const btnDark =
-  "cursor-pointer rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-900 hover:shadow active:bg-black disabled:cursor-not-allowed disabled:opacity-50";
-
-export const btnOutline =
-  "cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50";
-
-export const btnDanger =
-  "cursor-pointer rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:border-red-400 hover:bg-red-50 hover:text-red-800 active:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50";
-
-export const btnPrimaryXl =
-  "inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 hover:shadow active:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50";
+export {
+  adminInputClass,
+  adminLabelClass,
+  adminCardClass,
+  adminTableWrapClass,
+  adminTableClass,
+  adminTheadClass,
+  adminThClass,
+  adminTrClass,
+  adminTrHoverClass,
+  adminSelectClass,
+  adminEmptyClass,
+  btnPrimary,
+  btnDark,
+  btnOutline,
+  btnDanger,
+  btnPrimaryXl,
+  AdminPageHeader,
+  AdminEmptyState,
+  AdminLoadingState,
+} from "@/components/admin/admin-ui";
 
 type NavItem = {
   href: string;
   label: string;
   exact?: boolean;
   match?: (pathname: string) => boolean;
+  platformOnly?: boolean;
+  /** Hide from platform admins (brand operator pages) */
+  brandAdminOnly?: boolean;
   icon: React.ComponentType<{ size?: number; className?: string }>;
 };
 
@@ -55,7 +60,9 @@ const NAV_GROUPS: NavGroup[] = [
         label: "แดชบอร์ด",
         exact: true,
         match: (pathname) =>
-          pathname === "/admin" || pathname.startsWith("/admin/branches"),
+          pathname === "/admin" ||
+          pathname.startsWith("/admin/branches") ||
+          /^\/admin\/brands\/[^/]+/.test(pathname),
         icon: IconHome,
       },
     ],
@@ -64,24 +71,27 @@ const NAV_GROUPS: NavGroup[] = [
     title: "ร้านค้า",
     items: [
       {
-        href: "/admin/menu",
-        label: "เมนู",
-        icon: IconPackage,
-      },
-      {
         href: "/admin/brands",
-        label: "แบรนด์",
+        label: "โปรไฟล์แบรนด์",
+        exact: true,
+        match: (pathname) => pathname === "/admin/brands",
+        brandAdminOnly: true,
         icon: IconStore,
       },
     ],
   },
   {
-    title: "ลูกค้า",
+    title: "ออเดอร์",
     items: [
       {
         href: "/admin/customers",
-        label: "ลูกค้า",
+        label: "ออเดอร์",
         icon: IconUser,
+      },
+      {
+        href: "/admin/logs",
+        label: "ประวัติการใช้งาน",
+        icon: IconReceipt,
       },
     ],
   },
@@ -89,13 +99,47 @@ const NAV_GROUPS: NavGroup[] = [
     title: "ระบบ",
     items: [
       {
+        href: "/admin/restaurant-types",
+        label: "ประเภทร้าน",
+        platformOnly: true,
+        icon: IconTag,
+      },
+      {
         href: "/admin/site",
-        label: "ตั้งค่าเว็บ",
+        label: "ตั้งค่าแพลตฟอร์ม",
+        platformOnly: true,
         icon: IconSettings,
       },
     ],
   },
 ];
+
+function IconTag({
+  size = 20,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className ? `block shrink-0 ${className}` : "block shrink-0"}
+      aria-hidden
+    >
+      <path
+        d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V4h9l8.6 8.6a2 2 0 010 2.8z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="7.5" cy="8.5" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
 
 function IconSettings({
   size = 20,
@@ -161,21 +205,55 @@ function isActive(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
+function filterNavGroups(isPlatformAdmin: boolean): NavGroup[] {
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items
+      .map((item) => {
+        if (item.href === "/admin" && isPlatformAdmin) {
+          return { ...item, label: "แบรนด์" };
+        }
+        return item;
+      })
+      .filter((item) => {
+        if (item.platformOnly && !isPlatformAdmin) return false;
+        if (item.brandAdminOnly && isPlatformAdmin) return false;
+        return true;
+      }),
+  })).filter((group) => group.items.length > 0);
+}
+
+function RoleBadge({ isPlatformAdmin }: { isPlatformAdmin: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+        isPlatformAdmin
+          ? "bg-slate-900 text-white"
+          : "bg-amber-100 text-amber-800"
+      }`}
+    >
+      {isPlatformAdmin ? "แพลตฟอร์ม" : "แบรนด์"}
+    </span>
+  );
+}
+
 function SidebarNav({
   pathname,
+  navGroups,
   onNavigate,
 }: {
   pathname: string;
+  navGroups: NavGroup[];
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
-      {NAV_GROUPS.map((group) => (
+    <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+      {navGroups.map((group) => (
         <div key={group.title}>
-          <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             {group.title}
           </p>
-          <ul className="space-y-0.5">
+          <ul className="space-y-1">
             {group.items.map((item) => {
               const active = isActive(pathname, item);
               const Icon = item.icon;
@@ -186,7 +264,7 @@ function SidebarNav({
                     onClick={onNavigate}
                     className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                       active
-                        ? "bg-red-600 font-semibold text-white shadow-sm"
+                        ? "bg-red-600 font-semibold text-white shadow-md shadow-red-600/25"
                         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
@@ -206,9 +284,44 @@ function SidebarNav({
   );
 }
 
+function ShellHeader({
+  username,
+  isPlatformAdmin,
+}: {
+  username?: string;
+  isPlatformAdmin: boolean;
+}) {
+  return (
+    <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-red-50/40 px-5 py-5">
+      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-600 text-xs font-bold text-white shadow-sm shadow-red-600/30">
+        S
+      </div>
+      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-600">
+        SkillSale CMS
+      </p>
+      <h1 className="mt-1 text-base font-bold text-slate-900">
+        ระบบจัดการหลังบ้าน
+      </h1>
+      {username && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <RoleBadge isPlatformAdmin={isPlatformAdmin} />
+          <span className="truncate text-sm text-slate-600">{username}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { session } = useAdminSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isPlatformAdmin = session?.isPlatformAdmin ?? false;
+  const navGroups = useMemo(
+    () => filterNavGroups(isPlatformAdmin),
+    [isPlatformAdmin],
+  );
 
   useEffect(() => {
     setMobileOpen(false);
@@ -219,28 +332,23 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   const currentLabel =
-    NAV_GROUPS.flatMap((g) => g.items).find((item) => isActive(pathname, item))
+    navGroups.flatMap((g) => g.items).find((item) => isActive(pathname, item))
       ?.label ?? "หลังบ้าน";
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
-      {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
-        <div className="border-b border-slate-100 px-5 py-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-red-600">
-            HunterDog CMS
-          </p>
-          <h1 className="mt-1 text-base font-bold text-slate-900">
-            ระบบจัดการหลังบ้าน
-          </h1>
-        </div>
+        <ShellHeader
+          username={session?.username}
+          isPlatformAdmin={isPlatformAdmin}
+        />
 
-        <SidebarNav pathname={pathname} />
+        <SidebarNav pathname={pathname} navGroups={navGroups} />
 
         <div className="border-t border-slate-100 p-3">
           <button
             type="button"
-            onClick={() => logout()}
+            onClick={() => logout("/admin/login")}
             className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
           >
             ออกจากระบบ
@@ -248,29 +356,36 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <button
             type="button"
             aria-label="ปิดเมนู"
-            className="absolute inset-0 bg-slate-900/40"
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,85vw)] flex-col bg-white shadow-xl">
+          <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,85vw)] flex-col bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-red-600">
-                  HunterDog CMS
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-600">
+                  SkillSale CMS
                 </p>
                 <h1 className="mt-1 text-base font-bold text-slate-900">
                   ระบบจัดการหลังบ้าน
                 </h1>
+                {session?.username && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <RoleBadge isPlatformAdmin={isPlatformAdmin} />
+                    <span className="truncate text-sm text-slate-600">
+                      {session.username}
+                    </span>
+                  </div>
+                )}
               </div>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+                className="ml-2 shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
                 aria-label="ปิด"
               >
                 <IconClose size={18} />
@@ -278,12 +393,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarNav
               pathname={pathname}
+              navGroups={navGroups}
               onNavigate={() => setMobileOpen(false)}
             />
             <div className="border-t border-slate-100 p-3">
               <button
                 type="button"
-                onClick={() => logout()}
+                onClick={() => logout("/admin/login")}
                 className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
               >
                 ออกจากระบบ
@@ -294,12 +410,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:px-6">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/80 px-4 py-3.5 shadow-sm shadow-slate-900/5 backdrop-blur-md lg:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+              className="rounded-xl p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
               aria-label="เปิดเมนู"
             >
               <IconMenu size={20} />
@@ -309,13 +425,23 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 {currentLabel}
               </p>
               <p className="hidden text-xs text-slate-500 sm:block">
-                จัดการเนื้อหาและร้านค้าผ่าน CMS
+                {isPlatformAdmin
+                  ? "จัดการแพลตฟอร์มและร้านค้า"
+                  : "จัดการแบรนด์และสาขาของคุณ"}
               </p>
             </div>
           </div>
+          {session?.username && (
+            <div className="hidden shrink-0 items-center gap-2 sm:flex">
+              <RoleBadge isPlatformAdmin={isPlatformAdmin} />
+              <span className="max-w-[8rem] truncate text-sm text-slate-600 lg:max-w-[12rem]">
+                {session.username}
+              </span>
+            </div>
+          )}
         </header>
 
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 p-4 lg:p-8">{children}</main>
       </div>
     </div>
   );

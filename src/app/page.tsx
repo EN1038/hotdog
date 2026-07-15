@@ -5,8 +5,8 @@ export default function HomePage() {
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6">
       <div className="w-full max-w-md space-y-6 text-center">
         <div>
-          <h1 className="text-3xl font-bold text-red-700">HunterDog</h1>
-          <p className="mt-2 text-gray-600">ระบบจัดการร้านหมาล่า</p>
+          <h1 className="text-3xl font-bold text-red-700">SkillSale</h1>
+          <p className="mt-2 text-gray-600">ระบบสั่งอาหารออนไลน์</p>
         </div>
         <div className="space-y-3">
           <Link

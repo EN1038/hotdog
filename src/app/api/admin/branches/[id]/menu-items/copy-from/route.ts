@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { assertBrandAccess, requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { importBranchCatalog } from "@/lib/branch-import";
@@ -14,8 +14,8 @@ const copySchema = z.object({
 
 export async function POST(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: targetBranchId } = await params;
+    const { session } = await requireBranchAccess(targetBranchId);
     const body = copySchema.parse(await request.json());
 
     const [target, source] = await Promise.all([
@@ -24,6 +24,7 @@ export async function POST(request: Request, { params }: Params) {
     ]);
     if (!target) return jsonError("ไม่พบสาขาปลายทาง", 404);
     if (!source) return jsonError("ไม่พบสาขาต้นทาง", 404);
+    await assertBrandAccess(session, source.brandId);
 
     const result = await importBranchCatalog({
       sourceBranchId: body.sourceBranchId,

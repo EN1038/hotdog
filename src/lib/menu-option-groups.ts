@@ -15,6 +15,12 @@ export const menuItemOptionGroupInclude = {
 export const branchOptionGroupInclude = {
   options: { orderBy: { createdAt: "asc" as const } },
   _count: { select: { menuItemLinks: true } },
+  menuItemLinks: {
+    include: {
+      menuItem: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
 } as const;
 
 type LinkedGroup = {

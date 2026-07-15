@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { branchOptionGroupInclude } from "@/lib/menu-option-groups";
@@ -21,8 +21,8 @@ async function findBranchGroup(branchId: string, groupId: string) {
 
 export async function GET(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, groupId } = await params;
+    await requireBranchAccess(branchId);
     const group = await findBranchGroup(branchId, groupId);
     if (!group) return jsonError("ไม่พบหัวข้อตัวเลือก", 404);
     return jsonOk(group);
@@ -33,8 +33,8 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, groupId } = await params;
+    await requireBranchAccess(branchId);
     const existing = await findBranchGroup(branchId, groupId);
     if (!existing) return jsonError("ไม่พบหัวข้อตัวเลือก", 404);
 
@@ -56,8 +56,8 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, groupId } = await params;
+    await requireBranchAccess(branchId);
     const existing = await findBranchGroup(branchId, groupId);
     if (!existing) return jsonError("ไม่พบหัวข้อตัวเลือก", 404);
 

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { StaffRole } from "@prisma/client";
+import { completeCustomerLogin } from "@/lib/customer-login";
+import { isTaximailConfigured } from "@/lib/taximail";
 
 const adminSchema = z.object({
   username: z.string().min(1),
@@ -28,12 +30,36 @@ export async function POST(request: Request) {
 
     if (type === "admin") {
       const { username, password } = adminSchema.parse(body);
-      const admin = await prisma.admin.findUnique({ where: { username } });
+      const admin = await prisma.admin.findUnique({
+        where: { username },
+        include: { brandMembers: { select: { brandId: true } } },
+      });
       if (!admin || !(await bcrypt.compare(password, admin.passwordHash))) {
         return jsonError("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", 401);
       }
-      await createSession({ type: "admin", adminId: admin.id, username });
-      return jsonOk({ ok: true });
+      const brandIds = admin.brandMembers.map((m) => m.brandId);
+      let isPlatformAdmin = admin.isPlatformAdmin;
+      // Bootstrap: before any BrandMember rows exist, treat legacy admins as platform
+      if (!isPlatformAdmin && brandIds.length === 0) {
+        const memberCount = await prisma.brandMember.count();
+        if (memberCount === 0) {
+          isPlatformAdmin = true;
+        } else {
+          return jsonError("บัญชีนี้ยังไม่ได้ผูกกับแบรนด์ใด", 403);
+        }
+      }
+      await createSession({
+        type: "admin",
+        adminId: admin.id,
+        username,
+        isPlatformAdmin,
+        brandIds,
+      });
+      return jsonOk({
+        ok: true,
+        isPlatformAdmin,
+        brandIds,
+      });
     }
 
     if (type === "staff") {
@@ -74,29 +100,19 @@ export async function POST(request: Request) {
     }
 
     if (type === "customer") {
+      if (isTaximailConfigured()) {
+        return jsonError("กรุณายืนยันด้วยรหัส OTP ที่ส่งไปยังเบอร์โทร", 400);
+      }
       const { phone, name } = customerSchema.parse(body);
       const normalized = normalizePhone(phone);
-      const existing = await prisma.customer.findUnique({
-        where: { phone: normalized },
+      const result = await completeCustomerLogin({
+        phone: normalized,
+        name,
       });
-
-      if (!existing && !name) {
+      if (result.needsName) {
         return jsonOk({ needsName: true });
       }
-
-      const finalName = name ?? existing!.name;
-      const customer = await prisma.customer.upsert({
-        where: { phone: normalized },
-        update: { name: finalName },
-        create: { phone: normalized, name: finalName },
-      });
-      await createSession({
-        type: "customer",
-        customerPhone: normalized,
-        customerId: customer.id,
-        customerName: finalName ?? undefined,
-      });
-      return jsonOk({ ok: true, name: finalName, phone: normalized });
+      return jsonOk({ ok: true, name: result.name, phone: result.phone });
     }
 
     return jsonError("ประเภทการเข้าสู่ระบบไม่ถูกต้อง");

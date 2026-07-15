@@ -1,9 +1,13 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { StaffRole } from "@prisma/client";
+import {
+  getBranchActivityContext,
+  logAdminActivity,
+} from "@/lib/admin-activity";
 
 type Params = { params: Promise<{ id: string; staffId: string }> };
 
@@ -21,8 +25,8 @@ const patchSchema = z.object({
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, staffId } = await params;
+    const { session } = await requireBranchAccess(branchId);
     const body = patchSchema.parse(await request.json());
 
     const existing = await prisma.staff.findFirst({
@@ -68,6 +72,21 @@ export async function PATCH(request: Request, { params }: Params) {
       },
       include: { roles: true },
     });
+
+    const ctx = await getBranchActivityContext(branchId);
+    await logAdminActivity(session, {
+      action: "staff.update",
+      summary: `แก้ไขพนักงาน ${updated.name || updated.phone}`,
+      brandId: ctx?.brandId ?? null,
+      brandName: ctx?.brand?.name ?? null,
+      branchId: ctx?.id ?? branchId,
+      branchName: ctx?.name ?? null,
+      entityType: "staff",
+      entityId: updated.id,
+      entityName: updated.name || updated.phone,
+      metadata: { fields: Object.keys(body) },
+    });
+
     return jsonOk(updated);
   } catch (error) {
     return handleApiError(error);
@@ -76,14 +95,28 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, staffId } = await params;
+    const { session } = await requireBranchAccess(branchId);
     const existing = await prisma.staff.findFirst({
       where: { id: staffId, branchId },
     });
     if (!existing) return jsonError("ไม่พบพนักงาน", 404);
 
+    const ctx = await getBranchActivityContext(branchId);
     await prisma.staff.delete({ where: { id: staffId } });
+
+    await logAdminActivity(session, {
+      action: "staff.delete",
+      summary: `ลบพนักงาน ${existing.name || existing.phone}`,
+      brandId: ctx?.brandId ?? null,
+      brandName: ctx?.brand?.name ?? null,
+      branchId: ctx?.id ?? branchId,
+      branchName: ctx?.name ?? null,
+      entityType: "staff",
+      entityId: existing.id,
+      entityName: existing.name || existing.phone,
+    });
+
     return jsonOk({ ok: true });
   } catch (error) {
     return handleApiError(error);

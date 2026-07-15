@@ -1,7 +1,11 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
-import { getSiteSettings, upsertSiteSettings } from "@/lib/site-settings";
+import { requirePlatformAdmin } from "@/lib/admin-access";
+import {
+  getPlatformSettings,
+  upsertPlatformSettings,
+} from "@/lib/platform-settings";
 import { handleApiError, jsonOk } from "@/lib/api";
+import { logAdminActivity } from "@/lib/admin-activity";
 
 const patchSchema = z.object({
   siteName: z.string().min(1).optional(),
@@ -14,8 +18,8 @@ const patchSchema = z.object({
 
 export async function GET() {
   try {
-    await requireAdmin();
-    return jsonOk(await getSiteSettings());
+    await requirePlatformAdmin();
+    return jsonOk(await getPlatformSettings());
   } catch (error) {
     return handleApiError(error);
   }
@@ -23,9 +27,16 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    await requireAdmin();
+    const session = await requirePlatformAdmin();
     const body = patchSchema.parse(await request.json());
-    const settings = await upsertSiteSettings(body);
+    const settings = await upsertPlatformSettings(body);
+
+    await logAdminActivity(session, {
+      action: "site.update",
+      summary: "อัปเดตตั้งค่าแพลตฟอร์ม",
+      metadata: { fields: Object.keys(body) },
+    });
+
     return jsonOk(settings);
   } catch (error) {
     return handleApiError(error);

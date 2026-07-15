@@ -1,8 +1,12 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { branchOptionGroupInclude } from "@/lib/menu-option-groups";
+import {
+  getBranchActivityContext,
+  logAdminActivity,
+} from "@/lib/admin-activity";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,8 +24,8 @@ const createSchema = z.object({
 
 export async function GET(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId } = await params;
+    await requireBranchAccess(branchId);
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
@@ -38,8 +42,8 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function POST(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId } = await params;
+    const { session } = await requireBranchAccess(branchId);
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
@@ -63,6 +67,20 @@ export async function POST(request: Request, { params }: Params) {
       },
       include: branchOptionGroupInclude,
     });
+
+    const ctx = await getBranchActivityContext(branchId);
+    await logAdminActivity(session, {
+      action: "option.create",
+      summary: `เพิ่มหัวข้อตัวเลือก ${group.name}`,
+      brandId: ctx?.brandId ?? null,
+      brandName: ctx?.brand?.name ?? null,
+      branchId,
+      branchName: ctx?.name ?? null,
+      entityType: "option_group",
+      entityId: group.id,
+      entityName: group.name,
+    });
+
     return jsonOk(group, 201);
   } catch (error) {
     return handleApiError(error);

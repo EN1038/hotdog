@@ -1,11 +1,15 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import {
   flattenMenuItemOptionGroups,
   menuItemOptionGroupInclude,
 } from "@/lib/menu-option-groups";
+import {
+  getBranchActivityContext,
+  logAdminActivity,
+} from "@/lib/admin-activity";
 
 type Params = { params: Promise<{ id: string; itemId: string }> };
 
@@ -28,8 +32,8 @@ const itemInclude = {
 
 export async function GET(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, itemId } = await params;
+    await requireBranchAccess(branchId);
     const item = await prisma.branchMenuItem.findFirst({
       where: { id: itemId, branchId },
       include: itemInclude,
@@ -43,8 +47,8 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, itemId } = await params;
+    const { session } = await requireBranchAccess(branchId);
     const body = patchSchema.parse(await request.json());
 
     const existing = await prisma.branchMenuItem.findFirst({
@@ -100,6 +104,21 @@ export async function PATCH(request: Request, { params }: Params) {
       },
       include: itemInclude,
     });
+
+    const ctx = await getBranchActivityContext(branchId);
+    await logAdminActivity(session, {
+      action: "menu.update",
+      summary: `แก้ไขเมนู ${updated.name}`,
+      brandId: ctx?.brandId ?? null,
+      brandName: ctx?.brand?.name ?? null,
+      branchId,
+      branchName: ctx?.name ?? null,
+      entityType: "menu",
+      entityId: updated.id,
+      entityName: updated.name,
+      metadata: { fields: Object.keys(body) },
+    });
+
     return jsonOk(flattenMenuItemOptionGroups(updated));
   } catch (error) {
     return handleApiError(error);
@@ -108,14 +127,28 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, itemId } = await params;
+    const { session } = await requireBranchAccess(branchId);
     const existing = await prisma.branchMenuItem.findFirst({
       where: { id: itemId, branchId },
     });
     if (!existing) return jsonError("ไม่พบเมนู", 404);
 
+    const ctx = await getBranchActivityContext(branchId);
     await prisma.branchMenuItem.delete({ where: { id: itemId } });
+
+    await logAdminActivity(session, {
+      action: "menu.delete",
+      summary: `ลบเมนู ${existing.name}`,
+      brandId: ctx?.brandId ?? null,
+      brandName: ctx?.brand?.name ?? null,
+      branchId,
+      branchName: ctx?.name ?? null,
+      entityType: "menu",
+      entityId: existing.id,
+      entityName: existing.name,
+    });
+
     return jsonOk({ ok: true });
   } catch (error) {
     return handleApiError(error);

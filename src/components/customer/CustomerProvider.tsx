@@ -10,14 +10,27 @@ import {
 } from "react";
 import type { CartLine } from "@/lib/customer-types";
 import type { FulfillmentType } from "@prisma/client";
+import { rememberCustomerPhone } from "@/lib/customer-remember";
 
 type CustomerSession = { phone: string; name: string } | null;
+
+export type SendOtpResult =
+  | { ok: true; challengeId: string; otpRefNo: string | null; resendIn: number }
+  | { ok: false; error: string; needsName?: boolean };
 
 type CustomerContextValue = {
   session: CustomerSession;
   sessionChecked: boolean;
   refreshSession: () => Promise<void>;
+  /** Legacy login without OTP (used when Taximail is not configured). */
   login: (phone: string, name?: string) => Promise<string | null>;
+  sendOtp: (phone: string, name?: string) => Promise<SendOtpResult>;
+  verifyOtp: (
+    phone: string,
+    otpCode: string,
+    challengeId: string,
+    name?: string,
+  ) => Promise<string | null>;
   logout: () => Promise<void>;
   cart: CartLine[];
   cartBranchId: string | null;
@@ -32,8 +45,8 @@ type CustomerContextValue = {
 
 const CustomerContext = createContext<CustomerContextValue | null>(null);
 
-const CART_KEY = "hunterdog_cart_v3";
-const FULFILLMENT_KEY = "hunterdog_fulfillment_v1";
+const CART_KEY = "skillsale_cart_v1";
+const FULFILLMENT_KEY = "skillsale_fulfillment_v1";
 
 function normalizeNote(note?: string) {
   return (note ?? "").trim().replace(/\s+/g, " ");
@@ -106,8 +119,10 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/session");
       const data = await res.json();
       if (data.session?.type === "customer") {
+        const phone = data.session.customerPhone ?? "";
+        if (phone) rememberCustomerPhone(phone);
         setSession({
-          phone: data.session.customerPhone ?? "",
+          phone,
           name: data.session.customerName ?? "",
         });
       } else {
@@ -134,8 +149,71 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       if (data.needsName) return "NEEDS_NAME";
       if (!res.ok) return data.error ?? "เข้าสู่ระบบไม่สำเร็จ";
+      const nextPhone = data.phone ?? phone;
+      rememberCustomerPhone(nextPhone);
       setSession({
-        phone: data.phone ?? phone,
+        phone: nextPhone,
+        name: data.name ?? name ?? "",
+      });
+      return null;
+    },
+    [],
+  );
+
+  const sendOtp = useCallback(
+    async (phone: string, name?: string): Promise<SendOtpResult> => {
+      const res = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, name: name?.trim() || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.needsName) {
+        return { ok: false, error: "NEEDS_NAME", needsName: true };
+      }
+      if (!res.ok) {
+        return {
+          ok: false,
+          error:
+            typeof data.error === "string"
+              ? data.error
+              : "ส่งรหัส OTP ไม่สำเร็จ",
+        };
+      }
+      return {
+        ok: true,
+        challengeId: data.challengeId as string,
+        otpRefNo: (data.otpRefNo as string | null) ?? null,
+        resendIn: Number(data.resendIn) || 60,
+      };
+    },
+    [],
+  );
+
+  const verifyOtp = useCallback(
+    async (
+      phone: string,
+      otpCode: string,
+      challengeId: string,
+      name?: string,
+    ): Promise<string | null> => {
+      const res = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          otpCode,
+          challengeId,
+          name: name?.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.needsName) return "NEEDS_NAME";
+      if (!res.ok) return data.error ?? "ยืนยัน OTP ไม่สำเร็จ";
+      const nextPhone = data.phone ?? phone;
+      rememberCustomerPhone(nextPhone);
+      setSession({
+        phone: nextPhone,
         name: data.name ?? name ?? "",
       });
       return null;
@@ -227,6 +305,8 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
       sessionChecked,
       refreshSession,
       login,
+      sendOtp,
+      verifyOtp,
       logout,
       cart,
       cartBranchId,
@@ -243,6 +323,8 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
       sessionChecked,
       refreshSession,
       login,
+      sendOtp,
+      verifyOtp,
       logout,
       cart,
       cartBranchId,

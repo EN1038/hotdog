@@ -3,6 +3,30 @@ import { Prisma, PrismaClient, StaffRole } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import { migrateLegacyHours } from "../src/lib/branch-hours";
+import { DEFAULT_RESTAURANT_TYPES } from "../src/lib/restaurant-types";
+
+function assertSeedAllowed() {
+  const url = process.env.DATABASE_URL ?? "";
+  const allow = process.env.ALLOW_DB_SEED === "1";
+  const looksRemote =
+    /ondigitalocean|amazonaws|\.rds\.|railway|supabase|neon\.tech|render\.com/i.test(
+      url,
+    );
+  const isProd = process.env.NODE_ENV === "production";
+
+  if ((isProd || looksRemote) && !allow) {
+    console.error(
+      [
+        "Refusing to seed: target looks like a shared/remote or production database.",
+        "If you really intend to upsert seed data there, set ALLOW_DB_SEED=1",
+        `(DATABASE_URL host hint: ${url.split("@").pop()?.split("/")[0] ?? "unknown"})`,
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+}
+
+assertSeedAllowed();
 
 const adapter = new PrismaPg(
   { connectionString: process.env.DATABASE_URL },
@@ -61,36 +85,115 @@ const MENU = [
 
 async function main() {
   const passwordHash = await bcrypt.hash("admin123", 10);
+  const merchantPasswordHash = await bcrypt.hash("merchant123", 10);
 
-  await prisma.admin.upsert({
+  const platformAdmin = await prisma.admin.upsert({
     where: { username: "admin" },
-    update: {},
-    create: { username: "admin", passwordHash },
+    update: { isPlatformAdmin: true },
+    create: {
+      username: "admin",
+      passwordHash,
+      isPlatformAdmin: true,
+    },
   });
 
   await prisma.siteSettings.upsert({
     where: { id: "default" },
-    update: {},
+    update: {
+      siteName: "SkillSale",
+      siteTitle: "SkillSale - ระบบสั่งอาหารออนไลน์",
+      siteDescription: "แพลตฟอร์มจัดการร้านค้าและรับออเดอร์ออนไลน์",
+      logoUrl: null,
+      primaryColor: "#dc2626",
+    },
     create: {
       id: "default",
-      siteName: "หม่าล่า ไวไว",
-      siteTitle: "หม่าล่า ไวไว - สั่งอาหารออนไลน์",
-      siteDescription: "ระบบสั่งอาหารหม่าล่า ไวไว",
-      logoUrl: img("mala-logo"),
+      siteName: "SkillSale",
+      siteTitle: "SkillSale - ระบบสั่งอาหารออนไลน์",
+      siteDescription: "แพลตฟอร์มจัดการร้านค้าและรับออเดอร์ออนไลน์",
+      logoUrl: null,
       primaryColor: "#dc2626",
     },
   });
 
+  for (const [i, t] of DEFAULT_RESTAURANT_TYPES.entries()) {
+    await prisma.restaurantType.upsert({
+      where: { code: t.code },
+      update: { name: t.name, sortOrder: i + 1, isActive: true },
+      create: {
+        code: t.code,
+        name: t.name,
+        sortOrder: i + 1,
+        isActive: true,
+      },
+    });
+  }
+
   const brand = await prisma.brand.upsert({
     where: { code: "malawaiwai" },
-    update: { name: "หม่าล่า ไวไว", color: "#dc2626" },
+    update: {
+      name: "หม่าล่า ไวไว",
+      siteTitle: "หม่าล่า ไวไว - สั่งอาหารออนไลน์",
+      siteDescription: "ระบบสั่งอาหารหม่าล่า ไวไว",
+      color: "#dc2626",
+      logoUrl: img("mala-logo"),
+    },
     create: {
       code: "malawaiwai",
       name: "หม่าล่า ไวไว",
+      siteTitle: "หม่าล่า ไวไว - สั่งอาหารออนไลน์",
+      siteDescription: "ระบบสั่งอาหารหม่าล่า ไวไว",
       logoUrl: img("mala-logo"),
       color: "#dc2626",
     },
   });
+
+  const skillsale = await prisma.brand.upsert({
+    where: { code: "skillsale" },
+    update: {
+      name: "SkillSale",
+      siteTitle: "SkillSale - สั่งอาหารออนไลน์",
+      siteDescription: "แบรนด์ตัวอย่างบนแพลตฟอร์ม SkillSale",
+      color: "#b91c1c",
+      logoUrl: img("skillsale-logo"),
+    },
+    create: {
+      code: "skillsale",
+      name: "SkillSale",
+      siteTitle: "SkillSale - สั่งอาหารออนไลน์",
+      siteDescription: "แบรนด์ตัวอย่างบนแพลตฟอร์ม SkillSale",
+      logoUrl: img("skillsale-logo"),
+      color: "#b91c1c",
+    },
+  });
+
+  const merchantAdmin = await prisma.admin.upsert({
+    where: { username: "merchant" },
+    update: { isPlatformAdmin: false },
+    create: {
+      username: "merchant",
+      passwordHash: merchantPasswordHash,
+      isPlatformAdmin: false,
+    },
+  });
+
+  await prisma.brandMember.upsert({
+    where: {
+      adminId_brandId: {
+        adminId: merchantAdmin.id,
+        brandId: skillsale.id,
+      },
+    },
+    update: { role: "OWNER" },
+    create: {
+      adminId: merchantAdmin.id,
+      brandId: skillsale.id,
+      role: "OWNER",
+    },
+  });
+
+  // Platform admin is not required to be a brand member
+  void platformAdmin;
 
   const categoryNames = [...new Set(MENU.map((m) => m.category))];
 
@@ -100,6 +203,8 @@ async function main() {
       code: "klong6",
       name: "สาขาคลอง 6 สะพานชมพู",
       address: "คลอง 6 ต.คลองหก อ.คลองหลวง จ.ปทุมธานี",
+      latitude: 14.0295,
+      longitude: 100.6752,
       phone: "0812223333",
       isOpen: true,
       opensAt: "10:00",
@@ -110,6 +215,8 @@ async function main() {
       code: "nakornchai2",
       name: "สาขานครชัยมงคลวิลล่า 2",
       address: "หมู่บ้านนครชัยมงคลวิลล่า 2 ต.บางลูด อ.ปากเกร็ด จ.นนทบุรี",
+      latitude: 13.9254,
+      longitude: 100.5068,
       phone: "0814445555",
       isOpen: true,
       opensAt: "09:00",
@@ -120,6 +227,8 @@ async function main() {
       code: "nakornchai-soi1",
       name: "สาขานครชัย ซอย 1",
       address: "ซอยนครชัย 1 ต.บางลูด อ.ปากเกร็ด จ.นนทบุรี",
+      latitude: 13.9271,
+      longitude: 100.5089,
       phone: "0816667777",
       isOpen: false,
       opensAt: "17:00",
@@ -136,6 +245,8 @@ async function main() {
         code: def.code,
         name: def.name,
         address: def.address,
+        latitude: def.latitude,
+        longitude: def.longitude,
         phone: def.phone,
         isOpen: def.isOpen,
         opensAt: def.opensAt,
@@ -151,6 +262,8 @@ async function main() {
         code: def.code,
         name: def.name,
         address: def.address,
+        latitude: def.latitude,
+        longitude: def.longitude,
         phone: def.phone,
         isOpen: def.isOpen,
         opensAt: def.opensAt,
@@ -255,13 +368,39 @@ async function main() {
 
     await prisma.deliveryLocation.upsert({
       where: { id: `seed-${def.id}-loc-1` },
-      update: {},
-      create: { id: `seed-${def.id}-loc-1`, branchId: branch.id, name: "หอพัก A" },
+      update: {
+        deliveryFee: 15,
+        address: `ใกล้ ${def.name} — หอพัก A`,
+        latitude: def.latitude + 0.0012,
+        longitude: def.longitude + 0.0008,
+      },
+      create: {
+        id: `seed-${def.id}-loc-1`,
+        branchId: branch.id,
+        name: "หอพัก A",
+        deliveryFee: 15,
+        address: `ใกล้ ${def.name} — หอพัก A`,
+        latitude: def.latitude + 0.0012,
+        longitude: def.longitude + 0.0008,
+      },
     });
     await prisma.deliveryLocation.upsert({
       where: { id: `seed-${def.id}-loc-2` },
-      update: {},
-      create: { id: `seed-${def.id}-loc-2`, branchId: branch.id, name: "ลานจอดรถ" },
+      update: {
+        deliveryFee: 20,
+        address: `ใกล้ ${def.name} — ลานจอดรถ`,
+        latitude: def.latitude - 0.0009,
+        longitude: def.longitude + 0.0011,
+      },
+      create: {
+        id: `seed-${def.id}-loc-2`,
+        branchId: branch.id,
+        name: "ลานจอดรถ",
+        deliveryFee: 20,
+        address: `ใกล้ ${def.name} — ลานจอดรถ`,
+        latitude: def.latitude - 0.0009,
+        longitude: def.longitude + 0.0011,
+      },
     });
   }
 
@@ -286,10 +425,13 @@ async function main() {
   });
 
   console.log("Seed complete:");
-  console.log("- Admin: admin / admin123");
+  console.log("- Platform admin: admin / admin123");
+  console.log("- Brand admin (SkillSale): merchant / merchant123");
+  console.log(`- Restaurant types: ${DEFAULT_RESTAURANT_TYPES.length}`);
   console.log("- Staff seller: 0811111111 (สาขาคลอง 6)");
   console.log("- Staff delivery: 0822222222 (สาขาคลอง 6)");
   console.log("- Brand: หม่าล่า ไวไว (malawaiwai) / 3 สาขา / 8 เมนูต่อสาขา");
+  console.log("- Brand: SkillSale (skillsale) — merchant tenant sample");
   console.log("- Branch URL ตัวอย่าง: /malawaiwai/klong6");
 }
 

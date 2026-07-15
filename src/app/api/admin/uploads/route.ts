@@ -15,7 +15,13 @@ export async function POST(request: Request) {
       return jsonError("ไม่พบไฟล์รูปภาพ");
     }
 
-    const url = await saveUploadedImage(file);
+    const shopCodeRaw = form.get("shopCode");
+    const folderRaw = form.get("folder");
+    const shopCode =
+      typeof shopCodeRaw === "string" ? shopCodeRaw : undefined;
+    const folder = typeof folderRaw === "string" ? folderRaw : undefined;
+
+    const url = await saveUploadedImage(file, { shopCode, folder });
     return jsonOk({ url }, 201);
   } catch (error) {
     return handleApiError(error);

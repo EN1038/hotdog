@@ -1,6 +1,9 @@
 import { Prisma, PriceRange } from "@prisma/client";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import {
+  assertBrandAccess,
+  requireBranchAccess,
+} from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -10,13 +13,16 @@ import {
   orderGrandTotal,
 } from "@/lib/order-totals";
 import { weeklyScheduleSchema } from "@/lib/branch-hours";
-import { PRICE_RANGE_IDS, RESTAURANT_CATEGORIES } from "@/lib/localized";
+import { PRICE_RANGE_IDS } from "@/lib/localized";
+import { assertValidRestaurantCategories } from "@/lib/restaurant-type-access";
 import {
   flattenMenuItemOptionGroups,
   menuItemOptionGroupInclude,
 } from "@/lib/menu-option-groups";
-
-const categoryIds = RESTAURANT_CATEGORIES.map((c) => c.id) as [string, ...string[]];
+import {
+  logAdminActivity,
+  summarizeBranchPatch,
+} from "@/lib/admin-activity";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -33,11 +39,8 @@ const updateSchema = z.object({
   latitude: z.number().nullable().optional(),
   longitude: z.number().nullable().optional(),
   phone: z.string().nullable().optional(),
-  primaryCategory: z.enum(categoryIds).nullable().optional(),
-  secondaryCategories: z
-    .array(z.enum(categoryIds))
-    .max(2)
-    .optional(),
+  primaryCategory: z.string().nullable().optional(),
+  secondaryCategories: z.array(z.string()).max(2).optional(),
   priceRange: z.enum(PRICE_RANGE_IDS).nullable().optional(),
   ownerMessage: z.string().nullable().optional(),
   extraMessage: z.string().nullable().optional(),
@@ -81,8 +84,8 @@ function buildLastDays(count: number) {
 
 export async function GET(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id } = await params;
+    await requireBranchAccess(id);
     const branch = await prisma.branch.findUnique({
       where: { id },
       include: {
@@ -98,6 +101,10 @@ export async function GET(_request: Request, { params }: Params) {
             { sortOrder: "asc" },
             { createdAt: "desc" },
           ],
+        },
+        menuCategories: {
+          select: { id: true, name: true },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         },
         optionGroups: {
           include: {
@@ -188,15 +195,35 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id } = await params;
+    const { session } = await requireBranchAccess(id);
     const body = updateSchema.parse(await request.json());
+
+    if (
+      body.primaryCategory !== undefined ||
+      body.secondaryCategories !== undefined
+    ) {
+      const existing = await prisma.branch.findUnique({
+        where: { id },
+        select: { primaryCategory: true, secondaryCategories: true },
+      });
+      const catError = await assertValidRestaurantCategories(
+        body.primaryCategory !== undefined
+          ? body.primaryCategory
+          : existing?.primaryCategory,
+        body.secondaryCategories !== undefined
+          ? body.secondaryCategories
+          : existing?.secondaryCategories,
+      );
+      if (catError) return jsonError(catError);
+    }
 
     if (body.brandId !== undefined && body.brandId !== null) {
       const brand = await prisma.brand.findUnique({
         where: { id: body.brandId },
       });
       if (!brand) return jsonError("ไม่พบแบรนด์");
+      await assertBrandAccess(session, body.brandId);
     }
 
     const branch = await prisma.branch.update({
@@ -257,6 +284,25 @@ export async function PATCH(request: Request, { params }: Params) {
       },
       include: { brand: true },
     });
+
+    await logAdminActivity(session, {
+      action: "branch.update",
+      summary: summarizeBranchPatch(
+        body as Record<string, unknown>,
+        branch.name,
+      ),
+      brandId: branch.brandId,
+      brandName: branch.brand?.name ?? null,
+      branchId: branch.id,
+      branchName: branch.name,
+      entityType: "branch",
+      entityId: branch.id,
+      entityName: branch.name,
+      metadata: {
+        fields: Object.keys(body),
+      },
+    });
+
     return jsonOk(branch);
   } catch (error) {
     return handleApiError(error);
@@ -265,9 +311,33 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id } = await params;
+    const { session } = await requireBranchAccess(id);
+    const existing = await prisma.branch.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        brandId: true,
+        brand: { select: { name: true } },
+      },
+    });
+    if (!existing) return jsonError("ไม่พบสาขา", 404);
+
     await prisma.branch.delete({ where: { id } });
+
+    await logAdminActivity(session, {
+      action: "branch.delete",
+      summary: `ลบสาขา ${existing.name}`,
+      brandId: existing.brandId,
+      brandName: existing.brand?.name ?? null,
+      branchId: null,
+      branchName: existing.name,
+      entityType: "branch",
+      entityId: existing.id,
+      entityName: existing.name,
+    });
+
     return jsonOk({ ok: true });
   } catch (error) {
     return handleApiError(error);

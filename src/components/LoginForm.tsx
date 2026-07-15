@@ -35,6 +35,14 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
         setError(data.error ?? "เข้าสู่ระบบไม่สำเร็จ");
         return;
       }
+
+      // Soft nav keeps AdminSessionProvider mounted with a stale/null session,
+      // which made platform vs brand home pages look swapped. Force a full load.
+      if (type === "admin") {
+        window.location.assign(redirectTo);
+        return;
+      }
+
       router.push(redirectTo);
       router.refresh();
     } catch {
@@ -100,7 +108,7 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
   );
 }
 
-export async function logout() {
+export async function logout(redirectTo = "/") {
   await fetch("/api/auth/logout", { method: "POST" });
-  window.location.href = "/";
+  window.location.href = redirectTo;
 }

@@ -17,9 +17,9 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   PREPARING: "bg-orange-100 border-orange-400 text-orange-800",
   READY_FOR_PICKUP: "bg-teal-100 border-teal-400 text-teal-800",
   READY_FOR_DELIVERY: "bg-blue-100 border-blue-400 text-blue-800",
-  DELIVERING: "bg-purple-100 border-purple-400 text-purple-800",
+  DELIVERING: "bg-sky-100 border-sky-400 text-sky-800",
   COMPLETED: "bg-green-100 border-green-400 text-green-800",
-  CANCELLED: "bg-gray-100 border-gray-300 text-gray-500",
+  CANCELLED: "bg-slate-100 border-slate-300 text-slate-500",
 };
 
 export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
@@ -27,9 +27,9 @@ export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
   PREPARING: "bg-orange-50 text-orange-600",
   READY_FOR_PICKUP: "bg-teal-50 text-teal-600",
   READY_FOR_DELIVERY: "bg-blue-50 text-blue-600",
-  DELIVERING: "bg-purple-50 text-purple-600",
+  DELIVERING: "bg-sky-50 text-sky-700",
   COMPLETED: "bg-green-50 text-green-600",
-  CANCELLED: "bg-gray-100 text-gray-500",
+  CANCELLED: "bg-slate-100 text-slate-500",
 };
 
 export const FULFILLMENT_LABELS: Record<FulfillmentType, string> = {

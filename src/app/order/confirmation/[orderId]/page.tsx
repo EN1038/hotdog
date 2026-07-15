@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   FULFILLMENT_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -11,6 +11,7 @@ import {
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal } from "@/lib/customer-types";
 import { OrderConfirmationTimeline } from "@/components/customer/OrderConfirmationTimeline";
+import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
   IconBank,
@@ -75,15 +76,23 @@ function InfoRow({
 
 export default function ConfirmationPage() {
   const { orderId } = useParams<{ orderId: string }>();
+  const router = useRouter();
   const [order, setOrder] = useState<ConfirmationOrder | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/customer/orders/${orderId}`);
+    if (res.status === 401) {
+      setAuthRequired(true);
+      return;
+    }
     if (!res.ok) {
       setNotFound(true);
       return;
     }
+    setAuthRequired(false);
+    setNotFound(false);
     setOrder(await res.json());
   }, [orderId]);
 
@@ -93,10 +102,32 @@ export default function ConfirmationPage() {
     return () => clearInterval(timer);
   }, [load]);
 
+  useEffect(() => {
+    if (!authRequired) return;
+    const returnTo = `/order/confirmation/${orderId}`;
+    router.replace(
+      `/order/login?returnTo=${encodeURIComponent(returnTo)}`,
+    );
+  }, [authRequired, orderId, router]);
+
+  if (authRequired) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6] px-4">
+        <LoadingState
+          className="w-full max-w-sm border-0 bg-transparent shadow-none"
+          label="กำลังพาไปหน้าใส่เบอร์เพื่อดูออเดอร์..."
+        />
+      </main>
+    );
+  }
+
   if (notFound) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
         <p className="text-gray-500">ไม่พบออเดอร์</p>
+        <Link href="/order/history" className="text-sm text-red-600 hover:underline">
+          ไปประวัติการสั่ง
+        </Link>
         <Link href="/order" className="text-red-500 underline">
           กลับหน้าเมนู
         </Link>
@@ -106,8 +137,8 @@ export default function ConfirmationPage() {
 
   if (!order) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6]">
-        <p className="text-sm text-gray-400">กำลังโหลด...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
+        <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
       </main>
     );
   }

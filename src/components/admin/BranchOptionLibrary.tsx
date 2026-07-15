@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  AdminLoadingState,
   adminInputClass,
   btnDanger,
   btnDark,
   btnOutline,
 } from "@/components/admin/AdminShell";
+import { AdminUsageDeleteModal } from "@/components/admin/AdminUsageDeleteModal";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -23,6 +25,7 @@ export type BranchOptionGroup = {
   maxSelect: number;
   options: BranchOption[];
   _count?: { menuItemLinks: number };
+  menuItemLinks?: Array<{ menuItem: { id: string; name: string } }>;
 };
 
 type Props = {
@@ -95,6 +98,10 @@ export function BranchOptionLibrary({ branchId }: Props) {
     name: "",
     priceDelta: "",
   });
+  const [deleteTarget, setDeleteTarget] = useState<BranchOptionGroup | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/admin/branches/${branchId}/option-groups`);
@@ -199,29 +206,39 @@ export function BranchOptionLibrary({ branchId }: Props) {
     await saveGroupMeta(group.id, { required: !group.required });
   }
 
-  async function deleteGroup(group: BranchOptionGroup) {
-    const used = group._count?.menuItemLinks ?? 0;
-    const ok = await confirm({
-      title: "ลบหัวข้อตัวเลือก?",
-      message:
-        used > 0
-          ? `มี ${used} เมนูใช้หัวข้อนี้อยู่ — จะถูกลบออกจากเมนูเหล่านั้นด้วย`
-          : "ลบหัวข้อนี้ออกจากคลังสาขา",
-      confirmLabel: "ลบหัวข้อ",
-    });
-    if (!ok) return;
+  async function openDeleteGroup(group: BranchOptionGroup) {
+    setDeleteTarget(group);
+  }
 
-    const res = await fetch(
-      `/api/admin/branches/${branchId}/option-groups/${group.id}`,
-      { method: "DELETE" },
-    );
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      toast.error("ลบไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
-      return;
+  async function confirmDeleteGroup() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/option-groups/${deleteTarget.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error("ลบไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      const used = deleteTarget.menuItemLinks?.length ?? deleteTarget._count?.menuItemLinks ?? 0;
+      toast.success(
+        "ลบหัวข้อแล้ว",
+        used > 0
+          ? `ถอดออกจากเมนู ${used} รายการแล้ว — ลูกค้าจะไม่เห็นตัวเลือกชุดนี้`
+          : undefined,
+      );
+      setDeleteTarget(null);
+      await load();
+    } finally {
+      setDeleting(false);
     }
-    await load();
-    toast.success("ลบหัวข้อแล้ว");
+  }
+
+  async function deleteGroup(group: BranchOptionGroup) {
+    openDeleteGroup(group);
   }
 
   async function addOption(groupId: string) {
@@ -316,7 +333,7 @@ export function BranchOptionLibrary({ branchId }: Props) {
   }
 
   if (loading) {
-    return <p className="text-sm text-gray-500">กำลังโหลดคลังตัวเลือก...</p>;
+    return <AdminLoadingState compact label="กำลังโหลดคลังตัวเลือก" />;
   }
 
   return (
@@ -636,6 +653,26 @@ export function BranchOptionLibrary({ branchId }: Props) {
           </p>
         )}
       </div>
+
+      <AdminUsageDeleteModal
+        open={Boolean(deleteTarget)}
+        title={`ลบหัวข้อ “${deleteTarget?.name ?? ""}”?`}
+        description={
+          (deleteTarget?.menuItemLinks?.length ??
+            deleteTarget?._count?.menuItemLinks ??
+            0) > 0
+            ? "หัวข้อนี้ถูกใช้กับเมนูด้านล่าง — หลังลบจะถอดตัวเลือกชุดนี้ออกจากเมนูเหล่านั้น ลูกค้าจะไม่เห็นชุดนี้แล้ว"
+            : "หัวข้อนี้ยังไม่ถูกผูกกับเมนูใด กดยืนยันเพื่อลบ"
+        }
+        items={(deleteTarget?.menuItemLinks ?? []).map((link) => ({
+          id: link.menuItem.id,
+          name: link.menuItem.name,
+        }))}
+        confirmLabel="ยืนยันลบหัวข้อ"
+        busy={deleting}
+        onConfirm={confirmDeleteGroup}
+        onClose={() => !deleting && setDeleteTarget(null)}
+      />
     </div>
   );
 }

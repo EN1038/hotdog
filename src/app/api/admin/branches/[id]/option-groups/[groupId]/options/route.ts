@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
+import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 
@@ -12,8 +12,8 @@ const createSchema = z.object({
 
 export async function POST(request: Request, { params }: Params) {
   try {
-    await requireAdmin();
     const { id: branchId, groupId } = await params;
+    await requireBranchAccess(branchId);
     const group = await prisma.branchOptionGroup.findFirst({
       where: { id: groupId, branchId },
     });

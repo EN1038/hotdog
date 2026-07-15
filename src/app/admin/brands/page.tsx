@@ -4,13 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  AdminEmptyState,
+  AdminLoadingState,
+  AdminPageHeader,
+  adminCardClass,
   adminInputClass,
   adminLabelClass,
-  btnOutline,
   btnPrimary,
 } from "@/components/admin/AdminShell";
+import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useToast } from "@/components/admin/Toast";
-import { useConfirm } from "@/components/ConfirmDialog";
 import {
   BRAND_COLOR_PRESETS,
   DEFAULT_BRAND_COLOR,
@@ -22,9 +25,11 @@ type Brand = {
   name: string;
   nameTh: string | null;
   nameEn: string | null;
+  siteTitle: string | null;
+  siteDescription: string | null;
   logoUrl: string | null;
   color: string;
-  _count: { branches: number };
+  _count: { branches: number; members: number };
 };
 
 function ColorPicker({
@@ -41,7 +46,7 @@ function ColorPicker({
           type="color"
           value={value || DEFAULT_BRAND_COLOR}
           onChange={(e) => onChange(e.target.value)}
-          className="h-10 w-12 cursor-pointer rounded border border-gray-300 bg-white p-1"
+          className="h-10 w-12 cursor-pointer rounded-xl border border-slate-200 bg-white p-1"
           aria-label="เลือกสีแบรนด์"
         />
         <input
@@ -60,7 +65,7 @@ function ColorPicker({
             onClick={() => onChange(preset)}
             className={`h-6 w-6 rounded-full border-2 ${
               value.toLowerCase() === preset
-                ? "border-gray-900"
+                ? "border-slate-900"
                 : "border-transparent"
             }`}
             style={{ backgroundColor: preset }}
@@ -73,54 +78,32 @@ function ColorPicker({
 
 export default function BrandsPage() {
   const router = useRouter();
+  const { session, loaded } = useAdminSession();
   const toast = useToast();
-  const { confirm } = useConfirm();
+  const isPlatformAdmin = Boolean(session?.isPlatformAdmin);
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [nameTh, setNameTh] = useState("");
-  const [nameEn, setNameEn] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
-  const [color, setColor] = useState(DEFAULT_BRAND_COLOR);
-
-  async function load() {
-    const res = await fetch("/api/admin/brands");
-    if (res.status === 401) {
-      router.push("/admin/login");
-      return;
-    }
-    if (res.ok) setBrands(await res.json());
-  }
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    load();
-  }, [router]);
+    if (!loaded) return;
 
-  async function createBrand(e: React.FormEvent) {
-    e.preventDefault();
-    await fetch("/api/admin/brands", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: code.trim().toLowerCase(),
-        name: name.trim(),
-        nameTh: nameTh.trim() || null,
-        nameEn: nameEn.trim() || null,
-        logoUrl: logoUrl.trim() || null,
-        color,
-      }),
+    if (session?.isPlatformAdmin) {
+      router.replace("/admin");
+      return;
+    }
+
+    fetch("/api/admin/brands").then(async (res) => {
+      if (res.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (res.ok) setBrands(await res.json());
+      setLoading(false);
     });
-    setCode("");
-    setName("");
-    setNameTh("");
-    setNameEn("");
-    setLogoUrl("");
-    setColor(DEFAULT_BRAND_COLOR);
-    load();
-  }
+  }, [loaded, session, router]);
 
   async function saveBrand(brand: Brand) {
-    await fetch(`/api/admin/brands/${brand.id}`, {
+    const res = await fetch(`/api/admin/brands/${brand.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -128,29 +111,18 @@ export default function BrandsPage() {
         name: brand.name,
         nameTh: brand.nameTh,
         nameEn: brand.nameEn,
+        siteTitle: brand.siteTitle,
+        siteDescription: brand.siteDescription,
         logoUrl: brand.logoUrl,
         color: brand.color,
       }),
     });
-    toast.success("บันทึกแบรนด์แล้ว");
-    load();
-  }
-
-  async function deleteBrand(id: string) {
-    const ok = await confirm({
-      title: "ลบแบรนด์?",
-      message: "ลบแบรนด์นี้ออกจากระบบ — สาขาที่ผูกอยู่อาจได้รับผลกระทบ",
-      confirmLabel: "ลบแบรนด์",
-    });
-    if (!ok) return;
-    const res = await fetch(`/api/admin/brands/${id}`, { method: "DELETE" });
     if (!res.ok) {
-      const data = await res.json();
-      toast.error("ลบไม่สำเร็จ", data.error ?? "ลบไม่สำเร็จ");
+      const data = await res.json().catch(() => ({}));
+      toast.error("บันทึกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
       return;
     }
-    toast.success("ลบแบรนด์แล้ว");
-    load();
+    toast.success("บันทึกแบรนด์แล้ว");
   }
 
   function patchBrand(id: string, patch: Partial<Brand>) {
@@ -159,87 +131,29 @@ export default function BrandsPage() {
     );
   }
 
+  if (!loaded || isPlatformAdmin || loading) {
+    return <AdminLoadingState />;
+  }
+
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-900">จัดการแบรนด์</h2>
-      <p className="mt-1 text-sm text-gray-500">
-        ชื่อแบรนด์รองรับสองภาษา — ถ้าไม่กรอกไทย/อังกฤษ ระบบใช้ชื่อหลักแทน
-      </p>
+      <AdminPageHeader
+        title="โปรไฟล์แบรนด์"
+        description="แก้ชื่อ โลโก้ สี และข้อมูลที่แสดงบนหน้าร้านของคุณ"
+      />
 
-      <form
-        onSubmit={createBrand}
-        className="mt-6 grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-3"
-      >
-        <div>
-          <label className={adminLabelClass}>รหัสแบรนด์</label>
-          <input
-            className={adminInputClass}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="malawaiwai"
-            required
-          />
-        </div>
-        <div>
-          <label className={adminLabelClass}>ชื่อแบรนด์ (หลัก)</label>
-          <input
-            className={adminInputClass}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label className={adminLabelClass}>ชื่อภาษาไทย</label>
-          <input
-            className={adminInputClass}
-            value={nameTh}
-            onChange={(e) => setNameTh(e.target.value)}
-            placeholder="ว่าง = ใช้ชื่อหลัก"
-          />
-        </div>
-        <div>
-          <label className={adminLabelClass}>ชื่อภาษาอังกฤษ</label>
-          <input
-            className={adminInputClass}
-            value={nameEn}
-            onChange={(e) => setNameEn(e.target.value)}
-            placeholder="ว่าง = ใช้ชื่อหลัก"
-          />
-        </div>
-        <div>
-          <label className={adminLabelClass}>URL โลโก้</label>
-          <input
-            className={adminInputClass}
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder="https://..."
-          />
-        </div>
-        <div>
-          <label className={adminLabelClass}>สีแบรนด์</label>
-          <ColorPicker value={color} onChange={setColor} />
-        </div>
-        <div className="flex items-end sm:col-span-2 lg:col-span-3">
-          <button type="submit" className={`w-full ${btnPrimary}`}>
-            เพิ่มแบรนด์
-          </button>
-        </div>
-      </form>
-
-      <div className="mt-6 space-y-3">
+      <div className="space-y-4">
         {brands.map((brand) => (
           <div
             key={brand.id}
-            className="rounded-xl border bg-white p-4"
+            className={`${adminCardClass} border-l-4`}
             style={{
-              borderColor: brand.color || DEFAULT_BRAND_COLOR,
-              boxShadow: `inset 4px 0 0 ${brand.color || DEFAULT_BRAND_COLOR}`,
+              borderLeftColor: brand.color || DEFAULT_BRAND_COLOR,
             }}
           >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <label className={adminLabelClass}>รหัส</label>
+                <label className={adminLabelClass}>รหัส (URL)</label>
                 <input
                   className={adminInputClass}
                   value={brand.code}
@@ -268,7 +182,6 @@ export default function BrandsPage() {
                       nameTh: e.target.value || null,
                     })
                   }
-                  placeholder="ว่าง = ใช้ชื่อหลัก"
                 />
               </div>
               <div>
@@ -281,7 +194,31 @@ export default function BrandsPage() {
                       nameEn: e.target.value || null,
                     })
                   }
-                  placeholder="ว่าง = ใช้ชื่อหลัก"
+                />
+              </div>
+              <div>
+                <label className={adminLabelClass}>ชื่อแท็บเบราว์เซอร์</label>
+                <input
+                  className={adminInputClass}
+                  value={brand.siteTitle ?? ""}
+                  onChange={(e) =>
+                    patchBrand(brand.id, {
+                      siteTitle: e.target.value || null,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className={adminLabelClass}>คำอธิบายหน้าร้าน</label>
+                <textarea
+                  className={adminInputClass}
+                  rows={2}
+                  value={brand.siteDescription ?? ""}
+                  onChange={(e) =>
+                    patchBrand(brand.id, {
+                      siteDescription: e.target.value || null,
+                    })
+                  }
                 />
               </div>
               <div>
@@ -303,28 +240,21 @@ export default function BrandsPage() {
                   onChange={(next) => patchBrand(brand.id, { color: next })}
                 />
               </div>
-              <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
+              <div className="flex items-end sm:col-span-2 lg:col-span-3">
                 <button
                   type="button"
                   onClick={() => saveBrand(brand)}
-                  className="flex-1 cursor-pointer rounded-lg border border-red-400 bg-white py-2 text-sm font-medium text-red-600 transition hover:border-red-500 hover:bg-red-50 hover:text-red-700 active:bg-red-100"
+                  className={`w-full ${btnPrimary}`}
                 >
-                  บันทึก
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteBrand(brand.id)}
-                  className={btnOutline}
-                >
-                  ลบ
+                  บันทึกโปรไฟล์แบรนด์
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-xs text-gray-500">
-              สาขา {brand._count.branches} แห่ง • ลิงก์ตัวอย่าง{" "}
+            <p className="mt-3 text-xs text-slate-500">
+              สาขา {brand._count.branches} แห่ง ·{" "}
               <Link
                 href={`/${brand.code}`}
-                className="text-red-600 hover:underline"
+                className="font-medium text-red-600 hover:underline"
                 target="_blank"
               >
                 /{brand.code}
@@ -332,6 +262,13 @@ export default function BrandsPage() {
             </p>
           </div>
         ))}
+
+        {brands.length === 0 && (
+          <AdminEmptyState
+            title="ยังไม่มีแบรนด์ที่คุณดูแล"
+            description="ติดต่อผู้ดูแลแพลตฟอร์มเพื่อขอสิทธิ์"
+          />
+        )}
       </div>
     </div>
   );

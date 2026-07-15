@@ -10,6 +10,12 @@ import {
 } from "@/lib/constants";
 import { orderGrandTotal } from "@/lib/order-totals";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
+import {
+  adminTableClass,
+  adminTableWrapClass,
+  adminTheadClass,
+  adminTrClass,
+} from "@/components/admin/admin-ui";
 
 export type AdminOrderRow = {
   id: string;
@@ -69,9 +75,9 @@ export function OrdersTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-      <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+    <div className={adminTableWrapClass}>
+      <table className={adminTableClass}>
+        <thead className={adminTheadClass}>
           <tr>
             <th className="whitespace-nowrap px-3 py-3 font-semibold">เลขที่</th>
             <th className="whitespace-nowrap px-3 py-3 font-semibold">เวลา</th>
@@ -82,7 +88,7 @@ export function OrdersTable({
             <th className="whitespace-nowrap px-3 py-3 font-semibold">สถานะ</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody>
           {orders.map((order) => {
             const total = orderGrandTotal(
               order.items,
@@ -101,7 +107,10 @@ export function OrdersTable({
             const href = `/admin/orders/${order.id}`;
 
             return (
-              <tr key={order.id} className="group hover:bg-red-50/40">
+              <tr
+                key={order.id}
+                className={`group ${adminTrClass} hover:bg-red-50/40`}
+              >
                 <td className="whitespace-nowrap px-3 py-3 font-medium text-gray-900">
                   <Link
                     href={href}
@@ -168,7 +177,7 @@ export function OrdersTable({
           })}
         </tbody>
       </table>
-      <p className="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
+      <p className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
         กดที่เลขที่ออเดอร์หรือแถวเพื่อดูรายละเอียด
       </p>
     </div>

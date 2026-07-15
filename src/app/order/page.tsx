@@ -14,6 +14,7 @@ import {
 } from "@/lib/localized";
 import { IconBranchPlaceholder } from "@/components/icons";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
+import { LoadingState } from "@/components/LoadingState";
 
 function BackIcon() {
   return (
@@ -436,7 +437,7 @@ export default function BranchListPage() {
       </h2>
 
       {loading ? (
-        <p className="mt-8 text-center text-sm text-gray-400">กำลังโหลด...</p>
+        <LoadingState className="mt-8 border-0 bg-transparent shadow-none" />
       ) : filtered.length === 0 ? (
         <p className="mt-8 text-center text-sm text-gray-400">
           ไม่พบสาขาที่ค้นหา

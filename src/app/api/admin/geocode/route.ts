@@ -6,7 +6,7 @@ const NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse";
 
 const NOMINATIM_HEADERS = {
   Accept: "application/json",
-  "User-Agent": "HunterDog-Admin/1.0 (branch-location)",
+  "User-Agent": "SkillSale-Admin/1.0 (branch-location)",
 };
 
 export async function GET(request: Request) {

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Prompt } from "next/font/google";
-import { getSiteSettings } from "@/lib/site-settings";
+import { getPlatformSettings } from "@/lib/platform-settings";
 import { AppProviders } from "@/components/AppProviders";
 import "./globals.css";
 
@@ -11,7 +11,7 @@ const prompt = Prompt({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSiteSettings();
+  const settings = await getPlatformSettings();
   return {
     title: settings.siteTitle,
     description: settings.siteDescription ?? undefined,

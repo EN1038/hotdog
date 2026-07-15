@@ -57,9 +57,23 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!pending) return;
 
+    let ready = false;
+    const readyTimer = window.setTimeout(() => {
+      ready = true;
+    }, 200);
+
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") close(false);
-      if (e.key === "Enter") close(true);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close(false);
+        return;
+      }
+      // Ignore Enter until after open — same keypress that opened the dialog
+      // would otherwise auto-confirm instantly.
+      if (e.key === "Enter" && ready) {
+        e.preventDefault();
+        close(true);
+      }
     }
 
     const prev = document.body.style.overflow;
@@ -68,6 +82,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     confirmBtnRef.current?.focus();
 
     return () => {
+      window.clearTimeout(readyTimer);
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };

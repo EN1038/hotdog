@@ -22,7 +22,14 @@ function resolveJwtSecret(): Uint8Array {
   return new TextEncoder().encode(raw || "dev-secret-local-only");
 }
 
-const secret = resolveJwtSecret();
+let cachedJwtSecret: Uint8Array | null = null;
+
+function getJwtSecret(): Uint8Array {
+  if (!cachedJwtSecret) {
+    cachedJwtSecret = resolveJwtSecret();
+  }
+  return cachedJwtSecret;
+}
 
 export type SessionPayload = {
   type: "admin" | "staff" | "customer";
@@ -44,7 +51,7 @@ export async function createSession(payload: SessionPayload) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(secret);
+    .sign(getJwtSecret());
 
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, token, {
@@ -62,7 +69,7 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (!token) return null;
 
   try {
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as unknown as SessionPayload;
   } catch {
     return null;
@@ -139,7 +146,10 @@ export async function requireStaff() {
     throw new Error("UNAUTHORIZED");
   }
 
-  const { brand } = staff.branch;
+  const brand = staff.branch.brand;
+  if (!brand) {
+    throw new Error("UNAUTHORIZED");
+  }
 
   return {
     ...session,

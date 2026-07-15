@@ -104,7 +104,7 @@ export async function POST(request: Request) {
       if (roles.length === 0) {
         return jsonError("ไม่พบสิทธิ์การใช้งาน", 401);
       }
-      const { brand } = staff.branch;
+      const brand = staff.branch.brand;
       await createSession({
         type: "staff",
         staffPhone: normalized,
@@ -116,16 +116,18 @@ export async function POST(request: Request) {
         ok: true,
         branchName: staff.branch.name,
         roles,
-        brand: {
-          code: brand.code,
-          name: brand.name,
-          nameTh: brand.nameTh,
-          nameEn: brand.nameEn,
-          logoUrl: brand.logoUrl,
-          color: brand.color,
-          siteTitle: brand.siteTitle,
-          siteDescription: brand.siteDescription,
-        },
+        brand: brand
+          ? {
+              code: brand.code,
+              name: brand.name,
+              nameTh: brand.nameTh,
+              nameEn: brand.nameEn,
+              logoUrl: brand.logoUrl,
+              color: brand.color,
+              siteTitle: brand.siteTitle,
+              siteDescription: brand.siteDescription,
+            }
+          : null,
       });
     }
 

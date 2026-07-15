@@ -8,6 +8,7 @@ type LoadingStateProps = {
   className?: string;
 };
 
+/** ใช้ --site-primary: CMS = สีแพลตฟอร์ม, ฝั่ง order = ธีมแบรนด์ลูกค้า */
 export function LoadingState({
   label = "กำลังโหลดข้อมูล",
   compact = false,
@@ -26,15 +27,15 @@ export function LoadingState({
     >
       <span className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center">
         <span
-          className="absolute inset-0 rounded-full border-2 border-red-100"
+          className="absolute inset-0 rounded-full border-2 border-site-primary-soft"
           aria-hidden
         />
         <span
-          className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-red-600 border-r-red-400/80"
+          className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-site-primary border-r-site-primary/70"
           aria-hidden
         />
         <span
-          className="h-2 w-2 animate-pulse rounded-full bg-red-500"
+          className="h-2 w-2 animate-pulse rounded-full bg-site-primary"
           aria-hidden
         />
       </span>
@@ -51,9 +52,9 @@ export function LoadingState({
         </p>
         {!compact ? (
           <div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden>
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-red-400 [animation-delay:0ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-red-400 [animation-delay:150ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-red-400 [animation-delay:300ms]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-site-primary/70 [animation-delay:0ms]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-site-primary/70 [animation-delay:150ms]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-site-primary/70 [animation-delay:300ms]" />
           </div>
         ) : null}
       </div>

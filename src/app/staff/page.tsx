@@ -6,7 +6,13 @@ import { OrderStatus } from "@prisma/client";
 import { OrderCard, StatusLegend, type OrderCardData } from "@/components/OrderCard";
 import { logout } from "@/components/LoginForm";
 import { LoadingState } from "@/components/LoadingState";
+import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 import type { StaffRole } from "@/lib/constants";
+import {
+  formatStaffRoles,
+  getStaffFilterStatuses,
+  getStaffLegendStatuses,
+} from "@/lib/constants";
 import {
   playOrderAlertSound,
   STAFF_SOUND_PREF_KEY,
@@ -18,9 +24,12 @@ const DEFAULT_DOC_TITLE = "Staff | SkillSale";
 
 export default function StaffPage() {
   const router = useRouter();
+  const branding = useSiteBranding();
   const [orders, setOrders] = useState<OrderCardData[]>([]);
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [branchName, setBranchName] = useState("");
+  const [autoAcceptOrders, setAutoAcceptOrders] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
   const [soundError, setSoundError] = useState("");
@@ -101,8 +110,24 @@ export default function StaffPage() {
     setOrders(nextOrders);
     setRoles(data.roles ?? []);
     setBranchName(data.branchName ?? "");
+    setAutoAcceptOrders(Boolean(data.autoAcceptOrders));
     setLoading(false);
   }, [router, flashNewOrders]);
+
+  useEffect(() => {
+    const legend = getStaffLegendStatuses(roles, { autoAcceptOrders });
+    if (legend.length === 0) return;
+    setStatusFilter((current) =>
+      current && legend.includes(current) ? current : legend[0],
+    );
+  }, [roles, autoAcceptOrders]);
+
+  const filteredOrders =
+    statusFilter == null
+      ? orders
+      : orders.filter((o) =>
+          getStaffFilterStatuses(statusFilter, roles).includes(o.status),
+        );
 
   useEffect(() => {
     fetchOrders();
@@ -172,27 +197,47 @@ export default function StaffPage() {
 
   return (
     <main className="min-h-screen bg-gray-100 p-4">
-      <header className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">{branchName}</h1>
-          <p className="text-sm text-gray-600">
-            พนักงาน: {roles.join(", ")}
+      <header className="mb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            {branding.isBrandOverride ? (
+              <p className="text-xs font-medium text-site-primary">
+                {branding.siteName}
+              </p>
+            ) : null}
+            <h1 className="text-xl font-bold text-gray-900">{branchName}</h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => logout("/staff/login")}
+            className="shrink-0 cursor-pointer text-sm text-site-primary hover:underline"
+          >
+            ออกจากระบบ
+          </button>
+        </div>
+        <div className="mt-0.5 flex items-baseline justify-between gap-3">
+          <p className="min-w-0 truncate text-sm text-gray-600">
+            พนักงาน: {formatStaffRoles(roles)}
+          </p>
+          <p
+            className={`shrink-0 whitespace-nowrap text-xs font-medium ${
+              autoAcceptOrders
+                ? "animate-pulse text-emerald-600"
+                : "text-gray-500"
+            }`}
+          >
+            {autoAcceptOrders
+              ? "รับออเดอร์อัตโนมัติ: เปิดอยู่"
+              : "รับออเดอร์อัตโนมัติ: ปิดอยู่"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => logout()}
-          className="shrink-0 cursor-pointer text-sm text-gray-500 hover:underline"
-        >
-          ออกจากระบบ
-        </button>
       </header>
 
       {!soundOn && (
         <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 sm:p-4">
           <p className="text-sm font-medium text-amber-950">
             {preferSound
-              ? "แตะเพื่อเปิดเสียงแจ้งเตือนอีกครั้ง (เบราว์เซอร์ต้องให้สิทธิ์หลังแตะ)"
+              ? "แตะเพื่อเปิดเสียงแจ้งเตือนอีกครั้ง"
               : "เปิดเสียงแจ้งเตือนเมื่อมีออเดอร์ใหม่"}
           </p>
           <p className="mt-1 text-xs text-amber-800">
@@ -228,7 +273,7 @@ export default function StaffPage() {
 
       {newOrderFlash && (
         <div
-          className="mb-4 animate-pulse rounded-xl border-2 border-red-500 bg-red-600 px-4 py-3 text-center text-base font-bold text-white"
+          className="mb-4 animate-pulse rounded-xl border-2 border-site-primary bg-site-primary px-4 py-3 text-center text-base font-bold text-white"
           role="status"
         >
           มีออเดอร์ใหม่!
@@ -236,16 +281,23 @@ export default function StaffPage() {
       )}
 
       <div className="mb-4">
-        <StatusLegend />
+        <StatusLegend
+          roles={roles}
+          autoAcceptOrders={autoAcceptOrders}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
       </div>
 
-      {orders.length === 0 ? (
+      {filteredOrders.length === 0 ? (
         <p className="rounded-lg bg-white p-8 text-center text-gray-500">
-          ไม่มีออเดอร์ที่รอดำเนินการ
+          {statusFilter === OrderStatus.COMPLETED
+            ? "ยังไม่มีออเดอร์ที่เสร็จสิ้นวันนี้"
+            : "ไม่มีออเดอร์ที่รอดำเนินการ"}
         </p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {orders.map((order) => (
+          {filteredOrders.map((order) => (
             <OrderCard
               key={order.id}
               order={order}

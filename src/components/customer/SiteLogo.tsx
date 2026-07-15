@@ -1,79 +1,79 @@
 "use client";
 
 import { useSiteBranding } from "./SiteBrandingProvider";
+import {
+  resolvePlatformMarkForPlacement,
+  type MarkPlacement,
+} from "@/lib/platform-branding";
+import { SKILLSALE_ICON_URL, SKILLSALE_LOGO_URL } from "@/lib/brand-assets";
 
 type SiteLogoProps = {
   logoUrl?: string | null;
   name?: string;
   size?: number;
   className?: string;
+  /** When no explicit logoUrl and not brand override, use this placement */
+  platformPlacement?: Extract<MarkPlacement, "login" | "order">;
 };
-
-function DefaultLogoSvg({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden>
-      <path d="M20 8c-4 0-7 3-7 7v3h14v-3c0-4-3-7-7-7z" fill="#ef4444" />
-      <rect x="11" y="17" width="18" height="12" rx="3" fill="var(--site-primary, #dc2626)" />
-      <ellipse cx="20" cy="21" rx="7" ry="3.5" fill="#fbbf24" opacity="0.9" />
-      <line
-        x1="14"
-        y1="6"
-        x2="12"
-        y2="1"
-        stroke="#92400e"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <circle cx="11.5" cy="0.5" r="2" fill="#f87171" />
-      <line
-        x1="20"
-        y1="5"
-        x2="20"
-        y2="0"
-        stroke="#92400e"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <circle cx="20" cy="0" r="2" fill="#4ade80" />
-      <line
-        x1="26"
-        y1="6"
-        x2="28"
-        y2="2"
-        stroke="#92400e"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <circle cx="28.5" cy="1.5" r="2" fill="#fbbf24" />
-    </svg>
-  );
-}
 
 export function SiteLogo({
   logoUrl,
   name,
   size = 72,
   className = "",
+  platformPlacement = "order",
 }: SiteLogoProps) {
   const branding = useSiteBranding();
-  const src = logoUrl ?? branding.logoUrl;
+
+  let src: string;
+  let treatAsIcon: boolean;
+
+  if (logoUrl?.trim()) {
+    src = logoUrl.trim();
+    treatAsIcon = true;
+  } else if (branding.isBrandOverride && branding.logoUrl?.trim()) {
+    src = branding.logoUrl.trim();
+    treatAsIcon = true;
+  } else {
+    const resolved = resolvePlatformMarkForPlacement(
+      branding,
+      platformPlacement,
+    );
+    src = resolved.src;
+    treatAsIcon = resolved.kind === "icon";
+  }
+
   const label = name ?? branding.siteName;
+  const isDefaultMark =
+    src === SKILLSALE_ICON_URL || src === SKILLSALE_LOGO_URL;
 
   return (
     <div
-      className={`flex items-center justify-center rounded-full bg-gradient-to-b from-red-50 to-orange-50 ring-1 ring-red-100 ${className}`}
-      style={{ width: size, height: size }}
+      className={`flex items-center justify-center overflow-hidden ${
+        treatAsIcon
+          ? isDefaultMark
+            ? "rounded-2xl bg-white/80"
+            : "rounded-full bg-gradient-to-b from-red-50 to-orange-50 ring-1 ring-red-100"
+          : "rounded-2xl bg-transparent"
+      } ${className}`}
+      style={
+        treatAsIcon
+          ? { width: size, height: size }
+          : { height: size, width: Math.round(size * 3.2) }
+      }
     >
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={label}
-          className="h-full w-full rounded-full object-cover"
-        />
-      ) : (
-        <DefaultLogoSvg size={Math.round(size * 0.55)} />
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={label}
+        className={
+          treatAsIcon
+            ? isDefaultMark
+              ? "h-[82%] w-[82%] object-contain"
+              : "h-full w-full rounded-full object-cover"
+            : "h-full w-full object-contain"
+        }
+      />
     </div>
   );
 }

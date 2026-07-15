@@ -198,7 +198,7 @@ export default function OrderDetailPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
         <p className="text-gray-500">ไม่พบออเดอร์</p>
-        <Link href="/order/history" className="text-red-500 underline">
+        <Link href="/order/history" className="text-site-primary underline">
           กลับหน้าประวัติ
         </Link>
       </main>
@@ -282,13 +282,13 @@ export default function OrderDetailPage() {
             icon={IconMoney}
             label="ราคารวม"
             value={`฿${formatPrice(orderGrandTotal(order))}`}
-            valueClassName="text-red-600"
+            valueClassName="text-site-primary"
           />
           <DetailRow
             icon={IconPackage}
             label="ประเภทการรับ"
             value={FULFILLMENT_LABELS[order.fulfillmentType]}
-            valueClassName="text-orange-500"
+            valueClassName="text-site-primary"
           />
           <DetailRow
             icon={IconCard}
@@ -322,7 +322,7 @@ export default function OrderDetailPage() {
                     className="h-14 w-14 shrink-0 rounded-xl object-cover"
                   />
                 ) : (
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-100 to-orange-50">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-site-primary-soft">
                     <IconSkewerPlaceholder size={32} />
                   </div>
                 )}
@@ -361,7 +361,7 @@ export default function OrderDetailPage() {
         </div>
         <div className="mt-2 flex justify-between border-t border-gray-100 pt-2 font-bold text-gray-900">
           <span>รวมทั้งสิ้น</span>
-          <span className="text-red-600">
+          <span className="text-site-primary">
             ฿{formatPrice(orderGrandTotal(order))}
           </span>
         </div>
@@ -409,7 +409,7 @@ export default function OrderDetailPage() {
         <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 space-y-2 border-t bg-white p-4">
           {cancellable && (
             <>
-              <p className="rounded-xl bg-orange-50 px-3 py-2.5 text-center text-xs text-orange-600">
+              <p className="rounded-xl bg-site-primary-soft px-3 py-2.5 text-center text-xs text-site-primary">
                 สามารถยกเลิกออเดอร์ได้ก่อนร้านรับออเดอร์
               </p>
               <button
@@ -428,7 +428,7 @@ export default function OrderDetailPage() {
               type="button"
               onClick={reorder}
               disabled={reordering}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-site-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
               <IconRefresh size={16} />
               {reordering ? "กำลังเพิ่มสินค้า..." : "สั่งอีกครั้ง"}

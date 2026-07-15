@@ -85,7 +85,7 @@ export default function AdminOrderDetailPage() {
         <p className="text-gray-600">ไม่พบออเดอร์นี้</p>
         <Link
           href="/admin"
-          className="mt-3 inline-block text-sm text-red-600 hover:underline"
+          className="mt-3 inline-block text-sm text-site-primary hover:underline"
         >
           กลับแดชบอร์ด
         </Link>

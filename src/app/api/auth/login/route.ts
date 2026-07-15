@@ -68,7 +68,22 @@ export async function POST(request: Request) {
       const staff = await prisma.staff.findUnique({
         where: { phone: normalized },
         include: {
-          branch: true,
+          branch: {
+            include: {
+              brand: {
+                select: {
+                  code: true,
+                  name: true,
+                  nameTh: true,
+                  nameEn: true,
+                  logoUrl: true,
+                  color: true,
+                  siteTitle: true,
+                  siteDescription: true,
+                },
+              },
+            },
+          },
           roles: true,
         },
       });
@@ -89,6 +104,7 @@ export async function POST(request: Request) {
       if (roles.length === 0) {
         return jsonError("ไม่พบสิทธิ์การใช้งาน", 401);
       }
+      const { brand } = staff.branch;
       await createSession({
         type: "staff",
         staffPhone: normalized,
@@ -96,7 +112,21 @@ export async function POST(request: Request) {
         staffRoles: roles,
         branchName: staff.branch.name,
       });
-      return jsonOk({ ok: true, branchName: staff.branch.name, roles });
+      return jsonOk({
+        ok: true,
+        branchName: staff.branch.name,
+        roles,
+        brand: {
+          code: brand.code,
+          name: brand.name,
+          nameTh: brand.nameTh,
+          nameEn: brand.nameEn,
+          logoUrl: brand.logoUrl,
+          color: brand.color,
+          siteTitle: brand.siteTitle,
+          siteDescription: brand.siteDescription,
+        },
+      });
     }
 
     if (type === "customer") {

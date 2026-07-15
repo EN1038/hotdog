@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   AdminLoadingState,
+  btnOutline,
 } from "@/components/admin/AdminShell";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import {
@@ -69,6 +71,14 @@ export default function BrandBranchesPage() {
       description={`สาขาภายใต้แบรนด์ /${brand.code}`}
       backHref={isPlatform ? "/admin" : undefined}
       backLabel="กลับไปเลือกแบรนด์"
+      headerActions={
+        <Link
+          href={`/admin/brands/${brand.id}/admins`}
+          className={btnOutline}
+        >
+          ผู้ดูแล
+        </Link>
+      }
     />
   );
 }

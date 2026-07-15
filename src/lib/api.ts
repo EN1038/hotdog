@@ -31,6 +31,16 @@ export function handleApiError(error: unknown) {
   }
 
   if (error instanceof Prisma.PrismaClientValidationError) {
+    console.error("[api] Prisma validation", error.message);
+    return jsonError("ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", 400);
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "name" in error &&
+    error.name === "ZodError"
+  ) {
     return jsonError("ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", 400);
   }
 

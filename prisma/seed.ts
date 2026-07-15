@@ -1,9 +1,9 @@
 import "dotenv/config";
 import { Prisma, PrismaClient, StaffRole } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import bcrypt from "bcryptjs";
 import { migrateLegacyHours } from "../src/lib/branch-hours";
 import { DEFAULT_RESTAURANT_TYPES } from "../src/lib/restaurant-types";
+import { hashAndSealPassword } from "../src/lib/admin-password";
 
 function assertSeedAllowed() {
   const url = process.env.DATABASE_URL ?? "";
@@ -84,15 +84,20 @@ const MENU = [
 ];
 
 async function main() {
-  const passwordHash = await bcrypt.hash("admin123", 10);
-  const merchantPasswordHash = await bcrypt.hash("merchant123", 10);
+  const platformSealed = await hashAndSealPassword("admin123");
+  const merchantSealed = await hashAndSealPassword("merchant123");
 
   const platformAdmin = await prisma.admin.upsert({
     where: { username: "admin" },
-    update: { isPlatformAdmin: true },
+    update: {
+      isPlatformAdmin: true,
+      passwordHash: platformSealed.passwordHash,
+      passwordEnc: platformSealed.passwordEnc,
+    },
     create: {
       username: "admin",
-      passwordHash,
+      passwordHash: platformSealed.passwordHash,
+      passwordEnc: platformSealed.passwordEnc,
       isPlatformAdmin: true,
     },
   });
@@ -103,16 +108,30 @@ async function main() {
       siteName: "SkillSale",
       siteTitle: "SkillSale - ระบบสั่งอาหารออนไลน์",
       siteDescription: "แพลตฟอร์มจัดการร้านค้าและรับออเดอร์ออนไลน์",
-      logoUrl: null,
-      primaryColor: "#dc2626",
+      iconUrl: "/skillsale-icon.png",
+      logoUrl: "/skillsale-logo.png",
+      faviconUrl: "/skillsale-icon.png",
+      primaryColor: "#0B2A4A",
+      markSidebar: "icon",
+      markLogin: "logo",
+      markHome: "logo",
+      markOrder: "icon",
+      markFavicon: "icon",
     },
     create: {
       id: "default",
       siteName: "SkillSale",
       siteTitle: "SkillSale - ระบบสั่งอาหารออนไลน์",
       siteDescription: "แพลตฟอร์มจัดการร้านค้าและรับออเดอร์ออนไลน์",
-      logoUrl: null,
-      primaryColor: "#dc2626",
+      iconUrl: "/skillsale-icon.png",
+      logoUrl: "/skillsale-logo.png",
+      faviconUrl: "/skillsale-icon.png",
+      primaryColor: "#0B2A4A",
+      markSidebar: "icon",
+      markLogin: "logo",
+      markHome: "logo",
+      markOrder: "icon",
+      markFavicon: "icon",
     },
   });
 
@@ -169,10 +188,15 @@ async function main() {
 
   const merchantAdmin = await prisma.admin.upsert({
     where: { username: "merchant" },
-    update: { isPlatformAdmin: false },
+    update: {
+      isPlatformAdmin: false,
+      passwordHash: merchantSealed.passwordHash,
+      passwordEnc: merchantSealed.passwordEnc,
+    },
     create: {
       username: "merchant",
-      passwordHash: merchantPasswordHash,
+      passwordHash: merchantSealed.passwordHash,
+      passwordEnc: merchantSealed.passwordEnc,
       isPlatformAdmin: false,
     },
   });

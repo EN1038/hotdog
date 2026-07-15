@@ -2,6 +2,27 @@ import { FulfillmentType, OrderStatus, PaymentMethod } from "@prisma/client";
 
 export type StaffRole = "SELLER" | "DELIVERY" | "BOTH";
 
+export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
+  SELLER: "คนขาย",
+  DELIVERY: "คนส่ง",
+  BOTH: "คนขาย, คนส่ง",
+};
+
+export function formatStaffRoles(roles: StaffRole[]): string {
+  const unique = new Set<StaffRole>();
+  for (const role of roles) {
+    if (role === "BOTH") {
+      unique.add("SELLER");
+      unique.add("DELIVERY");
+    } else {
+      unique.add(role);
+    }
+  }
+  return [...unique]
+    .map((role) => STAFF_ROLE_LABELS[role] ?? role)
+    .join(", ");
+}
+
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   WAITING_FOR_STORE_ACCEPTANCE: "รอร้านรับออเดอร์",
   PREPARING: "กำลังเตรียม",
@@ -124,6 +145,116 @@ export function getAllowedNextStatuses(
   return Object.values(OrderStatus).filter((status) =>
     canStaffUpdateStatus(roles, currentStatus, status, fulfillment),
   );
+}
+
+function hasSellerRole(roles: StaffRole[]) {
+  return roles.includes("SELLER") || roles.includes("BOTH");
+}
+
+function hasDeliveryRole(roles: StaffRole[]) {
+  return roles.includes("DELIVERY") || roles.includes("BOTH");
+}
+
+/** คนหน้าร้านอย่างเดียว — ใช้คำสั้นแบบ Wongnai Merchant */
+export function isSellerOnlyStaff(roles: StaffRole[]) {
+  return hasSellerRole(roles) && !hasDeliveryRole(roles);
+}
+
+/** มีทั้งคนขายและคนส่งในบัญชีเดียว */
+export function isCombinedStaff(roles: StaffRole[]) {
+  return hasSellerRole(roles) && hasDeliveryRole(roles);
+}
+
+/**
+ * คำสถานะฝั่งคนหน้าร้าน / สอง role (Wongnai-style):
+ * ใหม่ → กำลังเตรียม → จัดส่ง → (กำลังจัดส่ง) → เสร็จสิ้น
+ * (ระบบภายในยังเป็นสถานะละเอียดเหมือนเดิม)
+ */
+export const SELLER_ORDER_STATUS_LABELS: Partial<Record<OrderStatus, string>> = {
+  WAITING_FOR_STORE_ACCEPTANCE: "ใหม่",
+  PREPARING: "กำลังเตรียม",
+  READY_FOR_PICKUP: "จัดส่ง",
+  READY_FOR_DELIVERY: "จัดส่ง",
+  DELIVERING: "กำลังจัดส่ง",
+  COMPLETED: "เสร็จสิ้น",
+  CANCELLED: "ยกเลิก",
+};
+
+export function getStaffStatusLabel(
+  status: OrderStatus,
+  roles: StaffRole[],
+): string {
+  if (isSellerOnlyStaff(roles) || isCombinedStaff(roles)) {
+    return SELLER_ORDER_STATUS_LABELS[status] ?? ORDER_STATUS_LABELS[status];
+  }
+  return ORDER_STATUS_LABELS[status];
+}
+
+/** สถานะในแท็บของพนักงาน — คนขาย / คนส่ง / สอง role (ไม่ซ้ำซ้อน) */
+export function getStaffLegendStatuses(
+  roles: StaffRole[],
+  options?: { autoAcceptOrders?: boolean },
+): OrderStatus[] {
+  const seller = hasSellerRole(roles);
+  const delivery = hasDeliveryRole(roles);
+  // รับออโต้: ออเดอร์ข้าม「ใหม่」ไปเตรียมเลย — ไม่โชว์แท็บว่าง
+  const showNew = !options?.autoAcceptOrders;
+
+  // สอง role: รวมแท็บที่ไม่ซ้ำ — ใหม่ / กำลังเตรียม / จัดส่ง / กำลังจัดส่ง / เสร็จสิ้น
+  if (seller && delivery) {
+    return [
+      ...(showNew ? [OrderStatus.WAITING_FOR_STORE_ACCEPTANCE] : []),
+      OrderStatus.PREPARING,
+      OrderStatus.READY_FOR_DELIVERY,
+      OrderStatus.DELIVERING,
+      OrderStatus.COMPLETED,
+    ];
+  }
+
+  // คนหน้าร้าน: ใหม่ / กำลังเตรียม / จัดส่ง / เสร็จสิ้น
+  if (seller) {
+    return [
+      ...(showNew ? [OrderStatus.WAITING_FOR_STORE_ACCEPTANCE] : []),
+      OrderStatus.PREPARING,
+      OrderStatus.READY_FOR_DELIVERY,
+      OrderStatus.COMPLETED,
+    ];
+  }
+
+  if (delivery) {
+    return [
+      OrderStatus.READY_FOR_DELIVERY,
+      OrderStatus.DELIVERING,
+      OrderStatus.COMPLETED,
+    ];
+  }
+
+  return [];
+}
+
+/** สถานะจริงที่ตรงกับแท็บที่เลือก (“จัดส่ง” = พร้อมรับ + รอจัดส่ง) */
+export function getStaffFilterStatuses(
+  selected: OrderStatus,
+  roles: StaffRole[],
+): OrderStatus[] {
+  if (
+    (isSellerOnlyStaff(roles) || isCombinedStaff(roles)) &&
+    selected === OrderStatus.READY_FOR_DELIVERY
+  ) {
+    return [OrderStatus.READY_FOR_DELIVERY, OrderStatus.READY_FOR_PICKUP];
+  }
+  return [selected];
+}
+
+/** เริ่มต้นวันตามเวลาไทย (Asia/Bangkok) */
+export function startOfTodayBangkok(now = new Date()): Date {
+  const dateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  return new Date(`${dateStr}T00:00:00+07:00`);
 }
 
 export function normalizePhone(phone: string): string {

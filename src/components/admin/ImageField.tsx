@@ -8,9 +8,13 @@ type ImageFieldProps = {
   value: string;
   onChange: (url: string) => void;
   label?: string;
+  /** คำแนะนำขนาดรูป ฯลฯ แสดงใต้ป้ายชื่อ */
+  hint?: string;
   aspectClassName?: string;
   /** compact: denser form; thumb: small square (~120px) */
   size?: "default" | "compact" | "thumb";
+  /** cover crops to fill; contain keeps full logo/wordmark visible */
+  objectFit?: "cover" | "contain";
   className?: string;
   /** รหัสร้านค้าสำหรับ path บน Spaces เช่น SkillSale/Orders/{shopCode}/Products/ */
   shopCode?: string | null;
@@ -22,8 +26,10 @@ export function ImageField({
   value,
   onChange,
   label = "รูปภาพ",
+  hint,
   aspectClassName = "aspect-[4/3]",
   size = "default",
+  objectFit = "cover",
   className = "",
   shopCode,
   folder = "Products",
@@ -71,7 +77,7 @@ export function ImageField({
     size === "thumb"
       ? "px-2 py-3"
       : size === "compact"
-        ? "px-4 py-6"
+        ? "px-3 py-4"
         : "px-5 py-10";
   const resolvedAspect = size === "thumb" ? "aspect-square" : aspectClassName;
 
@@ -93,11 +99,14 @@ export function ImageField({
           {showUrl ? "ซ่อนลิงก์" : "ใส่ลิงก์แทน"}
         </button>
       </div>
+      {hint ? (
+        <p className="mb-2 text-[11px] leading-snug text-slate-500">{hint}</p>
+      ) : null}
 
       <div
         className={`relative overflow-hidden rounded-xl border-2 border-dashed transition ${
           dragOver
-            ? "border-red-400 bg-red-50"
+            ? "border-site-primary bg-site-primary-soft"
             : value
               ? "border-transparent bg-gray-100"
               : "border-gray-200 bg-gradient-to-b from-gray-50 to-white"
@@ -126,7 +135,11 @@ export function ImageField({
             <img
               src={value}
               alt=""
-              className="absolute inset-0 h-full w-full object-cover"
+              className={`absolute inset-0 h-full w-full ${
+                objectFit === "contain"
+                  ? "object-contain bg-white p-2"
+                  : "object-cover"
+              }`}
             />
             <div className="absolute inset-x-0 bottom-0 flex gap-1.5 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">
               <button
@@ -156,12 +169,12 @@ export function ImageField({
             className={`flex w-full ${resolvedAspect} flex-col items-center justify-center gap-1.5 text-center ${emptyPad} disabled:opacity-60`}
           >
             <span
-              className={`flex items-center justify-center rounded-full bg-red-50 text-red-600 ${
+              className={`flex items-center justify-center rounded-full bg-site-primary-soft text-site-primary ${
                 size === "thumb" ? "h-8 w-8" : "h-12 w-12"
               }`}
             >
               {uploading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-site-primary border-t-transparent" />
               ) : (
                 <IconUpload size={size === "thumb" ? 14 : 22} />
               )}

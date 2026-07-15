@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/components/LoginForm";
+import { PlatformMark } from "@/components/PlatformMark";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import {
   IconClose,
@@ -12,6 +13,7 @@ import {
   IconStore,
   IconUser,
 } from "@/components/icons";
+import { getBrandProfileGaps } from "@/lib/brand-profile";
 
 export {
   adminInputClass,
@@ -44,6 +46,8 @@ type NavItem = {
   /** Hide from platform admins (brand operator pages) */
   brandAdminOnly?: boolean;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+  badge?: string;
+  badgeTone?: "warn" | "info";
 };
 
 type NavGroup = {
@@ -62,7 +66,8 @@ const NAV_GROUPS: NavGroup[] = [
         match: (pathname) =>
           pathname === "/admin" ||
           pathname.startsWith("/admin/branches") ||
-          /^\/admin\/brands\/[^/]+/.test(pathname),
+          (/^\/admin\/brands\/[^/]+$/.test(pathname) &&
+            !pathname.endsWith("/admins")),
         icon: IconHome,
       },
     ],
@@ -77,6 +82,15 @@ const NAV_GROUPS: NavGroup[] = [
         match: (pathname) => pathname === "/admin/brands",
         brandAdminOnly: true,
         icon: IconStore,
+      },
+      {
+        href: "/admin/team",
+        label: "ผู้ดูแลแบรนด์",
+        brandAdminOnly: true,
+        match: (pathname) =>
+          pathname === "/admin/team" ||
+          /^\/admin\/brands\/[^/]+\/admins$/.test(pathname),
+        icon: IconUser,
       },
     ],
   },
@@ -257,22 +271,47 @@ function SidebarNav({
             {group.items.map((item) => {
               const active = isActive(pathname, item);
               const Icon = item.icon;
+              const warn = item.badgeTone === "warn" && item.badge;
               return (
                 <li key={item.href}>
                   <Link
                     href={item.href}
                     onClick={onNavigate}
+                    title={
+                      warn
+                        ? `${item.label} — โปรไฟล์ยังไม่ครบ ${item.badge} รายการ`
+                        : undefined
+                    }
                     className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                       active
-                        ? "bg-red-600 font-semibold text-white shadow-md shadow-red-600/25"
-                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        ? "bg-site-primary font-semibold text-white shadow-md shadow-slate-900/20"
+                        : warn
+                          ? "font-medium text-amber-800 ring-1 ring-inset ring-amber-200 hover:bg-amber-50"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
                     <Icon
                       size={18}
-                      className={active ? "text-white" : "text-slate-400"}
+                      className={
+                        active
+                          ? "text-white"
+                          : warn
+                            ? "text-amber-600"
+                            : "text-slate-400"
+                      }
                     />
-                    {item.label}
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    {item.badge ? (
+                      <span
+                        className={`tab-attention-dot inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                          active
+                            ? "bg-white/25 text-white"
+                            : "bg-amber-400 text-amber-950"
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    ) : null}
                   </Link>
                 </li>
               );
@@ -292,12 +331,10 @@ function ShellHeader({
   isPlatformAdmin: boolean;
 }) {
   return (
-    <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-red-50/40 px-5 py-5">
-      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-600 text-xs font-bold text-white shadow-sm shadow-red-600/30">
-        S
-      </div>
-      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-600">
-        SkillSale CMS
+    <div className="border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 px-5 py-5">
+      <PlatformMark placement="sidebar" height={36} />
+      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-site-primary">
+        CMS
       </p>
       <h1 className="mt-1 text-base font-bold text-slate-900">
         ระบบจัดการหลังบ้าน
@@ -316,6 +353,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { session } = useAdminSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [brandProfileGapCount, setBrandProfileGapCount] = useState(0);
 
   const isPlatformAdmin = session?.isPlatformAdmin ?? false;
   const navGroups = useMemo(
@@ -327,13 +365,67 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!session || session.isPlatformAdmin) {
+      setBrandProfileGapCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    function loadGaps() {
+      fetch("/api/admin/brands")
+        .then(async (res) => {
+          if (!res.ok) return;
+          const brands = (await res.json()) as Array<{
+            logoUrl?: string | null;
+            coverImageUrl?: string | null;
+          }>;
+          if (cancelled) return;
+          const count = brands.reduce(
+            (sum, brand) => sum + getBrandProfileGaps(brand).length,
+            0,
+          );
+          setBrandProfileGapCount(count);
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    }
+
+    loadGaps();
+    const onUpdated = () => loadGaps();
+    window.addEventListener("brand-profile-updated", onUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("brand-profile-updated", onUpdated);
+    };
+  }, [session, pathname]);
+
+  const navGroupsWithBadges = useMemo(() => {
+    if (brandProfileGapCount <= 0) return navGroups;
+    return navGroups.map((group) => ({
+      ...group,
+      items: group.items.map((item) =>
+        item.href === "/admin/brands"
+          ? {
+              ...item,
+              badge: String(brandProfileGapCount),
+              badgeTone: "warn" as const,
+            }
+          : item,
+      ),
+    }));
+  }, [navGroups, brandProfileGapCount]);
+
   if (pathname === "/admin/login") {
     return <>{children}</>;
   }
 
   const currentLabel =
-    navGroups.flatMap((g) => g.items).find((item) => isActive(pathname, item))
-      ?.label ?? "หลังบ้าน";
+    navGroupsWithBadges
+      .flatMap((g) => g.items)
+      .find((item) => isActive(pathname, item))?.label ?? "หลังบ้าน";
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
@@ -343,13 +435,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           isPlatformAdmin={isPlatformAdmin}
         />
 
-        <SidebarNav pathname={pathname} navGroups={navGroups} />
+        <SidebarNav pathname={pathname} navGroups={navGroupsWithBadges} />
 
-        <div className="border-t border-slate-100 p-3">
+        <div className="border-t border-slate-200 p-3">
           <button
             type="button"
             onClick={() => logout("/admin/login")}
-            className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
             ออกจากระบบ
           </button>
@@ -361,14 +453,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             aria-label="ปิดเมนู"
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]"
+            className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,85vw)] flex-col bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+          <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,85vw)] flex-col border-r border-slate-200 bg-white text-slate-900 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 px-5 py-4">
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-600">
-                  SkillSale CMS
+                <PlatformMark placement="sidebar" height={32} />
+                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-site-primary">
+                  CMS
                 </p>
                 <h1 className="mt-1 text-base font-bold text-slate-900">
                   ระบบจัดการหลังบ้าน
@@ -385,7 +478,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="ml-2 shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+                className="ml-2 shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                 aria-label="ปิด"
               >
                 <IconClose size={18} />
@@ -393,14 +486,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarNav
               pathname={pathname}
-              navGroups={navGroups}
+              navGroups={navGroupsWithBadges}
               onNavigate={() => setMobileOpen(false)}
             />
-            <div className="border-t border-slate-100 p-3">
+            <div className="border-t border-slate-200 p-3">
               <button
                 type="button"
                 onClick={() => logout("/admin/login")}
-                className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
               >
                 ออกจากระบบ
               </button>
@@ -410,12 +503,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/80 px-4 py-3.5 shadow-sm shadow-slate-900/5 backdrop-blur-md lg:px-6">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3.5 backdrop-blur-md lg:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="rounded-xl p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+              className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 lg:hidden"
               aria-label="เปิดเมนู"
             >
               <IconMenu size={20} />

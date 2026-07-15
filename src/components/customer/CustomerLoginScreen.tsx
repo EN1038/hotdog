@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useCustomer } from "./CustomerProvider";
 import { SiteLogo } from "./SiteLogo";
 import { useSiteBranding } from "./SiteBrandingProvider";
 import { PhoneInput } from "@/components/PhoneInput";
+import { IconPhone } from "@/components/icons";
 import { getRememberedCustomerPhone } from "@/lib/customer-remember";
 import { formatThaiPhone } from "@/lib/constants";
+import { resolvePlatformMarkForPlacement } from "@/lib/platform-branding";
 
 type CustomerLoginScreenProps = {
   onSuccess?: () => void;
@@ -18,6 +21,15 @@ type CustomerLoginScreenProps = {
   showBackButton?: boolean;
   brandName?: string | null;
   brandLogoUrl?: string | null;
+  browseLabel?: string;
+  browseHint?: string;
+  /**
+   * รูปหัวแบบปกเต็ม (object-cover):
+   * - ลิงก์สาขา → รูปสาขา
+   * - ลิงก์แบรนด์ → รูปปกแบรนด์
+   * ถ้ายังไม่มีรูป จะโชว์โลโก้ตรงกลางหัวภาพแทน
+   */
+  heroImageUrl?: string | null;
 };
 
 function BackIcon() {
@@ -27,20 +39,6 @@ function BackIcon() {
         d="M15 18l-6-6 6-6"
         stroke="currentColor"
         strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function PhoneIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M6.6 3.4A2 2 0 018.2 3h2.2c.7 0 1.3.4 1.6 1l1.2 2.4a2 2 0 01-.5 2.2l-1 1a16 16 0 006.9 6.9l1-1a2 2 0 012.2-.5l2.4 1.2a2 2 0 011 1.6v2.2a2 2 0 01-2 2C10.3 21.5 2.5 13.7 2.5 4.2a2 2 0 012.1-1.8z"
-        stroke="#ef4444"
-        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -94,81 +92,12 @@ function BrandLogo({
 }: {
   brandLogoUrl?: string | null;
 }) {
-  return <SiteLogo logoUrl={brandLogoUrl} size={72} />;
-}
-
-function SkewersIllustration() {
   return (
-    <svg
-      width="110"
-      height="90"
-      viewBox="0 0 110 90"
-      fill="none"
-      aria-hidden
-      className="shrink-0"
-    >
-      <ellipse cx="55" cy="82" rx="38" ry="6" fill="#000" opacity="0.06" />
-      <line
-        x1="22"
-        y1="78"
-        x2="28"
-        y2="18"
-        stroke="#a16207"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="26" cy="14" r="7" fill="#ef4444" />
-      <circle cx="26" cy="14" r="4.5" fill="#fca5a5" opacity="0.6" />
-      <line
-        x1="40"
-        y1="80"
-        x2="44"
-        y2="14"
-        stroke="#a16207"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="44" cy="10" r="7.5" fill="#f97316" />
-      <circle cx="44" cy="10" r="4" fill="#fdba74" opacity="0.5" />
-      <line
-        x1="58"
-        y1="78"
-        x2="62"
-        y2="16"
-        stroke="#a16207"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="62" cy="12" r="7" fill="#dc2626" />
-      <line
-        x1="76"
-        y1="80"
-        x2="80"
-        y2="12"
-        stroke="#a16207"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="80" cy="8" r="7.5" fill="#ea580c" />
-      <circle cx="80" cy="8" r="4" fill="#fed7aa" opacity="0.5" />
-      <line
-        x1="92"
-        y1="78"
-        x2="96"
-        y2="20"
-        stroke="#a16207"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="96" cy="16" r="6.5" fill="#b91c1c" />
-      <path
-        d="M18 30c6-4 14-6 22-4M30 42c8-2 16 0 24 4"
-        stroke="#fbbf24"
-        strokeWidth="2"
-        strokeLinecap="round"
-        opacity="0.5"
-      />
-    </svg>
+    <SiteLogo
+      logoUrl={brandLogoUrl}
+      size={88}
+      platformPlacement="login"
+    />
   );
 }
 
@@ -179,12 +108,19 @@ export function CustomerLoginScreen({
   backHref = "/",
   showBrowseOption = true,
   showBackButton = true,
-  brandName,
   brandLogoUrl,
+  browseLabel = "เข้าชมร้าน",
+  browseHint = "เลือกดูเมนูและร้านค้าได้ก่อน โดยไม่ต้องเข้าสู่ระบบ",
+  heroImageUrl,
 }: CustomerLoginScreenProps) {
+  const pathname = usePathname();
   const { login, sendOtp, verifyOtp } = useCustomer();
-  const { siteName } = useSiteBranding();
-  const displayName = brandName ?? siteName;
+  const branding = useSiteBranding();
+  const platformLogin = resolvePlatformMarkForPlacement(branding, "login");
+  const resolvedLogo = brandLogoUrl?.trim() || platformLogin.src;
+  const resolvedHero = heroImageUrl?.trim() || null;
+  const privacyHref = `/privacy?returnTo=${encodeURIComponent(pathname || "/")}`;
+
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [showName, setShowName] = useState(false);
@@ -293,54 +229,60 @@ export function CustomerLoginScreen({
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f5f5f6]">
-      <header className="relative shrink-0 px-4 pb-2 pt-4">
-        <div className="flex items-start gap-1">
-          {showBackButton &&
-            (onBack ? (
-              <button
-                type="button"
-                onClick={onBack}
-                className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-800 hover:bg-white/60"
-                aria-label="กลับ"
-              >
-                <BackIcon />
-              </button>
-            ) : (
-              <Link
-                href={backHref}
-                className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-800 hover:bg-white/60"
-                aria-label="กลับ"
-              >
-                <BackIcon />
-              </Link>
-            ))}
-
-          <div
-            className={`min-w-0 flex-1 pr-24 pt-0.5 ${showBackButton ? "" : "pl-1"}`}
-          >
-            <h1 className="text-[22px] font-bold leading-tight tracking-tight text-gray-900">
-              {otpStep ? "ยืนยันรหัส OTP" : "เข้าด้วยเบอร์โทร"}
-            </h1>
-            <p className="mt-1 text-sm leading-snug text-gray-500">
-              {otpStep
-                ? "กรอกรหัสที่ส่งไปทาง SMS เพื่อยืนยันตัวตน"
-                : "เบอร์โทรคือบัญชีของคุณ — ติดตามออเดอร์และดูประวัติได้ทันที"}
-            </p>
-          </div>
-
-          <div className="pointer-events-none absolute -right-2 top-1">
-            <SkewersIllustration />
-          </div>
+      {/* หัวภาพเต็มขอบบน-ซ้าย-ขวา ไม่มนมุม */}
+      <header className="relative shrink-0 overflow-hidden rounded-none">
+        <div className="relative h-[34vh] min-h-[180px] max-h-[280px] w-full overflow-hidden rounded-none bg-stone-200">
+          {resolvedHero ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={resolvedHero}
+              alt=""
+              className="absolute inset-0 h-full w-full scale-[1.06] object-cover object-center"
+            />
+          ) : resolvedLogo ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-stone-300 via-stone-100 to-orange-50 p-8">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={resolvedLogo}
+                alt=""
+                className="max-h-[55%] max-w-[70%] object-contain drop-shadow-sm"
+              />
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-stone-300 via-stone-100 to-orange-50 px-6 text-center">
+              <p className="text-sm text-stone-500">ยังไม่มีรูปหัวภาพ</p>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
         </div>
+
+        {showBackButton &&
+          (onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-800 shadow-sm backdrop-blur hover:bg-white"
+              aria-label="กลับ"
+            >
+              <BackIcon />
+            </button>
+          ) : (
+            <Link
+              href={backHref}
+              className="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-800 shadow-sm backdrop-blur hover:bg-white"
+              aria-label="กลับ"
+            >
+              <BackIcon />
+            </Link>
+          ))}
       </header>
 
-      <div className="mt-3 flex flex-1 flex-col rounded-t-[28px] bg-white px-6 pb-10 pt-8 shadow-[0_-4px_24px_rgba(0,0,0,0.04)]">
+      <div className="relative z-10 -mt-5 flex flex-1 flex-col rounded-t-[20px] bg-white px-6 pb-10 pt-7 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
         <div className="flex flex-col items-center">
-          <BrandLogo brandLogoUrl={brandLogoUrl} />
-          <p className="mt-3 text-lg font-bold text-site-primary">{displayName}</p>
+          <BrandLogo brandLogoUrl={resolvedLogo} />
         </div>
 
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center">
           <h2 className="text-base font-bold text-gray-900">
             {otpStep
               ? `ส่งรหัสไปที่ ${formatThaiPhone(phone)}`
@@ -364,13 +306,13 @@ export function CustomerLoginScreen({
                 เบอร์โทรศัพท์
               </label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2">
-                  <PhoneIcon />
+                <span className="pointer-events-none absolute inset-y-0 left-0 flex w-11 items-center justify-center text-site-primary">
+                  <IconPhone size={18} />
                 </span>
                 <PhoneInput
                   value={phone}
                   onChange={setPhone}
-                  className="w-full rounded-xl border border-red-200 bg-white py-3 pr-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
+                  className="w-full rounded-xl border border-site-primary/30 bg-white py-3 pr-4 pl-11 text-sm leading-normal text-gray-900 placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
                   placeholder="เช่น 081-234-5678"
                   required
                   autoFocus={!rememberedPhone}
@@ -468,13 +410,13 @@ export function CustomerLoginScreen({
             <button
               type="button"
               onClick={onBrowseShop}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-site-primary bg-white py-3.5 text-sm font-semibold text-site-primary transition-colors hover:bg-red-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-site-primary bg-white py-3.5 text-sm font-semibold text-site-primary transition-colors hover:bg-site-primary-soft"
             >
               <ShopIcon />
-              เข้าชมร้าน
+              {browseLabel}
             </button>
             <p className="mt-2 text-center text-xs text-gray-400">
-              เลือกดูเมนูและร้านค้าได้ก่อน โดยไม่ต้องเข้าสู่ระบบ
+              {browseHint}
             </p>
           </>
         )}
@@ -488,12 +430,12 @@ export function CustomerLoginScreen({
               เรายืนยันด้วย OTP และไม่เผยแพร่ข้อมูลให้บุคคลที่สาม
             </p>
           </div>
-          <button
-            type="button"
-            className="mt-3 text-sm font-medium text-site-primary hover:opacity-80"
+          <Link
+            href={privacyHref}
+            className="mt-3 inline-block text-sm font-medium text-site-primary hover:opacity-80"
           >
             นโยบายความเป็นส่วนตัว
-          </button>
+          </Link>
         </div>
       </div>
     </main>

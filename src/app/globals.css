@@ -3,13 +3,18 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --site-primary: #dc2626;
+  --site-primary: #0b2a4a;
+  --site-primary-hover: color-mix(in srgb, var(--site-primary) 82%, black);
+  --site-primary-active: color-mix(in srgb, var(--site-primary) 68%, black);
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-site-primary: var(--site-primary);
+  --color-site-primary-hover: var(--site-primary-hover);
+  --color-site-primary-active: var(--site-primary-active);
   --font-sans: var(--font-prompt);
 }
 
@@ -83,18 +88,18 @@ input[type="time"]:not(:focus):invalid {
   }
 }
 
-.bg-site-primary {
-  background-color: var(--site-primary);
+.bg-site-primary-soft {
+  background-color: color-mix(in srgb, var(--site-primary) 12%, white);
 }
 
-.text-site-primary {
-  color: var(--site-primary);
+.border-site-primary-soft {
+  border-color: color-mix(in srgb, var(--site-primary) 35%, white);
 }
 
-.border-site-primary {
-  border-color: var(--site-primary);
+.hover\:bg-site-primary-soft:hover {
+  background-color: color-mix(in srgb, var(--site-primary) 12%, white);
 }
 
 .ring-site-primary {
-  --tw-ring-color: color-mix(in srgb, var(--site-primary) 25%, transparent);
+  --tw-ring-color: color-mix(in srgb, var(--site-primary) 35%, transparent);
 }

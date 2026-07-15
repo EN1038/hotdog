@@ -164,9 +164,10 @@ type ExpandFieldId =
   | "note";
 
 const fieldInputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 focus:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-100";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary";
 
-const rowIconClass = "flex h-5 w-5 shrink-0 items-center justify-center";
+const rowIconClass =
+  "flex h-5 w-5 shrink-0 items-center justify-center overflow-visible";
 
 function ExpandableFulfillmentRow({
   icon: Icon,
@@ -426,7 +427,7 @@ export default function CheckoutPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3">
         <p className="text-gray-500">ตะกร้าว่างเปล่า</p>
-        <Link href="/order" className="text-red-500 underline">
+        <Link href="/order" className="text-site-primary underline">
           กลับไปเลือกเมนู
         </Link>
       </main>
@@ -435,7 +436,7 @@ export default function CheckoutPage() {
 
   return (
     <main className="min-h-screen pb-32">
-      <header className="sticky top-0 z-10 border-b bg-white px-4 py-3">
+      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white px-4 py-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -450,7 +451,7 @@ export default function CheckoutPage() {
       </header>
 
       {branch && (
-        <div className="mx-4 mt-3 flex items-center gap-3 rounded-xl border bg-white p-3">
+        <div className="mx-4 mt-3 flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
           {branch.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -459,7 +460,7 @@ export default function CheckoutPage() {
               className="h-12 w-12 rounded-lg object-cover"
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-red-200 to-orange-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-site-primary-soft">
               <IconBranchPlaceholder size={32} />
             </div>
           )}
@@ -530,13 +531,13 @@ export default function CheckoutPage() {
                       className="h-14 w-14 shrink-0 rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-red-100 to-orange-50">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
                       <IconSkewerPlaceholder size={32} />
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-gray-900">{l.name}</p>
-                    <p className="mt-0.5 text-xs font-medium text-orange-500">
+                    <p className="mt-0.5 text-xs font-medium text-site-primary">
                       ฿{formatPrice(l.unitPrice + (l.optionsPrice ?? 0))} / ไม้
                     </p>
                     {l.optionNames?.length ? (
@@ -557,7 +558,7 @@ export default function CheckoutPage() {
                     <p className="mt-0.5 text-sm font-bold text-gray-800">
                       ฿{formatPrice(lineTotal(l))}
                     </p>
-                    <p className="mt-1 text-xs font-semibold text-orange-600">
+                    <p className="mt-1 text-xs font-semibold text-site-primary">
                       แก้ไข
                     </p>
                   </div>
@@ -568,7 +569,7 @@ export default function CheckoutPage() {
         })}
       </div>
 
-      <div className="mx-4 mt-3 rounded-xl border bg-white p-3">
+      <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
         <p className="mb-2 text-sm font-semibold text-gray-800">
           ข้อมูลการรับสินค้า
         </p>
@@ -578,8 +579,8 @@ export default function CheckoutPage() {
             onClick={() => setFulfillment("PICKUP")}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium ${
               fulfillment === "PICKUP"
-                ? "border-red-500 bg-red-50 text-red-600"
-                : "border-gray-300 text-gray-600"
+                ? "border-site-primary bg-site-primary-soft text-site-primary"
+                : "border-gray-200 text-gray-600"
             }`}
           >
             <IconStore size={18} />
@@ -592,8 +593,8 @@ export default function CheckoutPage() {
             disabled={!deliveryAvailable}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
               fulfillment === "DELIVERY"
-                ? "border-red-500 bg-red-50 text-red-600"
-                : "border-gray-300 text-gray-600"
+                ? "border-site-primary bg-site-primary-soft text-site-primary"
+                : "border-gray-200 text-gray-600"
             }`}
           >
             <IconDelivery size={18} />
@@ -722,14 +723,14 @@ export default function CheckoutPage() {
                         onClick={() => setLocationId(loc.id)}
                         className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                           selected
-                            ? "border-red-300 bg-red-50/70 ring-1 ring-red-200"
+                            ? "border-site-primary bg-site-primary-soft ring-1 ring-site-primary"
                             : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
                         }`}
                       >
                         <span
                           className={`mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
                             selected
-                              ? "border-red-500 bg-red-500"
+                              ? "border-site-primary bg-site-primary"
                               : "border-gray-300 bg-white"
                           }`}
                           aria-hidden
@@ -800,7 +801,7 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      <div className="mx-4 mt-3 rounded-xl border bg-white p-3">
+      <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
         <p className="mb-2 text-sm font-semibold text-gray-800">วิธีชำระเงิน</p>
         <div className="flex gap-2">
           {ALLOWED_PAYMENT_METHODS.map((pm) => {
@@ -813,8 +814,8 @@ export default function CheckoutPage() {
               onClick={() => setPayment(pm)}
               className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border py-2.5 text-sm font-medium ${
                 payment === pm
-                  ? "border-red-500 bg-red-50 text-red-600"
-                  : "border-gray-300 text-gray-600"
+                  ? "border-site-primary bg-site-primary-soft text-site-primary"
+                  : "border-gray-200 text-gray-600"
               }`}
             >
               <PayIcon size={18} />
@@ -826,7 +827,7 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      <div className="mx-4 mt-3 rounded-xl border bg-white p-3 text-sm">
+      <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-white p-3 text-sm shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
         <div className="flex justify-between py-0.5 text-gray-600">
           <span>ค่าสินค้า</span>
           <span>฿{formatPrice(itemsTotal)}</span>
@@ -839,9 +840,9 @@ export default function CheckoutPage() {
           <span>ส่วนลด</span>
           <span>฿{formatPrice(discount)}</span>
         </div>
-        <div className="mt-1 flex justify-between border-t pt-2 font-bold text-gray-900">
+        <div className="mt-1 flex justify-between border-t border-gray-100 pt-2 font-bold text-gray-900">
           <span>รวมทั้งหมด</span>
-          <span className="text-red-600">฿{formatPrice(grandTotal)}</span>
+          <span className="text-site-primary">฿{formatPrice(grandTotal)}</span>
         </div>
       </div>
 
@@ -849,10 +850,10 @@ export default function CheckoutPage() {
         <p className="mx-4 mt-2 text-center text-sm text-red-600">{error}</p>
       )}
 
-      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t bg-white p-4">
+      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t border-gray-100 bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-sm text-gray-500">รวม</span>
-          <span className="text-lg font-bold text-red-600">
+          <span className="text-lg font-bold text-site-primary">
             ฿{formatPrice(grandTotal)}
           </span>
         </div>
@@ -860,7 +861,7 @@ export default function CheckoutPage() {
           type="button"
           onClick={submitOrder}
           disabled={submitting}
-          className="w-full rounded-xl bg-red-600 py-3 font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          className="w-full rounded-xl bg-site-primary py-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? "กำลังสั่งซื้อ..." : "ยืนยันสั่งซื้อ"}
         </button>

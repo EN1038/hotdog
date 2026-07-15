@@ -314,7 +314,7 @@ export default function ActivityLogsPage() {
                           {row.brandId ? (
                             <Link
                               href={`/admin/brands/${row.brandId}`}
-                              className="text-red-600 hover:underline"
+                              className="text-site-primary hover:underline"
                             >
                               {row.brandName || "แบรนด์"}
                             </Link>

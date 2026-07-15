@@ -32,9 +32,9 @@ export function OrderTimeline({
               <div
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-xs ${
                   current
-                    ? "bg-red-500 text-white"
+                    ? "bg-site-primary text-white"
                     : done
-                      ? "bg-red-100 text-red-500"
+                      ? "bg-site-primary-soft text-site-primary"
                       : "bg-gray-100 text-gray-400"
                 }`}
               >
@@ -42,7 +42,7 @@ export function OrderTimeline({
               </div>
               <p
                 className={`mt-1 w-16 text-center text-[10px] leading-tight ${
-                  current ? "font-semibold text-red-600" : "text-gray-400"
+                  current ? "font-semibold text-site-primary" : "text-gray-400"
                 }`}
               >
                 {ORDER_STATUS_LABELS[step]}
@@ -51,7 +51,7 @@ export function OrderTimeline({
             {i < steps.length - 1 && (
               <div
                 className={`mx-0.5 mb-4 h-0.5 flex-1 ${
-                  done ? "bg-red-400" : "bg-gray-200"
+                  done ? "bg-site-primary" : "bg-gray-200"
                 }`}
               />
             )}

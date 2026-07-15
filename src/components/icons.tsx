@@ -115,13 +115,16 @@ export function IconPhone(props: IconProps) {
   const p = baseProps(props);
   return (
     <svg {...p}>
-      <path
-        d="M6.6 3.4A2 2 0 018.2 3h2.2c.7 0 1.3.4 1.6 1l1.2 2.4a2 2 0 01-.5 2.2l-1 1a16 16 0 006.9 6.9l1-1a2 2 0 012.2-.5l2.4 1.2a2 2 0 011 1.6v2.2a2 2 0 01-2 2C10.3 21.5 2.5 13.7 2.5 4.2a2 2 0 012.1-1.8z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {/* Scale in slightly so stroke isn't clipped by the viewBox edges */}
+      <g transform="translate(12 12) scale(0.86) translate(-12 -12)">
+        <path
+          d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
     </svg>
   );
 }

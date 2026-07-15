@@ -61,6 +61,9 @@ export type BranchData = {
     nameTh?: string | null;
     nameEn?: string | null;
     logoUrl: string | null;
+    coverImageUrl?: string | null;
+    color?: string | null;
+    contactPhone?: string | null;
   } | null;
   menuItems: MenuItemData[];
   deliveryLocations: {

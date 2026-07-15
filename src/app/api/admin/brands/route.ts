@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/auth";
@@ -10,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 import { logAdminActivity } from "@/lib/admin-activity";
+import { hashAndSealPassword } from "@/lib/admin-password";
 
 const brandSchema = z.object({
   code: z
@@ -22,6 +22,8 @@ const brandSchema = z.object({
   siteTitle: z.string().nullable().optional(),
   siteDescription: z.string().nullable().optional(),
   logoUrl: z.string().nullable().optional(),
+  coverImageUrl: z.string().nullable().optional(),
+  contactPhone: z.string().nullable().optional(),
   color: z.string().optional(),
   adminUsername: z.string().min(3).optional(),
   adminPassword: z.string().min(6).optional(),
@@ -71,7 +73,9 @@ export async function POST(request: Request) {
     const dupAdmin = await prisma.admin.findUnique({ where: { username } });
     if (dupAdmin) return jsonError("ไอดีผู้ใช้ซ้ำ กรุณาใช้ชื่ออื่น");
 
-    const passwordHash = await bcrypt.hash(body.adminPassword, 10);
+    const { passwordHash, passwordEnc } = await hashAndSealPassword(
+      body.adminPassword,
+    );
 
     const brand = await prisma.$transaction(async (tx) => {
       const created = await tx.brand.create({
@@ -83,6 +87,8 @@ export async function POST(request: Request) {
           siteTitle: body.siteTitle?.trim() || null,
           siteDescription: body.siteDescription?.trim() || null,
           logoUrl: body.logoUrl ?? null,
+          coverImageUrl: body.coverImageUrl ?? null,
+          contactPhone: body.contactPhone?.replace(/\D/g, "").trim() || null,
           color: normalizeColor(body.color),
         },
       });
@@ -91,6 +97,7 @@ export async function POST(request: Request) {
         data: {
           username,
           passwordHash,
+          passwordEnc,
           isPlatformAdmin: false,
         },
       });

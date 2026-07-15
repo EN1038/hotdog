@@ -49,6 +49,8 @@ model Admin {
   id              String             @id @default(cuid())
   username        String             @unique
   passwordHash    String
+  /// AES-GCM encrypted plaintext for platform recovery/view only (never sent to brand admins)
+  passwordEnc     String?
   isPlatformAdmin Boolean            @default(false)
   createdAt       DateTime           @default(now())
   brandMembers    BrandMember[]
@@ -64,6 +66,10 @@ model Brand {
   siteTitle       String?
   siteDescription String?
   logoUrl         String?
+  /** รูปปกหัวหน้าเข้าสู่ระบบเมื่อเข้าจากลิงก์แบรนด์ (ยังไม่ระบุสาขา) */
+  coverImageUrl   String?
+  /** เบอร์ติดต่อแบรนด์ (ลูกค้ากด “แจ้งให้เราทราบ” ฯลฯ) */
+  contactPhone    String?
   color           String             @default("#dc2626")
   createdAt       DateTime           @default(now())
   branches        Branch[]
@@ -110,15 +116,24 @@ model BrandMember {
   @@unique([adminId, brandId])
 }
 
-/** Platform-level settings (marketplace shell). Brand identity lives on Brand. */
-model SiteSettings {
+  /** Platform-level settings (marketplace shell). Brand identity lives on Brand. */
+  model SiteSettings {
   id              String   @id @default("default")
-  siteName        String   @default("Hotdog")
-  siteTitle       String   @default("Hotdog - ระบบจัดการร้านค้า")
+  siteName        String   @default("SkillSale")
+  siteTitle       String   @default("SkillSale - ระบบสั่งอาหารออนไลน์")
   siteDescription String?
+  /** Mark / letter-style icon (square). */
+  iconUrl         String?
+  /** Full wordmark logo. */
   logoUrl         String?
   faviconUrl      String?
-  primaryColor    String   @default("#dc2626")
+  primaryColor    String   @default("#0B2A4A")
+  /** Which asset to show: "icon" | "logo" */
+  markSidebar     String   @default("icon")
+  markLogin       String   @default("logo")
+  markHome        String   @default("logo")
+  markOrder       String   @default("icon")
+  markFavicon     String   @default("icon")
   updatedAt       DateTime @updatedAt
 }
 

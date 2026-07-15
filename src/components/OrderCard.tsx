@@ -2,8 +2,9 @@ import type { FulfillmentType, OrderStatus } from "@prisma/client";
 import {
   FULFILLMENT_LABELS,
   ORDER_STATUS_COLORS,
-  ORDER_STATUS_LABELS,
   getAllowedNextStatuses,
+  getStaffLegendStatuses,
+  getStaffStatusLabel,
   type StaffRole,
 } from "@/lib/constants";
 import { IconArrowRight, IconLabel, IconNote } from "@/components/icons";
@@ -94,7 +95,7 @@ export function OrderCard({
           )}
         </div>
         <span className="rounded px-2 py-1 text-xs font-medium text-gray-800">
-          {ORDER_STATUS_LABELS[order.status]}
+          {getStaffStatusLabel(order.status, roles)}
         </span>
       </div>
       <ul className="mb-2 space-y-1 text-sm text-gray-800">
@@ -124,7 +125,7 @@ export function OrderCard({
               className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium hover:opacity-80 ${ORDER_STATUS_COLORS[status]}`}
             >
               <IconArrowRight size={12} />
-              {ORDER_STATUS_LABELS[status]}
+              {getStaffStatusLabel(status, roles)}
             </button>
           ))}
         </div>
@@ -133,17 +134,50 @@ export function OrderCard({
   );
 }
 
-export function StatusLegend() {
+export function StatusLegend({
+  roles = [],
+  autoAcceptOrders = false,
+  value,
+  onChange,
+}: {
+  roles?: StaffRole[];
+  autoAcceptOrders?: boolean;
+  value?: OrderStatus | null;
+  onChange?: (status: OrderStatus) => void;
+}) {
+  const statuses = getStaffLegendStatuses(roles, { autoAcceptOrders });
+  if (statuses.length === 0) return null;
+
+  const active = value ?? statuses[0];
+
   return (
-    <div className="flex flex-wrap gap-2 text-xs">
-      {(Object.keys(ORDER_STATUS_LABELS) as OrderStatus[]).map((status) => (
-        <span
-          key={status}
-          className={`rounded border px-2 py-1 ${ORDER_STATUS_COLORS[status]}`}
-        >
-          {ORDER_STATUS_LABELS[status]}
-        </span>
-      ))}
+    <div
+      className="overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      role="tablist"
+    >
+      <div className="flex w-full min-w-0 border-b border-gray-200">
+        {statuses.map((status) => {
+          const selected = status === active;
+          return (
+            <button
+              key={status}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => onChange?.(status)}
+              className={`min-w-0 flex-1 cursor-pointer border-b-2 px-1 py-2.5 text-center text-[11px] font-medium leading-tight transition-colors sm:text-xs ${
+                selected
+                  ? "-mb-px border-site-primary text-site-primary"
+                  : "border-transparent text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              <span className="block truncate">
+                {getStaffStatusLabel(status, roles)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

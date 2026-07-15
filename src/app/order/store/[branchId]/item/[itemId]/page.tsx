@@ -32,7 +32,7 @@ function CheckIndicator({
     return (
       <span
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-          checked ? "border-orange-500 bg-orange-500" : "border-gray-300 bg-white"
+          checked ? "border-site-primary bg-site-primary" : "border-gray-300 bg-white"
         }`}
         aria-hidden
       >
@@ -44,7 +44,7 @@ function CheckIndicator({
   return (
     <span
       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${
-        checked ? "border-orange-500 bg-orange-500" : "border-gray-300 bg-white"
+        checked ? "border-site-primary bg-site-primary" : "border-gray-300 bg-white"
       }`}
       aria-hidden
     >
@@ -181,7 +181,7 @@ export default function ItemDetailPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
         <p className="text-gray-500">ไม่พบเมนูนี้</p>
-        <Link href={`/order/store/${branchId}`} className="text-orange-500 underline">
+        <Link href={`/order/store/${branchId}`} className="text-site-primary underline">
           กลับหน้าเมนู
         </Link>
       </main>
@@ -209,7 +209,7 @@ export default function ItemDetailPage() {
               className="h-[84px] w-[84px] shrink-0 rounded-2xl object-cover"
             />
           ) : (
-            <div className="flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-red-100 to-orange-50">
+            <div className="flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-2xl bg-site-primary-soft">
               <IconSkewerPlaceholder size={48} />
             </div>
           )}
@@ -218,7 +218,7 @@ export default function ItemDetailPage() {
             {item.description && (
               <p className="mt-1 text-sm text-gray-500">{item.description}</p>
             )}
-            <p className="mt-2 text-lg font-bold text-orange-500">
+            <p className="mt-2 text-lg font-bold text-site-primary">
               ฿{formatPrice(item.price)}
             </p>
           </div>
@@ -258,10 +258,10 @@ export default function ItemDetailPage() {
             return (
               <div key={group.id} className={gi > 0 ? "border-t border-gray-100" : ""}>
                 <div className="px-4 pb-1 pt-4">
-                  <p className="text-[15px] font-bold text-orange-500">
+                  <p className="text-[15px] font-bold text-site-primary">
                     {group.name}
                     {group.required ? (
-                      <span className="ml-0.5 text-orange-400">*</span>
+                      <span className="ml-0.5 text-site-primary/70">*</span>
                     ) : (
                       <span className="text-sm font-normal text-gray-400"> (ไม่บังคับ)</span>
                     )}
@@ -285,14 +285,14 @@ export default function ItemDetailPage() {
                           onClick={() => toggleOption(group.id, opt.id, group.maxSelect)}
                           className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
                             atMax ? "cursor-not-allowed opacity-40" : "active:bg-gray-50"
-                          } ${active ? "bg-orange-50/40" : ""}`}
+                          } ${active ? "bg-site-primary-soft/40" : ""}`}
                         >
                           <span className="min-w-0 flex-1">
                             <span className={`text-[15px] ${active ? "font-semibold text-gray-900" : "text-gray-800"}`}>
                               {opt.name}
                             </span>
                             {Number(opt.priceDelta) > 0 && (
-                              <span className="ml-1.5 text-[15px] font-medium text-orange-500">
+                              <span className="ml-1.5 text-[15px] font-medium text-site-primary">
                                 +฿{formatPrice(opt.priceDelta)}
                               </span>
                             )}
@@ -310,12 +310,12 @@ export default function ItemDetailPage() {
       </section>
 
       <section className="mx-4 mt-3 overflow-hidden rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
-        <IconLabel icon={IconNote} className="mb-2 text-[15px] font-bold text-orange-500" iconClassName="text-orange-500">
+        <IconLabel icon={IconNote} className="mb-2 text-[15px] font-bold text-site-primary" iconClassName="text-site-primary">
           หมายเหตุ (ต่อไม้)
           <span className="ml-1 text-sm font-normal text-gray-400">(ไม่บังคับ)</span>
         </IconLabel>
         <textarea
-          className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[15px] text-gray-900 placeholder:text-gray-500 focus:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-100"
+          className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[15px] text-gray-900 placeholder:text-gray-500 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="เช่น ไม่ใส่ผักชี / เผ็ดน้อย"
@@ -340,7 +340,7 @@ export default function ItemDetailPage() {
             <button
               type="button"
               onClick={() => setQty((q) => Math.max(1, q - 1))}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-orange-300 text-orange-500"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-site-primary-soft text-site-primary"
               aria-label="ลดจำนวน"
             >
               <IconMinus size={16} />
@@ -351,7 +351,7 @@ export default function ItemDetailPage() {
             <button
               type="button"
               onClick={() => setQty((q) => q + 1)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-white hover:bg-orange-600"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-white hover:opacity-90"
               aria-label="เพิ่มจำนวน"
             >
               <IconPlus size={16} />
@@ -362,7 +362,7 @@ export default function ItemDetailPage() {
         <button
           type="button"
           onClick={addToCart}
-          className="flex w-full items-center justify-between rounded-xl bg-orange-500 px-4 py-3.5 font-semibold text-white hover:bg-orange-600"
+          className="flex w-full items-center justify-between rounded-xl bg-site-primary px-4 py-3.5 font-semibold text-white hover:opacity-90"
         >
           <span>เพิ่มเข้าตะกร้า</span>
           <span>฿{formatPrice(lineTotal)}</span>

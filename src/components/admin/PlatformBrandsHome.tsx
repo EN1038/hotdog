@@ -22,10 +22,15 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { IconPlus } from "@/components/icons";
+import { ImageField } from "@/components/admin/ImageField";
 import {
   BRAND_COLOR_PRESETS,
   DEFAULT_BRAND_COLOR,
 } from "@/lib/color";
+import {
+  BRAND_COVER_IMAGE_SIZE_HINT,
+  BRAND_LOGO_SIZE_HINT,
+} from "@/lib/image-guides";
 
 type Brand = {
   id: string;
@@ -88,6 +93,8 @@ function emptyCreateForm() {
     code: "",
     name: "",
     color: DEFAULT_BRAND_COLOR,
+    logoUrl: "",
+    coverImageUrl: "",
     adminUsername: "",
     adminPassword: "",
   };
@@ -138,6 +145,8 @@ export function PlatformBrandsHome() {
         code: form.code.trim().toLowerCase(),
         name: form.name.trim(),
         color: form.color,
+        logoUrl: form.logoUrl.trim() || null,
+        coverImageUrl: form.coverImageUrl.trim() || null,
         adminUsername: form.adminUsername.trim().toLowerCase(),
         adminPassword: form.adminPassword,
       }),
@@ -253,6 +262,12 @@ export function PlatformBrandsHome() {
                           ดูสาขา
                         </Link>
                         <Link
+                          href={`/admin/brands/${brand.id}/admins`}
+                          className={btnOutline}
+                        >
+                          ผู้ดูแล
+                        </Link>
+                        <Link
                           href={`/${brand.code}`}
                           target="_blank"
                           className={btnOutline}
@@ -281,7 +296,7 @@ export function PlatformBrandsHome() {
         onClose={closeModal}
         busy={creating}
         title="สร้างแบรนด์ใหม่"
-        description="สร้างแบรนด์พร้อมบัญชีเข้าใช้หลังบ้านให้ร้าน"
+        description="สร้างแบรนด์พร้อมบัญชีเข้าใช้หลังบ้าน — โลโก้/รูปปกอัปโหลดทีหลังได้ในโปรไฟล์แบรนด์"
         maxWidthClassName="max-w-xl"
       >
         <form onSubmit={createBrand} className="p-5">
@@ -316,6 +331,37 @@ export function PlatformBrandsHome() {
                 value={form.color}
                 onChange={(color) => setForm((f) => ({ ...f, color }))}
               />
+            </div>
+            <div className="sm:col-span-2">
+              <p className="mb-2 text-xs text-slate-500">
+                รูปภาพไม่บังคับตอนสร้าง — ผู้ดูแลแบรนด์อัปโหลดทีหลังในเมนูโปรไฟล์แบรนด์ได้
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ImageField
+                  label="โลโก้ (ไม่บังคับ)"
+                  value={form.logoUrl}
+                  onChange={(url) =>
+                    setForm((f) => ({ ...f, logoUrl: url }))
+                  }
+                  shopCode={form.code.trim() || undefined}
+                  folder="Brand"
+                  aspectClassName="aspect-square"
+                  size="compact"
+                  hint={BRAND_LOGO_SIZE_HINT}
+                />
+                <ImageField
+                  label="รูปปก (ไม่บังคับ)"
+                  value={form.coverImageUrl}
+                  onChange={(url) =>
+                    setForm((f) => ({ ...f, coverImageUrl: url }))
+                  }
+                  shopCode={form.code.trim() || undefined}
+                  folder="Brand"
+                  aspectClassName="aspect-[3/2]"
+                  size="compact"
+                  hint={BRAND_COVER_IMAGE_SIZE_HINT}
+                />
+              </div>
             </div>
             <div className="border-t border-slate-100 pt-3 sm:col-span-2">
               <p className="mb-2 text-sm font-semibold text-slate-800">

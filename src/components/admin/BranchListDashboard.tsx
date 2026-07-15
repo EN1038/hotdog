@@ -29,6 +29,7 @@ import {
   defaultWeeklyHours,
   type WeeklySchedule,
 } from "@/lib/branch-hours";
+import { BRANCH_IMAGE_SIZE_HINT } from "@/lib/image-guides";
 
 export type DashboardBrand = {
   id: string;
@@ -85,6 +86,7 @@ type BranchListDashboardProps = {
   description?: string;
   backHref?: string;
   backLabel?: string;
+  headerActions?: React.ReactNode;
 };
 
 export function BranchListDashboard({
@@ -94,6 +96,7 @@ export function BranchListDashboard({
   description = "จัดการสาขาและรูปหน้าร้านที่ใช้แสดงฝั่งลูกค้า",
   backHref,
   backLabel = "กลับ",
+  headerActions,
 }: BranchListDashboardProps) {
   const router = useRouter();
   const toast = useToast();
@@ -270,6 +273,7 @@ export function BranchListDashboard({
         description={description}
         actions={
           <>
+            {headerActions}
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm">
               {branches.length} สาขา
             </span>
@@ -391,7 +395,7 @@ export function BranchListDashboard({
             aria-labelledby={titleId}
             className="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
           >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-red-50 via-white to-slate-50 px-5 py-4">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-5 py-4">
               <div>
                 <h3 id={titleId} className="font-semibold text-slate-900">
                   เพิ่มสาขาใหม่
@@ -425,8 +429,9 @@ export function BranchListDashboard({
                     onChange={setImageUrl}
                     shopCode={code || selectedBrand?.code}
                     folder="Branch"
-                    aspectClassName="aspect-[4/3]"
+                    aspectClassName="aspect-[3/2]"
                     size="compact"
+                    hint={BRANCH_IMAGE_SIZE_HINT}
                   />
 
                   <div className="grid content-start gap-4">
@@ -573,7 +578,7 @@ export function BranchListDashboard({
                     !name.trim() ||
                     (!brandLocked && brands.length > 0 && !brandId)
                   }
-                  className="cursor-pointer rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 hover:shadow active:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="cursor-pointer rounded-xl bg-site-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-site-primary-hover hover:shadow active:bg-site-primary-active disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? "กำลังบันทึก..." : "สร้างสาขา"}
                 </button>

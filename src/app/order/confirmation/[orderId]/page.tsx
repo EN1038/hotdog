@@ -62,7 +62,7 @@ function InfoRow({
   return (
     <div className="flex items-center justify-between gap-3 py-2.5">
       <div className="flex min-w-0 items-center gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft text-site-primary">
           <Icon size={16} />
         </span>
         <span className="text-sm text-gray-500">{label}</span>
@@ -125,10 +125,10 @@ export default function ConfirmationPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
         <p className="text-gray-500">ไม่พบออเดอร์</p>
-        <Link href="/order/history" className="text-sm text-red-600 hover:underline">
+        <Link href="/order/history" className="text-sm text-site-primary hover:underline">
           ไปประวัติการสั่ง
         </Link>
-        <Link href="/order" className="text-red-500 underline">
+        <Link href="/order" className="text-site-primary underline">
           กลับหน้าเมนู
         </Link>
       </main>
@@ -196,12 +196,12 @@ export default function ConfirmationPage() {
       </div>
 
       <div className="mx-4 mt-5 flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500 text-white">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-site-primary text-white">
           <IconReceipt size={22} />
         </span>
         <div>
           <p className="text-xs text-gray-500">เลขที่ออเดอร์</p>
-          <p className="text-2xl font-bold text-red-600">#{order.orderNumber}</p>
+          <p className="text-2xl font-bold text-site-primary">#{order.orderNumber}</p>
         </div>
       </div>
 
@@ -215,7 +215,7 @@ export default function ConfirmationPage() {
               className="h-16 w-16 shrink-0 rounded-xl object-cover"
             />
           ) : (
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-100 to-orange-50">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-site-primary-soft">
               <IconBranchPlaceholder size={36} />
             </div>
           )}
@@ -235,7 +235,7 @@ export default function ConfirmationPage() {
                 </span>
               )}
               {!branch.isOpen && branch.allowAdvanceOrder && (
-                <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-500">
+                <span className="rounded-md bg-site-primary-soft px-1.5 py-0.5 text-[10px] font-semibold text-site-primary">
                   สั่งล่วงหน้าได้
                 </span>
               )}
@@ -293,7 +293,7 @@ export default function ConfirmationPage() {
           <p className="text-sm font-bold text-gray-900">รายการสั่งซื้อ</p>
           <Link
             href={`/order/history/${order.id}`}
-            className="text-xs font-medium text-red-500"
+            className="text-xs font-medium text-site-primary"
           >
             ดูรายละเอียด
           </Link>
@@ -311,7 +311,7 @@ export default function ConfirmationPage() {
                     className="h-12 w-12 shrink-0 rounded-lg object-cover"
                   />
                 ) : (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-red-100 to-orange-50">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
                     <IconSkewerPlaceholder size={28} />
                   </div>
                 )}
@@ -337,13 +337,13 @@ export default function ConfirmationPage() {
         </div>
         <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
           <span className="text-sm font-medium text-gray-700">รวมทั้งสิ้น</span>
-          <span className="text-lg font-bold text-red-600">
+          <span className="text-lg font-bold text-site-primary">
             ฿{formatPrice(orderGrandTotal(order))}
           </span>
         </div>
       </div>
 
-      <p className="mx-4 mt-3 flex items-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-xs leading-relaxed text-red-600">
+      <p className="mx-4 mt-3 flex items-center gap-2 rounded-2xl bg-site-primary-soft px-4 py-3 text-xs leading-relaxed text-site-primary">
         <IconBell size={16} className="shrink-0" />
         เมื่อร้านเปิด ระบบจะแจ้งสถานะออเดอร์ให้โดยอัตโนมัติ
       </p>
@@ -351,13 +351,13 @@ export default function ConfirmationPage() {
       <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 gap-2 border-t bg-white p-4">
         <Link
           href="/order/history"
-          className="flex flex-1 items-center justify-center rounded-xl border border-red-500 py-3 text-center text-sm font-semibold text-red-500"
+          className="flex flex-1 items-center justify-center rounded-xl border border-site-primary py-3 text-center text-sm font-semibold text-site-primary"
         >
           ดูประวัติคำสั่งซื้อ
         </Link>
         <Link
           href={`/order/store/${branch.id}`}
-          className="flex flex-1 items-center justify-center rounded-xl bg-red-600 py-3 text-center text-sm font-semibold text-white"
+          className="flex flex-1 items-center justify-center rounded-xl bg-site-primary py-3 text-center text-sm font-semibold text-white hover:opacity-90"
         >
           กลับหน้าเมนู
         </Link>

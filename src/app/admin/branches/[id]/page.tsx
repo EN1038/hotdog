@@ -28,6 +28,7 @@ import { BranchHoursEditor } from "@/components/admin/BranchHoursEditor";
 import { BranchOptionLibrary } from "@/components/admin/BranchOptionLibrary";
 import { BranchCategoryLibrary } from "@/components/admin/BranchCategoryLibrary";
 import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
+import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import {
@@ -54,6 +55,7 @@ import {
   PRICE_RANGE_OPTIONS,
 } from "@/lib/localized";
 import { slugifyCode } from "@/lib/slug";
+import { BRANCH_IMAGE_SIZE_HINT } from "@/lib/image-guides";
 import type { PriceRangeId } from "@/lib/localized";
 import type { StaffRole } from "@prisma/client";
 
@@ -193,6 +195,19 @@ function hasBranchMapPin(branch: {
   );
 }
 
+function getBranchSettingsGaps(branch: {
+  latitude: number | null;
+  longitude: number | null;
+  phone: string | null;
+  primaryCategory: string | null;
+}): string[] {
+  const missing: string[] = [];
+  if (!hasBranchMapPin(branch)) missing.push("หมุดร้าน");
+  if (!branch.phone?.trim()) missing.push("เบอร์โทร");
+  if (!branch.primaryCategory) missing.push("ประเภทอาหาร");
+  return missing;
+}
+
 function getTabAttention(
   tabId: TabId,
   branch: BranchDetail,
@@ -223,10 +238,7 @@ function getTabAttention(
         title: "ยังไม่มีพื้นที่จัดส่ง — ลูกค้าสั่งได้แค่รับที่ร้าน",
       };
     case "settings": {
-      const missing: string[] = [];
-      if (!hasBranchMapPin(branch)) missing.push("หมุดร้าน");
-      if (!branch.phone?.trim()) missing.push("เบอร์โทร");
-      if (!branch.primaryCategory) missing.push("ประเภทอาหาร");
+      const missing = getBranchSettingsGaps(branch);
       if (missing.length === 0) return null;
       return {
         tone: "warn",
@@ -1018,7 +1030,7 @@ function BranchDetailContent() {
             ? `/admin/brands/${branch.brandId}`
             : "/admin"
         }
-        className="inline-flex items-center gap-1 text-sm text-red-600 hover:underline"
+        className="inline-flex items-center gap-1 text-sm text-site-primary hover:underline"
       >
         <IconBack size={16} />
         {session?.isPlatformAdmin && branch.brandId
@@ -1070,7 +1082,7 @@ function BranchDetailContent() {
                 }
                 className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition ${
                   active
-                    ? "bg-red-600 font-semibold text-white shadow-sm shadow-red-600/25"
+                    ? "bg-site-primary font-semibold text-white shadow-sm shadow-slate-900/20"
                     : warn
                       ? "font-medium text-amber-800 ring-1 ring-inset ring-amber-200 hover:bg-amber-50"
                       : info
@@ -1086,7 +1098,7 @@ function BranchDetailContent() {
                         active
                           ? warn
                             ? "bg-amber-300 text-amber-950"
-                            : "bg-white/95 text-red-700"
+                            : "bg-white/95 text-site-primary"
                           : warn
                             ? "bg-amber-500 text-white"
                             : "bg-sky-500 text-white"
@@ -1150,7 +1162,7 @@ function BranchDetailContent() {
               <button
                 type="button"
                 onClick={() => setTab("menu")}
-                className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-red-200"
+                className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300"
               >
                 <p className="text-sm text-gray-500">เมนู</p>
                 <p className="mt-1 text-2xl font-bold text-gray-900">
@@ -1302,7 +1314,7 @@ function BranchDetailContent() {
                     <button
                       type="button"
                       onClick={() => setTab("settings")}
-                      className="mt-4 inline-flex w-fit items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                      className="mt-4 inline-flex w-fit items-center gap-1 rounded-xl border border-site-primary-soft bg-site-primary-soft px-3.5 py-2 text-sm font-medium text-site-primary transition hover:border-site-primary hover:bg-site-primary-soft"
                     >
                       ไปตั้งค่าสาขา
                       <IconChevronRight size={16} />
@@ -1331,12 +1343,26 @@ function BranchDetailContent() {
             </div>
 
             <div className={panelClass}>
+              {branch.brand?.code && branch.code ? (
+                <BranchCustomerQrCard
+                  brandCode={branch.brand.code}
+                  branchCode={branch.code}
+                />
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  ตั้งแบรนด์และรหัสสาขาในแท็บตั้งค่าก่อน เพื่อสร้างลิงก์/QR
+                  ให้ลูกค้าเข้าสาขานี้โดยตรง
+                </div>
+              )}
+            </div>
+
+            <div className={panelClass}>
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h3 className="font-semibold text-gray-900">ออเดอร์ล่าสุด</h3>
                 <button
                   type="button"
                   onClick={() => setTab("orders")}
-                  className="text-sm text-red-600 hover:underline"
+                  className="text-sm text-site-primary hover:underline"
                 >
                   ดูตารางทั้งหมด
                 </button>
@@ -1484,7 +1510,7 @@ function BranchDetailContent() {
                         setMenuCategoryFilter("ALL");
                         setMenuStatusFilter("ALL");
                       }}
-                      className="rounded-full px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                      className="rounded-full px-2.5 py-1.5 text-xs font-medium text-site-primary hover:bg-site-primary-soft"
                     >
                       ล้าง
                     </button>
@@ -1658,7 +1684,7 @@ function BranchDetailContent() {
                           className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
                         />
                       ) : (
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 ring-2 ring-white shadow-sm">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400 ring-2 ring-white shadow-sm">
                           <IconUser size={22} />
                         </div>
                       )}
@@ -1741,7 +1767,7 @@ function BranchDetailContent() {
                 className="p-5"
               >
                 <div className="grid gap-5 lg:grid-cols-[200px_1fr]">
-                  <div className="rounded-2xl border border-dashed border-red-100 bg-gradient-to-b from-red-50/60 to-white p-3">
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-gradient-to-b from-slate-50/60 to-white p-3">
                     <ImageField
                       label="รูปโปรไฟล์"
                       value={staffImageUrl}
@@ -1858,7 +1884,7 @@ function BranchDetailContent() {
                           onClick={() => setStaffSeller((v) => !v)}
                           className={`rounded-full px-3.5 py-2 text-sm font-semibold transition ${
                             staffSeller
-                              ? "bg-red-600 text-white shadow-sm"
+                              ? "bg-site-primary text-white shadow-sm"
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
@@ -1869,7 +1895,7 @@ function BranchDetailContent() {
                           onClick={() => setStaffDelivery((v) => !v)}
                           className={`rounded-full px-3.5 py-2 text-sm font-semibold transition ${
                             staffDelivery
-                              ? "bg-red-600 text-white shadow-sm"
+                              ? "bg-site-primary text-white shadow-sm"
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
@@ -2149,13 +2175,75 @@ function BranchDetailContent() {
 
         {activeTab === "settings" && (
           <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-100 bg-gradient-to-r from-red-50 via-white to-orange-50 px-5 py-4">
+            <div className="border-b border-gray-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-5 py-4">
               <h3 className="font-semibold text-gray-900">ตั้งค่าสาขา</h3>
               <p className="mt-0.5 text-sm text-gray-600">
                 จัดการสถานะรับออเดอร์ ข้อมูลร้าน แผนที่ และเวลาทำการ
               </p>
             </div>
             <form onSubmit={saveBranch} className="space-y-8 p-5">
+              {(() => {
+                const draftGaps = getBranchSettingsGaps({
+                  latitude: settings.latitude,
+                  longitude: settings.longitude,
+                  phone: settings.phone.trim() || null,
+                  primaryCategory: settings.primaryCategory || null,
+                });
+                if (draftGaps.length === 0) return null;
+                const jump = (id: string) => {
+                  document
+                    .getElementById(id)
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                };
+                return (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-amber-900">
+                      แบดจ์แท็บนี้มาจากข้อมูลที่ยังไม่ครบ ({draftGaps.length})
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      กรอกแล้วกดบันทึกตั้งค่า — badge จะหายหลังบันทึกสำเร็จ
+                    </p>
+                    <ul className="mt-2 space-y-1.5 text-sm text-amber-900">
+                      {draftGaps.includes("เบอร์โทร") && (
+                        <li>
+                          <button
+                            type="button"
+                            onClick={() => jump("settings-phone")}
+                            className="font-medium underline underline-offset-2"
+                          >
+                            เบอร์โทรสาขา
+                          </button>
+                          {" — "}ส่วนตัวตนสาขาด้านล่าง
+                        </li>
+                      )}
+                      {draftGaps.includes("หมุดร้าน") && (
+                        <li>
+                          <button
+                            type="button"
+                            onClick={() => jump("settings-map")}
+                            className="font-medium underline underline-offset-2"
+                          >
+                            หมุดร้านบนแผนที่
+                          </button>
+                          {" — "}ส่วนที่อยู่และแผนที่
+                        </li>
+                      )}
+                      {draftGaps.includes("ประเภทอาหาร") && (
+                        <li>
+                          <button
+                            type="button"
+                            onClick={() => jump("settings-category")}
+                            className="font-medium underline underline-offset-2"
+                          >
+                            ประเภทอาหารหลัก
+                          </button>
+                          {" — "}ส่วนประเภทและช่วงราคา
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                );
+              })()}
               {/* 1. Daily ops status */}
               <div className="space-y-3">
                 <div>
@@ -2356,7 +2444,8 @@ function BranchDetailContent() {
                     }
                     shopCode={settings.code || branch.code || branch.brand?.code}
                     folder="Branch"
-                    aspectClassName="aspect-[4/3]"
+                    aspectClassName="aspect-[3/2]"
+                    hint={BRANCH_IMAGE_SIZE_HINT}
                   />
                   <div className="grid gap-3 sm:grid-cols-2 content-start">
                     <div className="sm:col-span-2">
@@ -2406,14 +2495,25 @@ function BranchDetailContent() {
                         placeholder="ว่าง = ใช้ชื่อหลัก"
                       />
                     </div>
-                    <div className="sm:col-span-2">
-                      <label className={adminLabelClass}>เบอร์โทรสาขา</label>
+                    <div className="sm:col-span-2" id="settings-phone">
+                      <label className={adminLabelClass}>
+                        เบอร์โทรสาขา
+                        {!settings.phone.trim() && (
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                            ยังไม่มี
+                          </span>
+                        )}
+                      </label>
                       <PhoneInput
                         value={settings.phone}
                         onChange={(digits) =>
                           setSettings((s) => ({ ...s, phone: digits }))
                         }
-                        className={adminInputClass}
+                        className={`${adminInputClass}${
+                          !settings.phone.trim()
+                            ? " border-amber-300 ring-1 ring-amber-200"
+                            : ""
+                        }`}
                       />
                     </div>
                   </div>
@@ -2421,15 +2521,31 @@ function BranchDetailContent() {
               </div>
 
               {/* 3. Address + map */}
-              <div className="space-y-3 border-t border-slate-100 pt-8">
+              <div id="settings-map" className="space-y-3 border-t border-slate-100 pt-8">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
                     ที่อยู่และแผนที่
+                    {!hasBranchMapPin({
+                      latitude: settings.latitude,
+                      longitude: settings.longitude,
+                    }) && (
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                        ยังไม่มีหมุด
+                      </span>
+                    )}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     หมุดร้านใช้เป็นจุดอ้างอิงตอนตั้งพื้นที่จัดส่งด้วย
                   </p>
                 </div>
+                {!hasBranchMapPin({
+                  latitude: settings.latitude,
+                  longitude: settings.longitude,
+                }) && (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    ปักหมุดร้านบนแผนที่ด้านล่าง — badge แท็บตั้งค่าจะนับจุดนี้ด้วย
+                  </p>
+                )}
                 <BranchLocationPicker
                   value={{
                     address: settings.address,
@@ -2518,10 +2634,18 @@ function BranchDetailContent() {
               </div>
 
               {/* 5. Types & price */}
-              <div className="space-y-3 border-t border-slate-100 pt-8">
+              <div
+                id="settings-category"
+                className="space-y-3 border-t border-slate-100 pt-8"
+              >
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
                     ประเภทและช่วงราคา
+                    {!settings.primaryCategory && (
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                        ยังไม่มีประเภทหลัก
+                      </span>
+                    )}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     แสดงให้ลูกค้าเวลาเลือกร้าน
@@ -2531,7 +2655,11 @@ function BranchDetailContent() {
                   <div>
                     <label className={adminLabelClass}>ประเภทหลัก</label>
                     <select
-                      className={adminInputClass}
+                      className={`${adminInputClass}${
+                        !settings.primaryCategory
+                          ? " border-amber-300 ring-1 ring-amber-200"
+                          : ""
+                      }`}
                       value={settings.primaryCategory}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -2643,7 +2771,7 @@ function BranchDetailContent() {
                             }
                             className={`cursor-pointer rounded-lg border px-3 py-2 text-sm transition ${
                               active
-                                ? "border-red-500 bg-red-50 font-medium text-red-700"
+                                ? "border-site-primary bg-site-primary-soft font-medium text-site-primary"
                                 : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
                             }`}
                           >
@@ -2769,7 +2897,7 @@ function BranchDetailContent() {
                                     code: slugifyCode(s.name),
                                   }));
                                 }}
-                                className="text-xs text-red-600 hover:underline"
+                                className="text-xs text-site-primary hover:underline"
                               >
                                 ใช้แบบอัตโนมัติ
                               </button>
@@ -2864,7 +2992,7 @@ function BranchDetailContent() {
                 <span className="mt-0.5 block text-sm text-slate-600">
                   ไปแท็บหมวดหมู่เพื่อสร้าง เช่น เมนูปิ้ง ลูกชิ้น เครื่องดื่ม
                 </span>
-                <span className="mt-2 inline-block text-sm font-medium text-red-600">
+                <span className="mt-2 inline-block text-sm font-medium text-site-primary">
                   ไปสร้างหมวดหมู่ →
                 </span>
               </span>
@@ -2889,7 +3017,7 @@ function BranchDetailContent() {
                 <span className="mt-0.5 block text-sm text-slate-600">
                   ไปแท็บตัวเลือกเพื่อสร้างชุด เช่น ระดับความเผ็ด ซอส
                 </span>
-                <span className="mt-2 inline-block text-sm font-medium text-red-600">
+                <span className="mt-2 inline-block text-sm font-medium text-site-primary">
                   ไปสร้างตัวเลือก →
                 </span>
               </span>

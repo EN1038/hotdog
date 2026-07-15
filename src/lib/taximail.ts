@@ -64,22 +64,60 @@ export async function taximailSendOtp(phone: string): Promise<TaximailOtpSendRes
 
   const data = (await res.json().catch(() => ({}))) as {
     status?: string;
-    code?: number;
+    code?: number | string;
     message?: string;
-    data?: { message_id?: string; otp_ref_no?: string };
+    error?: string;
+    data?: {
+      message_id?: string;
+      messageId?: string;
+      otp_ref_no?: string;
+      otpRefNo?: string;
+    };
   };
 
-  const messageId = data.data?.message_id?.trim();
+  const messageId =
+    data.data?.message_id?.trim() || data.data?.messageId?.trim();
   if (!res.ok || !messageId) {
-    const msg =
+    const errMsg =
+      (typeof (data as { err_msg?: string }).err_msg === "string" &&
+        (data as { err_msg?: string }).err_msg?.trim()) ||
+      "";
+    const errKey =
+      (typeof (data as { err_key?: string }).err_key === "string" &&
+        (data as { err_key?: string }).err_key?.trim()) ||
+      "";
+    const detail =
       (typeof data.message === "string" && data.message.trim()) ||
-      "ส่งรหัส OTP ไม่สำเร็จ";
-    throw new Error(msg);
+      (typeof data.error === "string" && data.error.trim()) ||
+      errMsg ||
+      "";
+    console.error("[taximail] otp send failed", {
+      httpStatus: res.status,
+      status: data.status,
+      code: data.code,
+      errKey,
+      message: detail || null,
+      body: data,
+    });
+
+    if (
+      errKey === "not_found_template" ||
+      /not found template/i.test(detail)
+    ) {
+      throw new Error(
+        "ไม่พบเทมเพลต OTP ใน Taximail — ตรวจ TAXIMAIL_OTP_TEMPLATE_KEY ให้ตรงกับเทมเพลต SMS OTP ในบัญชี Taximail",
+      );
+    }
+
+    throw new Error(detail || "ส่งรหัส OTP ไม่สำเร็จ");
   }
 
   return {
     messageId,
-    otpRefNo: data.data?.otp_ref_no?.trim() || null,
+    otpRefNo:
+      data.data?.otp_ref_no?.trim() ||
+      data.data?.otpRefNo?.trim() ||
+      null,
     raw: data,
   };
 }

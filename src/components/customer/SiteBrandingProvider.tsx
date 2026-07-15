@@ -7,7 +7,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { PlatformSettingsData } from "@/lib/platform-settings";
+import type { PlatformSettingsData } from "@/lib/platform-branding";
+import { PLATFORM_SETTINGS_DEFAULTS } from "@/lib/platform-branding";
 
 export type BrandingOverride = {
   siteName?: string;
@@ -18,22 +19,13 @@ export type BrandingOverride = {
   primaryColor?: string;
 };
 
-const PLATFORM_DEFAULTS: PlatformSettingsData = {
-  siteName: "SkillSale",
-  siteTitle: "SkillSale - ระบบสั่งอาหารออนไลน์",
-  siteDescription: "แพลตฟอร์มจัดการร้านค้าและรับออเดอร์ออนไลน์",
-  logoUrl: null,
-  faviconUrl: null,
-  primaryColor: "#dc2626",
-};
-
 type SiteBrandingContextValue = PlatformSettingsData & {
   loaded: boolean;
   isBrandOverride: boolean;
 };
 
 const SiteBrandingContext = createContext<SiteBrandingContextValue>({
-  ...PLATFORM_DEFAULTS,
+  ...PLATFORM_SETTINGS_DEFAULTS,
   loaded: false,
   isBrandOverride: false,
 });
@@ -48,6 +40,7 @@ function mergeBranding(
 ): PlatformSettingsData {
   if (!override) return platform;
   return {
+    ...platform,
     siteName: override.siteName ?? platform.siteName,
     siteTitle: override.siteTitle ?? platform.siteTitle,
     siteDescription:
@@ -72,15 +65,33 @@ export function SiteBrandingProvider({
   /** When set (brand storefront), overrides platform shell branding */
   brandOverride?: BrandingOverride | null;
 }) {
-  const [platform, setPlatform] =
-    useState<PlatformSettingsData>(PLATFORM_DEFAULTS);
+  const [platform, setPlatform] = useState<PlatformSettingsData>(
+    PLATFORM_SETTINGS_DEFAULTS,
+  );
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetch("/api/site-settings")
-      .then((res) => (res.ok ? res.json() : PLATFORM_DEFAULTS))
+      .then((res) => (res.ok ? res.json() : PLATFORM_SETTINGS_DEFAULTS))
       .then((data: PlatformSettingsData) => {
-        setPlatform(data);
+        setPlatform({
+          ...PLATFORM_SETTINGS_DEFAULTS,
+          ...data,
+          iconUrl: data.iconUrl || PLATFORM_SETTINGS_DEFAULTS.iconUrl,
+          logoUrl: data.logoUrl || PLATFORM_SETTINGS_DEFAULTS.logoUrl,
+          faviconUrl: data.faviconUrl || PLATFORM_SETTINGS_DEFAULTS.faviconUrl,
+          siteName: data.siteName || PLATFORM_SETTINGS_DEFAULTS.siteName,
+          siteTitle: data.siteTitle || PLATFORM_SETTINGS_DEFAULTS.siteTitle,
+          primaryColor:
+            data.primaryColor || PLATFORM_SETTINGS_DEFAULTS.primaryColor,
+          markSidebar:
+            data.markSidebar || PLATFORM_SETTINGS_DEFAULTS.markSidebar,
+          markLogin: data.markLogin || PLATFORM_SETTINGS_DEFAULTS.markLogin,
+          markHome: data.markHome || PLATFORM_SETTINGS_DEFAULTS.markHome,
+          markOrder: data.markOrder || PLATFORM_SETTINGS_DEFAULTS.markOrder,
+          markFavicon:
+            data.markFavicon || PLATFORM_SETTINGS_DEFAULTS.markFavicon,
+        });
         setLoaded(true);
       })
       .catch(() => setLoaded(true));

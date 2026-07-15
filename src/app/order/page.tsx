@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { BranchData } from "@/lib/customer-types";
 import {
@@ -12,9 +12,19 @@ import {
   priceRangeLabel,
   restaurantCategoryLabel,
 } from "@/lib/localized";
+import {
+  distanceKm,
+  formatDistanceKm,
+  hasMapPin,
+} from "@/lib/geo";
 import { IconBranchPlaceholder } from "@/components/icons";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
+import { SiteLogo } from "@/components/customer/SiteLogo";
 import { LoadingState } from "@/components/LoadingState";
+import { loadActiveBrand } from "@/lib/customer-brand-session";
+import { telHref } from "@/lib/constants";
+
+type UserLocation = { lat: number; lng: number };
 
 function BackIcon() {
   return (
@@ -145,111 +155,26 @@ function CalendarIcon() {
   );
 }
 
-function HotpotIllustration() {
-  return (
-    <svg
-      width="96"
-      height="80"
-      viewBox="0 0 96 80"
-      fill="none"
-      aria-hidden
-      className="shrink-0"
-    >
-      <ellipse cx="48" cy="68" rx="32" ry="7" fill="#fde68a" opacity="0.45" />
-      <path
-        d="M20 42c0-15 12.5-28 28-28s28 13 28 28v10H20V42z"
-        fill="#ef4444"
-      />
-      <path
-        d="M24 52h48v6c0 5-4.5 9-10 9H34c-5.5 0-10-4-10-9v-6z"
-        fill="#dc2626"
-      />
-      <ellipse cx="48" cy="44" rx="22" ry="11" fill="#fbbf24" opacity="0.9" />
-      <circle cx="38" cy="40" r="3.5" fill="#f97316" />
-      <circle cx="52" cy="38" r="3" fill="#ea580c" />
-      <circle cx="44" cy="46" r="2.5" fill="#fb923c" />
-      <line
-        x1="32"
-        y1="20"
-        x2="28"
-        y2="6"
-        stroke="#92400e"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="27" cy="5" r="3.5" fill="#f87171" />
-      <line
-        x1="48"
-        y1="16"
-        x2="48"
-        y2="2"
-        stroke="#92400e"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="48" cy="1.5" r="3.5" fill="#4ade80" />
-      <line
-        x1="64"
-        y1="20"
-        x2="70"
-        y2="8"
-        stroke="#92400e"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="71" cy="7" r="3.5" fill="#fbbf24" />
-      <line
-        x1="40"
-        y1="18"
-        x2="36"
-        y2="8"
-        stroke="#92400e"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <circle cx="35" cy="7" r="2.5" fill="#fca5a5" />
-    </svg>
-  );
+function branchDistanceKm(
+  branch: BranchData,
+  user: UserLocation | null,
+): number | null {
+  if (!user || !hasMapPin(branch)) return null;
+  return distanceKm(user.lat, user.lng, branch.latitude, branch.longitude);
 }
 
-function DeliveryBagIllustration() {
-  return (
-    <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
-      fill="none"
-      aria-hidden
-      className="shrink-0"
-    >
-      <rect x="12" y="20" width="40" height="36" rx="5" fill="#d97706" />
-      <path
-        d="M20 20c0-7 6-12 12-12s12 5 12 12"
-        stroke="#b45309"
-        strokeWidth="3.5"
-        fill="none"
-      />
-      <rect x="24" y="32" width="16" height="12" rx="2.5" fill="#fbbf24" />
-      <circle cx="48" cy="16" r="12" fill="#fff7ed" stroke="#fb923c" strokeWidth="1.8" />
-      <circle cx="48" cy="16" r="8" stroke="#f97316" strokeWidth="1.8" fill="none" />
-      <path
-        d="M48 11v5l3 2"
-        stroke="#f97316"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M54 10l2-2M58 14l2 1"
-        stroke="#fbbf24"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function sortBranches(branches: BranchData[]): BranchData[] {
+function sortBranches(
+  branches: BranchData[],
+  user: UserLocation | null,
+): BranchData[] {
   return [...branches].sort((a, b) => {
+    if (user) {
+      const da = branchDistanceKm(a, user);
+      const db = branchDistanceKm(b, user);
+      if (da != null && db != null && da !== db) return da - db;
+      if (da != null && db == null) return -1;
+      if (da == null && db != null) return 1;
+    }
     const aOpen = getBranchServiceStatus(a, "PICKUP").openNow;
     const bOpen = getBranchServiceStatus(b, "PICKUP").openNow;
     if (aOpen !== bOpen) return aOpen ? -1 : 1;
@@ -257,7 +182,28 @@ function sortBranches(branches: BranchData[]): BranchData[] {
   });
 }
 
-function BranchCard({ branch }: { branch: BranchData }) {
+function matchesQuery(branch: BranchData, q: string): boolean {
+  if (!q) return true;
+  const hay = [
+    branch.name,
+    branch.nameTh,
+    branch.nameEn,
+    branch.code,
+    branch.address,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
+function BranchCard({
+  branch,
+  distanceLabel,
+}: {
+  branch: BranchData;
+  distanceLabel?: string | null;
+}) {
   const service = getBranchServiceStatus(branch, "PICKUP");
   const displayName = localizedName(branch.name, branch.nameTh, branch.nameEn);
   const categoryBits = [
@@ -266,24 +212,36 @@ function BranchCard({ branch }: { branch: BranchData }) {
   ].filter(Boolean);
   const range = priceRangeLabel(branch.priceRange);
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-      {branch.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={branch.imageUrl}
-          alt={displayName}
-          className="h-[84px] w-[84px] shrink-0 rounded-xl object-cover"
-        />
-      ) : (
-        <div className="flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-100 to-orange-50">
-          <IconBranchPlaceholder size={48} />
-        </div>
-      )}
+    <Link
+      href={`/order/store/${branch.id}`}
+      className="flex items-stretch gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_10px_rgba(0,0,0,0.05)] transition hover:border-site-primary/30 hover:shadow-md active:scale-[0.99]"
+    >
+      <div className="relative w-[108px] shrink-0 self-stretch overflow-hidden rounded-xl bg-site-primary-soft">
+        {branch.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={branch.imageUrl}
+            alt={displayName}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <IconBranchPlaceholder size={48} />
+          </div>
+        )}
+      </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-[15px] font-bold leading-snug text-gray-900">
-          {displayName}
-        </p>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <p className="text-[15px] font-bold leading-snug text-gray-900">
+            {displayName}
+          </p>
+          {distanceLabel ? (
+            <span className="text-[11px] font-semibold text-site-primary">
+              {distanceLabel}
+            </span>
+          ) : null}
+        </div>
 
         {(categoryBits.length > 0 || range) && (
           <p className="mt-0.5 text-[11px] text-gray-500">
@@ -331,109 +289,219 @@ function BranchCard({ branch }: { branch: BranchData }) {
           )}
         </div>
       </div>
-
-      <Link
-        href={`/order/store/${branch.id}`}
-        className="shrink-0 self-center rounded-xl border border-orange-400 bg-white px-3.5 py-2 text-xs font-semibold text-orange-500 transition-colors hover:bg-orange-50"
-      >
-        เลือกสาขา
-      </Link>
-    </div>
+    </Link>
   );
 }
 
 export default function BranchListPage() {
-  const { siteName } = useSiteBranding();
+  const branding = useSiteBranding();
   const [branches, setBranches] = useState<BranchData[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [brandBackHref, setBrandBackHref] = useState("/");
+  const [contactPhone, setContactPhone] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/customer/branches")
+    const active = loadActiveBrand();
+    if (active?.code) setBrandBackHref(`/${active.code}`);
+    setContactPhone(active?.contactPhone ?? null);
+
+    const url = active?.code
+      ? `/api/customer/branches?brand=${encodeURIComponent(active.code)}`
+      : "/api/customer/branches";
+
+    fetch(url)
       .then((res) => res.json())
-      .then((data) => setBranches(Array.isArray(data) ? data : []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        setBranches(list);
+        const brandPhone = list[0]?.brand?.contactPhone?.replace(/\D/g, "");
+        if (brandPhone) {
+          setContactPhone(brandPhone);
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
+
+  function requestCurrentLocation() {
+    setMenuOpen(false);
+    setLocationError(null);
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationError("อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง");
+      return;
+    }
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocationError(
+            "ไม่ได้รับอนุญาตใช้ตำแหน่ง — เปิดสิทธิ์ในเบราว์เซอร์แล้วลองใหม่",
+          );
+        } else if (err.code === err.TIMEOUT) {
+          setLocationError("ขอตำแหน่งนานเกินไป กรุณาลองใหม่");
+        } else {
+          setLocationError("อ่านตำแหน่งไม่ได้ กรุณาลองใหม่");
+        }
+      },
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 60_000 },
+    );
+  }
+
+  function clearLocation() {
+    setMenuOpen(false);
+    setUserLocation(null);
+    setLocationError(null);
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? branches.filter(
-          (b) =>
-            b.name.toLowerCase().includes(q) ||
-            (b.address?.toLowerCase().includes(q) ?? false),
-        )
-      : branches;
-    return sortBranches(list);
-  }, [branches, query]);
+    const list = branches.filter((b) => matchesQuery(b, q));
+    return sortBranches(list, userLocation);
+  }, [branches, query, userLocation]);
+
+  const locationLabel = locating
+    ? "กำลังหาตำแหน่ง..."
+    : userLocation
+      ? "เรียงใกล้คุณ"
+      : "ใช้ตำแหน่งปัจจุบัน";
 
   return (
     <main className="min-h-screen bg-[#f5f5f6] pb-10">
-      <header className="relative overflow-hidden bg-white px-4 pb-5 pt-4">
-        <div className="flex items-start gap-1">
-          <Link
-            href="/malawaiwai"
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
-            aria-label="กลับ"
-          >
-            <BackIcon />
-          </Link>
-
-          <div className="min-w-0 flex-1 pr-20 pt-0.5">
-            <h1 className="text-[22px] font-bold leading-tight tracking-tight text-gray-900">
-              เลือกร้าน{siteName}
+      <header className="bg-white px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-1">
+            <Link
+              href={brandBackHref}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
+              aria-label="กลับ"
+            >
+              <BackIcon />
+            </Link>
+            <h1 className="truncate text-[22px] font-bold tracking-tight text-gray-900">
+              เลือกร้าน
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              เลือกสาขาที่ต้องการสั่ง
-            </p>
           </div>
-
-          <div className="pointer-events-none absolute -right-1 top-2">
-            <HotpotIllustration />
-          </div>
+          <SiteLogo
+            logoUrl={branding.isBrandOverride ? branding.logoUrl : null}
+            size={52}
+            platformPlacement="order"
+          />
         </div>
       </header>
 
-      <div className="mx-4 mt-4 flex items-center gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
-        <div className="text-orange-500">
+      <div className="mx-4 mt-4 flex items-center gap-3 rounded-2xl bg-site-primary-soft px-4 py-3.5">
+        <div className="text-site-primary">
           <ClockIcon />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-orange-600">
+          <p className="text-sm font-bold text-site-primary">
             ยังไม่ถึงเวลาเปิด — สั่งล่วงหน้าได้เฉพาะวันนี้
           </p>
-          <p className="mt-0.5 text-xs text-orange-500/80">
+          <p className="mt-0.5 text-xs opacity-80 text-site-primary">
             หลังร้านปิดรอบสุดท้ายของวันแล้วจะสั่งไม่ได้
           </p>
         </div>
-        <DeliveryBagIllustration />
       </div>
 
-      <div className="mx-4 mt-3 flex gap-2">
-        <button
-          type="button"
-          className="flex max-w-[46%] shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-700"
-        >
-          <PinIcon className="text-orange-500" />
-          <span className="truncate">ใช้ตำแหน่งปัจจุบัน</span>
-          <ChevronDownIcon />
-        </button>
+      <div className="mx-4 mt-3 flex items-stretch gap-2">
+        <div className="relative w-[42%] shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            disabled={locating}
+            onClick={() => {
+              if (userLocation) {
+                setMenuOpen((v) => !v);
+                return;
+              }
+              requestCurrentLocation();
+            }}
+            className={`flex h-11 w-full items-center gap-1.5 rounded-xl border px-3 text-xs leading-none disabled:opacity-60 ${
+              userLocation
+                ? "border-site-primary bg-site-primary-soft font-medium text-site-primary"
+                : "border-gray-200 bg-white text-gray-700"
+            }`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <PinIcon className="shrink-0 text-site-primary" />
+            <span className="min-w-0 flex-1 truncate text-left">
+              {locationLabel}
+            </span>
+            <ChevronDownIcon />
+          </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-2.5 text-left text-xs text-gray-800 hover:bg-gray-50"
+                onClick={requestCurrentLocation}
+              >
+                ใช้ตำแหน่งปัจจุบัน
+              </button>
+              {userLocation ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2.5 text-left text-xs text-gray-800 hover:bg-gray-50"
+                  onClick={clearLocation}
+                >
+                  ล้างตำแหน่ง
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
 
         <div className="relative min-w-0 flex-1">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
             <SearchIcon />
           </span>
           <input
-            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pr-4 pl-9 text-sm text-gray-900 placeholder:text-gray-400 focus:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-100"
-            placeholder="ค้นหาสาขาใกล้คุณ"
+            className="box-border h-11 w-full rounded-xl border border-gray-200 bg-white py-0 pr-3 pl-9 text-xs leading-none text-gray-900 placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
+            placeholder="ค้นหาชื่อสาขาหรือที่อยู่"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
       </div>
 
+      {locationError ? (
+        <p className="mx-4 mt-2 text-xs text-red-600">{locationError}</p>
+      ) : null}
+
       <h2 className="mx-4 mt-5 mb-3 text-[15px] font-bold text-gray-900">
-        สาขาทั้งหมด
+        {userLocation ? "สาขาใกล้คุณ" : "สาขาทั้งหมด"}
       </h2>
 
       {loading ? (
@@ -444,25 +512,39 @@ export default function BranchListPage() {
         </p>
       ) : (
         <div className="space-y-3 px-4">
-          {filtered.map((b) => (
-            <BranchCard key={b.id} branch={b} />
-          ))}
+          {filtered.map((b) => {
+            const km = branchDistanceKm(b, userLocation);
+            return (
+              <BranchCard
+                key={b.id}
+                branch={b}
+                distanceLabel={km != null ? formatDistanceKm(km) : null}
+              />
+            );
+          })}
         </div>
       )}
 
       <div className="mt-8 flex justify-center px-4">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-        >
-          <PinIcon className="text-orange-400" />
-          <span>
-            ไม่พบสาขาที่ต้องการ?{" "}
-            <span className="font-medium text-orange-500">
-              แจ้งให้เราทราบ &gt;
+        {contactPhone ? (
+          <a
+            href={telHref(contactPhone)}
+            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <PinIcon className="text-site-primary" />
+            <span>
+              ไม่พบสาขาที่ต้องการ?{" "}
+              <span className="font-medium text-site-primary">
+                แจ้งให้เราทราบ &gt;
+              </span>
             </span>
-          </span>
-        </button>
+          </a>
+        ) : (
+          <p className="inline-flex items-center gap-1 text-sm text-gray-400">
+            <PinIcon className="text-gray-300" />
+            <span>ไม่พบสาขาที่ต้องการ? ติดต่อร้านผ่านช่องทางที่คุณรู้จัก</span>
+          </p>
+        )}
       </div>
     </main>
   );

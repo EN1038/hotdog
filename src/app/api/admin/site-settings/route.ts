@@ -7,13 +7,41 @@ import {
 import { handleApiError, jsonOk } from "@/lib/api";
 import { logAdminActivity } from "@/lib/admin-activity";
 
+const markKind = z
+  .enum(["icon", "logo"])
+  .nullable()
+  .optional()
+  .transform((v) => (v == null ? undefined : v));
+
+const nullableUrl = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v == null) return null;
+    const trimmed = v.trim();
+    return trimmed === "" ? null : trimmed;
+  });
+
 const patchSchema = z.object({
   siteName: z.string().min(1).optional(),
   siteTitle: z.string().min(1).optional(),
-  siteDescription: z.string().nullable().optional(),
-  logoUrl: z.string().nullable().optional(),
-  faviconUrl: z.string().nullable().optional(),
+  siteDescription: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v == null) return null;
+      const trimmed = v.trim();
+      return trimmed === "" ? null : trimmed;
+    }),
+  iconUrl: nullableUrl,
+  logoUrl: nullableUrl,
+  faviconUrl: nullableUrl,
   primaryColor: z.string().min(4).optional(),
+  markSidebar: markKind,
+  markLogin: markKind,
+  markHome: markKind,
+  markOrder: markKind,
+  markFavicon: markKind,
 });
 
 export async function GET() {

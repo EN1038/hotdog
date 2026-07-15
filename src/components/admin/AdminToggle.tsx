@@ -15,12 +15,9 @@ export function AdminToggle({
   disabled = false,
   size = "sm",
 }: AdminToggleProps) {
-  const track =
-    size === "md" ? "h-6 w-11" : "h-5 w-9";
-  const knob =
-    size === "md" ? "h-5 w-5" : "h-4 w-4";
-  const knobOn =
-    size === "md" ? "translate-x-5" : "translate-x-4";
+  const track = size === "md" ? "h-6 w-11" : "h-5 w-9";
+  const knob = size === "md" ? "h-5 w-5" : "h-4 w-4";
+  const knobOn = size === "md" ? "translate-x-5" : "translate-x-4";
 
   return (
     <button
@@ -36,13 +33,13 @@ export function AdminToggle({
       }}
       className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
         checked
-          ? "border-red-200 bg-red-50 text-red-800"
+          ? "border-site-primary-soft bg-site-primary-soft text-site-primary"
           : "border-slate-200 bg-white text-slate-600"
       }`}
     >
       <span
         className={`relative inline-flex shrink-0 items-center rounded-full transition ${track} ${
-          checked ? "bg-red-600" : "bg-slate-300"
+          checked ? "bg-site-primary" : "bg-slate-300"
         }`}
       >
         <span

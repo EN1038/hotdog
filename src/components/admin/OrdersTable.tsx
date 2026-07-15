@@ -109,12 +109,12 @@ export function OrdersTable({
             return (
               <tr
                 key={order.id}
-                className={`group ${adminTrClass} hover:bg-red-50/40`}
+                className={`group ${adminTrClass} hover:bg-site-primary-soft/40`}
               >
                 <td className="whitespace-nowrap px-3 py-3 font-medium text-gray-900">
                   <Link
                     href={href}
-                    className="font-medium text-red-700 underline-offset-2 group-hover:underline"
+                    className="font-medium text-site-primary underline-offset-2 group-hover:underline"
                   >
                     {order.orderNumber
                       ? `#${order.orderNumber}`

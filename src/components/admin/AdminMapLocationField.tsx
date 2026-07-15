@@ -323,7 +323,7 @@ export function AdminMapLocationField({
               <li key={`${h.latitude},${h.longitude},${h.label}`} role="option">
                 <button
                   type="button"
-                  className="w-full cursor-pointer px-3 py-2.5 text-left text-slate-800 hover:bg-red-50"
+                  className="w-full cursor-pointer px-3 py-2.5 text-left text-slate-800 hover:bg-site-primary-soft"
                   onClick={() => pickHit(h)}
                 >
                   {h.label}

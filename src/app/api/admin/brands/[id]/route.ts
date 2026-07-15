@@ -22,6 +22,8 @@ const patchSchema = z.object({
   siteTitle: z.string().nullable().optional(),
   siteDescription: z.string().nullable().optional(),
   logoUrl: z.string().nullable().optional(),
+  coverImageUrl: z.string().nullable().optional(),
+  contactPhone: z.string().nullable().optional(),
   color: z.string().optional(),
 });
 
@@ -79,6 +81,12 @@ export async function PATCH(request: Request, { params }: Params) {
           siteDescription: body.siteDescription?.trim() || null,
         }),
         ...(body.logoUrl !== undefined && { logoUrl: body.logoUrl }),
+        ...(body.coverImageUrl !== undefined && {
+          coverImageUrl: body.coverImageUrl,
+        }),
+        ...(body.contactPhone !== undefined && {
+          contactPhone: body.contactPhone?.replace(/\D/g, "").trim() || null,
+        }),
         ...(body.color !== undefined && { color: normalizeColor(body.color) }),
       },
     });

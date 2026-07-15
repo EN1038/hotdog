@@ -50,13 +50,13 @@ function Toggle({
       onClick={() => onChange(!checked)}
       className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
         checked
-          ? "border-red-300 bg-red-50 text-red-800"
+          ? "border-site-primary-soft bg-site-primary-soft text-site-primary"
           : "border-gray-200 bg-white text-gray-600"
       }`}
     >
       <span
         className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${
-          checked ? "bg-red-600" : "bg-gray-300"
+          checked ? "bg-site-primary" : "bg-gray-300"
         }`}
       >
         <span
@@ -118,9 +118,9 @@ export function BranchOptionLibrary({ branchId }: Props) {
     const el = groupRefs.current[focusGroupId];
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-red-300");
+      el.classList.add("ring-2", "ring-site-primary");
       const t = window.setTimeout(() => {
-        el.classList.remove("ring-2", "ring-red-300");
+        el.classList.remove("ring-2", "ring-site-primary");
         setFocusGroupId(null);
       }, 1600);
       return () => window.clearTimeout(t);

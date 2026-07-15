@@ -79,9 +79,9 @@ export function OrderConfirmationTimeline({
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-full ${
                   current
-                    ? "bg-red-500 text-white"
+                    ? "bg-site-primary text-white"
                     : done
-                      ? "bg-red-100 text-red-500"
+                      ? "bg-site-primary-soft text-site-primary"
                       : "bg-gray-100 text-gray-400"
                 }`}
               >
@@ -90,7 +90,7 @@ export function OrderConfirmationTimeline({
               <p
                 className={`mt-1.5 w-full px-0.5 text-center text-[10px] leading-tight ${
                   current
-                    ? "font-semibold text-red-600"
+                    ? "font-semibold text-site-primary"
                     : done
                       ? "text-gray-600"
                       : "text-gray-400"
@@ -107,7 +107,7 @@ export function OrderConfirmationTimeline({
             {i < steps.length - 1 && (
               <div
                 className={`mx-0.5 mt-4 h-0.5 min-w-[8px] flex-1 ${
-                  i < currentIndex ? "bg-red-400" : "bg-gray-200"
+                  i < currentIndex ? "bg-site-primary" : "bg-gray-200"
                 }`}
               />
             )}

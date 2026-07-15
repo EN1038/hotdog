@@ -17,6 +17,7 @@ import {
   restaurantCategoryLabel,
 } from "@/lib/localized";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import { syncActiveBrandFromApi } from "@/components/customer/OrderBrandingShell";
 import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
 import { LoadingState } from "@/components/LoadingState";
 import {
@@ -124,13 +125,13 @@ function StorefrontIcon({ active }: { active: boolean }) {
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinejoin="round"
-        className={active ? "text-orange-500" : "text-gray-400"}
+        className={active ? "text-site-primary" : "text-gray-400"}
       />
       <path
         d="M8 10V7a4 4 0 018 0v3"
         stroke="currentColor"
         strokeWidth="1.8"
-        className={active ? "text-orange-500" : "text-gray-400"}
+        className={active ? "text-site-primary" : "text-gray-400"}
       />
     </svg>
   );
@@ -145,7 +146,7 @@ function DeliveryIcon({ active }: { active: boolean }) {
         r="2"
         stroke="currentColor"
         strokeWidth="1.8"
-        className={active ? "text-orange-500" : "text-gray-400"}
+        className={active ? "text-site-primary" : "text-gray-400"}
       />
       <circle
         cx="17"
@@ -153,14 +154,14 @@ function DeliveryIcon({ active }: { active: boolean }) {
         r="2"
         stroke="currentColor"
         strokeWidth="1.8"
-        className={active ? "text-orange-500" : "text-gray-400"}
+        className={active ? "text-site-primary" : "text-gray-400"}
       />
       <path
         d="M9 17h6M5 17H3V9h12v8h-2M15 9l2-4h3v4"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinejoin="round"
-        className={active ? "text-orange-500" : "text-gray-400"}
+        className={active ? "text-site-primary" : "text-gray-400"}
       />
     </svg>
   );
@@ -182,14 +183,14 @@ function FulfillmentToggle({
         onClick={() => onChange("PICKUP")}
         className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
           value === "PICKUP"
-            ? "border-orange-400 bg-orange-50/50"
+            ? "border-site-primary bg-site-primary-soft"
             : "border-transparent bg-white"
         }`}
       >
         <StorefrontIcon active={value === "PICKUP"} />
         <span
           className={`text-sm font-semibold ${
-            value === "PICKUP" ? "text-orange-500" : "text-gray-400"
+            value === "PICKUP" ? "text-site-primary" : "text-gray-400"
           }`}
         >
           รับที่ร้าน
@@ -201,14 +202,14 @@ function FulfillmentToggle({
         disabled={!deliveryAvailable}
         className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors disabled:opacity-40 ${
           value === "DELIVERY"
-            ? "border-orange-400 bg-orange-50/50"
+            ? "border-site-primary bg-site-primary-soft"
             : "border-transparent bg-white"
         }`}
       >
         <DeliveryIcon active={value === "DELIVERY"} />
         <span
           className={`text-sm font-semibold ${
-            value === "DELIVERY" ? "text-orange-500" : "text-gray-400"
+            value === "DELIVERY" ? "text-site-primary" : "text-gray-400"
           }`}
         >
           จัดส่ง
@@ -231,24 +232,24 @@ function MainTabs({
         type="button"
         onClick={() => onChange("menu")}
         className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
-          active === "menu" ? "text-orange-500" : "text-gray-400"
+          active === "menu" ? "text-site-primary" : "text-gray-400"
         }`}
       >
         เมนูสินค้า
         {active === "menu" && (
-          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-orange-500" />
+          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-site-primary" />
         )}
       </button>
       <button
         type="button"
         onClick={() => onChange("history")}
         className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
-          active === "history" ? "text-orange-500" : "text-gray-400"
+          active === "history" ? "text-site-primary" : "text-gray-400"
         }`}
       >
         ประวัติ
         {active === "history" && (
-          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-orange-500" />
+          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-site-primary" />
         )}
       </button>
     </div>
@@ -270,7 +271,20 @@ export default function StorePage() {
       .then((res) => res.json())
       .then((data: BranchData[] | unknown) => {
         const branches = Array.isArray(data) ? data : [];
-        setBranch(branches.find((b) => b.id === branchId) ?? null);
+        const found = branches.find((b) => b.id === branchId) ?? null;
+        setBranch(found);
+        if (found?.brand) {
+          syncActiveBrandFromApi({
+            code: found.brand.code,
+            name: found.brand.name,
+            nameTh: found.brand.nameTh,
+            nameEn: found.brand.nameEn,
+            logoUrl: found.brand.logoUrl,
+            coverImageUrl: found.brand.coverImageUrl,
+            color: found.brand.color,
+            contactPhone: found.brand.contactPhone,
+          });
+        }
       })
       .finally(() => setLoading(false));
   }, [branchId]);
@@ -341,7 +355,7 @@ export default function StorePage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
         <p className="text-gray-500">ไม่พบสาขานี้</p>
-        <Link href="/order" className="text-orange-500 underline">
+        <Link href="/order" className="text-site-primary underline">
           กลับไปเลือกสาขา
         </Link>
       </main>
@@ -354,7 +368,8 @@ export default function StorePage() {
         <Link
           href={backHref}
           className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
-          aria-label="กลับ"
+          aria-label="กลับไปเลือกสาขา"
+          title="กลับไปเลือกสาขา"
         >
           <BackIcon />
         </Link>
@@ -368,7 +383,7 @@ export default function StorePage() {
               className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
             />
           ) : (
-            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-100 to-orange-50">
+            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-site-primary-soft">
               <IconSkewerPlaceholder size={40} />
             </div>
           )}
@@ -393,7 +408,7 @@ export default function StorePage() {
                 href={`tel:${branch.phone}`}
                 className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-medium leading-none text-gray-600 hover:bg-gray-50"
               >
-                <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-visible">
                   <IconPhone size={14} className="text-gray-600" />
                 </span>
                 โทรร้าน
@@ -441,10 +456,10 @@ export default function StorePage() {
         <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
           <ClockIcon />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-orange-600">
+            <p className="text-sm font-bold text-site-primary">
               {service.reason}
             </p>
-            <p className="mt-0.5 text-xs text-orange-500/80">
+            <p className="mt-0.5 text-xs text-site-primary/80">
               ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
             </p>
           </div>
@@ -467,7 +482,7 @@ export default function StorePage() {
         <div className="mx-4 mt-3 space-y-2">
           {branch.ownerMessage ? (
             <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <p className="text-[11px] font-semibold text-orange-600">
+              <p className="text-[11px] font-semibold text-site-primary">
                 ข้อความจากเจ้าของร้าน
               </p>
               <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
@@ -533,7 +548,7 @@ export default function StorePage() {
                       className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
                     />
                   ) : (
-                    <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-100 to-orange-50">
+                    <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-site-primary-soft">
                       <IconSkewerPlaceholder size={40} />
                     </div>
                   )}
@@ -546,7 +561,7 @@ export default function StorePage() {
                         {item.description}
                       </p>
                     )}
-                    <p className="mt-1 text-sm font-bold text-orange-500">
+                    <p className="mt-1 text-sm font-bold text-site-primary">
                       ฿{formatPrice(item.price)}
                     </p>
                   </div>
@@ -559,7 +574,7 @@ export default function StorePage() {
                         onClick={() =>
                           router.push(`/order/store/${branch.id}/item/${item.id}`)
                         }
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-xl font-light text-white shadow-sm transition-transform active:scale-95 hover:bg-orange-600"
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-xl font-light text-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
                         aria-label={`เพิ่ม ${item.name}`}
                       >
                         <IconPlus size={16} />
@@ -585,10 +600,10 @@ export default function StorePage() {
           <button
             type="button"
             onClick={() => router.push("/order/checkout")}
-            className="flex w-full items-center justify-between rounded-xl bg-orange-500 px-4 py-3.5 font-semibold text-white hover:bg-orange-600"
+            className="flex w-full items-center justify-between rounded-xl bg-site-primary px-4 py-3.5 font-semibold text-white hover:opacity-90"
           >
             <span className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-orange-500">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-site-primary">
                 {cartCount}
               </span>
               ดูตะกร้า

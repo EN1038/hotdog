@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { PhoneInput } from "@/components/PhoneInput";
+import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
+import { clearStaffBrand } from "@/lib/staff-brand-session";
 
 type LoginFormProps = {
   type: "admin" | "staff";
@@ -11,7 +12,6 @@ type LoginFormProps = {
 };
 
 export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
@@ -36,15 +36,10 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
         return;
       }
 
-      // Soft nav keeps AdminSessionProvider mounted with a stale/null session,
-      // which made platform vs brand home pages look swapped. Force a full load.
-      if (type === "admin") {
-        window.location.assign(redirectTo);
-        return;
+      if (type === "staff") {
+        syncStaffBrandFromLogin(data.brand);
       }
-
-      router.push(redirectTo);
-      router.refresh();
+      window.location.assign(redirectTo);
     } catch {
       setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
     } finally {
@@ -90,7 +85,7 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
             <PhoneInput
               value={phone}
               onChange={setPhone}
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
               required
             />
           </div>
@@ -99,7 +94,7 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          className="w-full rounded bg-site-primary px-4 py-2 font-medium text-white hover:bg-site-primary-hover active:bg-site-primary-active disabled:opacity-50"
         >
           {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
         </button>
@@ -109,6 +104,7 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
 }
 
 export async function logout(redirectTo = "/") {
+  clearStaffBrand();
   await fetch("/api/auth/logout", { method: "POST" });
   window.location.href = redirectTo;
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Prompt } from "next/font/google";
-import { getPlatformSettings } from "@/lib/platform-settings";
+import { getPlatformSettings, resolvePlatformMarkForPlacement } from "@/lib/platform-settings";
 import { AppProviders } from "@/components/AppProviders";
 import "./globals.css";
 
@@ -12,12 +12,14 @@ const prompt = Prompt({
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getPlatformSettings();
+  const favicon = resolvePlatformMarkForPlacement(settings, "favicon").src;
   return {
     title: settings.siteTitle,
     description: settings.siteDescription ?? undefined,
-    ...(settings.faviconUrl
-      ? { icons: { icon: settings.faviconUrl } }
-      : {}),
+    icons: {
+      icon: favicon,
+      apple: favicon,
+    },
   };
 }
 

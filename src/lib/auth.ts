@@ -110,7 +110,24 @@ export async function requireStaff() {
     },
     include: {
       roles: true,
-      branch: { select: { name: true } },
+      branch: {
+        select: {
+          name: true,
+          autoAcceptOrders: true,
+          brand: {
+            select: {
+              code: true,
+              name: true,
+              nameTh: true,
+              nameEn: true,
+              logoUrl: true,
+              color: true,
+              siteTitle: true,
+              siteDescription: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!staff) {
@@ -122,12 +139,25 @@ export async function requireStaff() {
     throw new Error("UNAUTHORIZED");
   }
 
+  const { brand } = staff.branch;
+
   return {
     ...session,
     staffPhone: staff.phone,
     branchId: staff.branchId,
     staffRoles,
     branchName: staff.branch.name,
+    autoAcceptOrders: staff.branch.autoAcceptOrders,
+    brand: {
+      code: brand.code,
+      name: brand.name,
+      nameTh: brand.nameTh,
+      nameEn: brand.nameEn,
+      logoUrl: brand.logoUrl,
+      color: brand.color,
+      siteTitle: brand.siteTitle,
+      siteDescription: brand.siteDescription,
+    },
   };
 }
 

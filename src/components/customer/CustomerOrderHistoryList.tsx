@@ -34,7 +34,7 @@ export const ORDER_HISTORY_FILTERS: { id: OrderHistoryFilter; label: string }[] 
 export function pillTabButtonClass(active: boolean) {
   return `shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
     active
-      ? "bg-orange-500 text-white"
+      ? "bg-site-primary text-white"
       : "border border-gray-200 bg-white text-gray-600"
   }`;
 }
@@ -193,7 +193,7 @@ export function CustomerOrderHistoryList({
                 className={`inline-flex items-center gap-1 text-xs font-medium ${
                   o.fulfillmentType === "DELIVERY"
                     ? "text-emerald-600"
-                    : "text-orange-500"
+                    : "text-site-primary"
                 }`}
               >
                 {o.fulfillmentType === "DELIVERY" ? (

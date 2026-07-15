@@ -59,7 +59,7 @@ export function AdminModal({
         aria-labelledby={titleId}
         className={`relative z-10 flex max-h-[92vh] w-full ${maxWidthClassName} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl`}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-red-50 via-white to-orange-50 px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-5 py-4">
           <div>
             <h3 id={titleId} className="text-base font-semibold text-gray-900">
               {title}

@@ -408,7 +408,7 @@ export default function MenuItemEditorPage() {
                 ยังไม่มีหัวข้อในคลัง —{" "}
                 <Link
                   href={optionsTabHref}
-                  className="text-red-600 hover:underline"
+                  className="text-site-primary hover:underline"
                 >
                   ไปสร้างที่แท็บตัวเลือก
                 </Link>
@@ -422,7 +422,7 @@ export default function MenuItemEditorPage() {
                       key={group.id}
                       className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${
                         on
-                          ? "border-red-300 bg-red-50 text-red-900"
+                          ? "border-site-primary-soft bg-site-primary-soft text-site-primary"
                           : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
                       }`}
                     >
@@ -435,7 +435,7 @@ export default function MenuItemEditorPage() {
                       <span
                         className={`flex h-4 w-4 items-center justify-center rounded border text-[10px] ${
                           on
-                            ? "border-red-500 bg-red-500 text-white"
+                            ? "border-site-primary bg-site-primary text-white"
                             : "border-gray-300 bg-white"
                         }`}
                         aria-hidden

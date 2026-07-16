@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
@@ -85,6 +85,9 @@ function computeOptions(
 export default function ItemDetailPage() {
   const { branchId, itemId } = useParams<{ branchId: string; itemId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editKey = searchParams.get("editKey");
+  const isNew = searchParams.get("new") === "1";
   const { cart, cartBranchId, addLine, replaceLine, fulfillment } = useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
@@ -116,8 +119,13 @@ export default function ItemDetailPage() {
   useEffect(() => {
     if (!item || initializedFromCart) return;
 
-    // Check if item is already in cart
-    const existingLine = cart.find(l => l.branchMenuItemId === item.id);
+    // Determine which existing line to edit (if any)
+    let existingLine = null;
+    if (editKey) {
+      existingLine = cart.find((l) => l.key === editKey);
+    } else if (!isNew) {
+      existingLine = cart.find((l) => l.branchMenuItemId === item.id);
+    }
     
     if (existingLine) {
       setExistingKey(existingLine.key);

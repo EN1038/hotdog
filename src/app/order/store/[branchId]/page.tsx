@@ -266,11 +266,15 @@ function MainTabs({
 
 export default function StorePage() {
   const { branchId } = useParams<{ branchId: string }>();
+  const router = useRouter();
+  const { cart, cartBranchId, fulfillment, setFulfillment, updateQuantity, removeLine } = useCustomer();
+
+  const [branch, setBranch] = useState<BranchData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<string>("");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
   const [isScrolled, setIsScrolled] = useState(false);
   const [selectedItemForBottomSheet, setSelectedItemForBottomSheet] = useState<MenuItemData | null>(null);
-  
-  const { cart, cartBranchId, fulfillment, setFulfillment, updateQuantity, removeLine } = useCustomer();
   
   const isManualScrolling = useRef(false);
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);

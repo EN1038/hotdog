@@ -663,6 +663,10 @@ export default function StorePage() {
                     <div className="space-y-3">
                       {group.items.map((item) => {
                         const priced = menuItemSellPrice(item, fulfillment);
+                        const itemCartQuantity = cartForThisBranch
+                          .filter((l) => l.menuItem.id === item.id)
+                          .reduce((s, l) => s + l.quantity, 0);
+                        
                         return (
                           <div
                             key={item.id}
@@ -706,10 +710,14 @@ export default function StorePage() {
                                   onClick={() =>
                                     router.push(`/order/store/${branch.id}/item/${item.id}`)
                                   }
-                                  className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-xl font-light text-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
+                                  className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
                                   aria-label={`เพิ่ม ${item.name}`}
                                 >
-                                  <IconPlus size={16} />
+                                  {itemCartQuantity > 0 ? (
+                                    <span className="text-[15px] font-bold">{itemCartQuantity}</span>
+                                  ) : (
+                                    <IconPlus size={16} />
+                                  )}
                                 </button>
                               )}
                             </div>

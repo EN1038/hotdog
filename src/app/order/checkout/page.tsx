@@ -447,13 +447,20 @@ export default function CheckoutPage() {
     );
   }
 
+  useEffect(() => {
+    if (sessionChecked && cart.length === 0) {
+      if (cartBranchId) {
+        router.replace(`/order/store/${cartBranchId}`);
+      } else {
+        router.replace("/order");
+      }
+    }
+  }, [sessionChecked, cart.length, cartBranchId, router]);
+
   if (sessionChecked && cart.length === 0) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-3">
-        <p className="text-gray-500">ตะกร้าว่างเปล่า</p>
-        <Link href="/order" className="text-site-primary underline">
-          กลับไปเลือกเมนู
-        </Link>
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <LoadingState className="w-full max-w-sm" />
       </main>
     );
   }

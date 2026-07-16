@@ -418,12 +418,6 @@ export default function StorePage() {
           <BackIcon />
         </Link>
         <div className="flex gap-2">
-          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-          </button>
-          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-          </button>
         </div>
       </div>
 
@@ -450,9 +444,6 @@ export default function StorePage() {
             <h1 className="text-2xl font-extrabold leading-tight text-gray-900">
               {displayName}
             </h1>
-            <button className="mt-1 shrink-0 text-gray-400 hover:text-red-500">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            </button>
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-600">
@@ -461,34 +452,9 @@ export default function StorePage() {
             </span>
             <span>·</span>
             {categoryLine ? <span>{categoryLine}</span> : <span>฿9-฿35</span>}
-            <span>·</span>
-            <span>5.6 กม. (40 นาที)</span>
           </div>
 
-          {/* Mockup Action Buttons */}
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <button className="flex shrink-0 items-center gap-1.5 rounded-xl border border-green-600 bg-white px-3 py-1.5 text-sm font-bold text-green-600">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-xs">👥</span> สร้างกลุ่ม
-            </button>
-            <button className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-1.5 text-sm font-semibold text-gray-800">
-              🛍️ สั่งสองร้านได้
-            </button>
-            <button className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-1.5 text-sm font-semibold text-gray-800">
-              🌐 เปลี่ยนภาษา
-            </button>
-          </div>
-          
-          {/* Mockup Banner */}
-          <div className="mt-4 flex items-center justify-between rounded-xl bg-[#e6f7f0] p-3 px-4 relative overflow-hidden">
-             <div className="relative z-10">
-               <p className="text-[13px] font-bold text-gray-900">ลดสูงสุด ฿100 แยกบิลได้!</p>
-               <p className="mt-0.5 text-[11px] font-semibold text-gray-600">เริ่มสร้างกลุ่มเลย &gt;</p>
-             </div>
-             <div className="absolute right-[-10px] h-20 w-20 rounded-full bg-[#a7e4d0]/60 -skew-x-12"></div>
-             <button className="absolute top-2 right-2 text-[#a7e4d0] hover:text-gray-500 z-10">
-               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-             </button>
-          </div>
+
         </div>
 
         {/* Status Messages */}

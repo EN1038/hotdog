@@ -438,9 +438,13 @@ export default function StorePage() {
     return getBranchServiceStatus(branch, fulfillment);
   }, [branch, fulfillment]);
 
-  const displayName = branch
+  const branchName = branch
     ? localizedName(branch.name, branch.nameTh, branch.nameEn)
     : "";
+  const brandName = branch?.brand
+    ? localizedName(branch.brand.name, branch.brand.nameTh, branch.brand.nameEn)
+    : "";
+  const displayName = brandName ? `${brandName} - ${branchName}` : branchName;
   const categoryLine = branch
     ? [
         restaurantCategoryLabel(branch.primaryCategory),

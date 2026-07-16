@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { btnOutline, btnPrimary } from "@/components/admin/AdminShell";
 import { useToast } from "@/components/admin/Toast";
+import { appAbsoluteUrl } from "@/lib/app-url";
 
 type BranchCustomerQrCardProps = {
   brandCode: string;
@@ -18,10 +19,11 @@ export function BranchCustomerQrCard({
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const path = `/${brandCode}/${branchCode}`;
-  const [absoluteUrl, setAbsoluteUrl] = useState(path);
+  const configuredUrl = useMemo(() => appAbsoluteUrl(path), [path]);
+  const [absoluteUrl, setAbsoluteUrl] = useState(configuredUrl);
 
   useEffect(() => {
-    setAbsoluteUrl(`${window.location.origin}${path}`);
+    setAbsoluteUrl(appAbsoluteUrl(path));
   }, [path]);
 
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=12&data=${encodeURIComponent(absoluteUrl)}`;

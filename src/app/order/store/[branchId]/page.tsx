@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { FulfillmentType } from "@prisma/client";
@@ -33,6 +33,8 @@ import {
   IconPhone,
   IconPlus,
   IconSkewerPlaceholder,
+  IconClose,
+  IconMinus,
 } from "@/components/icons";
 import { pillTabButtonClass } from "@/components/customer/CustomerOrderHistoryList";
 
@@ -187,24 +189,6 @@ function FulfillmentToggle({
     <div className="mx-4 mt-3 grid grid-cols-2 gap-2 rounded-2xl bg-white p-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
       <button
         type="button"
-        onClick={() => onChange("PICKUP")}
-        className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
-          value === "PICKUP"
-            ? "border-site-primary bg-site-primary-soft"
-            : "border-transparent bg-white"
-        }`}
-      >
-        <StorefrontIcon active={value === "PICKUP"} />
-        <span
-          className={`text-sm font-semibold ${
-            value === "PICKUP" ? "text-site-primary" : "text-gray-400"
-          }`}
-        >
-          รับที่ร้าน
-        </span>
-      </button>
-      <button
-        type="button"
         onClick={() => deliveryAvailable && onChange("DELIVERY")}
         disabled={!deliveryAvailable}
         className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors disabled:opacity-40 ${
@@ -222,6 +206,24 @@ function FulfillmentToggle({
           จัดส่ง
         </span>
       </button>
+      <button
+        type="button"
+        onClick={() => onChange("PICKUP")}
+        className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
+          value === "PICKUP"
+            ? "border-site-primary bg-site-primary-soft"
+            : "border-transparent bg-white"
+        }`}
+      >
+        <StorefrontIcon active={value === "PICKUP"} />
+        <span
+          className={`text-sm font-semibold ${
+            value === "PICKUP" ? "text-site-primary" : "text-gray-400"
+          }`}
+        >
+          รับที่ร้าน
+        </span>
+      </button>
     </div>
   );
 }
@@ -234,29 +236,29 @@ function MainTabs({
   onChange: (tab: MainTab) => void;
 }) {
   return (
-    <div className="flex border-b border-gray-200 bg-white pt-3">
+    <div className="flex bg-white pt-2">
       <button
         type="button"
         onClick={() => onChange("menu")}
-        className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
-          active === "menu" ? "text-site-primary" : "text-gray-400"
+        className={`relative flex-1 pb-3 text-center text-[15px] font-semibold transition-colors ${
+          active === "menu" ? "text-site-primary" : "text-gray-500 hover:text-gray-900"
         }`}
       >
         เมนูสินค้า
         {active === "menu" && (
-          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-site-primary" />
+          <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-site-primary" />
         )}
       </button>
       <button
         type="button"
         onClick={() => onChange("history")}
-        className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
-          active === "history" ? "text-site-primary" : "text-gray-400"
+        className={`relative flex-1 pb-3 text-center text-[15px] font-semibold transition-colors ${
+          active === "history" ? "text-site-primary" : "text-gray-500 hover:text-gray-900"
         }`}
       >
         ประวัติ
         {active === "history" && (
-          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-site-primary" />
+          <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-site-primary" />
         )}
       </button>
     </div>
@@ -266,12 +268,78 @@ function MainTabs({
 export default function StorePage() {
   const { branchId } = useParams<{ branchId: string }>();
   const router = useRouter();
-  const { cart, cartBranchId, fulfillment, setFulfillment } = useCustomer();
+  const { cart, cartBranchId, fulfillment, setFulfillment, updateQuantity, removeLine } = useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<string>("ทั้งหมด");
+  const [activeCategory, setActiveCategory] = useState<string>("");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [selectedItemForBottomSheet, setSelectedItemForBottomSheet] = useState<MenuItemData | null>(null);
+  
+  const isManualScrolling = useRef(false);
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 150);
+      
+      if (mainTab === "menu" && !isManualScrolling.current) {
+        const headings = Array.from(document.querySelectorAll("[data-category-heading]"));
+        const stickyOffset = 130;
+        let currentCat = "";
+        
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= stickyOffset + 50) {
+            currentCat = heading.getAttribute("data-category-heading") || "";
+          }
+        }
+        
+        if (currentCat) {
+          setActiveCategory((prev) => {
+             if (prev !== currentCat) {
+               const row = document.getElementById("filter-scroll-row");
+               const btn = document.getElementById(`filter-btn-${currentCat}`);
+               if (row && btn) {
+                 const rowRect = row.getBoundingClientRect();
+                 const btnRect = btn.getBoundingClientRect();
+                 if (btnRect.left < rowRect.left || btnRect.right > rowRect.right) {
+                   btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                 }
+               }
+             }
+             return currentCat;
+          });
+        }
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [mainTab]);
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    const shareData = {
+      title: branch ? displayName : "ร้านอาหาร",
+      text: `สั่งอาหารจาก ${branch ? displayName : "ร้านเรา"} ได้ที่นี่!`,
+      url: url,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        // user cancelled or share failed, ignore
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        alert("คัดลอกลิงก์เรียบร้อยแล้ว สามารถนำไปแชร์ต่อได้เลยครับ");
+      } catch (err) {
+        console.error("Failed to copy:", err);
+      }
+    }
+  };
 
   useEffect(() => {
     fetch("/api/customer/branches")
@@ -304,31 +372,65 @@ export default function StorePage() {
     }
   }, [deliveryAvailable, fulfillment, setFulfillment]);
 
-  const categories = useMemo(() => {
+  const groupedMenus = useMemo(() => {
     if (!branch) return [];
     const visible = branch.menuItems.filter((i) =>
       menuItemVisibleForFulfillment(i, fulfillment),
     );
-    const byName = new Map<string, number>();
-    for (const item of visible) {
-      if (item.category?.name) {
-        byName.set(item.category.name, item.category.sortOrder ?? 0);
-      }
+
+    const bestSellers = visible.filter((i) => i.isBestSeller);
+    const groups: { name: string; items: typeof visible }[] = [];
+
+    if (bestSellers.length > 0) {
+      groups.push({ name: "เมนูแนะนำ", items: bestSellers });
     }
-    const sorted = [...byName.entries()]
-      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0], "th"))
-      .map(([name]) => name);
-    return ["ทั้งหมด", ...sorted];
+
+    const byName = new Map<string, typeof visible>();
+    const orderMap = new Map<string, number>();
+
+    for (const item of visible) {
+      const catName = item.category?.name || "อื่นๆ";
+      if (!byName.has(catName)) {
+        byName.set(catName, []);
+        orderMap.set(catName, item.category?.sortOrder ?? 999);
+      }
+      byName.get(catName)!.push(item);
+    }
+
+    const sortedCats = [...byName.keys()].sort(
+      (a, b) => orderMap.get(a)! - orderMap.get(b)! || a.localeCompare(b, "th"),
+    );
+
+    for (const cat of sortedCats) {
+      groups.push({ name: cat, items: byName.get(cat)! });
+    }
+
+    return groups;
   }, [branch, fulfillment]);
 
-  const items = useMemo(() => {
-    if (!branch) return [];
-    const visible = branch.menuItems.filter((i) =>
-      menuItemVisibleForFulfillment(i, fulfillment),
-    );
-    if (category === "ทั้งหมด") return visible;
-    return visible.filter((i) => i.category?.name === category);
-  }, [branch, category, fulfillment]);
+  const categories = useMemo(() => groupedMenus.map(g => g.name), [groupedMenus]);
+
+  useEffect(() => {
+    if (categories.length > 0 && !activeCategory) {
+      setActiveCategory(categories[0]);
+    }
+  }, [categories, activeCategory]);
+
+  const scrollToCategory = (catName: string) => {
+    setActiveCategory(catName);
+    isManualScrolling.current = true;
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+
+    const heading = document.querySelector(`[data-category-heading="${catName}"]`);
+    if (heading) {
+      const y = heading.getBoundingClientRect().top + window.scrollY - 120;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+
+    scrollTimeout.current = setTimeout(() => {
+      isManualScrolling.current = false;
+    }, 800);
+  };
 
   const cartForThisBranch = cartBranchId === branchId ? cart : [];
   const cartCount = cartForThisBranch.reduce((s, l) => s + l.quantity, 0);
@@ -339,9 +441,13 @@ export default function StorePage() {
     return getBranchServiceStatus(branch, fulfillment);
   }, [branch, fulfillment]);
 
-  const displayName = branch
+  const branchName = branch
     ? localizedName(branch.name, branch.nameTh, branch.nameEn)
     : "";
+  const brandName = branch?.brand
+    ? localizedName(branch.brand.name, branch.brand.nameTh, branch.brand.nameEn)
+    : "";
+  const displayName = brandName ? `${brandName} - ${branchName}` : branchName;
   const categoryLine = branch
     ? [
         restaurantCategoryLabel(branch.primaryCategory),
@@ -376,247 +482,280 @@ export default function StorePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f6] pb-28">
-      <header className="bg-white px-4 pb-4 pt-3">
+    <main className={`min-h-screen bg-[#f5f5f6] relative ${cartCount > 0 && mainTab === "menu" ? "pb-[92px]" : "pb-0"}`}>
+      {/* Sticky Header (appears on scroll) */}
+      <div
+        className={`fixed inset-x-0 top-0 z-50 bg-white shadow-sm transition-opacity duration-200 ${
+          isScrolled ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="flex h-[60px] items-center gap-3 px-4">
+          <Link
+            href={backHref}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-800"
+          >
+            <BackIcon />
+          </Link>
+          <p className="flex-1 truncate text-[17px] font-bold text-gray-900">
+            {displayName}
+          </p>
+        </div>
+      </div>
+
+      {/* Floating Buttons (Top) */}
+      <div
+        className={`fixed inset-x-0 top-4 z-40 flex items-center justify-between px-4 transition-opacity duration-200 ${
+          isScrolled ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
         <Link
           href={backHref}
-          className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
-          aria-label="กลับไปเลือกสาขา"
-          title="กลับไปเลือกสาขา"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md"
         >
           <BackIcon />
         </Link>
+        <div className="flex gap-2">
+          <button 
+            type="button"
+            onClick={handleShare}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md transition-transform active:scale-95" 
+            aria-label="Share"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          </button>
+        </div>
+      </div>
 
-        <div className="flex gap-3">
-          {branch.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={branch.imageUrl}
-              alt={displayName}
-              className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
-            />
-          ) : (
-            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-site-primary-soft">
-              <IconSkewerPlaceholder size={40} />
+      {/* Cover Image */}
+      <div className="relative h-72 w-full bg-stone-200">
+        {branch.imageUrl || branch.brand?.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={branch.imageUrl || branch.brand?.coverImageUrl || ""}
+            alt={displayName}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+            <IconSkewerPlaceholder size={64} />
+          </div>
+        )}
+      </div>
+
+      {/* Content Shell */}
+      <div className="relative z-10 -mt-6 rounded-t-[28px] bg-white pt-6 shadow-sm">
+        <div className="px-4">
+          <div className="flex items-start justify-between gap-4">
+            <h1 className="text-2xl font-extrabold leading-tight text-gray-900">
+              {displayName}
+            </h1>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-600">
+            {categoryLine ? <span>{categoryLine}</span> : <span>฿9-฿35</span>}
+          </div>
+
+
+        </div>
+
+        {/* Status Messages */}
+        <div className="mt-4">
+          {!service?.openNow && service?.acceptingOrders && (
+            <div className="mx-4 mb-3 flex items-start gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
+              <ClockIcon />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-site-primary">
+                  {service.reason}
+                </p>
+                <p className="mt-0.5 text-xs text-site-primary/80">
+                  ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
+                </p>
+              </div>
             </div>
           )}
 
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold leading-snug text-gray-900">
-              {displayName}
-            </p>
-            {categoryLine ? (
-              <p className="mt-0.5 text-[11px] text-gray-500">{categoryLine}</p>
-            ) : null}
-            {branch.address && (
-              <div className="mt-1 flex items-start gap-1">
-                <PinIcon />
-                <p className="line-clamp-2 text-[11px] leading-relaxed text-gray-500">
-                  {branch.address}
+          {service && !service.acceptingOrders && (
+            <div className="mx-4 mb-3 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3.5">
+              <LockIcon />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-red-600">{service.reason}</p>
+                <p className="mt-0.5 text-xs text-red-500/80">
+                  ตอนนี้ยังสั่งซื้อไม่ได้ — ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
                 </p>
               </div>
-            )}
-            {branch.phone && (
-              <a
-                href={`tel:${branch.phone}`}
-                className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-medium leading-none text-gray-600 hover:bg-gray-50"
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-visible">
-                  <IconPhone size={14} className="text-gray-600" />
-                </span>
-                โทรร้าน
-              </a>
-            )}
-          </div>
-
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            {service?.openNow ? (
-              <>
-                <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">
-                  <CheckIcon />
-                  {fulfillment === "DELIVERY" ? "เปิดส่ง" : "ร้านเปิด"}
-                </span>
-                <span className="max-w-[9rem] text-right text-[10px] text-gray-500">
-                  {service
-                    ? formatTodayHoursSummary(service.schedule)
-                    : ""}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="inline-flex items-center gap-0.5 rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  <LockIcon />
-                  {fulfillment === "DELIVERY" ? "ปิดส่ง" : "ร้านปิด"}
-                </span>
-                <span className="max-w-[9rem] text-right text-[10px] text-gray-500">
-                  {service
-                    ? formatTodayHoursSummary(service.schedule)
-                    : ""}
-                </span>
-              </>
-            )}
-            {!service?.openNow && service?.acceptingOrders && (
-              <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-200">
-                <CalendarIcon />
-                สั่งล่วงหน้าได้
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {!service?.openNow && service?.acceptingOrders && (
-        <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
-          <ClockIcon />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-site-primary">
-              {service.reason}
-            </p>
-            <p className="mt-0.5 text-xs text-site-primary/80">
-              ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
-            </p>
-          </div>
-        </div>
-      )}
-
-      {service && !service.acceptingOrders && (
-        <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3.5">
-          <LockIcon />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-red-600">{service.reason}</p>
-            <p className="mt-0.5 text-xs text-red-500/80">
-              ตอนนี้ยังสั่งซื้อไม่ได้ — ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
-            </p>
-          </div>
-        </div>
-      )}
-
-      {(branch.ownerMessage || branch.extraMessage) && (
-        <div className="mx-4 mt-3 space-y-2">
-          {branch.ownerMessage ? (
-            <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <p className="text-[11px] font-semibold text-site-primary">
-                ข้อความจากเจ้าของร้าน
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
-                {branch.ownerMessage}
-              </p>
             </div>
-          ) : null}
-          {branch.extraMessage ? (
-            <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <p className="text-[11px] font-semibold text-gray-500">
-                ข้อความเพิ่มเติม
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
-                {branch.extraMessage}
-              </p>
+          )}
+          
+          {(branch.ownerMessage || branch.extraMessage) && (
+            <div className="mx-4 mb-3 space-y-2">
+              {branch.ownerMessage ? (
+                <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100">
+                  <p className="text-[11px] font-semibold text-site-primary">
+                    ข้อความจากเจ้าของร้าน
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                    {branch.ownerMessage}
+                  </p>
+                </div>
+              ) : null}
+              {branch.extraMessage ? (
+                <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100">
+                  <p className="text-[11px] font-semibold text-gray-500">
+                    ข้อความเพิ่มเติม
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                    {branch.extraMessage}
+                  </p>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          )}
         </div>
-      )}
+        
+        <div className="bg-white pb-3">
+          <FulfillmentToggle
+            value={fulfillment}
+            onChange={setFulfillment}
+            deliveryAvailable={deliveryAvailable}
+          />
+          {!deliveryAvailable && (
+            <p className="mx-4 mt-1.5 text-center text-xs text-gray-400">
+              สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น
+            </p>
+          )}
+        </div>
 
-      <FulfillmentToggle
-        value={fulfillment}
-        onChange={setFulfillment}
-        deliveryAvailable={deliveryAvailable}
-      />
-      {!deliveryAvailable && (
-        <p className="mx-4 mt-1.5 text-center text-xs text-gray-400">
-          สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น
-        </p>
-      )}
+        <div className="w-full">
+          <div className="bg-white border-b border-gray-200">
+            <MainTabs active={mainTab} onChange={setMainTab} />
+          </div>
 
-      <div className="mx-4 mt-5 overflow-hidden rounded-t-2xl bg-white">
-        <MainTabs active={mainTab} onChange={setMainTab} />
-
-        {mainTab === "menu" ? (
-          <>
-            {categories.length > 1 && (
-              <div className="filter-scroll-row flex gap-2 overflow-x-auto px-4 py-3">
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCategory(c)}
-                    className={pillTabButtonClass(category === c)}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-2 px-4 pb-4">
-              {items.map((item) => {
-                const priced = menuItemSellPrice(item, fulfillment);
-                return (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
+          {mainTab === "menu" ? (
+            <>
+              {/* Sticky Filter Bar */}
+              {categories.length > 1 && (
+                <div 
+                  className={`sticky top-[60px] z-40 bg-white border-b border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition-all ${
+                    isScrolled ? "py-2" : "py-3"
+                  }`}
                 >
-                  <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
-                        <IconSkewerPlaceholder size={40} />
-                      </div>
-                    )}
-                    <MenuPromoBadge label={priced.label} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-bold text-gray-900">
-                      {item.name}
-                    </p>
-                    {item.description && (
-                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-400">
-                        {item.description}
-                      </p>
-                    )}
-                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
-                      <MenuPromoPrice priced={priced} />
-                      <MenuBestSellerTag show={item.isBestSeller} />
-                    </p>
-                  </div>
-                  <div className="shrink-0">
-                    {item.isOutOfStock ? (
-                      <span className="text-xs text-gray-400">หมด</span>
-                    ) : (
+                  <div id="filter-scroll-row" className="filter-scroll-row flex gap-2 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {categories.map((c) => (
                       <button
+                        key={c}
+                        id={`filter-btn-${c}`}
                         type="button"
-                        onClick={() =>
-                          router.push(`/order/store/${branch.id}/item/${item.id}`)
-                        }
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-xl font-light text-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
-                        aria-label={`เพิ่ม ${item.name}`}
+                        onClick={() => scrollToCategory(c)}
+                        className={`shrink-0 rounded-full px-4 py-1.5 text-[15px] font-medium transition-all duration-200 ${
+                          activeCategory === c 
+                          ? "bg-site-primary text-white shadow-sm" 
+                          : "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                        }`}
                       >
-                        <IconPlus size={16} />
+                        {c}
                       </button>
-                    )}
+                    ))}
                   </div>
                 </div>
-                );
-              })}
-              {items.length === 0 && (
-                <p className="py-8 text-center text-sm text-gray-400">
-                  ไม่มีเมนูในหมวดนี้
-                </p>
               )}
-            </div>
+
+              <div className="px-4 pb-2 bg-[#f5f5f6]">
+                {groupedMenus.map((group) => (
+                  <div key={group.name} className="pt-6 first:pt-4" data-category-heading={group.name}>
+                    <h2 className="mb-3 text-[17px] font-bold text-gray-900">{group.name}</h2>
+                    <div className="space-y-3">
+                      {group.items.map((item) => {
+                        const priced = menuItemSellPrice(item, fulfillment);
+                        const cartItems = cartForThisBranch.filter((l) => l.branchMenuItemId === item.id);
+                        const itemCartQuantity = cartItems.reduce((s, l) => s + l.quantity, 0);
+                        
+                        const handleItemClick = (e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          if (itemCartQuantity > 0) {
+                            setSelectedItemForBottomSheet(item);
+                          } else {
+                            router.push(`/order/store/${branch.id}/item/${item.id}`);
+                          }
+                        };
+                        
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={handleItemClick}
+                            className="flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-transform active:scale-[0.98]"
+                          >
+                            <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
+                              {item.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                                  <IconSkewerPlaceholder size={40} />
+                                </div>
+                              )}
+                              <MenuPromoBadge label={priced.label} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[15px] font-bold text-gray-900">
+                                {item.name}
+                              </p>
+                              {item.description && (
+                                <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-400">
+                                  {item.description}
+                                </p>
+                              )}
+                              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
+                                <MenuPromoPrice priced={priced} />
+                                <MenuBestSellerTag show={item.isBestSeller} />
+                              </p>
+                            </div>
+                            <div className="shrink-0">
+                              {item.isOutOfStock ? (
+                                <span className="text-xs text-gray-400">หมด</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleItemClick}
+                                  className={`flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition-transform active:scale-95 hover:opacity-90 ${
+                                    itemCartQuantity > 0
+                                      ? "bg-site-primary-soft border border-site-primary text-site-primary"
+                                      : "bg-site-primary text-white"
+                                  }`}
+                                  aria-label={`เพิ่ม ${item.name}`}
+                                >
+                                  {itemCartQuantity > 0 ? (
+                                    <span className="text-[15px] font-bold">{itemCartQuantity}</span>
+                                  ) : (
+                                    <IconPlus size={16} />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {groupedMenus.length === 0 && (
+                  <p className="py-8 text-center text-sm text-gray-400">
+                    ไม่มีเมนูในสาขานี้
+                  </p>
+                )}
+              </div>
           </>
         ) : (
           <StoreHistoryTab branchId={branch.id} />
         )}
       </div>
+      </div>
 
       {cartCount > 0 && mainTab === "menu" && (
-        <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+        <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 bg-white p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
           <button
             type="button"
             onClick={() => router.push("/order/checkout")}
@@ -631,6 +770,108 @@ export default function StorePage() {
             <span>฿{formatPrice(cartTotal)}</span>
           </button>
         </div>
+      )}
+      
+      {/* Bottom Sheet for multiple variants */}
+      {selectedItemForBottomSheet && (
+        <>
+          <div
+            className="fixed inset-0 z-[60] bg-black/40 transition-opacity"
+            onClick={() => setSelectedItemForBottomSheet(null)}
+          />
+          <div className="fixed bottom-0 left-1/2 z-[70] w-full max-w-md -translate-x-1/2 rounded-t-2xl bg-white shadow-2xl transition-transform duration-300 ease-out">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+              <h3 className="text-lg font-bold text-gray-900">{selectedItemForBottomSheet.name}</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedItemForBottomSheet(null)}
+                className="rounded-full p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <IconClose size={20} />
+              </button>
+            </div>
+            
+            <div className="max-h-[60vh] overflow-y-auto px-4 py-4">
+              {cartForThisBranch
+                .filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id)
+                .map((line) => (
+                  <div key={line.key} className="mb-4 flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <div className="flex justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="text-[13px] text-gray-600">
+                          {line.optionNames.length > 0 ? line.optionNames.join(", ") : "ไม่มีตัวเลือก"}
+                          {line.note && <span className="block mt-0.5 text-gray-500">หมายเหตุ: {line.note}</span>}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[15px] font-bold text-gray-900">
+                          ฿{formatPrice((line.unitPrice + line.optionsPrice) * line.quantity)}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between mt-1">
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/order/store/${branch.id}/item/${selectedItemForBottomSheet.id}?editKey=${line.key}`)}
+                        className="text-[13px] font-bold text-site-primary underline underline-offset-2"
+                      >
+                        แก้ไข
+                      </button>
+                      
+                      <div className="flex items-center gap-3 rounded-full bg-white px-2 py-1 shadow-sm border border-gray-200">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (line.quantity <= 1) {
+                              removeLine(line.key);
+                              if (cartForThisBranch.filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id).length <= 1) {
+                                setSelectedItemForBottomSheet(null);
+                              }
+                            } else {
+                              updateQuantity(line.key, -1);
+                            }
+                          }}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-site-primary hover:bg-gray-50"
+                        >
+                          <IconMinus size={14} />
+                        </button>
+                        <span className="w-4 text-center text-[15px] font-bold text-gray-900">
+                          {line.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(line.key, 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-site-primary hover:bg-gray-50"
+                        >
+                          <IconPlus size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+              <button
+                type="button"
+                onClick={() => router.push(`/order/store/${branch.id}/item/${selectedItemForBottomSheet.id}?new=1`)}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gray-100 py-3 text-[15px] font-bold text-gray-700 hover:bg-gray-200"
+              >
+                <IconPlus size={16} />
+                เพิ่มรายการใหม่
+              </button>
+            </div>
+            
+            <div className="border-t border-gray-100 p-4">
+              <button
+                type="button"
+                onClick={() => setSelectedItemForBottomSheet(null)}
+                className="w-full rounded-xl bg-site-primary py-3.5 text-[17px] font-bold text-white hover:opacity-90"
+              >
+                อัปเดตตะกร้า
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
     </main>

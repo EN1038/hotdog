@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { PlatformSettingsData } from "@/lib/platform-branding";
 import { PLATFORM_SETTINGS_DEFAULTS } from "@/lib/platform-branding";
-import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
+import { DEFAULT_BRAND_COLOR, parseHexColor, normalizePrimaryColor } from "@/lib/color";
 
 export type BrandingOverride = {
   siteName?: string;
@@ -39,12 +39,7 @@ export function useSiteBranding() {
   return useContext(SiteBrandingContext);
 }
 
-function normalizePrimaryColor(
-  input: string | null | undefined,
-  fallback: string,
-): string {
-  return parseHexColor(input)?.hex ?? parseHexColor(fallback)?.hex ?? fallback;
-}
+
 
 function mergeBranding(
   platform: PlatformSettingsData,
@@ -160,8 +155,4 @@ export function SiteBrandingProvider({
   );
 }
 
-export function brandColorFromApi(
-  color: string | null | undefined,
-): string {
-  return normalizePrimaryColor(color, DEFAULT_BRAND_COLOR);
-}
+

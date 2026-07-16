@@ -63,7 +63,7 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartBranchId, setCartBranchId] = useState<string | null>(null);
-  const [fulfillment, setFulfillmentState] = useState<FulfillmentType>("PICKUP");
+  const [fulfillment, setFulfillmentState] = useState<FulfillmentType>("DELIVERY");
 
   useEffect(() => {
     try {

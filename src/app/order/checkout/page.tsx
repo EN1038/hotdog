@@ -7,7 +7,7 @@ import type { FulfillmentType, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS, formatPrice } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
-import { getBranchServiceStatus } from "@/lib/branch-hours";
+import { getBranchServiceStatus, isWithinWeeklyScheduleWithOvernight } from "@/lib/branch-hours";
 import { localizedName } from "@/lib/localized";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { LoadingState } from "@/components/LoadingState";
@@ -136,20 +136,17 @@ function SwipeToReveal({
   }
 
   return (
-    <div
-      className="relative overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm"
-      style={{ touchAction: "pan-y" }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
-    >
+    <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
       <div className="absolute inset-y-0 right-0 flex w-[84px] items-stretch">
         {action}
       </div>
       <div
         className={`will-change-transform ${dragging ? "" : "transition-transform duration-200"} bg-white`}
-        style={{ transform: `translateX(${translateX}px)` }}
+        style={{ transform: `translateX(${translateX}px)`, touchAction: "pan-y" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
       >
         {children({ isOpen: open, close: onClose })}
       </div>
@@ -170,6 +167,7 @@ const rowIconClass =
   "flex h-5 w-5 shrink-0 items-center justify-center overflow-visible";
 
 function ExpandableFulfillmentRow({
+  id,
   icon: Icon,
   label,
   summary,
@@ -177,6 +175,7 @@ function ExpandableFulfillmentRow({
   onToggle,
   children,
 }: {
+  id?: string;
   icon: (props: { size?: number; className?: string }) => React.ReactNode;
   label: React.ReactNode;
   summary?: string;
@@ -185,7 +184,7 @@ function ExpandableFulfillmentRow({
   children?: React.ReactNode;
 }) {
   return (
-    <>
+    <div id={id}>
       <button
         type="button"
         onClick={onToggle}
@@ -216,7 +215,7 @@ function ExpandableFulfillmentRow({
           {children}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -306,6 +305,16 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  useEffect(() => {
+    if (sessionChecked && cart.length === 0) {
+      if (cartBranchId) {
+        router.replace(`/order/store/${cartBranchId}`);
+      } else {
+        router.replace("/order");
+      }
+    }
+  }, [sessionChecked, cart.length, cartBranchId, router]);
+
   const itemsTotal = useMemo(
     () => cart.reduce((s, l) => s + lineTotal(l), 0),
     [cart],
@@ -319,6 +328,13 @@ export default function CheckoutPage() {
   const grandTotal = itemsTotal + deliveryFee - discount;
 
   async function submitOrder() {
+    const scrollAndExpand = (fieldId: ExpandFieldId) => {
+      setExpandedField(fieldId);
+      setTimeout(() => {
+        document.getElementById(`field-${fieldId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    };
+
     setError("");
     if (!session) {
       goToLogin({ pendingSubmit: true });
@@ -334,12 +350,19 @@ export default function CheckoutPage() {
       setFulfillment("PICKUP");
       return;
     }
-    if (fulfillment === "DELIVERY" && (!locationId || !addressDetail.trim())) {
-      setError("กรุณาเลือกพื้นที่จัดส่งและกรอกที่อยู่");
+    if (fulfillment === "DELIVERY" && !locationId) {
+      setError("กรุณาเลือกพื้นที่จัดส่ง");
+      scrollAndExpand("location");
       return;
     }
+    if (fulfillment === "DELIVERY" && !addressDetail.trim()) {
+      setError("กรุณากรอกที่อยู่จัดส่ง");
+      scrollAndExpand("addressDetail");
+      return;
+    }
+    let service;
     if (branch) {
-      const service = getBranchServiceStatus(branch, fulfillment);
+      service = getBranchServiceStatus(branch, fulfillment);
       if (!service.acceptingOrders) {
         setError(service.reason);
         return;
@@ -348,6 +371,7 @@ export default function CheckoutPage() {
         setError(
           "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้",
         );
+        scrollAndExpand("scheduledTime");
         return;
       }
     }
@@ -356,13 +380,10 @@ export default function CheckoutPage() {
       : null;
     if (scheduledTime && !parsedScheduledTime) {
       setError("กรุณากรอกเวลารับสินค้าแบบ 24 ชั่วโมง เช่น 18:30");
+      scrollAndExpand("scheduledTime");
       return;
     }
-    if (branch && !getBranchServiceStatus(branch, fulfillment).openNow) {
-      if (!parsedScheduledTime) {
-        setError("กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้");
-        return;
-      }
+    if (parsedScheduledTime) {
       const scheduledAtPreview = toBangkokScheduledAt(
         parsedScheduledTime.hours,
         parsedScheduledTime.minutes,
@@ -370,8 +391,18 @@ export default function CheckoutPage() {
       const scheduledDate = new Date(scheduledAtPreview);
       if (scheduledDate.getTime() <= Date.now()) {
         setError("เวลานัดรับ/ส่งต้องเป็นเวลาหลังจากนี้ในวันนี้");
+        scrollAndExpand("scheduledTime");
         return;
       }
+      if (service && !isWithinWeeklyScheduleWithOvernight(service.schedule, scheduledDate)) {
+        setError("เวลารับสินค้าที่คุณระบุอยู่นอกเวลาทำการของร้าน กรุณาระบุเวลาใหม่");
+        scrollAndExpand("scheduledTime");
+        return;
+      }
+    } else if (branch && service && !service.openNow) {
+      setError("กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้");
+      scrollAndExpand("scheduledTime");
+      return;
     }
     setSubmitting(true);
     try {
@@ -425,17 +456,14 @@ export default function CheckoutPage() {
 
   if (sessionChecked && cart.length === 0) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-3">
-        <p className="text-gray-500">ตะกร้าว่างเปล่า</p>
-        <Link href="/order" className="text-site-primary underline">
-          กลับไปเลือกเมนู
-        </Link>
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <LoadingState className="w-full max-w-sm" />
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen pb-32">
+    <main className="min-h-screen pb-24">
       <header className="sticky top-0 z-10 border-b border-gray-100 bg-white px-4 py-3">
         <div className="flex items-center gap-3">
           <button
@@ -484,109 +512,11 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <div className="mx-4 mt-3 space-y-3">
-        {cart.map((l) => {
-          const menuItem = branch?.menuItems.find(
-            (m) => m.id === l.branchMenuItemId,
-          );
-          return (
-            <SwipeToReveal
-              key={l.key}
-              open={openSwipeKey === l.key}
-              onOpen={() => setOpenSwipeKey(l.key)}
-              onClose={() =>
-                setOpenSwipeKey((k) => (k === l.key ? null : k))
-              }
-              action={
-                <button
-                  type="button"
-                  onClick={() => removeLine(l.key)}
-                  className="flex w-full items-center justify-center bg-red-500 text-sm font-semibold text-white"
-                  aria-label={`ลบ ${l.name}`}
-                >
-                  ลบ
-                </button>
-              }
-            >
-              {({ isOpen, close }) => (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isOpen) {
-                      close();
-                      return;
-                    }
-                    router.push(
-                      `/order/checkout/item/${encodeURIComponent(l.key)}`,
-                    );
-                  }}
-                  className="flex w-full items-center gap-3 bg-white p-3 text-left active:bg-gray-50"
-                  aria-label={`แก้ไข ${l.name}`}
-                >
-                  {menuItem?.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={menuItem.imageUrl}
-                      alt={l.name}
-                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
-                      <IconSkewerPlaceholder size={32} />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-gray-900">{l.name}</p>
-                    <p className="mt-0.5 text-xs font-medium text-site-primary">
-                      ฿{formatPrice(l.unitPrice + (l.optionsPrice ?? 0))} / ไม้
-                    </p>
-                    {l.optionNames?.length ? (
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        {l.optionNames.join(" • ")}
-                      </p>
-                    ) : null}
-                    {l.note ? (
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        หมายเหตุ: {l.note}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold text-gray-900">
-                      x{l.quantity}
-                    </p>
-                    <p className="mt-0.5 text-sm font-bold text-gray-800">
-                      ฿{formatPrice(lineTotal(l))}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-site-primary">
-                      แก้ไข
-                    </p>
-                  </div>
-                </button>
-              )}
-            </SwipeToReveal>
-          );
-        })}
-      </div>
-
       <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
         <p className="mb-2 text-sm font-semibold text-gray-800">
           ข้อมูลการรับสินค้า
         </p>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setFulfillment("PICKUP")}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium ${
-              fulfillment === "PICKUP"
-                ? "border-site-primary bg-site-primary-soft text-site-primary"
-                : "border-gray-200 text-gray-600"
-            }`}
-          >
-            <IconStore size={18} />
-            รับที่ร้าน
-            {fulfillment === "PICKUP" && <IconCheck size={14} />}
-          </button>
           <button
             type="button"
             onClick={() => deliveryAvailable && setFulfillment("DELIVERY")}
@@ -601,11 +531,53 @@ export default function CheckoutPage() {
             จัดส่ง
             {fulfillment === "DELIVERY" && <IconCheck size={14} />}
           </button>
+          <button
+            type="button"
+            onClick={() => setFulfillment("PICKUP")}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium ${
+              fulfillment === "PICKUP"
+                ? "border-site-primary bg-site-primary-soft text-site-primary"
+                : "border-gray-200 text-gray-600"
+            }`}
+          >
+            <IconStore size={18} />
+            รับที่ร้าน
+            {fulfillment === "PICKUP" && <IconCheck size={14} />}
+          </button>
         </div>
         {!deliveryAvailable && branch && !branchLoading && (
           <p className="mt-2 text-xs text-gray-500">
             สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น
           </p>
+        )}
+
+        {fulfillment === "PICKUP" && branch && (
+          <div className="mt-3 flex items-start justify-between rounded-lg bg-gray-50 p-3">
+            <div className="flex-1 pr-3">
+              <p className="font-bold text-gray-900">
+                {branch.brand?.name ? `${localizedName(branch.brand.name, branch.brand.nameTh, branch.brand.nameEn)} - ` : ""}
+                {localizedName(branch.name, branch.nameTh, branch.nameEn)}
+              </p>
+              {branch.address && (
+                <p className="mt-1 text-xs text-gray-600 line-clamp-2">{branch.address}</p>
+              )}
+            </div>
+            {(branch.latitude && branch.longitude) || branch.address ? (
+              <a
+                href={
+                  branch.latitude && branch.longitude
+                    ? `https://maps.google.com/?q=${branch.latitude},${branch.longitude}`
+                    : `https://maps.google.com/?q=${encodeURIComponent(branch.address || "")}`
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="flex shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm active:bg-gray-50"
+              >
+                <IconPin size={18} className="text-site-primary" />
+                <span className="text-[10px] font-semibold text-gray-700">แผนที่</span>
+              </a>
+            ) : null}
+          </div>
         )}
 
         <div className="mt-3 overflow-hidden rounded-xl border border-gray-100">
@@ -666,6 +638,7 @@ export default function CheckoutPage() {
 
           <div className="h-px bg-gray-100" />
           <ExpandableFulfillmentRow
+            id="field-scheduledTime"
             icon={IconClock}
             label="เวลารับสินค้า"
             summary={
@@ -695,6 +668,7 @@ export default function CheckoutPage() {
             <>
               <div className="h-px bg-gray-100" />
               <ExpandableFulfillmentRow
+                id="field-location"
                 icon={IconPin}
                 label="พื้นที่จัดส่ง"
                 summary={(() => {
@@ -756,6 +730,7 @@ export default function CheckoutPage() {
 
               <div className="h-px bg-gray-100" />
               <ExpandableFulfillmentRow
+                id="field-addressDetail"
                 icon={IconHome}
                 label="ที่อยู่จัดส่ง"
                 summary={addressDetail || "กรอกที่อยู่"}
@@ -799,6 +774,95 @@ export default function CheckoutPage() {
             />
           </ExpandableFulfillmentRow>
         </div>
+      </div>
+      <div className="mx-4 mt-6 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-gray-900">รายการอาหารที่สั่ง</h2>
+        <Link href={`/order/store/${cartBranchId}`} className="text-sm font-semibold text-site-primary">
+          สั่งอาหารเพิ่ม
+        </Link>
+      </div>
+
+      <div className="mx-4 mt-3 space-y-3">
+        {cart.map((l) => {
+          const menuItem = branch?.menuItems.find(
+            (m) => m.id === l.branchMenuItemId,
+          );
+          return (
+            <div key={l.key} className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] border border-gray-100 overflow-hidden">
+              <SwipeToReveal
+                open={openSwipeKey === l.key}
+                onOpen={() => setOpenSwipeKey(l.key)}
+                onClose={() =>
+                  setOpenSwipeKey((k) => (k === l.key ? null : k))
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={() => removeLine(l.key)}
+                    className="flex w-full items-center justify-center bg-red-500 text-sm font-semibold text-white"
+                    aria-label={`ลบ ${l.name}`}
+                  >
+                    ลบ
+                  </button>
+                }
+              >
+                {({ isOpen, close }) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isOpen) {
+                        close();
+                        return;
+                      }
+                      router.push(
+                        `/order/store/${cartBranchId}/item/${l.branchMenuItemId}?editKey=${encodeURIComponent(l.key)}&returnTo=${encodeURIComponent("/order/checkout")}`,
+                      );
+                    }}
+                    className="flex w-full items-start gap-3 p-3 text-left active:bg-gray-50"
+                    aria-label={`แก้ไข ${l.name}`}
+                  >
+                  {menuItem?.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={menuItem.imageUrl}
+                      alt={l.name}
+                      className="h-16 w-16 shrink-0 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
+                      <IconSkewerPlaceholder size={32} />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex justify-between items-start">
+                      <p className="font-bold text-gray-900 pr-2">{l.name}</p>
+                      <p className="font-semibold text-gray-700 shrink-0">
+                        ฿{formatPrice(lineTotal(l))}
+                      </p>
+                    </div>
+                    {l.optionNames?.length ? (
+                      <p className="mt-1 text-[13px] text-gray-500">
+                        {l.optionNames.join(", ")}
+                      </p>
+                    ) : null}
+                    {l.note ? (
+                      <p className="mt-0.5 text-[13px] text-gray-500">
+                        หมายเหตุ: {l.note}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex items-end justify-between">
+                      <span className="text-[15px] font-semibold text-site-primary">แก้ไข</span>
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-site-primary-soft text-sm font-bold text-site-primary">
+                        {l.quantity}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
+              </SwipeToReveal>
+            </div>
+          );
+        })}
       </div>
 
       <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
@@ -850,20 +914,24 @@ export default function CheckoutPage() {
         <p className="mx-4 mt-2 text-center text-sm text-red-600">{error}</p>
       )}
 
-      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t border-gray-100 bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-sm text-gray-500">รวม</span>
-          <span className="text-lg font-bold text-site-primary">
-            ฿{formatPrice(grandTotal)}
-          </span>
-        </div>
+      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(0,0,0,0.04)]">
         <button
           type="button"
           onClick={submitOrder}
           disabled={submitting}
-          className="w-full rounded-xl bg-site-primary py-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          className="flex w-full items-center justify-between rounded-xl bg-site-primary px-4 py-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
-          {submitting ? "กำลังสั่งซื้อ..." : "ยืนยันสั่งซื้อ"}
+          <div className="flex items-center gap-3">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[15px] font-bold text-site-primary">
+              {cart.reduce((sum, item) => sum + item.quantity, 0)}
+            </div>
+            <span className="text-lg">
+              {submitting ? "กำลังสั่งซื้อ..." : fulfillment === "PICKUP" ? "รับที่ร้าน" : "สั่งเลย"}
+            </span>
+          </div>
+          <span className="text-lg font-bold">
+            ฿{formatPrice(grandTotal)}
+          </span>
         </button>
       </div>
     </main>

@@ -323,28 +323,10 @@ function SidebarNav({
   );
 }
 
-function ShellHeader({
-  username,
-  isPlatformAdmin,
-}: {
-  username?: string;
-  isPlatformAdmin: boolean;
-}) {
+function ShellHeader() {
   return (
-    <div className="border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 px-5 py-5">
-      <PlatformMark placement="sidebar" height={36} />
-      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-site-primary">
-        CMS
-      </p>
-      <h1 className="mt-1 text-base font-bold text-slate-900">
-        ระบบจัดการหลังบ้าน
-      </h1>
-      {username && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <RoleBadge isPlatformAdmin={isPlatformAdmin} />
-          <span className="truncate text-sm text-slate-600">{username}</span>
-        </div>
-      )}
+    <div className="flex items-center justify-center border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
+      <PlatformMark placement="sidebar" height={80} />
     </div>
   );
 }
@@ -430,10 +412,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
-        <ShellHeader
-          username={session?.username}
-          isPlatformAdmin={isPlatformAdmin}
-        />
+        <ShellHeader />
 
         <SidebarNav pathname={pathname} navGroups={navGroupsWithBadges} />
 
@@ -457,28 +436,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
           <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,85vw)] flex-col border-r border-slate-200 bg-white text-slate-900 shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 px-5 py-4">
-              <div className="min-w-0 flex-1">
-                <PlatformMark placement="sidebar" height={32} />
-                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-site-primary">
-                  CMS
-                </p>
-                <h1 className="mt-1 text-base font-bold text-slate-900">
-                  ระบบจัดการหลังบ้าน
-                </h1>
-                {session?.username && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <RoleBadge isPlatformAdmin={isPlatformAdmin} />
-                    <span className="truncate text-sm text-slate-600">
-                      {session.username}
-                    </span>
-                  </div>
-                )}
+            <div className="relative flex items-center justify-center border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
+              <div className="flex items-center justify-center min-w-0 flex-1">
+                <PlatformMark placement="sidebar" height={80} />
               </div>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="ml-2 shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                className="absolute top-4 right-4 shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                 aria-label="ปิด"
               >
                 <IconClose size={18} />

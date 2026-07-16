@@ -85,7 +85,7 @@ function computeOptions(
 export default function ItemDetailPage() {
   const { branchId, itemId } = useParams<{ branchId: string; itemId: string }>();
   const router = useRouter();
-  const { cart, cartBranchId, addLine, fulfillment } = useCustomer();
+  const { cart, cartBranchId, addLine, replaceLine, fulfillment } = useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +93,10 @@ export default function ItemDetailPage() {
   const [note, setNote] = useState("");
   const [selectedByGroup, setSelectedByGroup] = useState<SelectedByGroup>({});
   const [error, setError] = useState("");
+  const [existingKey, setExistingKey] = useState<string | null>(null);
+  
+  // Track if we've initialized from cart so we don't overwrite user edits if cart object changes reference
+  const [initializedFromCart, setInitializedFromCart] = useState(false);
 
   useEffect(() => {
     fetch("/api/customer/branches")
@@ -109,11 +113,37 @@ export default function ItemDetailPage() {
   }, [branch, itemId]);
 
   useEffect(() => {
-    if (!item) return;
-    const initial: SelectedByGroup = {};
-    for (const group of item.optionGroups) initial[group.id] = [];
-    setSelectedByGroup(initial);
-  }, [itemId, item]);
+    if (!item || initializedFromCart) return;
+
+    // Check if item is already in cart
+    const existingLine = cart.find(l => l.branchMenuItemId === item.id);
+    
+    if (existingLine) {
+      setExistingKey(existingLine.key);
+      setQty(existingLine.quantity);
+      setNote(existingLine.note || "");
+      
+      const initial: SelectedByGroup = {};
+      for (const group of item.optionGroups) {
+        const groupOptionIds = group.options.map(o => o.id);
+        initial[group.id] = existingLine.optionIds.filter(id => groupOptionIds.includes(id));
+      }
+      setSelectedByGroup(initial);
+    } else {
+      setExistingKey(null);
+      setQty(1);
+      setNote("");
+      
+      const initial: SelectedByGroup = {};
+      for (const group of item.optionGroups) initial[group.id] = [];
+      setSelectedByGroup(initial);
+    }
+    
+    // Only mark as initialized if cart has loaded (CustomerProvider hydrates it)
+    // If cart is empty, we assume it's loaded if we've waited a bit, but typically CustomerProvider sets it on mount.
+    // We can just mark it initialized.
+    setInitializedFromCart(true);
+  }, [itemId, item, cart, initializedFromCart]);
 
   const priced = useMemo(
     () => (item ? menuItemSellPrice(item, fulfillment) : null),
@@ -164,7 +194,7 @@ export default function ItemDetailPage() {
       return;
     }
     const opts = computeOptions(item, selectedByGroup);
-    addLine(branch.id, {
+    const newLine = {
       branchMenuItemId: item.id,
       name: item.name,
       unitPrice: itemBasePrice,
@@ -173,7 +203,13 @@ export default function ItemDetailPage() {
       optionNames: opts.optionNames,
       optionsPrice: opts.optionsPrice,
       note: note.trim() || undefined,
-    });
+    };
+
+    if (existingKey) {
+      replaceLine(existingKey, newLine);
+    } else {
+      addLine(branch.id, newLine);
+    }
     router.push(`/order/store/${branch.id}`);
   }
 
@@ -352,7 +388,7 @@ export default function ItemDetailPage() {
           onClick={addToCart}
           className="flex flex-1 items-center justify-between rounded-xl bg-site-primary px-4 py-3 font-bold text-white hover:opacity-90"
         >
-          <span className="text-[17px]">ใส่ตะกร้า</span>
+          <span className="text-[17px]">{existingKey ? "อัปเดตตะกร้า" : "ใส่ตะกร้า"}</span>
           <span className="text-[17px]">฿{formatPrice(lineTotal)}</span>
         </button>
       </div>

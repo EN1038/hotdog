@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlatformMarkImage } from "@/components/PlatformMarkImage";
+import { SiteBrandingProvider } from "@/components/customer/SiteBrandingProvider";
 import {
   getPlatformSettings,
   resolvePlatformMarkForPlacement,
@@ -10,7 +11,8 @@ export default async function HomePage() {
   const homeMark = resolvePlatformMarkForPlacement(settings, "home");
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#f3f1ef] p-6">
+    <SiteBrandingProvider>
+      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#f3f1ef] p-6">
       <div
         aria-hidden
         className="pointer-events-none absolute -top-24 left-1/2 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full opacity-35 blur-3xl"
@@ -52,5 +54,6 @@ export default async function HomePage() {
         </div>
       </div>
     </main>
+    </SiteBrandingProvider>
   );
 }

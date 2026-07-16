@@ -1,12 +1,12 @@
 "use client";
 
 import { ConfirmProvider } from "@/components/ConfirmDialog";
-import { SiteBrandingProvider } from "@/components/customer/SiteBrandingProvider";
+import { PlatformBrandingProvider } from "@/components/customer/SiteBrandingProvider";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <SiteBrandingProvider>
+    <PlatformBrandingProvider>
       <ConfirmProvider>{children}</ConfirmProvider>
-    </SiteBrandingProvider>
+    </PlatformBrandingProvider>
   );
 }

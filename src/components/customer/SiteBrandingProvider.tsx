@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { PlatformSettingsData } from "@/lib/platform-branding";
 import { PLATFORM_SETTINGS_DEFAULTS } from "@/lib/platform-branding";
+import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 
 export type BrandingOverride = {
   siteName?: string;
@@ -16,13 +17,17 @@ export type BrandingOverride = {
   siteDescription?: string | null;
   logoUrl?: string | null;
   faviconUrl?: string | null;
-  primaryColor?: string;
+  primaryColor?: string | null;
 };
 
 type SiteBrandingContextValue = PlatformSettingsData & {
   loaded: boolean;
   isBrandOverride: boolean;
 };
+
+const PlatformBrandingContext = createContext<PlatformSettingsData>(
+  PLATFORM_SETTINGS_DEFAULTS,
+);
 
 const SiteBrandingContext = createContext<SiteBrandingContextValue>({
   ...PLATFORM_SETTINGS_DEFAULTS,
@@ -32,6 +37,13 @@ const SiteBrandingContext = createContext<SiteBrandingContextValue>({
 
 export function useSiteBranding() {
   return useContext(SiteBrandingContext);
+}
+
+function normalizePrimaryColor(
+  input: string | null | undefined,
+  fallback: string,
+): string {
+  return parseHexColor(input)?.hex ?? parseHexColor(fallback)?.hex ?? fallback;
 }
 
 function mergeBranding(
@@ -53,22 +65,22 @@ function mergeBranding(
       override.faviconUrl !== undefined
         ? override.faviconUrl
         : platform.faviconUrl,
-    primaryColor: override.primaryColor ?? platform.primaryColor,
+    primaryColor: normalizePrimaryColor(
+      override.primaryColor,
+      platform.primaryColor,
+    ),
   };
 }
 
-export function SiteBrandingProvider({
+/** Loads platform shell branding once at the app root — does not touch --site-primary. */
+export function PlatformBrandingProvider({
   children,
-  brandOverride = null,
 }: {
   children: React.ReactNode;
-  /** When set (brand storefront), overrides platform shell branding */
-  brandOverride?: BrandingOverride | null;
 }) {
   const [platform, setPlatform] = useState<PlatformSettingsData>(
     PLATFORM_SETTINGS_DEFAULTS,
   );
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetch("/api/site-settings")
@@ -92,9 +104,32 @@ export function SiteBrandingProvider({
           markFavicon:
             data.markFavicon || PLATFORM_SETTINGS_DEFAULTS.markFavicon,
         });
-        setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch(() => {
+        /* keep defaults */
+      });
+  }, []);
+
+  return (
+    <PlatformBrandingContext.Provider value={platform}>
+      {children}
+    </PlatformBrandingContext.Provider>
+  );
+}
+
+export function SiteBrandingProvider({
+  children,
+  brandOverride = null,
+}: {
+  children: React.ReactNode;
+  /** When set (brand storefront), overrides platform shell branding */
+  brandOverride?: BrandingOverride | null;
+}) {
+  const platform = useContext(PlatformBrandingContext);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setLoaded(true);
   }, []);
 
   const settings = useMemo(
@@ -123,4 +158,10 @@ export function SiteBrandingProvider({
       {children}
     </SiteBrandingContext.Provider>
   );
+}
+
+export function brandColorFromApi(
+  color: string | null | undefined,
+): string {
+  return normalizePrimaryColor(color, DEFAULT_BRAND_COLOR);
 }

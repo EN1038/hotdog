@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  brandColorFromApi,
   SiteBrandingProvider,
   type BrandingOverride,
 } from "@/components/customer/SiteBrandingProvider";
@@ -12,7 +13,13 @@ import {
 } from "@/lib/customer-brand-session";
 import { CustomerProvider } from "@/components/customer/CustomerProvider";
 
-const BRAND_UPDATED_EVENT = "skillsale-brand-updated";
+export const BRAND_UPDATED_EVENT = "skillsale-brand-updated";
+
+export function notifyActiveBrandUpdated() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(BRAND_UPDATED_EVENT));
+  }
+}
 
 function toOverride(brand: ActiveBrandSession): BrandingOverride {
   return {
@@ -74,11 +81,9 @@ export function syncActiveBrandFromApi(brand: {
     coverImageUrl:
       brand.coverImageUrl?.trim() ||
       (prev?.code === brand.code.trim() ? prev.coverImageUrl : null),
-    primaryColor: brand.color?.trim() || "#dc2626",
+    primaryColor: brandColorFromApi(brand.color),
     contactPhone: brand.contactPhone?.replace(/\D/g, "").trim() || null,
   };
   saveActiveBrand(next);
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(BRAND_UPDATED_EVENT));
-  }
+  notifyActiveBrandUpdated();
 }

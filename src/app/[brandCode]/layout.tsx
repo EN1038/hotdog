@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { CustomerProvider } from "@/components/customer/CustomerProvider";
-import { SiteBrandingProvider } from "@/components/customer/SiteBrandingProvider";
+import {
+  brandColorFromApi,
+  SiteBrandingProvider,
+} from "@/components/customer/SiteBrandingProvider";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
 
@@ -36,7 +39,7 @@ export default async function BrandLayout({
         siteTitle: brand.siteTitle || brand.name,
         siteDescription: brand.siteDescription,
         logoUrl: brand.logoUrl,
-        primaryColor: brand.color,
+        primaryColor: brandColorFromApi(brand.color),
       }
     : null;
 

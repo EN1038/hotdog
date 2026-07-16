@@ -660,7 +660,6 @@ function BranchDetailContent() {
         name: settings.name.trim(),
         nameTh: settings.nameTh.trim() || null,
         nameEn: settings.nameEn.trim() || null,
-        brandId: settings.brandId || null,
         code,
         imageUrl: settings.imageUrl.trim() || null,
         address: settings.address.trim() || null,
@@ -2945,26 +2944,17 @@ function BranchDetailContent() {
                     แบรนด์และลิงก์สาขา
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    ตั้งค่าน้อยครั้ง — ผูกแบรนด์และรหัส URL ของสาขา
+                    แบรนด์ผูกตอนสร้างสาขา — แก้ได้แค่รหัส URL ของสาขา
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <label className={adminLabelClass}>แบรนด์</label>
-                    <select
-                      className={adminInputClass}
-                      value={settings.brandId}
-                      onChange={(e) =>
-                        setSettings((s) => ({ ...s, brandId: e.target.value }))
-                      }
-                    >
-                      <option value="">— ไม่ระบุ —</option>
-                      {brands.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
+                    <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-800">
+                      {branch.brand?.name ??
+                        brands.find((b) => b.id === settings.brandId)?.name ??
+                        "— ไม่ระบุ —"}
+                    </p>
                   </div>
                   <div className="sm:col-span-2">
                     {!codeFieldOpen ? (

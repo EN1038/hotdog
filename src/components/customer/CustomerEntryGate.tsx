@@ -6,6 +6,8 @@ import { CustomerLoginScreen } from "./CustomerLoginScreen";
 import { useCustomer } from "./CustomerProvider";
 import { LoadingState } from "@/components/LoadingState";
 import { localizedName } from "@/lib/localized";
+import { notifyActiveBrandUpdated } from "@/components/customer/OrderBrandingShell";
+import { brandColorFromApi } from "@/components/customer/SiteBrandingProvider";
 import { saveActiveBrand } from "@/lib/customer-brand-session";
 
 type CustomerEntryGateProps = {
@@ -55,15 +57,13 @@ export function CustomerEntryGate({
             name: brandName,
             logoUrl: brandLogo,
             coverImageUrl: brandCover,
-            primaryColor:
-              typeof brand.color === "string" && brand.color.trim()
-                ? brand.color.trim()
-                : "#dc2626",
+            primaryColor: brandColorFromApi(brand.color),
             contactPhone:
               typeof brand.contactPhone === "string" && brand.contactPhone.trim()
                 ? brand.contactPhone.replace(/\D/g, "")
                 : null,
           });
+          notifyActiveBrandUpdated();
         }
 
         if (branchCode) {

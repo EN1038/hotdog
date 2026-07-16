@@ -310,7 +310,7 @@ export default function ItemDetailPage() {
                   <div className="shrink-0 mt-0.5">
                     {group.required ? (
                       <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold ${errorGroupId === group.id ? "bg-red-100 text-red-700" : "bg-orange-100 text-site-primary"}`}>
-                        บังคับ
+                        จำเป็น
                       </span>
                     ) : (
                       <span className="inline-block rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">

@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { IconBack } from "@/components/icons";
+import { IconBack, IconSkewerPlaceholder } from "@/components/icons";
 import {
   AdminLoadingState,
   adminInputClass,
   adminLabelClass,
+  adminSelectClass,
   btnOutline,
   btnPrimary,
 } from "@/components/admin/AdminShell";
@@ -16,11 +17,26 @@ import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import type { BranchOptionGroup } from "@/components/admin/BranchOptionLibrary";
+import {
+  resolveSellPrice,
+  type MenuPricingFields,
+} from "@/lib/menu-pricing";
 
 type MenuItemDetail = {
   id: string;
   name: string;
   price: string;
+  pickupPrice?: string | null;
+  storefrontPrice?: string | null;
+  sellDelivery?: boolean;
+  sellPickup?: boolean;
+  sellStorefront?: boolean;
+  promoEnabled?: boolean;
+  promoType?: "AMOUNT" | "PERCENT" | null;
+  promoValue?: string | null;
+  promoContinuous?: boolean;
+  promoStartsAt?: string | null;
+  promoEndsAt?: string | null;
   description: string | null;
   categoryId: string | null;
   category: { id: string; name: string; sortOrder: number } | null;
@@ -38,10 +54,42 @@ type MenuCategoryOption = {
   sortOrder: number;
 };
 
+type FormState = {
+  name: string;
+  price: string;
+  pickupPrice: string;
+  storefrontPrice: string;
+  sellDelivery: boolean;
+  sellPickup: boolean;
+  sellStorefront: boolean;
+  promoEnabled: boolean;
+  promoType: "AMOUNT" | "PERCENT";
+  promoValue: string;
+  promoContinuous: boolean;
+  promoStartsAt: string;
+  promoEndsAt: string;
+  description: string;
+  categoryId: string;
+  imageUrl: string;
+  isHidden: boolean;
+  isOutOfStock: boolean;
+};
+
 const EMPTY_ITEM: MenuItemDetail = {
   id: "new",
   name: "",
   price: "",
+  pickupPrice: null,
+  storefrontPrice: null,
+  sellDelivery: true,
+  sellPickup: true,
+  sellStorefront: true,
+  promoEnabled: false,
+  promoType: null,
+  promoValue: null,
+  promoContinuous: false,
+  promoStartsAt: null,
+  promoEndsAt: null,
   description: null,
   categoryId: null,
   category: null,
@@ -53,7 +101,57 @@ const EMPTY_ITEM: MenuItemDetail = {
   optionGroupIds: [],
 };
 
+const EMPTY_FORM: FormState = {
+  name: "",
+  price: "",
+  pickupPrice: "",
+  storefrontPrice: "",
+  sellDelivery: true,
+  sellPickup: true,
+  sellStorefront: true,
+  promoEnabled: false,
+  promoType: "AMOUNT",
+  promoValue: "",
+  promoContinuous: true,
+  promoStartsAt: "",
+  promoEndsAt: "",
+  description: "",
+  categoryId: "",
+  imageUrl: "",
+  isHidden: false,
+  isOutOfStock: false,
+};
+
 const sectionClass = "rounded-xl border border-gray-200 bg-white p-4";
+
+function toDatetimeLocal(value: string | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocal(value: string): string | null {
+  if (!value.trim()) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function formatBaht(n: number): string {
+  return n.toLocaleString("th-TH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function optionalPricePayload(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const n = parseFloat(t);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export default function MenuItemEditorPage() {
   const { id: branchId, itemId } = useParams<{
@@ -72,16 +170,7 @@ export default function MenuItemEditorPage() {
   const [categories, setCategories] = useState<MenuCategoryOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
-
-  const [form, setForm] = useState({
-    name: "",
-    price: "",
-    description: "",
-    categoryId: "",
-    imageUrl: "",
-    isHidden: false,
-    isOutOfStock: false,
-  });
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [shopCode, setShopCode] = useState<string | null>(null);
 
   function applyItem(data: MenuItemDetail) {
@@ -90,7 +179,25 @@ export default function MenuItemEditorPage() {
     const isOutOfStock = isHidden ? false : data.isOutOfStock;
     setForm({
       name: data.name,
-      price: String(data.price),
+      price: data.price != null ? String(data.price) : "",
+      pickupPrice:
+        data.pickupPrice != null && String(data.pickupPrice) !== String(data.price)
+          ? String(data.pickupPrice)
+          : "",
+      storefrontPrice:
+        data.storefrontPrice != null &&
+        String(data.storefrontPrice) !== String(data.price)
+          ? String(data.storefrontPrice)
+          : "",
+      sellDelivery: data.sellDelivery !== false,
+      sellPickup: data.sellPickup !== false,
+      sellStorefront: data.sellStorefront !== false,
+      promoEnabled: Boolean(data.promoEnabled),
+      promoType: data.promoType === "PERCENT" ? "PERCENT" : "AMOUNT",
+      promoValue: data.promoValue != null ? String(data.promoValue) : "",
+      promoContinuous: data.promoContinuous !== false,
+      promoStartsAt: toDatetimeLocal(data.promoStartsAt),
+      promoEndsAt: toDatetimeLocal(data.promoEndsAt),
       description: data.description ?? "",
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
@@ -128,6 +235,7 @@ export default function MenuItemEditorPage() {
   async function loadItem() {
     if (isCreate) {
       setItem(EMPTY_ITEM);
+      setForm(EMPTY_FORM);
       setSelectedGroupIds([]);
       return;
     }
@@ -160,26 +268,127 @@ export default function MenuItemEditorPage() {
     );
   }
 
+  async function setChannelEnabled(
+    key: "sellDelivery" | "sellPickup" | "sellStorefront",
+    next: boolean,
+  ) {
+    if (next) {
+      setForm((f) => ({ ...f, [key]: true }));
+      return;
+    }
+    const labels = {
+      sellDelivery: "จัดส่ง",
+      sellPickup: "รับที่ร้าน",
+      sellStorefront: "หน้าร้าน",
+    } as const;
+    const onlineNote =
+      key === "sellStorefront"
+        ? "ปิดราคาหน้าร้านนี้ไว้ (ยังไม่ใช้สั่งออนไลน์)"
+        : `เมนูนี้จะไม่แสดงเมื่อลูกค้าเลือกช่องทาง "${labels[key]}"`;
+    const ok = await confirm({
+      title: `ปิดขายช่องทาง${labels[key]}?`,
+      message: onlineNote,
+      confirmLabel: "ปิดช่องทาง",
+      cancelLabel: "ยกเลิก",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setForm((f) => ({ ...f, [key]: false }));
+  }
+
+  const previewPricing = useMemo(() => {
+    const delivery = parseFloat(form.price);
+    if (!Number.isFinite(delivery) || delivery <= 0) return null;
+    const fields: MenuPricingFields = {
+      price: delivery,
+      pickupPrice: optionalPricePayload(form.pickupPrice),
+      storefrontPrice: optionalPricePayload(form.storefrontPrice),
+      promoEnabled: form.promoEnabled,
+      promoType: form.promoEnabled ? form.promoType : null,
+      promoValue: form.promoEnabled
+        ? optionalPricePayload(form.promoValue)
+        : null,
+      promoContinuous: form.promoContinuous,
+      promoStartsAt: form.promoContinuous
+        ? null
+        : fromDatetimeLocal(form.promoStartsAt),
+      promoEndsAt: form.promoContinuous
+        ? null
+        : fromDatetimeLocal(form.promoEndsAt),
+    };
+    return {
+      delivery: resolveSellPrice(fields, "delivery"),
+      pickup: resolveSellPrice(fields, "pickup"),
+    };
+  }, [form]);
+
   async function saveItem() {
     if (!form.name.trim()) {
       toast.error("กรอกชื่อเมนู");
       return;
     }
-    if (!form.price || Number.isNaN(parseFloat(form.price))) {
-      toast.error("กรอกราคา");
+    const deliveryPrice = parseFloat(form.price);
+    if (!form.price || Number.isNaN(deliveryPrice) || deliveryPrice <= 0) {
+      toast.error("กรอกราคาเดลิเวอรี่");
       return;
+    }
+    if (!form.sellDelivery && !form.sellPickup && !form.sellStorefront) {
+      toast.error("ต้องเปิดขายอย่างน้อย 1 ช่องทาง");
+      return;
+    }
+    if (form.promoEnabled) {
+      const promoVal = parseFloat(form.promoValue);
+      if (!form.promoValue || Number.isNaN(promoVal) || promoVal <= 0) {
+        toast.error("ใส่ค่าส่วนลด");
+        return;
+      }
+      if (form.promoType === "PERCENT" && promoVal > 100) {
+        toast.error("เปอร์เซ็นต์ต้องไม่เกิน 100");
+        return;
+      }
+      if (!form.promoContinuous) {
+        if (!form.promoStartsAt || !form.promoEndsAt) {
+          toast.error("ระบุวันเริ่มและวันสิ้นสุดโปรโมชั่น");
+          return;
+        }
+        if (
+          new Date(form.promoStartsAt).getTime() >
+          new Date(form.promoEndsAt).getTime()
+        ) {
+          toast.error("วันสิ้นสุดต้องหลังวันเริ่ม");
+          return;
+        }
+      }
     }
 
     setSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
-        price: parseFloat(form.price),
+        price: deliveryPrice,
+        pickupPrice: optionalPricePayload(form.pickupPrice),
+        storefrontPrice: optionalPricePayload(form.storefrontPrice),
+        sellDelivery: form.sellDelivery,
+        sellPickup: form.sellPickup,
+        sellStorefront: form.sellStorefront,
+        promoEnabled: form.promoEnabled,
+        promoType: form.promoEnabled ? form.promoType : null,
+        promoValue: form.promoEnabled
+          ? parseFloat(form.promoValue)
+          : null,
+        promoContinuous: form.promoContinuous,
+        promoStartsAt:
+          form.promoEnabled && !form.promoContinuous
+            ? fromDatetimeLocal(form.promoStartsAt)
+            : null,
+        promoEndsAt:
+          form.promoEnabled && !form.promoContinuous
+            ? fromDatetimeLocal(form.promoEndsAt)
+            : null,
         description: form.description.trim() || null,
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
         isHidden: form.isHidden,
-        // Mutually exclusive with isHidden
         isOutOfStock: form.isHidden ? false : form.isOutOfStock,
         optionGroupIds: selectedGroupIds,
       };
@@ -253,6 +462,63 @@ export default function MenuItemEditorPage() {
     router.push(href);
   }
 
+  function renderOrderPreview(
+    channelLabel: string,
+    priced: NonNullable<typeof previewPricing>["delivery"] | null,
+    enabled: boolean,
+  ) {
+    return (
+      <div
+        className={`flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)] ${
+          !enabled ? "opacity-50" : ""
+        }`}
+      >
+        <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
+          {form.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={form.imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+              <IconSkewerPlaceholder size={40} />
+            </div>
+          )}
+          {priced?.discounted && priced.label && (
+            <span className="absolute left-1 top-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+              {priced.label}
+            </span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium text-slate-500">
+            {channelLabel}
+            {!enabled ? " · ปิดขาย" : ""}
+          </p>
+          <p className="truncate text-[15px] font-bold text-gray-900">
+            {form.name.trim() || "ชื่อเมนู"}
+          </p>
+          {priced ? (
+            <div className="mt-1 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-sm font-bold text-site-primary">
+                ฿{formatBaht(priced.final)}
+              </span>
+              {priced.discounted && (
+                <span className="text-xs text-gray-400 line-through">
+                  ฿{formatBaht(priced.original)}
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-gray-400">กรอกราคาเดลิเวอรี่เพื่อดูตัวอย่าง</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
@@ -269,114 +535,323 @@ export default function MenuItemEditorPage() {
           </h2>
           <p className="text-sm text-gray-500">
             {isCreate
-              ? "เลือกหัวข้อตัวเลือกจากคลังสาขา"
+              ? "ตั้งราคาตามช่องทางและโปรโมชั่น"
               : item.name || "—"}
           </p>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className={sectionClass}>
-          <h3 className="mb-3 font-semibold text-gray-900">ข้อมูลเมนู</h3>
-          <div className="space-y-3">
-            <div>
-              <label className={adminLabelClass}>ชื่อเมนู</label>
-              <input
-                className={adminInputClass}
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
+        <div className="space-y-6">
+          <section className={sectionClass}>
+            <h3 className="mb-3 font-semibold text-gray-900">ข้อมูลเมนู</h3>
+            <div className="space-y-3">
+              <div>
+                <label className={adminLabelClass}>ชื่อเมนู</label>
+                <input
+                  className={adminInputClass}
+                  value={form.name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className={adminLabelClass}>คำอธิบาย</label>
+                <textarea
+                  className={adminInputClass}
+                  rows={2}
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, description: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className={adminLabelClass}>หมวดหมู่</label>
+                <select
+                  className={adminSelectClass || adminInputClass}
+                  value={form.categoryId}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, categoryId: e.target.value }))
+                  }
+                >
+                  <option value="">— ไม่ระบุ —</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <ImageField
+                label="รูปเมนู"
+                value={form.imageUrl}
+                onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
+                shopCode={shopCode}
+                folder="Products"
               />
+              <div className="flex flex-wrap gap-2">
+                <AdminToggle
+                  checked={form.isHidden}
+                  onChange={(next) =>
+                    setForm((f) => ({
+                      ...f,
+                      isHidden: next,
+                      isOutOfStock: next ? false : f.isOutOfStock,
+                    }))
+                  }
+                  label="ซ่อนจากลูกค้า"
+                  size="md"
+                />
+                <AdminToggle
+                  checked={form.isOutOfStock}
+                  onChange={(next) =>
+                    setForm((f) => ({
+                      ...f,
+                      isOutOfStock: next,
+                      isHidden: next ? false : f.isHidden,
+                    }))
+                  }
+                  label="หมดชั่วคราว"
+                  size="md"
+                />
+              </div>
+              <p className="text-xs text-slate-500">
+                เลือกได้อย่างใดอย่างหนึ่ง — เปิดอันหนึ่งจะปิดอีกอันให้อัตโนมัติ
+              </p>
             </div>
-            <div>
-              <label className={adminLabelClass}>ราคา (บาท)</label>
-              <input
-                type="number"
-                step="0.01"
-                className={adminInputClass}
-                value={form.price}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, price: e.target.value }))
-                }
-              />
-            </div>
-            <div>
-              <label className={adminLabelClass}>คำอธิบาย</label>
-              <textarea
-                className={adminInputClass}
-                rows={2}
-                value={form.description}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, description: e.target.value }))
-                }
-              />
-            </div>
-            <div>
-              <label className={adminLabelClass}>หมวดหมู่</label>
-              <select
-                className={adminInputClass}
-                value={form.categoryId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, categoryId: e.target.value }))
-                }
-              >
-                <option value="">— ไม่ระบุ —</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <ImageField
-              label="รูปเมนู"
-              value={form.imageUrl}
-              onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
-              shopCode={shopCode}
-              folder="Products"
-            />
-            <div className="flex flex-wrap gap-2">
-              <AdminToggle
-                checked={form.isHidden}
-                onChange={(next) =>
-                  setForm((f) => ({
-                    ...f,
-                    isHidden: next,
-                    isOutOfStock: next ? false : f.isOutOfStock,
-                  }))
-                }
-                label="ซ่อนจากลูกค้า"
-                size="md"
-              />
-              <AdminToggle
-                checked={form.isOutOfStock}
-                onChange={(next) =>
-                  setForm((f) => ({
-                    ...f,
-                    isOutOfStock: next,
-                    isHidden: next ? false : f.isHidden,
-                  }))
-                }
-                label="หมดชั่วคราว"
-                size="md"
-              />
-            </div>
-            <p className="text-xs text-slate-500">
-              เลือกได้อย่างใดอย่างหนึ่ง — เปิดอันหนึ่งจะปิดอีกอันให้อัตโนมัติ
+          </section>
+
+          <section className={sectionClass}>
+            <h3 className="mb-1 font-semibold text-gray-900">ราคาตามช่องทาง</h3>
+            <p className="mb-3 text-sm text-gray-500">
+              ถ้าไม่ใส่ราคา「รับที่ร้าน」หรือ「หน้าร้าน」ระบบจะใช้ราคาเดลิเวอรี่ให้อัตโนมัติ
             </p>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={saveItem}
-              className={btnPrimary}
-            >
-              {isCreate ? "สร้างเมนู" : "บันทึกเมนู"}
-            </button>
-          </div>
-        </section>
+            <div className="space-y-3">
+              <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-900">
+                    เดลิเวอรี่
+                  </p>
+                  <AdminToggle
+                    checked={form.sellDelivery}
+                    onChange={(next) =>
+                      void setChannelEnabled("sellDelivery", next)
+                    }
+                    label="ขายช่องนี้"
+                    size="sm"
+                  />
+                </div>
+                <label className={adminLabelClass}>ราคา (บาท) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={adminInputClass}
+                  value={form.price}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, price: e.target.value }))
+                  }
+                />
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-900">
+                    รับที่ร้าน
+                  </p>
+                  <AdminToggle
+                    checked={form.sellPickup}
+                    onChange={(next) =>
+                      void setChannelEnabled("sellPickup", next)
+                    }
+                    label="ขายช่องนี้"
+                    size="sm"
+                  />
+                </div>
+                <label className={adminLabelClass}>ราคา (บาท)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={adminInputClass}
+                  value={form.pickupPrice}
+                  placeholder="ว่าง = เท่าเดลิเวอรี่"
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, pickupPrice: e.target.value }))
+                  }
+                />
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      หน้าร้าน
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      เก็บราคาอ้างอิง — ยังไม่เปิดสั่งออนไลน์
+                    </p>
+                  </div>
+                  <AdminToggle
+                    checked={form.sellStorefront}
+                    onChange={(next) =>
+                      void setChannelEnabled("sellStorefront", next)
+                    }
+                    label="ใช้งาน"
+                    size="sm"
+                  />
+                </div>
+                <label className={adminLabelClass}>ราคา (บาท)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={adminInputClass}
+                  value={form.storefrontPrice}
+                  placeholder="ว่าง = เท่าเดลิเวอรี่"
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, storefrontPrice: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-semibold text-gray-900">โปรโมชั่น / ส่วนลด</h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  ใช้กับเดลิเวอรี่และรับที่ร้านเท่านั้น — ไม่ลดราคาหน้าร้านและตัวเลือก
+                </p>
+              </div>
+              <AdminToggle
+                checked={form.promoEnabled}
+                onChange={(next) =>
+                  setForm((f) => ({ ...f, promoEnabled: next }))
+                }
+                label="เปิดโปร"
+                size="md"
+              />
+            </div>
+
+            {form.promoEnabled && (
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={adminLabelClass}>ประเภทส่วนลด</label>
+                    <select
+                      className={adminSelectClass || adminInputClass}
+                      value={form.promoType}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          promoType: e.target.value as "AMOUNT" | "PERCENT",
+                        }))
+                      }
+                    >
+                      <option value="AMOUNT">ลดเป็นจำนวนเงิน (บาท)</option>
+                      <option value="PERCENT">ลดเป็นเปอร์เซ็นต์ (%)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={adminLabelClass}>
+                      {form.promoType === "PERCENT"
+                        ? "เปอร์เซ็นต์"
+                        : "จำนวนเงิน (บาท)"}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className={adminInputClass}
+                      value={form.promoValue}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, promoValue: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <AdminToggle
+                  checked={form.promoContinuous}
+                  onChange={(next) =>
+                    setForm((f) => ({ ...f, promoContinuous: next }))
+                  }
+                  label="ใช้โปรโมชั่นแบบต่อเนื่อง"
+                  size="md"
+                />
+
+                {!form.promoContinuous && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className={adminLabelClass}>วันเริ่มโปร</label>
+                      <input
+                        type="datetime-local"
+                        className={adminInputClass}
+                        value={form.promoStartsAt}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            promoStartsAt: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className={adminLabelClass}>วันสิ้นสุดโปร</label>
+                      <input
+                        type="datetime-local"
+                        className={adminInputClass}
+                        value={form.promoEndsAt}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            promoEndsAt: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          <button
+            type="button"
+            disabled={saving}
+            onClick={saveItem}
+            className={btnPrimary}
+          >
+            {isCreate ? "สร้างเมนู" : "บันทึกเมนู"}
+          </button>
+        </div>
 
         <div className="space-y-6">
+          <section className={sectionClass}>
+            <h3 className="mb-1 font-semibold text-gray-900">
+              ตัวอย่างฝั่งออเดอร์
+            </h3>
+            <p className="mb-3 text-sm text-gray-500">
+              ดูว่าลูกค้าจะเห็นราคาและป้ายลดอย่างไร (ตัวเลือกไม่ถูกลด)
+            </p>
+            <div className="space-y-2">
+              {renderOrderPreview(
+                "จัดส่ง",
+                previewPricing?.delivery ?? null,
+                form.sellDelivery,
+              )}
+              {renderOrderPreview(
+                "รับที่ร้าน",
+                previewPricing?.pickup ?? null,
+                form.sellPickup,
+              )}
+            </div>
+          </section>
+
           <section className={sectionClass}>
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
               <div>
@@ -472,10 +947,10 @@ export default function MenuItemEditorPage() {
 
           <section className={sectionClass}>
             <h3 className="mb-1 font-semibold text-gray-900">
-              ตัวอย่างที่ลูกค้าจะเห็น
+              ตัวอย่างตัวเลือก
             </h3>
             <p className="mb-3 text-sm text-gray-500">
-              ดูอย่างเดียว — อยากแก้รายการให้ไปที่คลังตัวเลือกของสาขา
+              ราคาตัวเลือกไม่ถูกโปรโมชั่น
             </p>
 
             {attachedGroups.length === 0 ? (

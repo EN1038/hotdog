@@ -10,6 +10,11 @@ import { prisma } from "@/lib/db";
 import { generateOrderNumber } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { getBranchServiceStatus, isSameBangkokDay } from "@/lib/branch-hours";
+import {
+  fulfillmentToChannel,
+  isChannelSellEnabled,
+  resolveSellPrice,
+} from "@/lib/menu-pricing";
 
 const orderItemSchema = z.object({
   branchMenuItemId: z.string(),
@@ -109,9 +114,13 @@ export async function POST(request: Request) {
     });
 
     const itemMap = new Map(branchMenu.map((bm) => [bm.id, bm]));
+    const channel = fulfillmentToChannel(body.fulfillmentType);
     for (const item of body.items) {
       const menu = itemMap.get(item.branchMenuItemId);
       if (!menu) return jsonError("มีรายการที่ไม่สามารถสั่งได้ในสาขานี้");
+      if (!isChannelSellEnabled(menu, channel)) {
+        return jsonError(`"${menu.name}" ไม่จำหน่ายในช่องทางที่เลือก`);
+      }
       if (menu.isOutOfStock) return jsonError(`"${menu.name}" หมดชั่วคราว`);
     }
 
@@ -175,11 +184,12 @@ export async function POST(request: Request) {
         (sum, o) => sum.add(o.priceDelta),
         new Prisma.Decimal(0),
       );
+      const priced = resolveSellPrice(menu, channel);
       orderItems.push({
         branchMenuItemId: item.branchMenuItemId,
         itemName: menu.name,
         quantity: item.quantity,
-        unitPrice: menu.price,
+        unitPrice: new Prisma.Decimal(priced.final),
         optionsText: chosen.map((o) => o.name).join(", ") || null,
         optionsPrice,
         note: item.note?.trim() || null,

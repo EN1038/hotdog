@@ -22,6 +22,17 @@ export type MenuItemData = {
   id: string;
   name: string;
   price: string;
+  pickupPrice?: string | null;
+  storefrontPrice?: string | null;
+  sellDelivery?: boolean;
+  sellPickup?: boolean;
+  sellStorefront?: boolean;
+  promoEnabled?: boolean;
+  promoType?: "AMOUNT" | "PERCENT" | null;
+  promoValue?: string | null;
+  promoContinuous?: boolean;
+  promoStartsAt?: string | null;
+  promoEndsAt?: string | null;
   description: string | null;
   category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;

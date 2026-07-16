@@ -6,6 +6,12 @@ import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import {
+  MenuPromoBadge,
+  MenuPromoPrice,
+  menuItemSellPrice,
+  menuItemVisibleForFulfillment,
+} from "@/components/customer/MenuChannelPrice";
 import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
@@ -115,7 +121,11 @@ export default function ItemDetailPage() {
   }, [itemId, item]);
 
   const cartCount = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
-  const itemBasePrice = item ? Number(item.price) : 0;
+  const priced = useMemo(
+    () => (item ? menuItemSellPrice(item, fulfillment) : null),
+    [item, fulfillment],
+  );
+  const itemBasePrice = priced?.final ?? 0;
   const computed = useMemo(
     () => (item ? computeOptions(item, selectedByGroup) : null),
     [item, selectedByGroup],
@@ -144,6 +154,10 @@ export default function ItemDetailPage() {
     if (!item || !branch) return;
     if (cartBranchId && cartBranchId !== branch.id) {
       setError("ตะกร้ามีของจากสาขาอื่นอยู่ กรุณาเคลียร์ตะกร้าก่อน");
+      return;
+    }
+    if (!menuItemVisibleForFulfillment(item, fulfillment)) {
+      setError("เมนูนี้ไม่จำหน่ายในช่องทางที่เลือก");
       return;
     }
     if (item.isOutOfStock) {
@@ -177,7 +191,7 @@ export default function ItemDetailPage() {
     );
   }
 
-  if (!branch || !item) {
+  if (!branch || !item || !priced || !menuItemVisibleForFulfillment(item, fulfillment)) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
         <p className="text-gray-500">ไม่พบเมนูนี้</p>
@@ -201,25 +215,28 @@ export default function ItemDetailPage() {
         </button>
 
         <div className="flex gap-3">
-          {item.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={item.imageUrl}
-              alt={item.name}
-              className="h-[84px] w-[84px] shrink-0 rounded-2xl object-cover"
-            />
-          ) : (
-            <div className="flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-2xl bg-site-primary-soft">
-              <IconSkewerPlaceholder size={48} />
-            </div>
-          )}
+          <div className="relative h-[84px] w-[84px] shrink-0 overflow-hidden rounded-2xl">
+            {item.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.imageUrl}
+                alt={item.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                <IconSkewerPlaceholder size={48} />
+              </div>
+            )}
+            <MenuPromoBadge label={priced.label} />
+          </div>
           <div className="min-w-0 flex-1">
             <p className="text-[18px] font-bold text-gray-900">{item.name}</p>
             {item.description && (
               <p className="mt-1 text-sm text-gray-500">{item.description}</p>
             )}
-            <p className="mt-2 text-lg font-bold text-site-primary">
-              ฿{formatPrice(item.price)}
+            <p className="mt-2 text-lg">
+              <MenuPromoPrice priced={priced} />
             </p>
           </div>
         </div>

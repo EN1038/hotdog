@@ -19,6 +19,12 @@ import {
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { syncActiveBrandFromApi } from "@/components/customer/OrderBrandingShell";
 import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
+import {
+  MenuPromoBadge,
+  MenuPromoPrice,
+  menuItemSellPrice,
+  menuItemVisibleForFulfillment,
+} from "@/components/customer/MenuChannelPrice";
 import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
@@ -299,8 +305,11 @@ export default function StorePage() {
 
   const categories = useMemo(() => {
     if (!branch) return [];
+    const visible = branch.menuItems.filter((i) =>
+      menuItemVisibleForFulfillment(i, fulfillment),
+    );
     const byName = new Map<string, number>();
-    for (const item of branch.menuItems) {
+    for (const item of visible) {
       if (item.category?.name) {
         byName.set(item.category.name, item.category.sortOrder ?? 0);
       }
@@ -309,13 +318,16 @@ export default function StorePage() {
       .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0], "th"))
       .map(([name]) => name);
     return ["ทั้งหมด", ...sorted];
-  }, [branch]);
+  }, [branch, fulfillment]);
 
   const items = useMemo(() => {
     if (!branch) return [];
-    if (category === "ทั้งหมด") return branch.menuItems;
-    return branch.menuItems.filter((i) => i.category?.name === category);
-  }, [branch, category]);
+    const visible = branch.menuItems.filter((i) =>
+      menuItemVisibleForFulfillment(i, fulfillment),
+    );
+    if (category === "ทั้งหมด") return visible;
+    return visible.filter((i) => i.category?.name === category);
+  }, [branch, category, fulfillment]);
 
   const cartForThisBranch = cartBranchId === branchId ? cart : [];
   const cartCount = cartForThisBranch.reduce((s, l) => s + l.quantity, 0);
@@ -535,23 +547,28 @@ export default function StorePage() {
             )}
 
             <div className="space-y-2 px-4 pb-4">
-              {items.map((item) => (
+              {items.map((item) => {
+                const priced = menuItemSellPrice(item, fulfillment);
+                return (
                 <div
                   key={item.id}
                   className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
                 >
-                  {item.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.imageUrl}
-                      alt={item.name}
-                      className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-site-primary-soft">
-                      <IconSkewerPlaceholder size={40} />
-                    </div>
-                  )}
+                  <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
+                    {item.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                        <IconSkewerPlaceholder size={40} />
+                      </div>
+                    )}
+                    <MenuPromoBadge label={priced.label} />
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[15px] font-bold text-gray-900">
                       {item.name}
@@ -561,8 +578,8 @@ export default function StorePage() {
                         {item.description}
                       </p>
                     )}
-                    <p className="mt-1 text-sm font-bold text-site-primary">
-                      ฿{formatPrice(item.price)}
+                    <p className="mt-1 text-sm">
+                      <MenuPromoPrice priced={priced} />
                     </p>
                   </div>
                   <div className="shrink-0">
@@ -582,7 +599,8 @@ export default function StorePage() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {items.length === 0 && (
                 <p className="py-8 text-center text-sm text-gray-400">
                   ไม่มีเมนูในหมวดนี้

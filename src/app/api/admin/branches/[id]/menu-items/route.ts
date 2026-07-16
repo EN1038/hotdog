@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -10,20 +9,12 @@ import {
   getBranchActivityContext,
   logAdminActivity,
 } from "@/lib/admin-activity";
+import {
+  buildMenuPricingWriteData,
+  menuItemCreateSchema,
+} from "@/lib/menu-item-payload";
 
 type Params = { params: Promise<{ id: string }> };
-
-const createSchema = z.object({
-  name: z.string().min(1),
-  price: z.number().positive(),
-  description: z.string().optional().nullable(),
-  categoryId: z.string().nullable().optional(),
-  imageUrl: z.string().optional().nullable(),
-  isHidden: z.boolean().optional(),
-  isOutOfStock: z.boolean().optional(),
-  sortOrder: z.number().int().optional(),
-  optionGroupIds: z.array(z.string()).optional(),
-});
 
 const itemInclude = {
   category: { select: { id: true, name: true, sortOrder: true } },
@@ -55,9 +46,11 @@ export async function POST(request: Request, { params }: Params) {
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
-    const body = createSchema.parse(await request.json());
+    const body = menuItemCreateSchema.parse(await request.json());
     const categoryId = body.categoryId || null;
     const optionGroupIds = body.optionGroupIds ?? [];
+    const pricing = buildMenuPricingWriteData(body);
+    if (!pricing) return jsonError("ราคาสินค้าไม่ถูกต้อง");
 
     if (categoryId) {
       const cat = await prisma.menuCategory.findFirst({
@@ -76,11 +69,31 @@ export async function POST(request: Request, { params }: Params) {
       }
     }
 
+    const promoEnabled = body.promoEnabled ?? false;
+    const promoContinuous = body.promoContinuous ?? false;
+
     const item = await prisma.branchMenuItem.create({
       data: {
         branchId,
         name: body.name,
-        price: body.price,
+        price: pricing.price!,
+        pickupPrice: pricing.pickupPrice!,
+        storefrontPrice: pricing.storefrontPrice!,
+        sellDelivery: body.sellDelivery ?? true,
+        sellPickup: body.sellPickup ?? true,
+        sellStorefront: body.sellStorefront ?? true,
+        promoEnabled,
+        promoType: promoEnabled ? (body.promoType ?? null) : null,
+        promoValue: promoEnabled ? (body.promoValue ?? null) : null,
+        promoContinuous,
+        promoStartsAt:
+          promoEnabled && !promoContinuous && body.promoStartsAt
+            ? new Date(body.promoStartsAt)
+            : null,
+        promoEndsAt:
+          promoEnabled && !promoContinuous && body.promoEndsAt
+            ? new Date(body.promoEndsAt)
+            : null,
         description: body.description ?? null,
         categoryId,
         imageUrl: body.imageUrl ?? null,

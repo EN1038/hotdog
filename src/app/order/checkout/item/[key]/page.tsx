@@ -6,6 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import {
+  MenuPromoBadge,
+  MenuPromoPrice,
+  menuItemSellPrice,
+} from "@/components/customer/MenuChannelPrice";
 import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
@@ -132,7 +137,11 @@ export default function CheckoutItemEditPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id, line?.key]);
 
-  const itemBasePrice = item ? Number(item.price) : 0;
+  const priced = useMemo(
+    () => (item ? menuItemSellPrice(item, fulfillment) : null),
+    [item, fulfillment],
+  );
+  const itemBasePrice = priced?.final ?? 0;
   const computed = useMemo(
     () => (item ? computeOptions(item, selectedByGroup) : null),
     [item, selectedByGroup],
@@ -210,22 +219,31 @@ export default function CheckoutItemEditPage() {
         </button>
 
         <div className="flex gap-3">
-          {item.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={item.imageUrl}
-              alt={item.name}
-              className="h-[84px] w-[84px] shrink-0 rounded-2xl object-cover"
-            />
-          ) : (
-            <div className="flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-2xl bg-site-primary-soft">
-              <IconSkewerPlaceholder size={48} />
-            </div>
-          )}
+          <div className="relative h-[84px] w-[84px] shrink-0 overflow-hidden rounded-2xl">
+            {item.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.imageUrl}
+                alt={item.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                <IconSkewerPlaceholder size={48} />
+              </div>
+            )}
+            <MenuPromoBadge label={priced?.label} />
+          </div>
           <div className="min-w-0 flex-1">
             <p className="text-[18px] font-bold text-gray-900">{item.name}</p>
-            <p className="mt-2 text-lg font-bold text-site-primary">
-              ฿{formatPrice(item.price)}
+            <p className="mt-2 text-lg">
+              {priced ? (
+                <MenuPromoPrice priced={priced} />
+              ) : (
+                <span className="font-bold text-site-primary">
+                  ฿{formatPrice(item.price)}
+                </span>
+              )}
             </p>
           </div>
         </div>

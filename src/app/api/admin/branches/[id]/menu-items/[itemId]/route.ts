@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -10,20 +9,12 @@ import {
   getBranchActivityContext,
   logAdminActivity,
 } from "@/lib/admin-activity";
+import {
+  menuItemPatchSchema,
+} from "@/lib/menu-item-payload";
+import { normalizeChannelPrices } from "@/lib/menu-pricing";
 
 type Params = { params: Promise<{ id: string; itemId: string }> };
-
-const patchSchema = z.object({
-  name: z.string().min(1).optional(),
-  price: z.number().positive().optional(),
-  description: z.string().optional().nullable(),
-  categoryId: z.string().nullable().optional(),
-  imageUrl: z.string().optional().nullable(),
-  isHidden: z.boolean().optional(),
-  isOutOfStock: z.boolean().optional(),
-  sortOrder: z.number().int().optional(),
-  optionGroupIds: z.array(z.string()).optional(),
-});
 
 const itemInclude = {
   category: { select: { id: true, name: true, sortOrder: true } },
@@ -49,7 +40,7 @@ export async function PATCH(request: Request, { params }: Params) {
   try {
     const { id: branchId, itemId } = await params;
     const { session } = await requireBranchAccess(branchId);
-    const body = patchSchema.parse(await request.json());
+    const body = menuItemPatchSchema.parse(await request.json());
 
     const existing = await prisma.branchMenuItem.findFirst({
       where: { id: itemId, branchId },
@@ -88,11 +79,49 @@ export async function PATCH(request: Request, { params }: Params) {
       });
     }
 
+    const deliveryPrice =
+      body.price !== undefined ? body.price : Number(existing.price);
+    const touchPrices =
+      body.price !== undefined ||
+      body.pickupPrice !== undefined ||
+      body.storefrontPrice !== undefined;
+
+    const prices = touchPrices
+      ? normalizeChannelPrices({
+          price: deliveryPrice,
+          pickupPrice:
+            body.pickupPrice !== undefined
+              ? body.pickupPrice
+              : existing.pickupPrice != null
+                ? Number(existing.pickupPrice)
+                : null,
+          storefrontPrice:
+            body.storefrontPrice !== undefined
+              ? body.storefrontPrice
+              : existing.storefrontPrice != null
+                ? Number(existing.storefrontPrice)
+                : null,
+        })
+      : null;
+
+    const promoEnabled =
+      body.promoEnabled !== undefined
+        ? body.promoEnabled
+        : existing.promoEnabled;
+    const promoContinuous =
+      body.promoContinuous !== undefined
+        ? body.promoContinuous
+        : existing.promoContinuous;
+
     const updated = await prisma.branchMenuItem.update({
       where: { id: itemId },
       data: {
         ...(body.name !== undefined && { name: body.name }),
-        ...(body.price !== undefined && { price: body.price }),
+        ...(prices && {
+          price: prices.price,
+          pickupPrice: prices.pickupPrice,
+          storefrontPrice: prices.storefrontPrice,
+        }),
         ...(body.description !== undefined && { description: body.description }),
         ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
         ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
@@ -101,6 +130,57 @@ export async function PATCH(request: Request, { params }: Params) {
           isOutOfStock: body.isOutOfStock,
         }),
         ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
+        ...(body.sellDelivery !== undefined && {
+          sellDelivery: body.sellDelivery,
+        }),
+        ...(body.sellPickup !== undefined && { sellPickup: body.sellPickup }),
+        ...(body.sellStorefront !== undefined && {
+          sellStorefront: body.sellStorefront,
+        }),
+        ...(body.promoEnabled !== undefined && {
+          promoEnabled: body.promoEnabled,
+        }),
+        ...(body.promoType !== undefined || body.promoEnabled === false
+          ? {
+              promoType: promoEnabled
+                ? (body.promoType ?? existing.promoType)
+                : null,
+            }
+          : {}),
+        ...(body.promoValue !== undefined || body.promoEnabled === false
+          ? {
+              promoValue: promoEnabled
+                ? (body.promoValue ?? existing.promoValue)
+                : null,
+            }
+          : {}),
+        ...(body.promoContinuous !== undefined && {
+          promoContinuous: body.promoContinuous,
+        }),
+        ...(body.promoStartsAt !== undefined ||
+        body.promoEnabled !== undefined ||
+        body.promoContinuous !== undefined
+          ? {
+              promoStartsAt:
+                promoEnabled && !promoContinuous
+                  ? body.promoStartsAt
+                    ? new Date(body.promoStartsAt)
+                    : existing.promoStartsAt
+                  : null,
+            }
+          : {}),
+        ...(body.promoEndsAt !== undefined ||
+        body.promoEnabled !== undefined ||
+        body.promoContinuous !== undefined
+          ? {
+              promoEndsAt:
+                promoEnabled && !promoContinuous
+                  ? body.promoEndsAt
+                    ? new Date(body.promoEndsAt)
+                    : existing.promoEndsAt
+                  : null,
+            }
+          : {}),
       },
       include: itemInclude,
     });

@@ -167,6 +167,17 @@ export async function importBranchCatalog(opts: {
         branchId: targetBranchId,
         name: item.name,
         price: item.price,
+        pickupPrice: item.pickupPrice ?? item.price,
+        storefrontPrice: item.storefrontPrice ?? item.price,
+        sellDelivery: item.sellDelivery,
+        sellPickup: item.sellPickup,
+        sellStorefront: item.sellStorefront,
+        promoEnabled: item.promoEnabled,
+        promoType: item.promoType,
+        promoValue: item.promoValue,
+        promoContinuous: item.promoContinuous,
+        promoStartsAt: item.promoStartsAt,
+        promoEndsAt: item.promoEndsAt,
         description: item.description,
         categoryId: item.categoryId
           ? (categoryIdMap.get(item.categoryId) ?? null)

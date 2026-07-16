@@ -45,6 +45,11 @@ enum PriceRange {
   OVER_1000
 }
 
+enum MenuPromoType {
+  AMOUNT
+  PERCENT
+}
+
 model Admin {
   id              String             @id @default(cuid())
   username        String             @unique
@@ -217,7 +222,21 @@ model BranchMenuItem {
   id               String                       @id @default(cuid())
   branchId         String
   name             String
+  /// Delivery channel price (base)
   price            Decimal                      @db.Decimal(10, 2)
+  /// Pickup channel price; null = same as delivery price
+  pickupPrice      Decimal?                     @db.Decimal(10, 2)
+  /// Storefront/reference price only (not ordered online); null = same as delivery
+  storefrontPrice  Decimal?                     @db.Decimal(10, 2)
+  sellDelivery     Boolean                      @default(true)
+  sellPickup       Boolean                      @default(true)
+  sellStorefront   Boolean                      @default(true)
+  promoEnabled     Boolean                      @default(false)
+  promoType        MenuPromoType?
+  promoValue       Decimal?                     @db.Decimal(10, 2)
+  promoContinuous  Boolean                      @default(false)
+  promoStartsAt    DateTime?
+  promoEndsAt      DateTime?
   description      String?
   categoryId       String?
   imageUrl         String?

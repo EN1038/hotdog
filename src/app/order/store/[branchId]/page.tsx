@@ -670,7 +670,8 @@ export default function StorePage() {
                         return (
                           <div
                             key={item.id}
-                            className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
+                            onClick={() => router.push(`/order/store/${branch.id}/item/${item.id}`)}
+                            className="flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-transform active:scale-[0.98]"
                           >
                             <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
                               {item.imageUrl ? (
@@ -707,9 +708,10 @@ export default function StorePage() {
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    router.push(`/order/store/${branch.id}/item/${item.id}`)
-                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/order/store/${branch.id}/item/${item.id}`);
+                                  }}
                                   className={`flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition-transform active:scale-95 hover:opacity-90 ${
                                     itemCartQuantity > 0
                                       ? "bg-site-primary-soft border border-site-primary text-site-primary"

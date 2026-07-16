@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  adminInputClass,
-  adminLabelClass,
-  btnOutline,
-} from "@/components/admin/AdminShell";
+import { adminInputClass, adminLabelClass } from "@/components/admin/AdminShell";
 import { MenuSalesLineChart } from "@/components/admin/MenuSalesLineChart";
 import { bangkokDateKey } from "@/lib/branch-hours";
 
@@ -60,18 +56,7 @@ function todayYmd() {
   return bangkokDateKey(new Date());
 }
 
-type Props = {
-  branchId: string;
-  /** full = overview with chart; compact = menu tab numbers */
-  variant?: "full" | "compact";
-  onOpenOverview?: () => void;
-};
-
-export function BranchMenuSalesPanel({
-  branchId,
-  variant = "full",
-  onOpenOverview,
-}: Props) {
+export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
   const [date, setDate] = useState(todayYmd);
   const [metric, setMetric] = useState<"quantity" | "revenue">("quantity");
   const [data, setData] = useState<SalesPayload | null>(null);
@@ -82,9 +67,8 @@ export function BranchMenuSalesPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const trend = variant === "full" ? "1" : "0";
     fetch(
-      `/api/admin/branches/${branchId}/menu-sales?date=${encodeURIComponent(date)}&trend=${trend}`,
+      `/api/admin/branches/${branchId}/menu-sales?date=${encodeURIComponent(date)}&trend=1`,
     )
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -108,61 +92,33 @@ export function BranchMenuSalesPanel({
     return () => {
       cancelled = true;
     };
-  }, [branchId, date, variant]);
+  }, [branchId, date]);
 
   const summary = data?.summary;
   const soldItems = data?.items.filter((i) => i.quantity > 0) ?? [];
   const unsoldItems = data?.items.filter((i) => i.quantity === 0) ?? [];
-  const isFull = variant === "full";
 
   return (
-    <div
-      className={
-        isFull
-          ? "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
-          : "rounded-xl border border-slate-200 bg-slate-50/80 p-4"
-      }
-    >
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3
-            className={
-              isFull
-                ? "text-base font-semibold text-slate-900"
-                : "text-sm font-semibold text-slate-900"
-            }
-          >
-            {isFull ? "ยอดขายเมนู" : "สรุปยอดขายเมนูรายวัน"}
-          </h3>
+          <h3 className="text-base font-semibold text-slate-900">ยอดขายเมนู</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            {isFull
-              ? "ตัวเลขรายวัน + กราฟแนวโน้ม 7 วัน (Top เมนู) — ออเดอร์สำเร็จ เวลาไทย"
-              : "นับจากออเดอร์ที่เสร็จสิ้นตามวันที่สั่ง"}
+            ตัวเลขรายวัน + กราฟแนวโน้ม 7 วัน (Top เมนู) — ออเดอร์สำเร็จ เวลาไทย
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-[10rem]">
-            <label className={adminLabelClass} htmlFor={`menu-sales-date-${variant}`}>
-              วันที่
-            </label>
-            <input
-              id={`menu-sales-date-${variant}`}
-              type="date"
-              className={adminInputClass}
-              value={date}
-              max={todayYmd()}
-              onChange={(e) => setDate(e.target.value || todayYmd())}
-            />
-          </div>
-          {!isFull && onOpenOverview && (
-            <button
-              type="button"
-              className={btnOutline}
-              onClick={onOpenOverview}
-            >
-              ดูกราฟที่ภาพรวม
-            </button>
-          )}
+        <div className="min-w-[10rem]">
+          <label className={adminLabelClass} htmlFor="menu-sales-date">
+            วันที่
+          </label>
+          <input
+            id="menu-sales-date"
+            type="date"
+            className={adminInputClass}
+            value={date}
+            max={todayYmd()}
+            onChange={(e) => setDate(e.target.value || todayYmd())}
+          />
         </div>
       </div>
 
@@ -172,11 +128,7 @@ export function BranchMenuSalesPanel({
         <p className="mt-4 text-sm text-red-600">{error}</p>
       ) : summary ? (
         <>
-          <div
-            className={`mt-4 grid gap-2 ${
-              isFull ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-4"
-            }`}
-          >
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
               <p className="text-[11px] text-slate-500">ออเดอร์สำเร็จ</p>
               <p className="mt-0.5 text-lg font-bold text-slate-900">
@@ -207,61 +159,55 @@ export function BranchMenuSalesPanel({
             </div>
           </div>
 
-          {isFull && (
-            <div className="mt-5 border-t border-slate-100 pt-4">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    กราฟแนวโน้มเมนู (7 วันถึงวันที่เลือก)
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    แสดง Top เมนูตามยอดชิ้นในช่วงนั้น — วางเมาส์ที่จุดเพื่อดูรายละเอียด
-                  </p>
-                </div>
-                <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
-                  <button
-                    type="button"
-                    className={`rounded-md px-2.5 py-1 ${
-                      metric === "quantity"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500"
-                    }`}
-                    onClick={() => setMetric("quantity")}
-                  >
-                    ชิ้น
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-md px-2.5 py-1 ${
-                      metric === "revenue"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500"
-                    }`}
-                    onClick={() => setMetric("revenue")}
-                  >
-                    บาท
-                  </button>
-                </div>
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  กราฟแนวโน้มเมนู (7 วันถึงวันที่เลือก)
+                </p>
+                <p className="text-xs text-slate-500">
+                  แสดง Top เมนูตามยอดชิ้นในช่วงนั้น — วางเมาส์ที่จุดเพื่อดูรายละเอียด
+                </p>
               </div>
-              <MenuSalesLineChart
-                days={data?.trend?.days ?? []}
-                series={data?.trend?.series ?? []}
-                metric={metric}
-              />
+              <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
+                <button
+                  type="button"
+                  className={`rounded-md px-2.5 py-1 ${
+                    metric === "quantity"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-500"
+                  }`}
+                  onClick={() => setMetric("quantity")}
+                >
+                  ชิ้น
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-md px-2.5 py-1 ${
+                    metric === "revenue"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-500"
+                  }`}
+                  onClick={() => setMetric("revenue")}
+                >
+                  บาท
+                </button>
+              </div>
             </div>
-          )}
+            <MenuSalesLineChart
+              days={data?.trend?.days ?? []}
+              series={data?.trend?.series ?? []}
+              metric={metric}
+            />
+          </div>
 
-          <div className={`mt-4 space-y-2 ${isFull ? "" : ""}`}>
+          <div className="mt-4 space-y-2">
             <p className="text-xs font-medium text-slate-600">
               อันดับยอดขายวัน{date === todayYmd() ? "นี้" : "ที่เลือก"}
               {soldItems.length === 0 ? " — ยังไม่มียอด" : ""}
             </p>
             {soldItems.length > 0 && (
-              <ul
-                className={`space-y-1.5 overflow-y-auto ${
-                  isFull ? "max-h-72" : "max-h-48"
-                }`}
-              >
+              <ul className="max-h-72 space-y-1.5 overflow-y-auto">
                 {soldItems.map((item, index) => (
                   <li
                     key={item.id}

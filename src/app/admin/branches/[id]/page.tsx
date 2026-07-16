@@ -1211,7 +1211,7 @@ function BranchDetailContent() {
               </button>
             </div>
 
-            <BranchMenuSalesPanel branchId={id} variant="full" />
+            <BranchMenuSalesPanel branchId={id} />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className={panelClass}>
@@ -1487,12 +1487,6 @@ function BranchDetailContent() {
                   </button>
                 </div>
               </div>
-
-              <BranchMenuSalesPanel
-                branchId={id}
-                variant="compact"
-                onOpenOverview={() => setTab("overview")}
-              />
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input

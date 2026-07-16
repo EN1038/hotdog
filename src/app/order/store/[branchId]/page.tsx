@@ -712,7 +712,7 @@ export default function StorePage() {
                                   }
                                   className={`flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition-transform active:scale-95 hover:opacity-90 ${
                                     itemCartQuantity > 0
-                                      ? "border border-site-primary bg-white text-site-primary"
+                                      ? "bg-site-primary-soft text-site-primary"
                                       : "bg-site-primary text-white"
                                   }`}
                                   aria-label={`เพิ่ม ${item.name}`}

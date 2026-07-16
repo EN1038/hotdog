@@ -447,10 +447,6 @@ export default function StorePage() {
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-600">
-            <span className="flex items-center gap-1 font-semibold text-gray-900">
-              <span className="text-yellow-400">⭐</span> 4.9 (90)
-            </span>
-            <span>·</span>
             {categoryLine ? <span>{categoryLine}</span> : <span>฿9-฿35</span>}
           </div>
 

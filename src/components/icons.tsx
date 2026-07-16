@@ -281,6 +281,26 @@ export function IconTrash(props: IconProps) {
   );
 }
 
+export function IconEdit(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M4 16.5V20h3.5L18 9.5 14.5 6 4 16.5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12.5 8l3.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function IconBell(props: IconProps) {
   const p = baseProps(props);
   return (

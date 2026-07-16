@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { IconBack, IconSkewerPlaceholder } from "@/components/icons";
+import { IconBack, IconDelivery, IconPackage, IconStore, IconSkewerPlaceholder } from "@/components/icons";
 import {
   AdminLoadingState,
   adminInputClass,
@@ -631,7 +631,8 @@ export default function MenuItemEditorPage() {
             <div className="space-y-3">
               <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                    <IconDelivery size={16} className="text-green-600" />
                     เดลิเวอรี่
                   </p>
                   <AdminToggle
@@ -658,7 +659,8 @@ export default function MenuItemEditorPage() {
 
               <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                    <IconPackage size={16} className="text-sky-600" />
                     รับที่ร้าน
                   </p>
                   <AdminToggle
@@ -687,10 +689,11 @@ export default function MenuItemEditorPage() {
               <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">
+                    <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                      <IconStore size={16} className="text-amber-800" />
                       หน้าร้าน
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="mt-0.5 text-[11px] text-slate-500">
                       เก็บราคาอ้างอิง — ยังไม่เปิดสั่งออนไลน์
                     </p>
                   </div>

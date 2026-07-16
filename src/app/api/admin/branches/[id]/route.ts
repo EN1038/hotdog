@@ -20,6 +20,10 @@ import {
   menuItemOptionGroupInclude,
 } from "@/lib/menu-option-groups";
 import {
+  attachBestsellerFlag,
+  getBestsellerMenuItemIdsByBranch,
+} from "@/lib/menu-bestsellers";
+import {
   logAdminActivity,
   summarizeBranchPatch,
 } from "@/lib/admin-activity";
@@ -176,9 +180,15 @@ export async function GET(_request: Request, { params }: Params) {
       }
     }
 
+    const bestsellersByBranch = await getBestsellerMenuItemIdsByBranch([id]);
+    const bestsellerIds = bestsellersByBranch.get(id);
+
     return jsonOk({
       ...branch,
-      menuItems: branch.menuItems.map(flattenMenuItemOptionGroups),
+      menuItems: attachBestsellerFlag(
+        branch.menuItems.map(flattenMenuItemOptionGroups),
+        bestsellerIds,
+      ),
       orderStats: {
         completedRevenue,
         cancelledRevenue,

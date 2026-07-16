@@ -32,14 +32,18 @@ import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
+import { MenuBestSellerTag } from "@/components/customer/MenuChannelPrice";
 import {
   IconBack,
   IconChevronRight,
   IconClose,
   IconDelivery,
+  IconEdit,
+  IconPackage,
   IconPin,
   IconPlus,
   IconStore,
+  IconTrash,
   IconUser,
 } from "@/components/icons";
 import {
@@ -135,12 +139,18 @@ type BranchDetail = {
     id: string;
     name: string;
     price: string;
+    pickupPrice?: string | null;
+    storefrontPrice?: string | null;
+    sellDelivery?: boolean;
+    sellPickup?: boolean;
+    sellStorefront?: boolean;
     description: string | null;
     category: { id: string; name: string } | null;
     imageUrl: string | null;
     isHidden: boolean;
     isOutOfStock: boolean;
     sortOrder: number;
+    isBestSeller?: boolean;
   }[];
   menuCategories?: { id: string; name: string }[];
   optionGroups?: { id: string; name: string; options?: unknown[] }[];
@@ -208,6 +218,64 @@ function getBranchSettingsGaps(branch: {
   if (!branch.phone?.trim()) missing.push("เบอร์โทร");
   if (!branch.primaryCategory) missing.push("ประเภทอาหาร");
   return missing;
+}
+
+function formatMenuBaht(value: string | number | null | undefined): string {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return "—";
+  return `฿${n.toLocaleString("th-TH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function MenuChannelPrices({
+  item,
+}: {
+  item: {
+    price: string;
+    pickupPrice?: string | null;
+    storefrontPrice?: string | null;
+  };
+}) {
+  const rows = [
+    {
+      key: "delivery",
+      label: "เดลิเวอรี่",
+      icon: IconDelivery,
+      iconClass: "text-green-600",
+      value: formatMenuBaht(item.price),
+    },
+    {
+      key: "pickup",
+      label: "รับที่ร้าน",
+      icon: IconPackage,
+      iconClass: "text-sky-600",
+      value: formatMenuBaht(item.pickupPrice ?? item.price),
+    },
+    {
+      key: "storefront",
+      label: "หน้าร้าน",
+      icon: IconStore,
+      iconClass: "text-amber-800",
+      value: formatMenuBaht(item.storefrontPrice ?? item.price),
+    },
+  ] as const;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-gray-600">
+      {rows.map(({ key, label, icon: Icon, iconClass, value }) => (
+        <span
+          key={key}
+          className="inline-flex items-center gap-1"
+          title={label}
+        >
+          <Icon size={13} className={`shrink-0 ${iconClass}`} />
+          <span className="font-medium text-gray-800">{value}</span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function getTabAttention(
@@ -1572,33 +1640,31 @@ function BranchDetailContent() {
               {filteredMenuItems.map((m) => (
                 <li
                   key={m.id}
-                  className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 px-3 py-2"
+                  className="flex flex-wrap items-stretch gap-3 rounded-lg border border-gray-200 px-3 py-2.5"
                 >
                   {m.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={m.imageUrl}
                       alt=""
-                      className="h-9 w-9 shrink-0 rounded-md object-cover"
+                      className="h-20 w-20 shrink-0 rounded-lg object-cover sm:h-24 sm:w-24"
                     />
                   ) : (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-[10px] text-gray-500">
-                      ไม่มี
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-24 sm:w-24">
+                      ไม่มีรูป
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-gray-900">
-                      {m.name}{" "}
-                      <span className="font-medium text-gray-600">
-                        — {Number(m.price).toLocaleString("th-TH")} บาท
-                      </span>
+                    <p className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900">
+                      <span>{m.name}</span>
+                      <MenuBestSellerTag show={m.isBestSeller} />
                     </p>
                     {m.description && (
-                      <p className="truncate text-sm text-gray-700">
+                      <p className="mt-0.5 truncate text-sm text-gray-700">
                         {m.description}
                       </p>
                     )}
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       {m.category ? (
                         <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
                           {m.category.name}
@@ -1608,9 +1674,7 @@ function BranchDetailContent() {
                           ไม่มีหมวดหมู่
                         </span>
                       )}
-                      <span className="text-xs text-slate-500">
-                        ลำดับ: {m.sortOrder}
-                      </span>
+                      <MenuChannelPrices item={m} />
                     </div>
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       <AdminToggle
@@ -1625,19 +1689,23 @@ function BranchDetailContent() {
                       />
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-col justify-center gap-2 self-center">
                     <Link
                       href={`/admin/branches/${id}/menu/${m.id}`}
-                      className={btnOutline}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                      aria-label={`แก้ไข ${m.name}`}
+                      title="แก้ไข"
                     >
-                      แก้ไข
+                      <IconEdit size={18} />
                     </Link>
                     <button
                       type="button"
                       onClick={() => deleteMenu(m.id)}
-                      className={btnDanger}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+                      aria-label={`ลบ ${m.name}`}
+                      title="ลบ"
                     >
-                      ลบ
+                      <IconTrash size={18} />
                     </button>
                   </div>
                 </li>

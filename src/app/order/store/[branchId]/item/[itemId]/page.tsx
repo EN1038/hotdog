@@ -88,6 +88,7 @@ export default function ItemDetailPage() {
   const searchParams = useSearchParams();
   const editKey = searchParams.get("editKey");
   const isNew = searchParams.get("new") === "1";
+  const returnTo = searchParams.get("returnTo");
   const { cart, cartBranchId, addLine, replaceLine, fulfillment } = useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
@@ -231,7 +232,11 @@ export default function ItemDetailPage() {
     } else {
       addLine(branch.id, newLine);
     }
-    router.push(`/order/store/${branch.id}`);
+    if (returnTo) {
+      router.push(returnTo);
+    } else {
+      router.push(`/order/store/${branch.id}`);
+    }
   }
 
   if (loading) {
@@ -258,7 +263,13 @@ export default function ItemDetailPage() {
       <div className="relative w-full aspect-[4/3] bg-gray-100">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => {
+            if (returnTo) {
+              router.push(returnTo);
+            } else {
+              router.back();
+            }
+          }}
           className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md text-gray-800 hover:bg-gray-50"
           aria-label="ปิด"
         >

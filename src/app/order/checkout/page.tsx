@@ -815,7 +815,7 @@ export default function CheckoutPage() {
                         return;
                       }
                       router.push(
-                        `/order/checkout/item/${encodeURIComponent(l.key)}`,
+                        `/order/store/${cartBranchId}/item/${l.branchMenuItemId}?editKey=${encodeURIComponent(l.key)}&returnTo=${encodeURIComponent("/order/checkout")}`,
                       );
                     }}
                     className="flex w-full items-start gap-3 p-3 text-left active:bg-gray-50"

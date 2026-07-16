@@ -69,6 +69,17 @@ export function canCustomerCancel(status: OrderStatus): boolean {
   return status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE;
 }
 
+/** Terminal statuses no longer need live polling. */
+export function isTerminalOrderStatus(status: OrderStatus): boolean {
+  return (
+    status === OrderStatus.COMPLETED || status === OrderStatus.CANCELLED
+  );
+}
+
+export function isActiveOrderStatus(status: OrderStatus): boolean {
+  return !isTerminalOrderStatus(status);
+}
+
 /** Statuses shown on the customer tracking timeline for a given fulfillment type. */
 export function getTimelineStatuses(
   fulfillment: FulfillmentType,

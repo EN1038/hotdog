@@ -11,9 +11,11 @@ import {
   PAYMENT_METHOD_LABELS,
   canCustomerCancel,
   formatPrice,
+  isActiveOrderStatus,
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
+import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { OrderTimeline } from "@/components/customer/OrderTimeline";
@@ -121,8 +123,13 @@ export default function OrderDetailPage() {
   }, [orderId]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  usePollingRefresh(load, {
+    enabled: order != null && isActiveOrderStatus(order.status),
+    intervalMs: 10_000,
+  });
 
   useEffect(() => {
     if (!authRequired) return;

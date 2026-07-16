@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { isActiveOrderStatus } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
+import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "./CustomerProvider";
 import {
   CustomerOrderHistoryList,
@@ -25,22 +27,37 @@ export function StoreHistoryTab({ branchId }: StoreHistoryTabProps) {
   const [filter, setFilter] = useState<OrderHistoryFilter>("ALL");
   const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/customer/orders");
-      if (res.ok) {
-        const data: OrderData[] = await res.json();
-        setOrders(data.filter((o) => o.branch.id === branchId));
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      try {
+        const res = await fetch("/api/customer/orders");
+        if (res.ok) {
+          const data: OrderData[] = await res.json();
+          setOrders(data.filter((o) => o.branch.id === branchId));
+        }
+      } finally {
+        if (!opts?.silent) setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [branchId]);
+    },
+    [branchId],
+  );
+
+  const silentRefresh = useCallback(() => load({ silent: true }), [load]);
+
+  const hasActiveOrders = useMemo(
+    () => orders.some((o) => isActiveOrderStatus(o.status)),
+    [orders],
+  );
 
   useEffect(() => {
-    if (session) load();
+    if (session) void load();
   }, [session, load]);
+
+  usePollingRefresh(silentRefresh, {
+    enabled: Boolean(session) && hasActiveOrders,
+    intervalMs: 10_000,
+  });
 
   const filtered = useMemo(
     () => orders.filter((o) => matchesOrderHistoryFilter(o.status, filter)),
@@ -94,7 +111,7 @@ export function StoreHistoryTab({ branchId }: StoreHistoryTabProps) {
       <div className="flex justify-end px-4 pt-2">
         <button
           type="button"
-          onClick={load}
+          onClick={() => void load()}
           className="inline-flex items-center gap-1 text-xs text-gray-500"
           aria-label="รีเฟรช"
         >

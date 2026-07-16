@@ -7,9 +7,11 @@ import {
   FULFILLMENT_LABELS,
   PAYMENT_METHOD_LABELS,
   formatPrice,
+  isActiveOrderStatus,
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal } from "@/lib/customer-types";
+import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { OrderConfirmationTimeline } from "@/components/customer/OrderConfirmationTimeline";
 import { LoadingState } from "@/components/LoadingState";
 import {
@@ -97,10 +99,13 @@ export default function ConfirmationPage() {
   }, [orderId]);
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 10000);
-    return () => clearInterval(timer);
+    void load();
   }, [load]);
+
+  usePollingRefresh(load, {
+    enabled: order != null && isActiveOrderStatus(order.status),
+    intervalMs: 10_000,
+  });
 
   useEffect(() => {
     if (!authRequired) return;

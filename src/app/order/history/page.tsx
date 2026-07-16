@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { isActiveOrderStatus } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
+import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import {
   CustomerOrderHistoryList,
@@ -21,19 +23,31 @@ export default function HistoryPage() {
   const [filter, setFilter] = useState<OrderHistoryFilter>("ALL");
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const res = await fetch("/api/customer/orders");
       if (res.ok) setOrders(await res.json());
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
+  const silentRefresh = useCallback(() => load({ silent: true }), [load]);
+
+  const hasActiveOrders = useMemo(
+    () => orders.some((o) => isActiveOrderStatus(o.status)),
+    [orders],
+  );
+
   useEffect(() => {
-    if (session) load();
+    if (session) void load();
   }, [session, load]);
+
+  usePollingRefresh(silentRefresh, {
+    enabled: Boolean(session) && hasActiveOrders,
+    intervalMs: 10_000,
+  });
 
   useEffect(() => {
     if (sessionChecked && !session) {
@@ -48,7 +62,7 @@ export default function HistoryPage() {
     [orders, filter],
   );
 
-  if (!sessionChecked || (session && loading)) {
+  if (!sessionChecked || (session && loading && orders.length === 0)) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
         <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
@@ -73,7 +87,7 @@ export default function HistoryPage() {
           {session && (
             <button
               type="button"
-              onClick={load}
+              onClick={() => void load()}
               className="inline-flex items-center gap-1 text-sm text-gray-500"
               aria-label="รีเฟรช"
             >

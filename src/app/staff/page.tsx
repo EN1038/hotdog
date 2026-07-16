@@ -130,9 +130,19 @@ export default function StaffPage() {
         );
 
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
+    void fetchOrders();
+    const interval = setInterval(() => {
+      void fetchOrders();
+    }, 5000);
     return () => clearInterval(interval);
+  }, [fetchOrders]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchOrders();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [fetchOrders]);
 
   useEffect(() => {

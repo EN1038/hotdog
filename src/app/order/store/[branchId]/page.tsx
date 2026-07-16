@@ -272,6 +272,15 @@ export default function StorePage() {
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<string>("ทั้งหมด");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 150);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     fetch("/api/customer/branches")
@@ -376,178 +385,214 @@ export default function StorePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f6] pb-28">
-      <header className="bg-white px-4 pb-4 pt-3">
+    <main className="min-h-screen bg-[#f5f5f6] pb-28 relative">
+      {/* Sticky Header (appears on scroll) */}
+      <div
+        className={`fixed inset-x-0 top-0 z-50 bg-white shadow-sm transition-opacity duration-200 ${
+          isScrolled ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="flex h-[60px] items-center gap-3 px-4">
+          <Link
+            href={backHref}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-800"
+          >
+            <BackIcon />
+          </Link>
+          <p className="flex-1 truncate text-[17px] font-bold text-gray-900">
+            {displayName}
+          </p>
+        </div>
+      </div>
+
+      {/* Floating Buttons (Top) */}
+      <div
+        className={`fixed inset-x-0 top-4 z-40 flex items-center justify-between px-4 transition-opacity duration-200 ${
+          isScrolled ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
         <Link
           href={backHref}
-          className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
-          aria-label="กลับไปเลือกสาขา"
-          title="กลับไปเลือกสาขา"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md"
         >
           <BackIcon />
         </Link>
+        <div className="flex gap-2">
+          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          </button>
+          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+          </button>
+        </div>
+      </div>
 
-        <div className="flex gap-3">
-          {branch.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={branch.imageUrl}
-              alt={displayName}
-              className="h-[72px] w-[72px] shrink-0 rounded-xl object-cover"
-            />
-          ) : (
-            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl bg-site-primary-soft">
-              <IconSkewerPlaceholder size={40} />
+      {/* Cover Image */}
+      <div className="relative h-72 w-full bg-stone-200">
+        {branch.imageUrl || branch.brand?.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={branch.imageUrl || branch.brand?.coverImageUrl || ""}
+            alt={displayName}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+            <IconSkewerPlaceholder size={64} />
+          </div>
+        )}
+      </div>
+
+      {/* Content Shell */}
+      <div className="relative z-10 -mt-6 rounded-t-[28px] bg-white pt-6 shadow-sm">
+        <div className="px-4">
+          <div className="flex items-start justify-between gap-4">
+            <h1 className="text-2xl font-extrabold leading-tight text-gray-900">
+              {displayName}
+            </h1>
+            <button className="mt-1 shrink-0 text-gray-400 hover:text-red-500">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-600">
+            <span className="flex items-center gap-1 font-semibold text-gray-900">
+              <span className="text-yellow-400">⭐</span> 4.9 (90)
+            </span>
+            <span>·</span>
+            {categoryLine ? <span>{categoryLine}</span> : <span>฿9-฿35</span>}
+            <span>·</span>
+            <span>5.6 กม. (40 นาที)</span>
+          </div>
+
+          {/* Mockup Action Buttons */}
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <button className="flex shrink-0 items-center gap-1.5 rounded-xl border border-green-600 bg-white px-3 py-1.5 text-sm font-bold text-green-600">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-xs">👥</span> สร้างกลุ่ม
+            </button>
+            <button className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-1.5 text-sm font-semibold text-gray-800">
+              🛍️ สั่งสองร้านได้
+            </button>
+            <button className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-1.5 text-sm font-semibold text-gray-800">
+              🌐 เปลี่ยนภาษา
+            </button>
+          </div>
+          
+          {/* Mockup Banner */}
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-[#e6f7f0] p-3 px-4 relative overflow-hidden">
+             <div className="relative z-10">
+               <p className="text-[13px] font-bold text-gray-900">ลดสูงสุด ฿100 แยกบิลได้!</p>
+               <p className="mt-0.5 text-[11px] font-semibold text-gray-600">เริ่มสร้างกลุ่มเลย &gt;</p>
+             </div>
+             <div className="absolute right-[-10px] h-20 w-20 rounded-full bg-[#a7e4d0]/60 -skew-x-12"></div>
+             <button className="absolute top-2 right-2 text-[#a7e4d0] hover:text-gray-500 z-10">
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+             </button>
+          </div>
+        </div>
+
+        {/* Status Messages */}
+        <div className="mt-4">
+          {!service?.openNow && service?.acceptingOrders && (
+            <div className="mx-4 mb-3 flex items-start gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
+              <ClockIcon />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-site-primary">
+                  {service.reason}
+                </p>
+                <p className="mt-0.5 text-xs text-site-primary/80">
+                  ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
+                </p>
+              </div>
             </div>
           )}
 
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold leading-snug text-gray-900">
-              {displayName}
-            </p>
-            {categoryLine ? (
-              <p className="mt-0.5 text-[11px] text-gray-500">{categoryLine}</p>
-            ) : null}
-            {branch.address && (
-              <div className="mt-1 flex items-start gap-1">
-                <PinIcon />
-                <p className="line-clamp-2 text-[11px] leading-relaxed text-gray-500">
-                  {branch.address}
+          {service && !service.acceptingOrders && (
+            <div className="mx-4 mb-3 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3.5">
+              <LockIcon />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-red-600">{service.reason}</p>
+                <p className="mt-0.5 text-xs text-red-500/80">
+                  ตอนนี้ยังสั่งซื้อไม่ได้ — ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
                 </p>
               </div>
-            )}
-            {branch.phone && (
-              <a
-                href={`tel:${branch.phone}`}
-                className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-medium leading-none text-gray-600 hover:bg-gray-50"
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-visible">
-                  <IconPhone size={14} className="text-gray-600" />
-                </span>
-                โทรร้าน
-              </a>
-            )}
-          </div>
-
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            {service?.openNow ? (
-              <>
-                <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">
-                  <CheckIcon />
-                  {fulfillment === "DELIVERY" ? "เปิดส่ง" : "ร้านเปิด"}
-                </span>
-                <span className="max-w-[9rem] text-right text-[10px] text-gray-500">
-                  {service
-                    ? formatTodayHoursSummary(service.schedule)
-                    : ""}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="inline-flex items-center gap-0.5 rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  <LockIcon />
-                  {fulfillment === "DELIVERY" ? "ปิดส่ง" : "ร้านปิด"}
-                </span>
-                <span className="max-w-[9rem] text-right text-[10px] text-gray-500">
-                  {service
-                    ? formatTodayHoursSummary(service.schedule)
-                    : ""}
-                </span>
-              </>
-            )}
-            {!service?.openNow && service?.acceptingOrders && (
-              <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-emerald-200">
-                <CalendarIcon />
-                สั่งล่วงหน้าได้
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {!service?.openNow && service?.acceptingOrders && (
-        <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-[#fff4eb] px-4 py-3.5">
-          <ClockIcon />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-site-primary">
-              {service.reason}
-            </p>
-            <p className="mt-0.5 text-xs text-site-primary/80">
-              ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
-            </p>
-          </div>
-        </div>
-      )}
-
-      {service && !service.acceptingOrders && (
-        <div className="mx-4 mt-3 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3.5">
-          <LockIcon />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-red-600">{service.reason}</p>
-            <p className="mt-0.5 text-xs text-red-500/80">
-              ตอนนี้ยังสั่งซื้อไม่ได้ — ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
-            </p>
-          </div>
-        </div>
-      )}
-
-      {(branch.ownerMessage || branch.extraMessage) && (
-        <div className="mx-4 mt-3 space-y-2">
-          {branch.ownerMessage ? (
-            <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <p className="text-[11px] font-semibold text-site-primary">
-                ข้อความจากเจ้าของร้าน
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
-                {branch.ownerMessage}
-              </p>
             </div>
-          ) : null}
-          {branch.extraMessage ? (
-            <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <p className="text-[11px] font-semibold text-gray-500">
-                ข้อความเพิ่มเติม
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
-                {branch.extraMessage}
-              </p>
+          )}
+          
+          {(branch.ownerMessage || branch.extraMessage) && (
+            <div className="mx-4 mb-3 space-y-2">
+              {branch.ownerMessage ? (
+                <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100">
+                  <p className="text-[11px] font-semibold text-site-primary">
+                    ข้อความจากเจ้าของร้าน
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                    {branch.ownerMessage}
+                  </p>
+                </div>
+              ) : null}
+              {branch.extraMessage ? (
+                <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100">
+                  <p className="text-[11px] font-semibold text-gray-500">
+                    ข้อความเพิ่มเติม
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                    {branch.extraMessage}
+                  </p>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          )}
         </div>
-      )}
+        
+        <div className="bg-white pb-3">
+          <FulfillmentToggle
+            value={fulfillment}
+            onChange={setFulfillment}
+            deliveryAvailable={deliveryAvailable}
+          />
+          {!deliveryAvailable && (
+            <p className="mx-4 mt-1.5 text-center text-xs text-gray-400">
+              สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น
+            </p>
+          )}
+        </div>
 
-      <FulfillmentToggle
-        value={fulfillment}
-        onChange={setFulfillment}
-        deliveryAvailable={deliveryAvailable}
-      />
-      {!deliveryAvailable && (
-        <p className="mx-4 mt-1.5 text-center text-xs text-gray-400">
-          สาขานี้ยังไม่เปิดจัดส่ง — สั่งรับที่ร้านได้เท่านั้น
-        </p>
-      )}
+        <div className="w-full">
+          <div className="px-4 bg-white border-b border-gray-100 pt-2 pb-1">
+            <MainTabs active={mainTab} onChange={setMainTab} />
+          </div>
 
-      <div className="mx-4 mt-5 overflow-hidden rounded-t-2xl bg-white">
-        <MainTabs active={mainTab} onChange={setMainTab} />
+          {mainTab === "menu" ? (
+            <>
+              {/* Sticky Filter Bar */}
+              {categories.length > 1 && (
+                <div 
+                  className={`sticky top-[60px] z-40 bg-white border-b border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition-all ${
+                    isScrolled ? "py-2" : "py-3"
+                  }`}
+                >
+                  <div className="filter-scroll-row flex gap-3 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {categories.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setCategory(c)}
+                        className={`shrink-0 rounded-full px-4 py-1.5 text-[15px] font-medium transition-colors ${
+                          category === c 
+                          ? "bg-site-primary text-white" 
+                          : "bg-white text-gray-600 border-b-2 border-transparent hover:text-gray-900"
+                        }`}
+                        style={category === c ? {} : { paddingLeft: 0, paddingRight: 0, paddingBottom: "4px", borderRadius: 0, marginRight: "8px", borderBottomColor: "transparent" }}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-        {mainTab === "menu" ? (
-          <>
-            {categories.length > 1 && (
-              <div className="filter-scroll-row flex gap-2 overflow-x-auto px-4 py-3">
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCategory(c)}
-                    className={pillTabButtonClass(category === c)}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-2 px-4 pb-4">
+              <div className="space-y-3 px-4 pb-4 pt-4 bg-[#f5f5f6]">
               {items.map((item) => {
                 const priced = menuItemSellPrice(item, fulfillment);
                 return (

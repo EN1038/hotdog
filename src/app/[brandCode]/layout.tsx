@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Metadata } from "next";
 import { OrderBrandingShell } from "@/components/customer/OrderBrandingShell";
 import { brandColorFromApi } from "@/lib/color";
@@ -6,14 +7,18 @@ import { localizedName } from "@/lib/localized";
 
 type Params = { params: Promise<{ brandCode: string }> };
 
-async function loadBrand(brandCode: string) {
+/**
+ * cache() deduplicates: generateMetadata and BrandLayout both call this
+ * but it only hits the DB once per request.
+ */
+const loadBrand = cache(async (brandCode: string) => {
   try {
     return await prisma.brand.findUnique({ where: { code: brandCode } });
   } catch (error) {
-    console.error(`[BrandLayout] Failed to load brand ${brandCode}:`, error);
+    console.error(`[BrandLayout] Failed to load brand "${brandCode}":`, error);
     return null;
   }
-}
+});
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { brandCode } = await params;

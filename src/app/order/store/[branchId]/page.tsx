@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { FulfillmentType } from "@prisma/client";
 import { formatPrice } from "@/lib/constants";
-import type { BranchData, MenuItemData } from "@/lib/customer-types";
+import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
 import {
   formatTodayHoursSummary,
@@ -33,8 +33,6 @@ import {
   IconPhone,
   IconPlus,
   IconSkewerPlaceholder,
-  IconClose,
-  IconMinus,
 } from "@/components/icons";
 import { pillTabButtonClass } from "@/components/customer/CustomerOrderHistoryList";
 
@@ -268,14 +266,13 @@ function MainTabs({
 export default function StorePage() {
   const { branchId } = useParams<{ branchId: string }>();
   const router = useRouter();
-  const { cart, cartBranchId, fulfillment, setFulfillment, updateQuantity, removeLine } = useCustomer();
+  const { cart, cartBranchId, fulfillment, setFulfillment } = useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
   const [isScrolled, setIsScrolled] = useState(false);
-  const [selectedItemForBottomSheet, setSelectedItemForBottomSheet] = useState<MenuItemData | null>(null);
   
   const isManualScrolling = useRef(false);
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -366,11 +363,13 @@ export default function StorePage() {
 
   const deliveryAvailable = (branch?.deliveryLocations.length ?? 0) > 0;
 
+  // Wait for branch load — otherwise null branch looks like "no delivery".
   useEffect(() => {
-    if (!deliveryAvailable && fulfillment === "DELIVERY") {
+    if (!branch) return;
+    if (branch.deliveryLocations.length === 0 && fulfillment === "DELIVERY") {
       setFulfillment("PICKUP");
     }
-  }, [deliveryAvailable, fulfillment, setFulfillment]);
+  }, [branch, fulfillment, setFulfillment]);
 
   const groupedMenus = useMemo(() => {
     if (!branch) return [];
@@ -671,11 +670,7 @@ export default function StorePage() {
                         
                         const handleItemClick = (e: React.MouseEvent) => {
                           e.stopPropagation();
-                          if (itemCartQuantity > 0) {
-                            setSelectedItemForBottomSheet(item);
-                          } else {
-                            router.push(`/order/store/${branch.id}/item/${item.id}`);
-                          }
+                          router.push(`/order/store/${branch.id}/item/${item.id}`);
                         };
                         
                         return (
@@ -770,108 +765,6 @@ export default function StorePage() {
             <span>฿{formatPrice(cartTotal)}</span>
           </button>
         </div>
-      )}
-      
-      {/* Bottom Sheet for multiple variants */}
-      {selectedItemForBottomSheet && (
-        <>
-          <div
-            className="fixed inset-0 z-[60] bg-black/40 transition-opacity"
-            onClick={() => setSelectedItemForBottomSheet(null)}
-          />
-          <div className="fixed bottom-0 left-1/2 z-[70] w-full max-w-md -translate-x-1/2 rounded-t-2xl bg-white shadow-2xl transition-transform duration-300 ease-out">
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-              <h3 className="text-lg font-bold text-gray-900">{selectedItemForBottomSheet.name}</h3>
-              <button
-                type="button"
-                onClick={() => setSelectedItemForBottomSheet(null)}
-                className="rounded-full p-2 text-gray-500 hover:bg-gray-100"
-              >
-                <IconClose size={20} />
-              </button>
-            </div>
-            
-            <div className="max-h-[60vh] overflow-y-auto px-4 py-4">
-              {cartForThisBranch
-                .filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id)
-                .map((line) => (
-                  <div key={line.key} className="mb-4 flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                    <div className="flex justify-between gap-4">
-                      <div className="flex-1">
-                        <p className="text-[13px] text-gray-600">
-                          {line.optionNames.length > 0 ? line.optionNames.join(", ") : "ไม่มีตัวเลือก"}
-                          {line.note && <span className="block mt-0.5 text-gray-500">หมายเหตุ: {line.note}</span>}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-[15px] font-bold text-gray-900">
-                          ฿{formatPrice((line.unitPrice + line.optionsPrice) * line.quantity)}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between mt-1">
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/order/store/${branch.id}/item/${selectedItemForBottomSheet.id}?editKey=${line.key}`)}
-                        className="text-[13px] font-bold text-site-primary underline underline-offset-2"
-                      >
-                        แก้ไข
-                      </button>
-                      
-                      <div className="flex items-center gap-3 rounded-full bg-white px-2 py-1 shadow-sm border border-gray-200">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (line.quantity <= 1) {
-                              removeLine(line.key);
-                              if (cartForThisBranch.filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id).length <= 1) {
-                                setSelectedItemForBottomSheet(null);
-                              }
-                            } else {
-                              updateQuantity(line.key, -1);
-                            }
-                          }}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-site-primary hover:bg-gray-50"
-                        >
-                          <IconMinus size={14} />
-                        </button>
-                        <span className="w-4 text-center text-[15px] font-bold text-gray-900">
-                          {line.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(line.key, 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-site-primary hover:bg-gray-50"
-                        >
-                          <IconPlus size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                
-              <button
-                type="button"
-                onClick={() => router.push(`/order/store/${branch.id}/item/${selectedItemForBottomSheet.id}?new=1`)}
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gray-100 py-3 text-[15px] font-bold text-gray-700 hover:bg-gray-200"
-              >
-                <IconPlus size={16} />
-                เพิ่มรายการใหม่
-              </button>
-            </div>
-            
-            <div className="border-t border-gray-100 p-4">
-              <button
-                type="button"
-                onClick={() => setSelectedItemForBottomSheet(null)}
-                className="w-full rounded-xl bg-site-primary py-3.5 text-[17px] font-bold text-white hover:opacity-90"
-              >
-                อัปเดตตะกร้า
-              </button>
-            </div>
-          </div>
-        </>
       )}
 
     </main>

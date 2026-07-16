@@ -291,11 +291,13 @@ export default function CheckoutPage() {
 
   const deliveryAvailable = (branch?.deliveryLocations.length ?? 0) > 0;
 
+  // Wait for branch load — otherwise null branch looks like "no delivery".
   useEffect(() => {
-    if (!deliveryAvailable && fulfillment === "DELIVERY") {
+    if (!branch) return;
+    if (branch.deliveryLocations.length === 0 && fulfillment === "DELIVERY") {
       setFulfillment("PICKUP");
     }
-  }, [deliveryAvailable, fulfillment, setFulfillment]);
+  }, [branch, fulfillment, setFulfillment]);
 
   useEffect(() => {
     if (!session) return;

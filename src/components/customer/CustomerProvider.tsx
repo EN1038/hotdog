@@ -46,7 +46,7 @@ type CustomerContextValue = {
 const CustomerContext = createContext<CustomerContextValue | null>(null);
 
 const CART_KEY = "skillsale_cart_v1";
-const FULFILLMENT_KEY = "skillsale_fulfillment_v1";
+const FULFILLMENT_KEY = "skillsale_fulfillment_v2";
 
 function normalizeNote(note?: string) {
   return (note ?? "").trim().replace(/\s+/g, " ");

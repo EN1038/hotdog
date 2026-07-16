@@ -664,7 +664,7 @@ export default function StorePage() {
                       {group.items.map((item) => {
                         const priced = menuItemSellPrice(item, fulfillment);
                         const itemCartQuantity = cartForThisBranch
-                          .filter((l) => l.menuItem.id === item.id)
+                          .filter((l) => l.branchMenuItemId === item.id)
                           .reduce((s, l) => s + l.quantity, 0);
                         
                         return (

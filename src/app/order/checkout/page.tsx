@@ -170,6 +170,7 @@ const rowIconClass =
   "flex h-5 w-5 shrink-0 items-center justify-center overflow-visible";
 
 function ExpandableFulfillmentRow({
+  id,
   icon: Icon,
   label,
   summary,
@@ -177,6 +178,7 @@ function ExpandableFulfillmentRow({
   onToggle,
   children,
 }: {
+  id?: string;
   icon: (props: { size?: number; className?: string }) => React.ReactNode;
   label: React.ReactNode;
   summary?: string;
@@ -185,7 +187,7 @@ function ExpandableFulfillmentRow({
   children?: React.ReactNode;
 }) {
   return (
-    <>
+    <div id={id}>
       <button
         type="button"
         onClick={onToggle}
@@ -216,7 +218,7 @@ function ExpandableFulfillmentRow({
           {children}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -319,6 +321,13 @@ export default function CheckoutPage() {
   const grandTotal = itemsTotal + deliveryFee - discount;
 
   async function submitOrder() {
+    const scrollAndExpand = (fieldId: ExpandFieldId) => {
+      setExpandedField(fieldId);
+      setTimeout(() => {
+        document.getElementById(`field-${fieldId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    };
+
     setError("");
     if (!session) {
       goToLogin({ pendingSubmit: true });
@@ -334,8 +343,14 @@ export default function CheckoutPage() {
       setFulfillment("PICKUP");
       return;
     }
-    if (fulfillment === "DELIVERY" && (!locationId || !addressDetail.trim())) {
-      setError("กรุณาเลือกพื้นที่จัดส่งและกรอกที่อยู่");
+    if (fulfillment === "DELIVERY" && !locationId) {
+      setError("กรุณาเลือกพื้นที่จัดส่ง");
+      scrollAndExpand("location");
+      return;
+    }
+    if (fulfillment === "DELIVERY" && !addressDetail.trim()) {
+      setError("กรุณากรอกที่อยู่จัดส่ง");
+      scrollAndExpand("addressDetail");
       return;
     }
     let service;
@@ -349,6 +364,7 @@ export default function CheckoutPage() {
         setError(
           "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้",
         );
+        scrollAndExpand("scheduledTime");
         return;
       }
     }
@@ -357,6 +373,7 @@ export default function CheckoutPage() {
       : null;
     if (scheduledTime && !parsedScheduledTime) {
       setError("กรุณากรอกเวลารับสินค้าแบบ 24 ชั่วโมง เช่น 18:30");
+      scrollAndExpand("scheduledTime");
       return;
     }
     if (parsedScheduledTime) {
@@ -367,14 +384,17 @@ export default function CheckoutPage() {
       const scheduledDate = new Date(scheduledAtPreview);
       if (scheduledDate.getTime() <= Date.now()) {
         setError("เวลานัดรับ/ส่งต้องเป็นเวลาหลังจากนี้ในวันนี้");
+        scrollAndExpand("scheduledTime");
         return;
       }
       if (service && !isWithinWeeklyScheduleWithOvernight(service.schedule, scheduledDate)) {
         setError("เวลารับสินค้าที่คุณระบุอยู่นอกเวลาทำการของร้าน กรุณาระบุเวลาใหม่");
+        scrollAndExpand("scheduledTime");
         return;
       }
     } else if (branch && service && !service.openNow) {
       setError("กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้");
+      scrollAndExpand("scheduledTime");
       return;
     }
     setSubmitting(true);
@@ -614,6 +634,7 @@ export default function CheckoutPage() {
 
           <div className="h-px bg-gray-100" />
           <ExpandableFulfillmentRow
+            id="field-scheduledTime"
             icon={IconClock}
             label="เวลารับสินค้า"
             summary={
@@ -643,6 +664,7 @@ export default function CheckoutPage() {
             <>
               <div className="h-px bg-gray-100" />
               <ExpandableFulfillmentRow
+                id="field-location"
                 icon={IconPin}
                 label="พื้นที่จัดส่ง"
                 summary={(() => {
@@ -704,6 +726,7 @@ export default function CheckoutPage() {
 
               <div className="h-px bg-gray-100" />
               <ExpandableFulfillmentRow
+                id="field-addressDetail"
                 icon={IconHome}
                 label="ที่อยู่จัดส่ง"
                 summary={addressDetail || "กรอกที่อยู่"}

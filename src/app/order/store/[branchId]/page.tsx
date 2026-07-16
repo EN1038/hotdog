@@ -479,7 +479,7 @@ export default function StorePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f6] pb-[92px] relative">
+    <main className={`min-h-screen bg-[#f5f5f6] relative ${cartCount > 0 && mainTab === "menu" ? "pb-[92px]" : "pb-0"}`}>
       {/* Sticky Header (appears on scroll) */}
       <div
         className={`fixed inset-x-0 top-0 z-50 bg-white shadow-sm transition-opacity duration-200 ${

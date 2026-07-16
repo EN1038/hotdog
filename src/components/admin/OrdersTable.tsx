@@ -9,6 +9,7 @@ import {
   PAYMENT_METHOD_LABELS,
 } from "@/lib/constants";
 import { orderGrandTotal } from "@/lib/order-totals";
+import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import {
   adminTableClass,
@@ -25,6 +26,7 @@ export type AdminOrderRow = {
   paymentMethod?: keyof typeof PAYMENT_METHOD_LABELS;
   addressDetail: string | null;
   customerName?: string;
+  isNewCustomer?: boolean;
   createdAt: string;
   deliveryFee?: string | number;
   discountAmount?: string | number;
@@ -128,8 +130,15 @@ export function OrdersTable({
                 </td>
                 <td className="px-3 py-3">
                   <Link href={href} className="block">
-                    <p className="font-medium text-gray-900">
-                      {order.customerName || order.customer?.name || "—"}
+                    <p className="flex flex-wrap items-center gap-1.5 font-medium text-gray-900">
+                      <span>
+                        {order.customerName || order.customer?.name || "—"}
+                      </span>
+                      {typeof order.isNewCustomer === "boolean" && (
+                        <CustomerTypeBadge
+                          isNewCustomer={order.isNewCustomer}
+                        />
+                      )}
                     </p>
                   </Link>
                   {order.customer?.phone ? (

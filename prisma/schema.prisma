@@ -329,6 +329,8 @@ model Order {
   addressDetail      String?
   customerName       String            @default("")
   customerPhone      String            @default("")
+  /// True when this was the customer's first order at this branch
+  isNewCustomer      Boolean           @default(false)
   scheduledAt        DateTime?
   note               String?
   paymentMethod      PaymentMethod     @default(CASH)

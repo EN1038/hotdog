@@ -94,7 +94,7 @@ export async function POST(request: Request) {
   try {
     const session = await requireAdmin();
     const body = branchSchema.parse(await request.json());
-    const brandId = body.brandId ?? null;
+    let brandId = body.brandId ?? null;
 
     const catError = await assertValidRestaurantCategories(
       body.primaryCategory ?? null,
@@ -102,9 +102,15 @@ export async function POST(request: Request) {
     );
     if (catError) return jsonError(catError);
 
+    const allowedBrandIds = session.brandIds ?? [];
+
     if (!session.isPlatformAdmin) {
-      if (!brandId) {
+      if (allowedBrandIds.length === 1) {
+        brandId = allowedBrandIds[0]!;
+      } else if (!brandId) {
         throw new ForbiddenError("ต้องเลือกแบรนด์ของสาขา");
+      } else if (!allowedBrandIds.includes(brandId)) {
+        throw new ForbiddenError("ไม่มีสิทธิ์สร้างสาขาในแบรนด์นี้");
       }
       await assertBrandAccess(session, brandId);
     } else if (brandId) {

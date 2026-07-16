@@ -1,6 +1,7 @@
 /**
  * Wipe operational data for a clean manual test.
- * Keeps: Admin accounts (passwords), RestaurantType, SiteSettings.
+ * Keeps: platform Admin accounts only, RestaurantType, SiteSettings (reset).
+ * Deletes: brands, branches, orders, customers, staff, brand admins, OTP challenges, etc.
  *
  * Usage (remote/shared DBs require the flag):
  *   $env:ALLOW_DB_WIPE='1'; npx tsx prisma/wipe-for-test.ts
@@ -41,11 +42,15 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   const before = {
     admins: await prisma.admin.count(),
+    platformAdmins: await prisma.admin.count({
+      where: { isPlatformAdmin: true },
+    }),
     restaurantTypes: await prisma.restaurantType.count(),
     brands: await prisma.brand.count(),
     branches: await prisma.branch.count(),
     orders: await prisma.order.count(),
     customers: await prisma.customer.count(),
+    otpChallenges: await prisma.customerOtpChallenge.count(),
     logs: await prisma.adminActivityLog.count(),
   };
 
@@ -56,6 +61,7 @@ async function main() {
     orderItems: (await prisma.orderItem.deleteMany()).count,
     orders: (await prisma.order.deleteMany()).count,
     customers: (await prisma.customer.deleteMany()).count,
+    otpChallenges: (await prisma.customerOtpChallenge.deleteMany()).count,
     activityLogs: (await prisma.adminActivityLog.deleteMany()).count,
     menuItemOptionLinks: (await prisma.branchMenuItemOptionGroup.deleteMany())
       .count,
@@ -70,6 +76,9 @@ async function main() {
     branches: (await prisma.branch.deleteMany()).count,
     brandMembers: (await prisma.brandMember.deleteMany()).count,
     brands: (await prisma.brand.deleteMany()).count,
+    brandAdmins: (
+      await prisma.admin.deleteMany({ where: { isPlatformAdmin: false } })
+    ).count,
   };
 
   // Ensure platform settings row exists in a clean default state
@@ -113,36 +122,27 @@ async function main() {
     branches: await prisma.branch.count(),
     orders: await prisma.order.count(),
     customers: await prisma.customer.count(),
+    otpChallenges: await prisma.customerOtpChallenge.count(),
     logs: await prisma.adminActivityLog.count(),
     siteSettings: await prisma.siteSettings.count(),
   };
 
   const admins = await prisma.admin.findMany({
     select: {
+      id: true,
       username: true,
       isPlatformAdmin: true,
-      _count: { select: { brandMembers: true } },
     },
     orderBy: { username: "asc" },
   });
 
   console.log("Deleted counts:", deleted);
   console.log("After wipe:", after);
-  console.log(
-    "Kept admins:",
-    admins.map((a) => ({
-      username: a.username,
-      isPlatformAdmin: a.isPlatformAdmin,
-      brandLinks: a._count.brandMembers,
-    })),
-  );
+  console.log("Kept platform admins:", admins);
   console.log(
     "Kept restaurant types:",
     after.restaurantTypes,
     "| Site settings reset to default.",
-  );
-  console.log(
-    "Note: Brand admin accounts remain but have no brand membership until you create/link brands again.",
   );
 }
 

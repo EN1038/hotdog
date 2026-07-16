@@ -14,9 +14,13 @@ import { hashAndSealPassword } from "@/lib/admin-password";
 const brandSchema = z.object({
   code: z
     .string()
-    .min(2)
-    .regex(/^[a-z0-9-]+$/, "ใช้ตัวพิมพ์เล็ก a-z ตัวเลข และ - เท่านั้น"),
-  name: z.string().min(1),
+    .trim()
+    .min(2, "ต้องมีอย่างน้อย 2 ตัวอักษร")
+    .regex(
+      /^[a-z0-9-]+$/,
+      "ใช้ได้เฉพาะ a-z, 0-9 และ - เท่านั้น (ห้ามภาษาไทยหรือช่องว่าง)",
+    ),
+  name: z.string().trim().min(1, "กรุณากรอกชื่อแบรนด์"),
   nameTh: z.string().nullable().optional(),
   nameEn: z.string().nullable().optional(),
   siteTitle: z.string().nullable().optional(),
@@ -25,8 +29,12 @@ const brandSchema = z.object({
   coverImageUrl: z.string().nullable().optional(),
   contactPhone: z.string().nullable().optional(),
   color: z.string().optional(),
-  adminUsername: z.string().min(3).optional(),
-  adminPassword: z.string().min(6).optional(),
+  adminUsername: z
+    .string()
+    .trim()
+    .min(3, "ต้องมีอย่างน้อย 3 ตัวอักษร")
+    .optional(),
+  adminPassword: z.string().min(6, "ต้องมีอย่างน้อย 6 ตัวอักษร").optional(),
 });
 
 function normalizeColor(input: string | undefined) {

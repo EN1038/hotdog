@@ -183,6 +183,15 @@ export async function POST(request: Request) {
       });
     }
 
+    const priorOrder = await prisma.order.findFirst({
+      where: {
+        customerId: session.customerId!,
+        branchId: body.branchId,
+      },
+      select: { id: true },
+    });
+    const isNewCustomer = !priorOrder;
+
     let order = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       const orderNumber = generateOrderNumber();
@@ -203,6 +212,7 @@ export async function POST(request: Request) {
                 : null,
             customerName: body.customerName,
             customerPhone: session.customerPhone ?? "",
+            isNewCustomer,
             scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
             note: body.note?.trim() || null,
             paymentMethod: body.paymentMethod,

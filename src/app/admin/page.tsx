@@ -26,5 +26,8 @@ export default function AdminDashboard() {
     return <PlatformBrandsHome />;
   }
 
-  return <BranchListDashboard />;
+  const soleBrandId =
+    session.brandIds.length === 1 ? session.brandIds[0] : undefined;
+
+  return <BranchListDashboard lockedBrandId={soleBrandId} />;
 }

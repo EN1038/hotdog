@@ -52,6 +52,8 @@ import {
 
 } from "@/lib/constants";
 
+import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
+
 
 
 type BrandOption = { id: string; name: string; code: string };
@@ -73,6 +75,8 @@ type OrderRow = {
   customerName: string;
 
   customerPhone: string;
+
+  isNewCustomer: boolean;
 
   createdAt: string;
 
@@ -522,9 +526,15 @@ export default function AdminOrdersPage() {
 
                     <td className="px-4 py-3">
 
-                      <div className="font-medium text-slate-900">
+                      <div className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900">
 
-                        {order.customerName || "—"}
+                        <span>{order.customerName || "—"}</span>
+
+                        <CustomerTypeBadge
+
+                          isNewCustomer={order.isNewCustomer}
+
+                        />
 
                       </div>
 

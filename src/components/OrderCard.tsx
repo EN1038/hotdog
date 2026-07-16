@@ -8,6 +8,7 @@ import {
   type StaffRole,
 } from "@/lib/constants";
 import { IconArrowRight, IconLabel, IconNote } from "@/components/icons";
+import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 
 type OrderItem = {
@@ -28,6 +29,7 @@ export type OrderCardData = {
   fulfillmentType?: FulfillmentType;
   addressDetail: string | null;
   customerName?: string;
+  isNewCustomer?: boolean;
   note?: string | null;
   createdAt: string;
   customer?: { phone: string; name?: string | null } | null;
@@ -78,8 +80,13 @@ export function OrderCard({
           {order.addressDetail && (
             <p className="text-sm text-gray-700">{order.addressDetail}</p>
           )}
-          <p className="text-xs text-gray-500">
-            ลูกค้า: {order.customerName || order.customer?.name || "-"}
+          <p className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+            <span>
+              ลูกค้า: {order.customerName || order.customer?.name || "-"}
+            </span>
+            {typeof order.isNewCustomer === "boolean" && (
+              <CustomerTypeBadge isNewCustomer={order.isNewCustomer} />
+            )}
           </p>
           {order.customer?.phone && (
             <div className="mt-1.5">

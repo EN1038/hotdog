@@ -12,6 +12,7 @@ import {
   btnOutline,
   btnPrimaryXl,
 } from "@/components/admin/AdminShell";
+import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useToast } from "@/components/admin/Toast";
 import { ImageField } from "@/components/admin/ImageField";
 import { BranchLocationPicker } from "@/components/admin/BranchLocationPicker";
@@ -100,12 +101,18 @@ export function BranchListDashboard({
 }: BranchListDashboardProps) {
   const router = useRouter();
   const toast = useToast();
+  const { session } = useAdminSession();
   const titleId = useId();
+  const effectiveLockedBrandId =
+    lockedBrandId ??
+    (session && !session.isPlatformAdmin && session.brandIds.length === 1
+      ? session.brandIds[0]
+      : undefined);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [brands, setBrands] = useState<DashboardBrand[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
-  const [brandId, setBrandId] = useState(lockedBrandId ?? "");
+  const [brandId, setBrandId] = useState(effectiveLockedBrandId ?? "");
   const [code, setCode] = useState("");
   const [codeManual, setCodeManual] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -122,11 +129,11 @@ export function BranchListDashboard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const defaultBrandId = lockedBrandId ?? "";
+  const defaultBrandId = effectiveLockedBrandId ?? "";
 
   useEffect(() => {
-    const branchesUrl = lockedBrandId
-      ? `/api/admin/branches?brandId=${encodeURIComponent(lockedBrandId)}`
+    const branchesUrl = effectiveLockedBrandId
+      ? `/api/admin/branches?brandId=${encodeURIComponent(effectiveLockedBrandId)}`
       : "/api/admin/branches";
 
     Promise.all([fetch(branchesUrl), fetch("/api/admin/brands")]).then(
@@ -143,15 +150,21 @@ export function BranchListDashboard({
         if (brandRes.ok) {
           const list = (await brandRes.json()) as DashboardBrand[];
           setBrands(
-            lockedBrandId
-              ? list.filter((b) => b.id === lockedBrandId)
+            effectiveLockedBrandId
+              ? list.filter((b) => b.id === effectiveLockedBrandId)
               : list,
           );
         }
         setLoading(false);
       },
     );
-  }, [router, lockedBrandId]);
+  }, [router, effectiveLockedBrandId]);
+
+  useEffect(() => {
+    if (effectiveLockedBrandId) {
+      setBrandId(effectiveLockedBrandId);
+    }
+  }, [effectiveLockedBrandId]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -188,9 +201,6 @@ export function BranchListDashboard({
 
   function openModal() {
     resetFormState(formSetters());
-    if (!lockedBrandId && brands.length === 1) {
-      setBrandId(brands[0]!.id);
-    }
     setModalOpen(true);
   }
 
@@ -212,7 +222,7 @@ export function BranchListDashboard({
     setError(null);
     setSaving(true);
     try {
-      const resolvedBrandId = lockedBrandId || brandId || null;
+      const resolvedBrandId = effectiveLockedBrandId || brandId || null;
       const autoCode = slugifyCode(name);
       const res = await fetch("/api/admin/branches", {
         method: "POST",
@@ -251,10 +261,11 @@ export function BranchListDashboard({
   }
 
   const selectedBrand =
-    brands.find((b) => b.id === (lockedBrandId || brandId)) || brandMeta;
+    brands.find((b) => b.id === (effectiveLockedBrandId || brandId)) ||
+    brandMeta;
   const previewCode = code || slugifyCode(name) || "…";
   const accent = selectedBrand?.color || DEFAULT_BRAND_COLOR;
-  const brandLocked = Boolean(lockedBrandId);
+  const brandLocked = Boolean(effectiveLockedBrandId);
 
   return (
     <div>
@@ -462,6 +473,17 @@ export function BranchListDashboard({
                             </option>
                           ))}
                         </select>
+                      </div>
+                    )}
+                    {brandLocked && selectedBrand && (
+                      <div>
+                        <label className={adminLabelClass}>แบรนด์</label>
+                        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">
+                          {selectedBrand.name}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          สร้างสาขาภายใต้แบรนด์นี้โดยอัตโนมัติ
+                        </p>
                       </div>
                     )}
                     <div>

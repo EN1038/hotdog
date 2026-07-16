@@ -100,6 +100,7 @@ export async function GET(request: Request) {
         fulfillmentType: o.fulfillmentType,
         customerName: o.customerName,
         customerPhone: o.customerPhone,
+        isNewCustomer: o.isNewCustomer,
         createdAt: o.createdAt,
         total: orderGrandTotal(
           o.items.map((i) => ({

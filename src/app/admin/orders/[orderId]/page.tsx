@@ -16,6 +16,7 @@ import {
   orderItemsSubtotal,
 } from "@/lib/order-totals";
 import { OrderTimeline } from "@/components/customer/OrderTimeline";
+import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { IconBack } from "@/components/icons";
 import { LoadingState } from "@/components/LoadingState";
@@ -28,6 +29,7 @@ type AdminOrderDetail = {
   paymentMethod: PaymentMethod;
   customerName: string;
   customerPhone: string;
+  isNewCustomer: boolean;
   addressDetail: string | null;
   scheduledAt: string | null;
   note: string | null;
@@ -156,8 +158,9 @@ export default function AdminOrderDetailPage() {
           <dl className="mt-4 grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2">
             <div>
               <dt className="text-xs text-gray-500">ลูกค้า</dt>
-              <dd className="mt-0.5 font-medium text-gray-900">
-                {order.customerName || order.customer?.name || "—"}
+              <dd className="mt-0.5 flex flex-wrap items-center gap-1.5 font-medium text-gray-900">
+                <span>{order.customerName || order.customer?.name || "—"}</span>
+                <CustomerTypeBadge isNewCustomer={order.isNewCustomer} />
               </dd>
               {(order.customerPhone || order.customer?.phone) && (
                 <div className="mt-1">

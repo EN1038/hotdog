@@ -137,12 +137,28 @@ export function PlatformBrandsHome() {
 
   async function createBrand(e: React.FormEvent) {
     e.preventDefault();
+    const code = form.code.trim().toLowerCase();
+    if (!/^[a-z0-9-]{2,}$/.test(code)) {
+      toast.error(
+        "รหัสแบรนด์ไม่ถูกต้อง",
+        "ใช้ได้เฉพาะ a-z, 0-9 และ - เท่านั้น (ห้ามภาษาไทยหรือช่องว่าง) เช่น malakhunmae",
+      );
+      return;
+    }
+    if (form.adminUsername.trim().length < 3) {
+      toast.error("ไอดีผู้ดูแลไม่ถูกต้อง", "ต้องมีอย่างน้อย 3 ตัวอักษร");
+      return;
+    }
+    if (form.adminPassword.length < 6) {
+      toast.error("รหัสผ่านไม่ถูกต้อง", "ต้องมีอย่างน้อย 6 ตัวอักษร");
+      return;
+    }
     setCreating(true);
     const res = await fetch("/api/admin/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        code: form.code.trim().toLowerCase(),
+        code,
         name: form.name.trim(),
         color: form.color,
         logoUrl: form.logoUrl.trim() || null,
@@ -309,10 +325,15 @@ export function PlatformBrandsHome() {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, code: e.target.value }))
                 }
-                placeholder="skillsale"
+                placeholder="เช่น malakhunmae"
+                pattern="[a-zA-Z0-9-]{2,}"
+                title="ใช้ได้เฉพาะ a-z, 0-9 และ - เท่านั้น"
                 required
                 autoFocus
               />
+              <p className="mt-1 text-xs text-slate-500">
+                ใช้ในลิงก์ร้าน — ได้เฉพาะ a-z, 0-9 และ - (ห้ามภาษาไทย)
+              </p>
             </div>
             <div>
               <label className={adminLabelClass}>ชื่อแบรนด์</label>
@@ -322,8 +343,12 @@ export function PlatformBrandsHome() {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, name: e.target.value }))
                 }
+                placeholder="เช่น หมาล่าคุณแม่"
                 required
               />
+              <p className="mt-1 text-xs text-slate-500">
+                ชื่อที่แสดงให้ลูกค้า — ใช้ภาษาไทยได้
+              </p>
             </div>
             <div className="sm:col-span-2">
               <label className={adminLabelClass}>สีเริ่มต้น</label>

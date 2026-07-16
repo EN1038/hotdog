@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { ZodError } from "zod";
 import { ForbiddenError } from "@/lib/admin-access";
 
 export function jsonOk<T>(data: T, status = 200) {
@@ -8,6 +9,31 @@ export function jsonOk<T>(data: T, status = 200) {
 
 export function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
+}
+
+const ZOD_FIELD_LABELS: Record<string, string> = {
+  code: "รหัสแบรนด์",
+  name: "ชื่อแบรนด์",
+  adminUsername: "ไอดีผู้ดูแล",
+  adminPassword: "รหัสผ่านผู้ดูแล",
+  username: "ไอดีเข้าใช้",
+  password: "รหัสผ่าน",
+  phone: "เบอร์โทร",
+  branchCode: "รหัสสาขา",
+  color: "สี",
+};
+
+function formatZodError(error: ZodError): string {
+  const parts = error.issues.slice(0, 3).map((issue) => {
+    const key = issue.path.map(String).join(".");
+    const label = (key && ZOD_FIELD_LABELS[key]) || key;
+    const detail = issue.message?.trim() || "ไม่ถูกต้อง";
+    return label ? `${label}: ${detail}` : detail;
+  });
+  if (parts.length === 0) {
+    return "ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง";
+  }
+  return parts.join(" · ");
 }
 
 export function handleApiError(error: unknown) {
@@ -35,13 +61,8 @@ export function handleApiError(error: unknown) {
     return jsonError("ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", 400);
   }
 
-  if (
-    error &&
-    typeof error === "object" &&
-    "name" in error &&
-    error.name === "ZodError"
-  ) {
-    return jsonError("ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", 400);
+  if (error instanceof ZodError) {
+    return jsonError(formatZodError(error), 400);
   }
 
   if (error instanceof Error) {

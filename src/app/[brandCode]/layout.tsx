@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 import { OrderBrandingShell } from "@/components/customer/OrderBrandingShell";
+import { brandColorFromApi } from "@/components/customer/SiteBrandingProvider";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
 
 type Params = { params: Promise<{ brandCode: string }> };
 
 async function loadBrand(brandCode: string) {
-  return prisma.brand.findUnique({ where: { code: brandCode } });
+  try {
+    return await prisma.brand.findUnique({ where: { code: brandCode } });
+  } catch (error) {
+    console.error(`[BrandLayout] Failed to load brand ${brandCode}:`, error);
+    return null;
+  }
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
@@ -20,11 +26,29 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-/** Match /order layout — no async DB work here (avoids production RSC 500). */
-export default function BrandLayout({
+export default async function BrandLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
+  params: Promise<{ brandCode: string }>;
 }) {
-  return <OrderBrandingShell>{children}</OrderBrandingShell>;
+  const { brandCode } = await params;
+  const brand = await loadBrand(brandCode);
+  
+  const brandOverride = brand
+    ? {
+        siteName: localizedName(brand.name, brand.nameTh, brand.nameEn),
+        siteTitle: brand.siteTitle || brand.name,
+        siteDescription: brand.siteDescription,
+        logoUrl: brand.logoUrl,
+        primaryColor: brandColorFromApi(brand.color),
+      }
+    : null;
+
+  return (
+    <OrderBrandingShell initialBrandOverride={brandOverride}>
+      {children}
+    </OrderBrandingShell>
+  );
 }

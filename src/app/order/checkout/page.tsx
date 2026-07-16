@@ -7,7 +7,7 @@ import type { FulfillmentType, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS, formatPrice } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
-import { getBranchServiceStatus } from "@/lib/branch-hours";
+import { getBranchServiceStatus, isWithinWeeklyScheduleWithOvernight } from "@/lib/branch-hours";
 import { localizedName } from "@/lib/localized";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { LoadingState } from "@/components/LoadingState";
@@ -338,8 +338,9 @@ export default function CheckoutPage() {
       setError("กรุณาเลือกพื้นที่จัดส่งและกรอกที่อยู่");
       return;
     }
+    let service;
     if (branch) {
-      const service = getBranchServiceStatus(branch, fulfillment);
+      service = getBranchServiceStatus(branch, fulfillment);
       if (!service.acceptingOrders) {
         setError(service.reason);
         return;
@@ -358,11 +359,7 @@ export default function CheckoutPage() {
       setError("กรุณากรอกเวลารับสินค้าแบบ 24 ชั่วโมง เช่น 18:30");
       return;
     }
-    if (branch && !getBranchServiceStatus(branch, fulfillment).openNow) {
-      if (!parsedScheduledTime) {
-        setError("กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้");
-        return;
-      }
+    if (parsedScheduledTime) {
       const scheduledAtPreview = toBangkokScheduledAt(
         parsedScheduledTime.hours,
         parsedScheduledTime.minutes,
@@ -372,6 +369,13 @@ export default function CheckoutPage() {
         setError("เวลานัดรับ/ส่งต้องเป็นเวลาหลังจากนี้ในวันนี้");
         return;
       }
+      if (service && !isWithinWeeklyScheduleWithOvernight(service.schedule, scheduledDate)) {
+        setError("เวลารับสินค้าที่คุณระบุอยู่นอกเวลาทำการของร้าน กรุณาระบุเวลาใหม่");
+        return;
+      }
+    } else if (branch && service && !service.openNow) {
+      setError("กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้");
+      return;
     }
     setSubmitting(true);
     try {

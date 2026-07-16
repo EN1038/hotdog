@@ -710,7 +710,7 @@ export default function StorePage() {
                                   onClick={() =>
                                     router.push(`/order/store/${branch.id}/item/${item.id}`)
                                   }
-                                  className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
+                                  className="flex h-9 w-9 items-center justify-center rounded-full border border-site-primary text-site-primary bg-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
                                   aria-label={`เพิ่ม ${item.name}`}
                                 >
                                   {itemCartQuantity > 0 ? (

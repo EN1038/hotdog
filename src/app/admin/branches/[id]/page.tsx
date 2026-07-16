@@ -29,6 +29,7 @@ import { BranchOptionLibrary } from "@/components/admin/BranchOptionLibrary";
 import { BranchCategoryLibrary } from "@/components/admin/BranchCategoryLibrary";
 import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
 import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
+import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import {
@@ -1210,6 +1211,8 @@ function BranchDetailContent() {
               </button>
             </div>
 
+            <BranchMenuSalesPanel branchId={id} variant="full" />
+
             <div className="grid gap-4 lg:grid-cols-2">
               <div className={panelClass}>
                 <h3 className="mb-3 font-semibold text-gray-900">
@@ -1484,6 +1487,12 @@ function BranchDetailContent() {
                   </button>
                 </div>
               </div>
+
+              <BranchMenuSalesPanel
+                branchId={id}
+                variant="compact"
+                onOpenOverview={() => setTab("overview")}
+              />
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input

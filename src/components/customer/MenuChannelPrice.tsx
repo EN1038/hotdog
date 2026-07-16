@@ -62,3 +62,20 @@ export function MenuPromoBadge({
     </span>
   );
 }
+
+export function MenuBestSellerTag({
+  show,
+  className = "",
+}: {
+  show?: boolean;
+  className?: string;
+}) {
+  if (!show) return null;
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800 ${className}`}
+    >
+      ขายดี
+    </span>
+  );
+}

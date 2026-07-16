@@ -20,6 +20,7 @@ import { useCustomer } from "@/components/customer/CustomerProvider";
 import { syncActiveBrandFromApi } from "@/components/customer/OrderBrandingShell";
 import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
 import {
+  MenuBestSellerTag,
   MenuPromoBadge,
   MenuPromoPrice,
   menuItemSellPrice,
@@ -578,8 +579,9 @@ export default function StorePage() {
                         {item.description}
                       </p>
                     )}
-                    <p className="mt-1 text-sm">
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
                       <MenuPromoPrice priced={priced} />
+                      <MenuBestSellerTag show={item.isBestSeller} />
                     </p>
                   </div>
                   <div className="shrink-0">

@@ -4,6 +4,10 @@ import {
   flattenMenuItemOptionGroups,
   menuItemOptionGroupInclude,
 } from "@/lib/menu-option-groups";
+import {
+  attachBestsellerFlag,
+  getBestsellerMenuItemIdsByBranch,
+} from "@/lib/menu-bestsellers";
 
 export async function GET(request: Request) {
   try {
@@ -33,10 +37,18 @@ export async function GET(request: Request) {
       },
       orderBy: { name: "asc" },
     });
+
+    const bestsellers = await getBestsellerMenuItemIdsByBranch(
+      branches.map((b) => b.id),
+    );
+
     return jsonOk(
       branches.map((b) => ({
         ...b,
-        menuItems: b.menuItems.map(flattenMenuItemOptionGroups),
+        menuItems: attachBestsellerFlag(
+          b.menuItems.map(flattenMenuItemOptionGroups),
+          bestsellers.get(b.id),
+        ),
       })),
     );
   } catch (error) {

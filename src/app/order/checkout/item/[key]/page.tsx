@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import {
+  MenuBestSellerTag,
   MenuPromoBadge,
   MenuPromoPrice,
   menuItemSellPrice,
@@ -236,7 +237,7 @@ export default function CheckoutItemEditPage() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[18px] font-bold text-gray-900">{item.name}</p>
-            <p className="mt-2 text-lg">
+            <p className="mt-2 flex flex-wrap items-center gap-1.5 text-lg">
               {priced ? (
                 <MenuPromoPrice priced={priced} />
               ) : (
@@ -244,6 +245,7 @@ export default function CheckoutItemEditPage() {
                   ฿{formatPrice(item.price)}
                 </span>
               )}
+              <MenuBestSellerTag show={item.isBestSeller} />
             </p>
           </div>
         </div>

@@ -37,6 +37,8 @@ export type MenuItemData = {
   category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;
   isOutOfStock: boolean;
+  /** Top sellers from completed orders at this branch */
+  isBestSeller?: boolean;
   optionGroups: MenuOptionGroupData[];
 };
 

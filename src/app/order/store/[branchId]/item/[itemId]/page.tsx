@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import {
+  MenuBestSellerTag,
   MenuPromoBadge,
   MenuPromoPrice,
   menuItemSellPrice,
@@ -235,8 +236,9 @@ export default function ItemDetailPage() {
             {item.description && (
               <p className="mt-1 text-sm text-gray-500">{item.description}</p>
             )}
-            <p className="mt-2 text-lg">
+            <p className="mt-2 flex flex-wrap items-center gap-1.5 text-lg">
               <MenuPromoPrice priced={priced} />
+              <MenuBestSellerTag show={item.isBestSeller} />
             </p>
           </div>
         </div>

@@ -324,7 +324,7 @@ export default function ItemDetailPage() {
         </p>
       )}
 
-      <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 items-center gap-4 border-t bg-white px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+      <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 items-center gap-4 bg-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
         <div className="flex items-center gap-3">
           <button
             type="button"

@@ -733,7 +733,7 @@ export default function StorePage() {
       </div>
 
       {cartCount > 0 && mainTab === "menu" && (
-        <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+        <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 bg-white p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
           <button
             type="button"
             onClick={() => router.push("/order/checkout")}

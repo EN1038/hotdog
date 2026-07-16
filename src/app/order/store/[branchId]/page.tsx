@@ -34,6 +34,7 @@ import {
   IconPlus,
   IconSkewerPlaceholder,
   IconClose,
+  IconMinus,
 } from "@/components/icons";
 import { pillTabButtonClass } from "@/components/customer/CustomerOrderHistoryList";
 

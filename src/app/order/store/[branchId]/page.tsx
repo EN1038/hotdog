@@ -234,29 +234,29 @@ function MainTabs({
   onChange: (tab: MainTab) => void;
 }) {
   return (
-    <div className="flex border-b border-gray-200 bg-white pt-3">
+    <div className="flex bg-white pt-2">
       <button
         type="button"
         onClick={() => onChange("menu")}
-        className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
-          active === "menu" ? "text-site-primary" : "text-gray-400"
+        className={`relative flex-1 pb-3 text-center text-[15px] font-semibold transition-colors ${
+          active === "menu" ? "text-site-primary" : "text-gray-500 hover:text-gray-900"
         }`}
       >
         เมนูสินค้า
         {active === "menu" && (
-          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-site-primary" />
+          <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-site-primary" />
         )}
       </button>
       <button
         type="button"
         onClick={() => onChange("history")}
-        className={`relative flex-1 pb-3 text-center text-sm font-semibold transition-colors ${
-          active === "history" ? "text-site-primary" : "text-gray-400"
+        className={`relative flex-1 pb-3 text-center text-[15px] font-semibold transition-colors ${
+          active === "history" ? "text-site-primary" : "text-gray-500 hover:text-gray-900"
         }`}
       >
         ประวัติ
         {active === "history" && (
-          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-site-primary" />
+          <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-site-primary" />
         )}
       </button>
     </div>
@@ -619,7 +619,7 @@ export default function StorePage() {
         </div>
 
         <div className="w-full">
-          <div className="px-4 bg-white border-b border-gray-100 pt-2 pb-1">
+          <div className="bg-white border-b border-gray-200">
             <MainTabs active={mainTab} onChange={setMainTab} />
           </div>
 

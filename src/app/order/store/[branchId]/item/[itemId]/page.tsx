@@ -7,23 +7,17 @@ import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import {
-  MenuBestSellerTag,
-  MenuPromoBadge,
-  MenuPromoPrice,
   menuItemSellPrice,
   menuItemVisibleForFulfillment,
 } from "@/components/customer/MenuChannelPrice";
 import { LoadingState } from "@/components/LoadingState";
 import {
-  IconBack,
   IconCheck,
   IconLabel,
   IconMinus,
   IconNote,
-  IconPin,
   IconPlus,
   IconSkewerPlaceholder,
-  IconStore,
 } from "@/components/icons";
 
 type SelectedByGroup = Record<string, string[]>;
@@ -121,7 +115,6 @@ export default function ItemDetailPage() {
     setSelectedByGroup(initial);
   }, [itemId, item]);
 
-  const cartCount = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
   const priced = useMemo(
     () => (item ? menuItemSellPrice(item, fulfillment) : null),
     [item, fulfillment],
@@ -204,67 +197,44 @@ export default function ItemDetailPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f6] pb-44">
-      <header className="bg-white px-4 pb-4 pt-3">
+    <main className="min-h-screen bg-white pb-24">
+      <div className="relative w-full aspect-[4/3] bg-gray-100">
         <button
           type="button"
           onClick={() => router.back()}
-          className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
-          aria-label="กลับ"
+          className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md text-gray-800 hover:bg-gray-50"
+          aria-label="ปิด"
         >
-          <IconBack size={22} />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
         </button>
-
-        <div className="flex gap-3">
-          <div className="relative h-[84px] w-[84px] shrink-0 overflow-hidden rounded-2xl">
-            {item.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={item.imageUrl}
-                alt={item.name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
-                <IconSkewerPlaceholder size={48} />
-              </div>
-            )}
-            <MenuPromoBadge label={priced.label} />
+        
+        {item.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.imageUrl}
+            alt={item.name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+            <IconSkewerPlaceholder size={64} />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[18px] font-bold text-gray-900">{item.name}</p>
-            {item.description && (
-              <p className="mt-1 text-sm text-gray-500">{item.description}</p>
-            )}
-            <p className="mt-2 flex flex-wrap items-center gap-1.5 text-lg">
-              <MenuPromoPrice priced={priced} />
-              <MenuBestSellerTag show={item.isBestSeller} />
-            </p>
-          </div>
-        </div>
+        )}
+      </div>
 
-        <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-3 py-1">
-            <IconStore size={14} />
-            {branch.name}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-3 py-1">
-            {fulfillment === "DELIVERY" ? (
-              <>
-                <IconPin size={14} />
-                จัดส่ง
-              </>
-            ) : (
-              <>
-                <IconStore size={14} />
-                รับที่ร้าน
-              </>
-            )}
-          </span>
-        </div>
+      <header className="bg-white px-4 py-4">
+        <h1 className="text-[22px] font-bold text-gray-900">{item.name}</h1>
+        {item.description && (
+          <p className="mt-1 text-[15px] text-gray-500 leading-relaxed">{item.description}</p>
+        )}
       </header>
 
-      <section className="mx-4 mt-3 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+      <div className="h-2 w-full bg-[#f5f5f6]"></div>
+
+      <section className="bg-white">
         {item.optionGroups.length === 0 ? (
           <div className="px-4 py-4">
             <p className="text-sm text-gray-500">เมนูนี้ไม่มีตัวเลือกเพิ่มเติม</p>
@@ -328,7 +298,9 @@ export default function ItemDetailPage() {
         )}
       </section>
 
-      <section className="mx-4 mt-3 overflow-hidden rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+      <div className="h-2 w-full bg-[#f5f5f6]"></div>
+
+      <section className="bg-white p-4">
         <IconLabel icon={IconNote} className="mb-2 text-[15px] font-bold text-site-primary" iconClassName="text-site-primary">
           หมายเหตุ (ต่อไม้)
           <span className="ml-1 text-sm font-normal text-gray-400">(ไม่บังคับ)</span>
@@ -352,43 +324,37 @@ export default function ItemDetailPage() {
         </p>
       )}
 
-      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-900">จำนวน</p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-site-primary-soft text-site-primary"
-              aria-label="ลดจำนวน"
-            >
-              <IconMinus size={16} />
-            </button>
-            <span className="w-8 text-center text-base font-bold text-gray-900">
-              {qty}
-            </span>
-            <button
-              type="button"
-              onClick={() => setQty((q) => q + 1)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-white hover:opacity-90"
-              aria-label="เพิ่มจำนวน"
-            >
-              <IconPlus size={16} />
-            </button>
-          </div>
+      <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 items-center gap-4 border-t bg-white px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setQty((q) => Math.max(1, q - 1))}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
+            aria-label="ลดจำนวน"
+          >
+            <IconMinus size={18} />
+          </button>
+          <span className="w-5 text-center text-[17px] font-bold text-gray-900">
+            {qty}
+          </span>
+          <button
+            type="button"
+            onClick={() => setQty((q) => q + 1)}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
+            aria-label="เพิ่มจำนวน"
+          >
+            <IconPlus size={18} />
+          </button>
         </div>
 
         <button
           type="button"
           onClick={addToCart}
-          className="flex w-full items-center justify-between rounded-xl bg-site-primary px-4 py-3.5 font-semibold text-white hover:opacity-90"
+          className="flex flex-1 items-center justify-between rounded-xl bg-site-primary px-4 py-3 font-bold text-white hover:opacity-90"
         >
-          <span>เพิ่มเข้าตะกร้า</span>
-          <span>฿{formatPrice(lineTotal)}</span>
+          <span className="text-[17px]">ใส่ตะกร้า</span>
+          <span className="text-[17px]">฿{formatPrice(lineTotal)}</span>
         </button>
-        <p className="mt-2 text-center text-xs text-gray-400">
-          ตะกร้า {cartCount} ชิ้น
-        </p>
       </div>
     </main>
   );

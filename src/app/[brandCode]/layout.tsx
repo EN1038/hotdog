@@ -35,7 +35,7 @@ export default async function BrandLayout({
 }) {
   const { brandCode } = await params;
   const brand = await loadBrand(brandCode);
-  
+
   const brandOverride = brand
     ? {
         siteName: localizedName(brand.name, brand.nameTh, brand.nameEn),

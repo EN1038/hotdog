@@ -2,28 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import {
-  MenuBestSellerTag,
-  MenuPromoBadge,
-  MenuPromoPrice,
   menuItemSellPrice,
   menuItemVisibleForFulfillment,
 } from "@/components/customer/MenuChannelPrice";
 import { LoadingState } from "@/components/LoadingState";
 import {
-  IconBack,
   IconCheck,
   IconLabel,
   IconMinus,
   IconNote,
-  IconPin,
   IconPlus,
   IconSkewerPlaceholder,
-  IconStore,
 } from "@/components/icons";
 
 type SelectedByGroup = Record<string, string[]>;
@@ -67,7 +61,7 @@ function validateSelections(
   for (const group of optionGroups) {
     if (!group.required) continue;
     const selected = selectedByGroup[group.id] ?? [];
-    if (selected.length === 0) return `กรุณาเลือก "${group.name}"`;
+    if (selected.length === 0) return { error: `กรุณาเลือก "${group.name}"`, groupId: group.id };
   }
   return null;
 }
@@ -91,7 +85,11 @@ function computeOptions(
 export default function ItemDetailPage() {
   const { branchId, itemId } = useParams<{ branchId: string; itemId: string }>();
   const router = useRouter();
-  const { cart, cartBranchId, addLine, fulfillment } = useCustomer();
+  const searchParams = useSearchParams();
+  const editKey = searchParams.get("editKey");
+  const isNew = searchParams.get("new") === "1";
+  const returnTo = searchParams.get("returnTo");
+  const { cart, cartBranchId, addLine, replaceLine, fulfillment } = useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,6 +97,11 @@ export default function ItemDetailPage() {
   const [note, setNote] = useState("");
   const [selectedByGroup, setSelectedByGroup] = useState<SelectedByGroup>({});
   const [error, setError] = useState("");
+  const [errorGroupId, setErrorGroupId] = useState<string | null>(null);
+  const [existingKey, setExistingKey] = useState<string | null>(null);
+  
+  // Track if we've initialized from cart so we don't overwrite user edits if cart object changes reference
+  const [initializedFromCart, setInitializedFromCart] = useState(false);
 
   useEffect(() => {
     fetch("/api/customer/branches")
@@ -115,13 +118,43 @@ export default function ItemDetailPage() {
   }, [branch, itemId]);
 
   useEffect(() => {
-    if (!item) return;
-    const initial: SelectedByGroup = {};
-    for (const group of item.optionGroups) initial[group.id] = [];
-    setSelectedByGroup(initial);
-  }, [itemId, item]);
+    if (!item || initializedFromCart) return;
 
-  const cartCount = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
+    // Determine which existing line to edit (if any)
+    let existingLine = null;
+    if (editKey) {
+      existingLine = cart.find((l) => l.key === editKey);
+    } else if (!isNew) {
+      existingLine = cart.find((l) => l.branchMenuItemId === item.id);
+    }
+    
+    if (existingLine) {
+      setExistingKey(existingLine.key);
+      setQty(existingLine.quantity);
+      setNote(existingLine.note || "");
+      
+      const initial: SelectedByGroup = {};
+      for (const group of item.optionGroups) {
+        const groupOptionIds = group.options.map(o => o.id);
+        initial[group.id] = existingLine.optionIds.filter(id => groupOptionIds.includes(id));
+      }
+      setSelectedByGroup(initial);
+    } else {
+      setExistingKey(null);
+      setQty(1);
+      setNote("");
+      
+      const initial: SelectedByGroup = {};
+      for (const group of item.optionGroups) initial[group.id] = [];
+      setSelectedByGroup(initial);
+    }
+    
+    // Only mark as initialized if cart has loaded (CustomerProvider hydrates it)
+    // If cart is empty, we assume it's loaded if we've waited a bit, but typically CustomerProvider sets it on mount.
+    // We can just mark it initialized.
+    setInitializedFromCart(true);
+  }, [itemId, item, cart, initializedFromCart]);
+
   const priced = useMemo(
     () => (item ? menuItemSellPrice(item, fulfillment) : null),
     [item, fulfillment],
@@ -146,6 +179,13 @@ export default function ItemDetailPage() {
       } else if (current.length < maxSelect) {
         next = [...current, optionId];
       }
+      
+      // Clear error for this group if we select an option
+      if (next.length > 0 && errorGroupId === groupId) {
+        setErrorGroupId(null);
+        setError("");
+      }
+      
       return { ...prev, [groupId]: next };
     });
   }
@@ -165,13 +205,18 @@ export default function ItemDetailPage() {
       setError("เมนูนี้หมดชั่วคราว");
       return;
     }
-    const validationError = validateSelections(item.optionGroups, selectedByGroup);
-    if (validationError) {
-      setError(validationError);
+    const validation = validateSelections(item.optionGroups, selectedByGroup);
+    if (validation) {
+      setError(validation.error);
+      setErrorGroupId(validation.groupId);
+      // Give a tiny delay for React to render the error message before scrolling to center it accurately
+      setTimeout(() => {
+        document.getElementById(`option-group-${validation.groupId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
       return;
     }
     const opts = computeOptions(item, selectedByGroup);
-    addLine(branch.id, {
+    const newLine = {
       branchMenuItemId: item.id,
       name: item.name,
       unitPrice: itemBasePrice,
@@ -180,8 +225,18 @@ export default function ItemDetailPage() {
       optionNames: opts.optionNames,
       optionsPrice: opts.optionsPrice,
       note: note.trim() || undefined,
-    });
-    router.push(`/order/store/${branch.id}`);
+    };
+
+    if (existingKey) {
+      replaceLine(existingKey, newLine);
+    } else {
+      addLine(branch.id, newLine);
+    }
+    if (returnTo) {
+      router.push(returnTo);
+    } else {
+      router.push(`/order/store/${branch.id}`);
+    }
   }
 
   if (loading) {
@@ -204,67 +259,50 @@ export default function ItemDetailPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f6] pb-44">
-      <header className="bg-white px-4 pb-4 pt-3">
+    <main className="min-h-screen bg-white pb-24">
+      <div className="relative w-full aspect-[4/3] bg-gray-100">
         <button
           type="button"
-          onClick={() => router.back()}
-          className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-800 hover:bg-gray-100"
-          aria-label="กลับ"
+          onClick={() => {
+            if (returnTo) {
+              router.push(returnTo);
+            } else {
+              router.back();
+            }
+          }}
+          className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md text-gray-800 hover:bg-gray-50"
+          aria-label="ปิด"
         >
-          <IconBack size={22} />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
         </button>
-
-        <div className="flex gap-3">
-          <div className="relative h-[84px] w-[84px] shrink-0 overflow-hidden rounded-2xl">
-            {item.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={item.imageUrl}
-                alt={item.name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
-                <IconSkewerPlaceholder size={48} />
-              </div>
-            )}
-            <MenuPromoBadge label={priced.label} />
+        
+        {item.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.imageUrl}
+            alt={item.name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+            <IconSkewerPlaceholder size={64} />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[18px] font-bold text-gray-900">{item.name}</p>
-            {item.description && (
-              <p className="mt-1 text-sm text-gray-500">{item.description}</p>
-            )}
-            <p className="mt-2 flex flex-wrap items-center gap-1.5 text-lg">
-              <MenuPromoPrice priced={priced} />
-              <MenuBestSellerTag show={item.isBestSeller} />
-            </p>
-          </div>
-        </div>
+        )}
+      </div>
 
-        <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-3 py-1">
-            <IconStore size={14} />
-            {branch.name}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-3 py-1">
-            {fulfillment === "DELIVERY" ? (
-              <>
-                <IconPin size={14} />
-                จัดส่ง
-              </>
-            ) : (
-              <>
-                <IconStore size={14} />
-                รับที่ร้าน
-              </>
-            )}
-          </span>
-        </div>
+      <header className="bg-white px-4 py-4">
+        <h1 className="text-[22px] font-bold text-gray-900">{item.name}</h1>
+        {item.description && (
+          <p className="mt-1 text-[15px] text-gray-500 leading-relaxed">{item.description}</p>
+        )}
       </header>
 
-      <section className="mx-4 mt-3 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+      <div className="h-2 w-full bg-[#f5f5f6]"></div>
+
+      <section className="bg-white">
         {item.optionGroups.length === 0 ? (
           <div className="px-4 py-4">
             <p className="text-sm text-gray-500">เมนูนี้ไม่มีตัวเลือกเพิ่มเติม</p>
@@ -275,23 +313,38 @@ export default function ItemDetailPage() {
             const selected = selectedByGroup[group.id] ?? [];
             const selectedCount = selected.length;
             return (
-              <div key={group.id} className={gi > 0 ? "border-t border-gray-100" : ""}>
-                <div className="px-4 pb-1 pt-4">
-                  <p className="text-[15px] font-bold text-site-primary">
-                    {group.name}
-                    {group.required ? (
-                      <span className="ml-0.5 text-site-primary/70">*</span>
-                    ) : (
-                      <span className="text-sm font-normal text-gray-400"> (ไม่บังคับ)</span>
-                    )}
-                  </p>
-                  {!isSingle && group.maxSelect > 1 && (
-                    <p className="mt-0.5 text-xs text-gray-400">
-                      เลือกได้สูงสุด {group.maxSelect}
-                      {selectedCount > 0 && ` • เลือกแล้ว ${selectedCount}`}
+              <div id={`option-group-${group.id}`} key={group.id} className={`transition-colors duration-300 ${gi > 0 ? "border-t border-gray-100" : ""} ${errorGroupId === group.id ? "bg-red-50/30" : ""}`}>
+                <div className="flex items-start justify-between gap-4 px-4 pb-1 pt-4">
+                  <div>
+                    <p className={`text-[16px] font-bold ${errorGroupId === group.id ? "text-red-600" : "text-gray-900"}`}>
+                      {group.name}
                     </p>
-                  )}
+                    {!isSingle && group.maxSelect > 1 && (
+                      <p className={`mt-0.5 text-[13px] ${errorGroupId === group.id ? "text-red-500" : "text-gray-400"}`}>
+                        เลือกได้สูงสุด {group.maxSelect}
+                        {selectedCount > 0 && ` • เลือกแล้ว ${selectedCount}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="shrink-0 mt-0.5">
+                    {group.required ? (
+                      <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold ${errorGroupId === group.id ? "bg-red-100 text-red-700" : "bg-orange-100 text-site-primary"}`}>
+                        จำเป็น
+                      </span>
+                    ) : (
+                      <span className="inline-block rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">
+                        ไม่จำเป็น
+                      </span>
+                    )}
+                  </div>
                 </div>
+                
+                {errorGroupId === group.id && (
+                  <div className="mx-4 mt-1 mb-2 rounded-lg bg-red-100 px-3 py-2 text-[13px] font-medium text-red-600 flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    กรุณาเลือกตัวเลือกในหัวข้อนี้
+                  </div>
+                )}
                 <ul className="pb-2">
                   {group.options.map((opt) => {
                     const active = selected.includes(opt.id);
@@ -328,10 +381,12 @@ export default function ItemDetailPage() {
         )}
       </section>
 
-      <section className="mx-4 mt-3 overflow-hidden rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+      <div className="h-2 w-full bg-[#f5f5f6]"></div>
+
+      <section className="bg-white p-4">
         <IconLabel icon={IconNote} className="mb-2 text-[15px] font-bold text-site-primary" iconClassName="text-site-primary">
-          หมายเหตุ (ต่อไม้)
-          <span className="ml-1 text-sm font-normal text-gray-400">(ไม่บังคับ)</span>
+          หมายเหตุ
+          <span className="ml-1 text-[13px] font-normal text-gray-400">(ไม่จำเป็น)</span>
         </IconLabel>
         <textarea
           className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[15px] text-gray-900 placeholder:text-gray-500 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
@@ -352,43 +407,37 @@ export default function ItemDetailPage() {
         </p>
       )}
 
-      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-900">จำนวน</p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-site-primary-soft text-site-primary"
-              aria-label="ลดจำนวน"
-            >
-              <IconMinus size={16} />
-            </button>
-            <span className="w-8 text-center text-base font-bold text-gray-900">
-              {qty}
-            </span>
-            <button
-              type="button"
-              onClick={() => setQty((q) => q + 1)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-white hover:opacity-90"
-              aria-label="เพิ่มจำนวน"
-            >
-              <IconPlus size={16} />
-            </button>
-          </div>
+      <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 items-center gap-4 bg-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setQty((q) => Math.max(1, q - 1))}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
+            aria-label="ลดจำนวน"
+          >
+            <IconMinus size={18} />
+          </button>
+          <span className="w-5 text-center text-[17px] font-bold text-gray-900">
+            {qty}
+          </span>
+          <button
+            type="button"
+            onClick={() => setQty((q) => q + 1)}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
+            aria-label="เพิ่มจำนวน"
+          >
+            <IconPlus size={18} />
+          </button>
         </div>
 
         <button
           type="button"
           onClick={addToCart}
-          className="flex w-full items-center justify-between rounded-xl bg-site-primary px-4 py-3.5 font-semibold text-white hover:opacity-90"
+          className="flex flex-1 items-center justify-between rounded-xl bg-site-primary px-4 py-3 font-bold text-white hover:opacity-90"
         >
-          <span>เพิ่มเข้าตะกร้า</span>
-          <span>฿{formatPrice(lineTotal)}</span>
+          <span className="text-[17px]">{existingKey ? "อัปเดตตะกร้า" : "ใส่ตะกร้า"}</span>
+          <span className="text-[17px]">฿{formatPrice(lineTotal)}</span>
         </button>
-        <p className="mt-2 text-center text-xs text-gray-400">
-          ตะกร้า {cartCount} ชิ้น
-        </p>
       </div>
     </main>
   );

@@ -7,7 +7,7 @@ import { useCustomer } from "./CustomerProvider";
 import { LoadingState } from "@/components/LoadingState";
 import { localizedName } from "@/lib/localized";
 import { notifyActiveBrandUpdated } from "@/components/customer/OrderBrandingShell";
-import { brandColorFromApi } from "@/components/customer/SiteBrandingProvider";
+import { brandColorFromApi } from "@/lib/color";
 import { saveActiveBrand } from "@/lib/customer-brand-session";
 
 type CustomerEntryGateProps = {

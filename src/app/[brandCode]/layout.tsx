@@ -8,7 +8,12 @@ import { localizedName } from "@/lib/localized";
 type Params = { params: Promise<{ brandCode: string }> };
 
 async function loadBrand(brandCode: string) {
-  return prisma.brand.findUnique({ where: { code: brandCode } });
+  try {
+    return await prisma.brand.findUnique({ where: { code: brandCode } });
+  } catch (error) {
+    console.error(`[BrandLayout] Failed to load brand ${brandCode}:`, error);
+    return null;
+  }
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {

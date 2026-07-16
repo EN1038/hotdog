@@ -805,7 +805,7 @@ export default function StorePage() {
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-[15px] font-bold text-gray-900">
-                          ฿{formatPrice(line.unitPrice + line.optionsPrice)}
+                          ฿{formatPrice((line.unitPrice + line.optionsPrice) * line.quantity)}
                         </p>
                       </div>
                     </div>

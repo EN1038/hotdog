@@ -665,7 +665,7 @@ export default function StorePage() {
                     <div className="space-y-3">
                       {group.items.map((item) => {
                         const priced = menuItemSellPrice(item, fulfillment);
-                        const cartItems = cart.filter((l) => l.branchMenuItemId === item.id && l.branchId === branch.id);
+                        const cartItems = cartForThisBranch.filter((l) => l.branchMenuItemId === item.id);
                         const itemCartQuantity = cartItems.reduce((s, l) => s + l.quantity, 0);
                         
                         const handleItemClick = (e: React.MouseEvent) => {
@@ -791,8 +791,8 @@ export default function StorePage() {
             </div>
             
             <div className="max-h-[60vh] overflow-y-auto px-4 py-4">
-              {cart
-                .filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id && l.branchId === branch.id)
+              {cartForThisBranch
+                .filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id)
                 .map((line) => (
                   <div key={line.key} className="mb-4 flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
                     <div className="flex justify-between gap-4">
@@ -824,7 +824,7 @@ export default function StorePage() {
                           onClick={() => {
                             if (line.quantity <= 1) {
                               removeLine(line.key);
-                              if (cart.filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id && l.branchId === branch.id).length <= 1) {
+                              if (cartForThisBranch.filter((l) => l.branchMenuItemId === selectedItemForBottomSheet.id).length <= 1) {
                                 setSelectedItemForBottomSheet(null);
                               }
                             } else {

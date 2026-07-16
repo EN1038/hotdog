@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { FulfillmentType } from "@prisma/client";
@@ -273,12 +273,15 @@ export default function StorePage() {
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
   const [isScrolled, setIsScrolled] = useState(false);
+  
+  const isManualScrolling = useRef(false);
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 150);
       
-      if (mainTab === "menu") {
+      if (mainTab === "menu" && !isManualScrolling.current) {
         const headings = Array.from(document.querySelectorAll("[data-category-heading]"));
         const stickyOffset = 130;
         let currentCat = "";
@@ -412,11 +415,18 @@ export default function StorePage() {
 
   const scrollToCategory = (catName: string) => {
     setActiveCategory(catName);
+    isManualScrolling.current = true;
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+
     const heading = document.querySelector(`[data-category-heading="${catName}"]`);
     if (heading) {
       const y = heading.getBoundingClientRect().top + window.scrollY - 120;
       window.scrollTo({ top: y, behavior: 'smooth' });
     }
+
+    scrollTimeout.current = setTimeout(() => {
+      isManualScrolling.current = false;
+    }, 800);
   };
 
   const cartForThisBranch = cartBranchId === branchId ? cart : [];

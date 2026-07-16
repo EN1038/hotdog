@@ -270,17 +270,46 @@ export default function StorePage() {
 
   const [branch, setBranch] = useState<BranchData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<string>("ทั้งหมด");
+  const [activeCategory, setActiveCategory] = useState<string>("");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 150);
+      
+      if (mainTab === "menu") {
+        const headings = Array.from(document.querySelectorAll("[data-category-heading]"));
+        const stickyOffset = 130;
+        let currentCat = "";
+        
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= stickyOffset + 50) {
+            currentCat = heading.getAttribute("data-category-heading") || "";
+          }
+        }
+        
+        if (currentCat) {
+          setActiveCategory((prev) => {
+             if (prev !== currentCat) {
+               const row = document.getElementById("filter-scroll-row");
+               const btn = document.getElementById(`filter-btn-${currentCat}`);
+               if (row && btn) {
+                 const rowRect = row.getBoundingClientRect();
+                 const btnRect = btn.getBoundingClientRect();
+                 if (btnRect.left < rowRect.left || btnRect.right > rowRect.right) {
+                   btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                 }
+               }
+             }
+             return currentCat;
+          });
+        }
+      }
     };
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [mainTab]);
 
   const handleShare = async () => {
     const url = window.location.href;
@@ -337,31 +366,58 @@ export default function StorePage() {
     }
   }, [deliveryAvailable, fulfillment, setFulfillment]);
 
-  const categories = useMemo(() => {
+  const groupedMenus = useMemo(() => {
     if (!branch) return [];
     const visible = branch.menuItems.filter((i) =>
       menuItemVisibleForFulfillment(i, fulfillment),
     );
-    const byName = new Map<string, number>();
-    for (const item of visible) {
-      if (item.category?.name) {
-        byName.set(item.category.name, item.category.sortOrder ?? 0);
-      }
+
+    const bestSellers = visible.filter((i) => i.isBestSeller);
+    const groups: { name: string; items: typeof visible }[] = [];
+
+    if (bestSellers.length > 0) {
+      groups.push({ name: "เมนูแนะนำ", items: bestSellers });
     }
-    const sorted = [...byName.entries()]
-      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0], "th"))
-      .map(([name]) => name);
-    return ["ทั้งหมด", ...sorted];
+
+    const byName = new Map<string, typeof visible>();
+    const orderMap = new Map<string, number>();
+
+    for (const item of visible) {
+      const catName = item.category?.name || "อื่นๆ";
+      if (!byName.has(catName)) {
+        byName.set(catName, []);
+        orderMap.set(catName, item.category?.sortOrder ?? 999);
+      }
+      byName.get(catName)!.push(item);
+    }
+
+    const sortedCats = [...byName.keys()].sort(
+      (a, b) => orderMap.get(a)! - orderMap.get(b)! || a.localeCompare(b, "th"),
+    );
+
+    for (const cat of sortedCats) {
+      groups.push({ name: cat, items: byName.get(cat)! });
+    }
+
+    return groups;
   }, [branch, fulfillment]);
 
-  const items = useMemo(() => {
-    if (!branch) return [];
-    const visible = branch.menuItems.filter((i) =>
-      menuItemVisibleForFulfillment(i, fulfillment),
-    );
-    if (category === "ทั้งหมด") return visible;
-    return visible.filter((i) => i.category?.name === category);
-  }, [branch, category, fulfillment]);
+  const categories = useMemo(() => groupedMenus.map(g => g.name), [groupedMenus]);
+
+  useEffect(() => {
+    if (categories.length > 0 && !activeCategory) {
+      setActiveCategory(categories[0]);
+    }
+  }, [categories, activeCategory]);
+
+  const scrollToCategory = (catName: string) => {
+    setActiveCategory(catName);
+    const heading = document.querySelector(`[data-category-heading="${catName}"]`);
+    if (heading) {
+      const y = heading.getBoundingClientRect().top + window.scrollY - 120;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+  };
 
   const cartForThisBranch = cartBranchId === branchId ? cart : [];
   const cartCount = cartForThisBranch.reduce((s, l) => s + l.quantity, 0);
@@ -566,18 +622,19 @@ export default function StorePage() {
                     isScrolled ? "py-2" : "py-3"
                   }`}
                 >
-                  <div className="filter-scroll-row flex gap-3 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  <div id="filter-scroll-row" className="filter-scroll-row flex gap-3 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     {categories.map((c) => (
                       <button
                         key={c}
+                        id={`filter-btn-${c}`}
                         type="button"
-                        onClick={() => setCategory(c)}
+                        onClick={() => scrollToCategory(c)}
                         className={`shrink-0 rounded-full px-4 py-1.5 text-[15px] font-medium transition-colors ${
-                          category === c 
+                          activeCategory === c 
                           ? "bg-site-primary text-white" 
                           : "bg-white text-gray-600 border-b-2 border-transparent hover:text-gray-900"
                         }`}
-                        style={category === c ? {} : { paddingLeft: 0, paddingRight: 0, paddingBottom: "4px", borderRadius: 0, marginRight: "8px", borderBottomColor: "transparent" }}
+                        style={activeCategory === c ? {} : { paddingLeft: 0, paddingRight: 0, paddingBottom: "4px", borderRadius: 0, marginRight: "8px", borderBottomColor: "transparent" }}
                       >
                         {c}
                       </button>
@@ -586,68 +643,75 @@ export default function StorePage() {
                 </div>
               )}
 
-              <div className="space-y-3 px-4 pb-4 pt-4 bg-[#f5f5f6]">
-              {items.map((item) => {
-                const priced = menuItemSellPrice(item, fulfillment);
-                return (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
-                >
-                  <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
-                        <IconSkewerPlaceholder size={40} />
-                      </div>
-                    )}
-                    <MenuPromoBadge label={priced.label} />
+              <div className="px-4 pb-4 bg-[#f5f5f6]">
+                {groupedMenus.map((group) => (
+                  <div key={group.name} className="pt-6 first:pt-4" data-category-heading={group.name}>
+                    <h2 className="mb-3 text-[17px] font-bold text-gray-900">{group.name}</h2>
+                    <div className="space-y-3">
+                      {group.items.map((item) => {
+                        const priced = menuItemSellPrice(item, fulfillment);
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
+                          >
+                            <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
+                              {item.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                                  <IconSkewerPlaceholder size={40} />
+                                </div>
+                              )}
+                              <MenuPromoBadge label={priced.label} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[15px] font-bold text-gray-900">
+                                {item.name}
+                              </p>
+                              {item.description && (
+                                <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-400">
+                                  {item.description}
+                                </p>
+                              )}
+                              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
+                                <MenuPromoPrice priced={priced} />
+                                <MenuBestSellerTag show={item.isBestSeller} />
+                              </p>
+                            </div>
+                            <div className="shrink-0">
+                              {item.isOutOfStock ? (
+                                <span className="text-xs text-gray-400">หมด</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    router.push(`/order/store/${branch.id}/item/${item.id}`)
+                                  }
+                                  className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-xl font-light text-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
+                                  aria-label={`เพิ่ม ${item.name}`}
+                                >
+                                  <IconPlus size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-bold text-gray-900">
-                      {item.name}
-                    </p>
-                    {item.description && (
-                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-400">
-                        {item.description}
-                      </p>
-                    )}
-                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
-                      <MenuPromoPrice priced={priced} />
-                      <MenuBestSellerTag show={item.isBestSeller} />
-                    </p>
-                  </div>
-                  <div className="shrink-0">
-                    {item.isOutOfStock ? (
-                      <span className="text-xs text-gray-400">หมด</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          router.push(`/order/store/${branch.id}/item/${item.id}`)
-                        }
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-xl font-light text-white shadow-sm transition-transform active:scale-95 hover:opacity-90"
-                        aria-label={`เพิ่ม ${item.name}`}
-                      >
-                        <IconPlus size={16} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                );
-              })}
-              {items.length === 0 && (
-                <p className="py-8 text-center text-sm text-gray-400">
-                  ไม่มีเมนูในหมวดนี้
-                </p>
-              )}
-            </div>
+                ))}
+                {groupedMenus.length === 0 && (
+                  <p className="py-8 text-center text-sm text-gray-400">
+                    ไม่มีเมนูในสาขานี้
+                  </p>
+                )}
+              </div>
           </>
         ) : (
           <StoreHistoryTab branchId={branch.id} />

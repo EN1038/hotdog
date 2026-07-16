@@ -61,7 +61,7 @@ function validateSelections(
   for (const group of optionGroups) {
     if (!group.required) continue;
     const selected = selectedByGroup[group.id] ?? [];
-    if (selected.length === 0) return `กรุณาเลือก "${group.name}"`;
+    if (selected.length === 0) return { error: `กรุณาเลือก "${group.name}"`, groupId: group.id };
   }
   return null;
 }
@@ -93,6 +93,7 @@ export default function ItemDetailPage() {
   const [note, setNote] = useState("");
   const [selectedByGroup, setSelectedByGroup] = useState<SelectedByGroup>({});
   const [error, setError] = useState("");
+  const [errorGroupId, setErrorGroupId] = useState<string | null>(null);
   const [existingKey, setExistingKey] = useState<string | null>(null);
   
   // Track if we've initialized from cart so we don't overwrite user edits if cart object changes reference
@@ -169,6 +170,13 @@ export default function ItemDetailPage() {
       } else if (current.length < maxSelect) {
         next = [...current, optionId];
       }
+      
+      // Clear error for this group if we select an option
+      if (next.length > 0 && errorGroupId === groupId) {
+        setErrorGroupId(null);
+        setError("");
+      }
+      
       return { ...prev, [groupId]: next };
     });
   }
@@ -188,9 +196,14 @@ export default function ItemDetailPage() {
       setError("เมนูนี้หมดชั่วคราว");
       return;
     }
-    const validationError = validateSelections(item.optionGroups, selectedByGroup);
-    if (validationError) {
-      setError(validationError);
+    const validation = validateSelections(item.optionGroups, selectedByGroup);
+    if (validation) {
+      setError(validation.error);
+      setErrorGroupId(validation.groupId);
+      // Give a tiny delay for React to render the error message before scrolling to center it accurately
+      setTimeout(() => {
+        document.getElementById(`option-group-${validation.groupId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
       return;
     }
     const opts = computeOptions(item, selectedByGroup);
@@ -281,23 +294,38 @@ export default function ItemDetailPage() {
             const selected = selectedByGroup[group.id] ?? [];
             const selectedCount = selected.length;
             return (
-              <div key={group.id} className={gi > 0 ? "border-t border-gray-100" : ""}>
-                <div className="px-4 pb-1 pt-4">
-                  <p className="text-[15px] font-bold text-site-primary">
-                    {group.name}
-                    {group.required ? (
-                      <span className="ml-0.5 text-site-primary/70">*</span>
-                    ) : (
-                      <span className="text-sm font-normal text-gray-400"> (ไม่บังคับ)</span>
-                    )}
-                  </p>
-                  {!isSingle && group.maxSelect > 1 && (
-                    <p className="mt-0.5 text-xs text-gray-400">
-                      เลือกได้สูงสุด {group.maxSelect}
-                      {selectedCount > 0 && ` • เลือกแล้ว ${selectedCount}`}
+              <div id={`option-group-${group.id}`} key={group.id} className={`transition-colors duration-300 ${gi > 0 ? "border-t border-gray-100" : ""} ${errorGroupId === group.id ? "bg-red-50/30" : ""}`}>
+                <div className="flex items-start justify-between gap-4 px-4 pb-1 pt-4">
+                  <div>
+                    <p className={`text-[16px] font-bold ${errorGroupId === group.id ? "text-red-600" : "text-gray-900"}`}>
+                      {group.name}
                     </p>
-                  )}
+                    {!isSingle && group.maxSelect > 1 && (
+                      <p className={`mt-0.5 text-[13px] ${errorGroupId === group.id ? "text-red-500" : "text-gray-400"}`}>
+                        เลือกได้สูงสุด {group.maxSelect}
+                        {selectedCount > 0 && ` • เลือกแล้ว ${selectedCount}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="shrink-0 mt-0.5">
+                    {group.required ? (
+                      <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold ${errorGroupId === group.id ? "bg-red-100 text-red-700" : "bg-orange-100 text-site-primary"}`}>
+                        บังคับ
+                      </span>
+                    ) : (
+                      <span className="inline-block rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">
+                        เลือกได้
+                      </span>
+                    )}
+                  </div>
                 </div>
+                
+                {errorGroupId === group.id && (
+                  <div className="mx-4 mt-1 mb-2 rounded-lg bg-red-100 px-3 py-2 text-[13px] font-medium text-red-600 flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    กรุณาเลือกตัวเลือกในหัวข้อนี้
+                  </div>
+                )}
                 <ul className="pb-2">
                   {group.options.map((opt) => {
                     const active = selected.includes(opt.id);

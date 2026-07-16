@@ -632,19 +632,18 @@ export default function StorePage() {
                     isScrolled ? "py-2" : "py-3"
                   }`}
                 >
-                  <div id="filter-scroll-row" className="filter-scroll-row flex gap-3 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  <div id="filter-scroll-row" className="filter-scroll-row flex gap-2 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     {categories.map((c) => (
                       <button
                         key={c}
                         id={`filter-btn-${c}`}
                         type="button"
                         onClick={() => scrollToCategory(c)}
-                        className={`shrink-0 rounded-full px-4 py-1.5 text-[15px] font-medium transition-colors ${
+                        className={`shrink-0 rounded-full px-4 py-1.5 text-[15px] font-medium transition-all duration-200 ${
                           activeCategory === c 
-                          ? "bg-site-primary text-white" 
-                          : "bg-white text-gray-600 border-b-2 border-transparent hover:text-gray-900"
+                          ? "bg-site-primary text-white shadow-sm" 
+                          : "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                         }`}
-                        style={activeCategory === c ? {} : { paddingLeft: 0, paddingRight: 0, paddingBottom: "4px", borderRadius: 0, marginRight: "8px", borderBottomColor: "transparent" }}
                       >
                         {c}
                       </button>

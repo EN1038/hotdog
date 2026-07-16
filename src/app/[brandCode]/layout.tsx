@@ -44,7 +44,7 @@ export default async function BrandLayout({
   return (
     <SiteBrandingProvider brandOverride={brandOverride}>
       <CustomerProvider>
-        <div className="mx-auto min-h-screen w-full max-w-md overflow-hidden bg-[#f5f5f6] shadow-xl">
+        <div className="mx-auto min-h-screen w-full max-w-md overflow-x-clip bg-[#f5f5f6] shadow-xl">
           {children}
         </div>
       </CustomerProvider>

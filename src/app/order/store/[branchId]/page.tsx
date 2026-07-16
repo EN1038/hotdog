@@ -189,24 +189,6 @@ function FulfillmentToggle({
     <div className="mx-4 mt-3 grid grid-cols-2 gap-2 rounded-2xl bg-white p-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
       <button
         type="button"
-        onClick={() => onChange("PICKUP")}
-        className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
-          value === "PICKUP"
-            ? "border-site-primary bg-site-primary-soft"
-            : "border-transparent bg-white"
-        }`}
-      >
-        <StorefrontIcon active={value === "PICKUP"} />
-        <span
-          className={`text-sm font-semibold ${
-            value === "PICKUP" ? "text-site-primary" : "text-gray-400"
-          }`}
-        >
-          รับที่ร้าน
-        </span>
-      </button>
-      <button
-        type="button"
         onClick={() => deliveryAvailable && onChange("DELIVERY")}
         disabled={!deliveryAvailable}
         className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors disabled:opacity-40 ${
@@ -222,6 +204,24 @@ function FulfillmentToggle({
           }`}
         >
           จัดส่ง
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("PICKUP")}
+        className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
+          value === "PICKUP"
+            ? "border-site-primary bg-site-primary-soft"
+            : "border-transparent bg-white"
+        }`}
+      >
+        <StorefrontIcon active={value === "PICKUP"} />
+        <span
+          className={`text-sm font-semibold ${
+            value === "PICKUP" ? "text-site-primary" : "text-gray-400"
+          }`}
+        >
+          รับที่ร้าน
         </span>
       </button>
     </div>

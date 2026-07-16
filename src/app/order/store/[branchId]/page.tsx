@@ -479,7 +479,7 @@ export default function StorePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f6] pb-28 relative">
+    <main className="min-h-screen bg-[#f5f5f6] pb-[92px] relative">
       {/* Sticky Header (appears on scroll) */}
       <div
         className={`fixed inset-x-0 top-0 z-50 bg-white shadow-sm transition-opacity duration-200 ${
@@ -656,7 +656,7 @@ export default function StorePage() {
                 </div>
               )}
 
-              <div className="px-4 pb-4 bg-[#f5f5f6]">
+              <div className="px-4 pb-2 bg-[#f5f5f6]">
                 {groupedMenus.map((group) => (
                   <div key={group.name} className="pt-6 first:pt-4" data-category-heading={group.name}>
                     <h2 className="mb-3 text-[17px] font-bold text-gray-900">{group.name}</h2>

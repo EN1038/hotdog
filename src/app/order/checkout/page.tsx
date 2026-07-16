@@ -771,8 +771,14 @@ export default function CheckoutPage() {
           </ExpandableFulfillmentRow>
         </div>
       </div>
+      <div className="mx-4 mt-6 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-gray-900">รายการอาหารที่สั่ง</h2>
+        <Link href={`/order/store/${cartBranchId}`} className="text-sm font-semibold text-site-primary">
+          สั่งอาหารเพิ่ม
+        </Link>
+      </div>
 
-      <div className="mx-4 mt-3 space-y-3">
+      <div className="mx-4 mt-3 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] px-3 py-1">
         {cart.map((l) => {
           const menuItem = branch?.menuItems.find(
             (m) => m.id === l.branchMenuItemId,
@@ -808,7 +814,7 @@ export default function CheckoutPage() {
                       `/order/checkout/item/${encodeURIComponent(l.key)}`,
                     );
                   }}
-                  className="flex w-full items-center gap-3 bg-white p-3 text-left active:bg-gray-50"
+                  className="flex w-full items-start gap-3 bg-white py-3 text-left active:bg-gray-50 border-b border-gray-100 last:border-0"
                   aria-label={`แก้ไข ${l.name}`}
                 >
                   {menuItem?.imageUrl ? (
@@ -816,39 +822,36 @@ export default function CheckoutPage() {
                     <img
                       src={menuItem.imageUrl}
                       alt={l.name}
-                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                      className="h-16 w-16 shrink-0 rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
                       <IconSkewerPlaceholder size={32} />
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-gray-900">{l.name}</p>
-                    <p className="mt-0.5 text-xs font-medium text-site-primary">
-                      ฿{formatPrice(l.unitPrice + (l.optionsPrice ?? 0))} / ไม้
-                    </p>
+                    <div className="flex justify-between items-start">
+                      <p className="font-bold text-gray-900 pr-2">{l.name}</p>
+                      <p className="font-semibold text-gray-700 shrink-0">
+                        ฿{formatPrice(lineTotal(l))}
+                      </p>
+                    </div>
                     {l.optionNames?.length ? (
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        {l.optionNames.join(" • ")}
+                      <p className="mt-1 text-[13px] text-gray-500">
+                        {l.optionNames.join(", ")}
                       </p>
                     ) : null}
                     {l.note ? (
-                      <p className="mt-0.5 text-[11px] text-gray-500">
+                      <p className="mt-0.5 text-[13px] text-gray-500">
                         หมายเหตุ: {l.note}
                       </p>
                     ) : null}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold text-gray-900">
-                      x{l.quantity}
-                    </p>
-                    <p className="mt-0.5 text-sm font-bold text-gray-800">
-                      ฿{formatPrice(lineTotal(l))}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-site-primary">
-                      แก้ไข
-                    </p>
+                    <div className="mt-3 flex items-end justify-between">
+                      <span className="text-[15px] font-semibold text-site-primary">แก้ไข</span>
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-site-primary-soft text-sm font-bold text-site-primary">
+                        {l.quantity}
+                      </div>
+                    </div>
                   </div>
                 </button>
               )}
@@ -906,20 +909,24 @@ export default function CheckoutPage() {
         <p className="mx-4 mt-2 text-center text-sm text-red-600">{error}</p>
       )}
 
-      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t border-gray-100 bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-sm text-gray-500">รวม</span>
-          <span className="text-lg font-bold text-site-primary">
-            ฿{formatPrice(grandTotal)}
-          </span>
-        </div>
+      <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(0,0,0,0.04)]">
         <button
           type="button"
           onClick={submitOrder}
           disabled={submitting}
-          className="w-full rounded-xl bg-site-primary py-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          className="flex w-full items-center justify-between rounded-xl bg-site-primary px-4 py-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
-          {submitting ? "กำลังสั่งซื้อ..." : "ยืนยันสั่งซื้อ"}
+          <div className="flex items-center gap-3">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[15px] font-bold text-site-primary">
+              {cart.reduce((sum, item) => sum + item.quantity, 0)}
+            </div>
+            <span className="text-lg">
+              {submitting ? "กำลังสั่งซื้อ..." : fulfillment === "PICKUP" ? "รับที่ร้าน" : "สั่งเลย"}
+            </span>
+          </div>
+          <span className="text-lg font-bold">
+            ฿{formatPrice(grandTotal)}
+          </span>
         </button>
       </div>
     </main>

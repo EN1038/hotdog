@@ -308,6 +308,16 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  useEffect(() => {
+    if (sessionChecked && cart.length === 0) {
+      if (cartBranchId) {
+        router.replace(`/order/store/${cartBranchId}`);
+      } else {
+        router.replace("/order");
+      }
+    }
+  }, [sessionChecked, cart.length, cartBranchId, router]);
+
   const itemsTotal = useMemo(
     () => cart.reduce((s, l) => s + lineTotal(l), 0),
     [cart],
@@ -446,16 +456,6 @@ export default function CheckoutPage() {
       </main>
     );
   }
-
-  useEffect(() => {
-    if (sessionChecked && cart.length === 0) {
-      if (cartBranchId) {
-        router.replace(`/order/store/${cartBranchId}`);
-      } else {
-        router.replace("/order");
-      }
-    }
-  }, [sessionChecked, cart.length, cartBranchId, router]);
 
   if (sessionChecked && cart.length === 0) {
     return (

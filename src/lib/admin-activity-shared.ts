@@ -56,6 +56,9 @@ export function summarizeBranchPatch(
   if (typeof body.isOpen === "boolean") {
     parts.push(body.isOpen ? "เปิดร้าน" : "ปิดร้าน");
   }
+  if (typeof body.isHidden === "boolean") {
+    parts.push(body.isHidden ? "ซ่อนสาขา" : "แสดงสาขา");
+  }
   if (typeof body.allowAdvanceOrder === "boolean") {
     parts.push(
       body.allowAdvanceOrder ? "เปิดรับสั่งล่วงหน้า" : "ปิดรับสั่งล่วงหน้า",

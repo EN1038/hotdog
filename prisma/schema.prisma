@@ -166,6 +166,8 @@ model Branch {
   ownerMessage       String?
   extraMessage       String?
   isOpen             Boolean            @default(true)
+  /// Hidden from customer storefront; still visible in admin
+  isHidden           Boolean            @default(false)
   /** @deprecated Prefer storefrontHours / deliveryHours */
   opensAt            String?
   /** @deprecated Prefer storefrontHours / deliveryHours */

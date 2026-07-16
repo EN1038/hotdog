@@ -112,6 +112,7 @@ type BranchDetail = {
   ownerMessage: string | null;
   extraMessage: string | null;
   isOpen: boolean;
+  isHidden: boolean;
   opensAt: string | null;
   closesAt: string | null;
   storefrontHours: unknown;
@@ -365,6 +366,7 @@ function BranchDetailContent() {
     ownerMessage: "",
     extraMessage: "",
     isOpen: true,
+    isHidden: false,
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
     storefrontHours: null as WeeklySchedule | null,
@@ -476,6 +478,7 @@ function BranchDetailContent() {
       ownerMessage: data.ownerMessage ?? "",
       extraMessage: data.extraMessage ?? "",
       isOpen: data.isOpen,
+      isHidden: data.isHidden ?? false,
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
       storefrontHours: ensureWeeklySchedule(
@@ -625,12 +628,18 @@ function BranchDetailContent() {
         title: string;
         message: string;
         confirmLabel: string;
+        cancelLabel?: string;
+        tone?: "danger" | "primary";
       };
       onSuccessLocal?: () => void;
     },
   ) {
     if (opts.confirm) {
-      const ok = await confirm(opts.confirm);
+      const ok = await confirm({
+        ...opts.confirm,
+        cancelLabel: opts.confirm.cancelLabel ?? "ยกเลิก",
+        tone: opts.confirm.tone ?? "danger",
+      });
       if (!ok) return;
     }
     const res = await fetch(`/api/admin/branches/${id}`, {
@@ -646,6 +655,26 @@ function BranchDetailContent() {
     toast.success(opts.successMessage);
     opts.onSuccessLocal?.();
     load();
+  }
+
+  async function deleteBranch() {
+    const ok = await confirm({
+      title: "ลบสาขานี้?",
+      message:
+        "ลบถาวร — เมนู พนักงาน พื้นที่ส่ง และข้อมูลสาขาจะหายไป หากมีออเดอร์อยู่แล้วจะลบไม่ได้ ให้ซ่อนสาขาแทน",
+      confirmLabel: "ลบสาขา",
+      cancelLabel: "ยกเลิก",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/admin/branches/${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error("ลบไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+      return;
+    }
+    toast.success("ลบสาขาแล้ว");
+    router.push("/admin");
   }
 
   async function addStaff(e: React.FormEvent) {
@@ -1053,6 +1082,11 @@ function BranchDetailContent() {
             >
               {branch.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
             </span>
+            {branch.isHidden && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                ซ่อนจากลูกค้า
+              </span>
+            )}
           </div>
           {branch.brand && branch.code && (
             <p className="mt-0.5 text-sm text-slate-500">
@@ -1203,6 +1237,11 @@ function BranchDetailContent() {
                         >
                           {branch.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
                         </span>
+                        {branch.isHidden && (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                            ซ่อนจากลูกค้า
+                          </span>
+                        )}
                         {branch.deliveryLocations.length === 0 && (
                           <button
                             type="button"
@@ -2961,6 +3000,95 @@ function BranchDetailContent() {
                 </button>
               </div>
             </form>
+
+            <div className="mt-8 space-y-3 rounded-2xl border border-red-200 bg-red-50/40 p-4 sm:p-5">
+              <div>
+                <p className="text-sm font-semibold text-red-900">
+                  โซนอันตราย
+                </p>
+                <p className="mt-0.5 text-xs text-red-800/80">
+                  ซ่อนสาขาออกจากหน้าร้านลูกค้า หรือลบสาขาถาวร — กดแล้วจะมีหน้าต่างยืนยันก่อนทุกครั้ง
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {settings.isHidden ? "สาขาถูกซ่อนอยู่" : "ซ่อนสาขาจากลูกค้า"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {settings.isHidden
+                      ? "ลูกค้าไม่เห็นสาขานี้ในหน้าร้าน — แอดมินยังจัดการได้ตามปกติ"
+                      : "ซ่อนออกจากรายการร้านของลูกค้า โดยยังเก็บข้อมูลไว้ในระบบ"}
+                  </p>
+                </div>
+                {settings.isHidden ? (
+                  <button
+                    type="button"
+                    className={`${btnPrimary} shrink-0`}
+                    onClick={() =>
+                      patchBranchSetting(
+                        { isHidden: false },
+                        {
+                          successMessage: "แสดงสาขาให้ลูกค้าแล้ว",
+                          errorTitle: "แสดงสาขาไม่สำเร็จ",
+                          confirm: {
+                            title: "แสดงสาขานี้ให้ลูกค้า?",
+                            message:
+                              "สาขาจะกลับไปโผล่ในหน้าร้านตามสถานะเปิด/ปิดร้านปกติ",
+                            confirmLabel: "แสดงสาขา",
+                          },
+                          onSuccessLocal: () =>
+                            setSettings((s) => ({ ...s, isHidden: false })),
+                        },
+                      )
+                    }
+                  >
+                    แสดงสาขา
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${btnDanger} shrink-0`}
+                    onClick={() =>
+                      patchBranchSetting(
+                        { isHidden: true },
+                        {
+                          successMessage: "ซ่อนสาขาแล้ว",
+                          errorTitle: "ซ่อนสาขาไม่สำเร็จ",
+                          confirm: {
+                            title: "ซ่อนสาขานี้?",
+                            message:
+                              "ลูกค้าจะไม่เห็นสาขานี้ในหน้าร้าน และสั่งออเดอร์ใหม่ไม่ได้ จนกว่าคุณจะกดแสดงอีกครั้ง",
+                            confirmLabel: "ซ่อนสาขา",
+                          },
+                          onSuccessLocal: () =>
+                            setSettings((s) => ({ ...s, isHidden: true })),
+                        },
+                      )
+                    }
+                  >
+                    ซ่อนสาขา
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900">ลบสาขา</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    ลบถาวร — ถ้ามีออเดอร์อยู่แล้วจะลบไม่ได้ ให้ใช้ซ่อนสาขาแทน
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={`${btnDanger} shrink-0`}
+                  onClick={() => void deleteBranch()}
+                >
+                  ลบสาขา
+                </button>
+              </div>
+            </div>
           </section>
         )}
       </div>

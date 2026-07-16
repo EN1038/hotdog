@@ -45,6 +45,7 @@ const updateSchema = z.object({
   ownerMessage: z.string().nullable().optional(),
   extraMessage: z.string().nullable().optional(),
   isOpen: z.boolean().optional(),
+  isHidden: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
@@ -261,6 +262,7 @@ export async function PATCH(request: Request, { params }: Params) {
           extraMessage: body.extraMessage?.trim() || null,
         }),
         ...(body.isOpen !== undefined && { isOpen: body.isOpen }),
+        ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
         ...(body.allowAdvanceOrder !== undefined && {
           allowAdvanceOrder: body.allowAdvanceOrder,
         }),
@@ -323,6 +325,13 @@ export async function DELETE(_request: Request, { params }: Params) {
       },
     });
     if (!existing) return jsonError("ไม่พบสาขา", 404);
+
+    const orderCount = await prisma.order.count({ where: { branchId: id } });
+    if (orderCount > 0) {
+      return jsonError(
+        "ลบสาขาไม่ได้ ยังมีออเดอร์ในระบบ — ใช้ “ซ่อนสาขา” แทนได้",
+      );
+    }
 
     await prisma.branch.delete({ where: { id } });
 

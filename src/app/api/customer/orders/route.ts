@@ -67,6 +67,9 @@ export async function POST(request: Request) {
       where: { id: body.branchId },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
+    if (branch.isHidden) {
+      return jsonError("สาขานี้ไม่พร้อมให้บริการในขณะนี้");
+    }
 
     const service = getBranchServiceStatus(branch, body.fulfillmentType);
     if (!service.acceptingOrders) {

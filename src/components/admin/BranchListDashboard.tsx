@@ -44,6 +44,8 @@ type Branch = {
   name: string;
   code: string | null;
   imageUrl: string | null;
+  isOpen?: boolean;
+  isHidden?: boolean;
   brand: DashboardBrand | null;
   _count?: {
     staff: number;
@@ -332,7 +334,9 @@ export function BranchListDashboard({
                       <img
                         src={branch.imageUrl}
                         alt=""
-                        className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                        className={`absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] ${
+                          branch.isHidden ? "opacity-70 grayscale-[0.35]" : ""
+                        }`}
                       />
                     ) : (
                       <div
@@ -346,6 +350,17 @@ export function BranchListDashboard({
                         <span className="text-xs">ยังไม่มีรูป</span>
                       </div>
                     )}
+                    <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+                      {branch.isHidden ? (
+                        <span className="rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+                          ซ่อน
+                        </span>
+                      ) : branch.isOpen === false ? (
+                        <span className="rounded-full bg-slate-800/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+                          ปิดร้าน
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex items-start justify-between gap-2 p-3 sm:p-4">
                     <div className="min-w-0">

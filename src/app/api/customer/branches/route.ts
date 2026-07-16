@@ -14,6 +14,7 @@ export async function GET(request: Request) {
 
     const branches = await prisma.branch.findMany({
       where: {
+        isHidden: false,
         ...(brandCode && { brand: { code: brandCode } }),
         ...(branchCode && { code: branchCode }),
         ...(query && { name: { contains: query, mode: "insensitive" } }),

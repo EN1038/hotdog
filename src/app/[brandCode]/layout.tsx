@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { CustomerProvider } from "@/components/customer/CustomerProvider";
-import { SiteBrandingProvider } from "@/components/customer/SiteBrandingProvider";
+import { OrderBrandingShell } from "@/components/customer/OrderBrandingShell";
 import { brandColorFromApi } from "@/lib/color";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
@@ -47,12 +46,8 @@ export default async function BrandLayout({
     : null;
 
   return (
-    <SiteBrandingProvider brandOverride={brandOverride}>
-      <CustomerProvider>
-        <div className="mx-auto min-h-screen w-full max-w-md overflow-x-clip bg-[#f5f5f6] shadow-xl">
-          {children}
-        </div>
-      </CustomerProvider>
-    </SiteBrandingProvider>
+    <OrderBrandingShell initialBrandOverride={brandOverride}>
+      {children}
+    </OrderBrandingShell>
   );
 }

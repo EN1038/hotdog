@@ -33,22 +33,25 @@ function toOverride(brand: ActiveBrandSession): BrandingOverride {
 /** โหลดธีมแบรนด์ที่จำไว้จากลิงก์แบรนด์/สาขา มาใช้ทั้งโซน /order */
 export function OrderBrandingShell({
   children,
+  initialBrandOverride = null,
 }: {
   children: React.ReactNode;
+  /** จาก server (เช่น /{brandCode}) — ใช้ก่อน sessionStorage */
+  initialBrandOverride?: BrandingOverride | null;
 }) {
-  // เริ่มด้วย null ทั้ง SSR และ client เพื่อไม่ mismatch hydrate
-  // แล้วค่อยอ่าน sessionStorage ใน useEffect
-  const [override, setOverride] = useState<BrandingOverride | null>(null);
+  const [override, setOverride] = useState<BrandingOverride | null>(
+    initialBrandOverride,
+  );
 
   useEffect(() => {
     function refresh() {
       const saved = loadActiveBrand();
-      setOverride(saved ? toOverride(saved) : null);
+      setOverride(saved ? toOverride(saved) : initialBrandOverride);
     }
     refresh();
     window.addEventListener(BRAND_UPDATED_EVENT, refresh);
     return () => window.removeEventListener(BRAND_UPDATED_EVENT, refresh);
-  }, []);
+  }, [initialBrandOverride]);
 
   return (
     <SiteBrandingProvider brandOverride={override}>

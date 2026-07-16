@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { OrderBrandingShell } from "@/components/customer/OrderBrandingShell";
-import { brandColorFromApi } from "@/lib/color";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
 
@@ -21,28 +20,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-export default async function BrandLayout({
+/** Match /order layout — no async DB work here (avoids production RSC 500). */
+export default function BrandLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ brandCode: string }>;
 }) {
-  const { brandCode } = await params;
-  const brand = await loadBrand(brandCode);
-  const brandOverride = brand
-    ? {
-        siteName: localizedName(brand.name, brand.nameTh, brand.nameEn),
-        siteTitle: brand.siteTitle || brand.name,
-        siteDescription: brand.siteDescription,
-        logoUrl: brand.logoUrl,
-        primaryColor: brandColorFromApi(brand.color),
-      }
-    : null;
-
-  return (
-    <OrderBrandingShell initialBrandOverride={brandOverride}>
-      {children}
-    </OrderBrandingShell>
-  );
+  return <OrderBrandingShell>{children}</OrderBrandingShell>;
 }

@@ -282,6 +282,30 @@ export default function StorePage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const handleShare = async () => {
+    const url = window.location.href;
+    const shareData = {
+      title: branch ? displayName : "ร้านอาหาร",
+      text: `สั่งอาหารจาก ${branch ? displayName : "ร้านเรา"} ได้ที่นี่!`,
+      url: url,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        // user cancelled or share failed, ignore
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        alert("คัดลอกลิงก์เรียบร้อยแล้ว สามารถนำไปแชร์ต่อได้เลยครับ");
+      } catch (err) {
+        console.error("Failed to copy:", err);
+      }
+    }
+  };
+
   useEffect(() => {
     fetch("/api/customer/branches")
       .then((res) => res.json())
@@ -418,7 +442,12 @@ export default function StorePage() {
           <BackIcon />
         </Link>
         <div className="flex gap-2">
-          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md" aria-label="Share">
+          <button 
+            type="button"
+            onClick={handleShare}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-900 shadow-md transition-transform active:scale-95" 
+            aria-label="Share"
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
           </button>
         </div>

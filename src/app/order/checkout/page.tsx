@@ -523,6 +523,35 @@ export default function CheckoutPage() {
           </p>
         )}
 
+        {fulfillment === "PICKUP" && branch && (
+          <div className="mt-3 flex items-start justify-between rounded-lg bg-gray-50 p-3">
+            <div className="flex-1 pr-3">
+              <p className="font-bold text-gray-900">
+                {branch.brand?.name ? `${localizedName(branch.brand.name, branch.brand.nameTh, branch.brand.nameEn)} - ` : ""}
+                {localizedName(branch.name, branch.nameTh, branch.nameEn)}
+              </p>
+              {branch.address && (
+                <p className="mt-1 text-xs text-gray-600 line-clamp-2">{branch.address}</p>
+              )}
+            </div>
+            {(branch.latitude && branch.longitude) || branch.address ? (
+              <a
+                href={
+                  branch.latitude && branch.longitude
+                    ? `https://maps.google.com/?q=${branch.latitude},${branch.longitude}`
+                    : `https://maps.google.com/?q=${encodeURIComponent(branch.address || "")}`
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="flex shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm active:bg-gray-50"
+              >
+                <IconPin size={18} className="text-site-primary" />
+                <span className="text-[10px] font-semibold text-gray-700">แผนที่</span>
+              </a>
+            ) : null}
+          </div>
+        )}
+
         <div className="mt-3 overflow-hidden rounded-xl border border-gray-100">
           {session?.name ? (
             <div

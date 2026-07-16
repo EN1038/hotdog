@@ -519,19 +519,6 @@ export default function CheckoutPage() {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setFulfillment("PICKUP")}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium ${
-              fulfillment === "PICKUP"
-                ? "border-site-primary bg-site-primary-soft text-site-primary"
-                : "border-gray-200 text-gray-600"
-            }`}
-          >
-            <IconStore size={18} />
-            รับที่ร้าน
-            {fulfillment === "PICKUP" && <IconCheck size={14} />}
-          </button>
-          <button
-            type="button"
             onClick={() => deliveryAvailable && setFulfillment("DELIVERY")}
             disabled={!deliveryAvailable}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -543,6 +530,19 @@ export default function CheckoutPage() {
             <IconDelivery size={18} />
             จัดส่ง
             {fulfillment === "DELIVERY" && <IconCheck size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFulfillment("PICKUP")}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium ${
+              fulfillment === "PICKUP"
+                ? "border-site-primary bg-site-primary-soft text-site-primary"
+                : "border-gray-200 text-gray-600"
+            }`}
+          >
+            <IconStore size={18} />
+            รับที่ร้าน
+            {fulfillment === "PICKUP" && <IconCheck size={14} />}
           </button>
         </div>
         {!deliveryAvailable && branch && !branchLoading && (

@@ -314,7 +314,7 @@ export default function ItemDetailPage() {
                       </span>
                     ) : (
                       <span className="inline-block rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">
-                        เลือกได้
+                        ไม่จำเป็น
                       </span>
                     )}
                   </div>
@@ -366,8 +366,8 @@ export default function ItemDetailPage() {
 
       <section className="bg-white p-4">
         <IconLabel icon={IconNote} className="mb-2 text-[15px] font-bold text-site-primary" iconClassName="text-site-primary">
-          หมายเหตุ (ต่อไม้)
-          <span className="ml-1 text-sm font-normal text-gray-400">(ไม่บังคับ)</span>
+          หมายเหตุ
+          <span className="ml-1 text-[13px] font-normal text-gray-400">(ไม่จำเป็น)</span>
         </IconLabel>
         <textarea
           className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[15px] text-gray-900 placeholder:text-gray-500 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"

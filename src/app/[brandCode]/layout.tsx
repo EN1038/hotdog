@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { OrderBrandingShell } from "@/components/customer/OrderBrandingShell";
-import { brandColorFromApi } from "@/components/customer/SiteBrandingProvider";
+import { brandColorFromApi } from "@/lib/color";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
 

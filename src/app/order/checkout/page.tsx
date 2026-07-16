@@ -484,91 +484,6 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <div className="mx-4 mt-3 space-y-3">
-        {cart.map((l) => {
-          const menuItem = branch?.menuItems.find(
-            (m) => m.id === l.branchMenuItemId,
-          );
-          return (
-            <SwipeToReveal
-              key={l.key}
-              open={openSwipeKey === l.key}
-              onOpen={() => setOpenSwipeKey(l.key)}
-              onClose={() =>
-                setOpenSwipeKey((k) => (k === l.key ? null : k))
-              }
-              action={
-                <button
-                  type="button"
-                  onClick={() => removeLine(l.key)}
-                  className="flex w-full items-center justify-center bg-red-500 text-sm font-semibold text-white"
-                  aria-label={`ลบ ${l.name}`}
-                >
-                  ลบ
-                </button>
-              }
-            >
-              {({ isOpen, close }) => (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isOpen) {
-                      close();
-                      return;
-                    }
-                    router.push(
-                      `/order/checkout/item/${encodeURIComponent(l.key)}`,
-                    );
-                  }}
-                  className="flex w-full items-center gap-3 bg-white p-3 text-left active:bg-gray-50"
-                  aria-label={`แก้ไข ${l.name}`}
-                >
-                  {menuItem?.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={menuItem.imageUrl}
-                      alt={l.name}
-                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
-                      <IconSkewerPlaceholder size={32} />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-gray-900">{l.name}</p>
-                    <p className="mt-0.5 text-xs font-medium text-site-primary">
-                      ฿{formatPrice(l.unitPrice + (l.optionsPrice ?? 0))} / ไม้
-                    </p>
-                    {l.optionNames?.length ? (
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        {l.optionNames.join(" • ")}
-                      </p>
-                    ) : null}
-                    {l.note ? (
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        หมายเหตุ: {l.note}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold text-gray-900">
-                      x{l.quantity}
-                    </p>
-                    <p className="mt-0.5 text-sm font-bold text-gray-800">
-                      ฿{formatPrice(lineTotal(l))}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-site-primary">
-                      แก้ไข
-                    </p>
-                  </div>
-                </button>
-              )}
-            </SwipeToReveal>
-          );
-        })}
-      </div>
-
       <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
         <p className="mb-2 text-sm font-semibold text-gray-800">
           ข้อมูลการรับสินค้า
@@ -799,6 +714,91 @@ export default function CheckoutPage() {
             />
           </ExpandableFulfillmentRow>
         </div>
+      </div>
+
+      <div className="mx-4 mt-3 space-y-3">
+        {cart.map((l) => {
+          const menuItem = branch?.menuItems.find(
+            (m) => m.id === l.branchMenuItemId,
+          );
+          return (
+            <SwipeToReveal
+              key={l.key}
+              open={openSwipeKey === l.key}
+              onOpen={() => setOpenSwipeKey(l.key)}
+              onClose={() =>
+                setOpenSwipeKey((k) => (k === l.key ? null : k))
+              }
+              action={
+                <button
+                  type="button"
+                  onClick={() => removeLine(l.key)}
+                  className="flex w-full items-center justify-center bg-red-500 text-sm font-semibold text-white"
+                  aria-label={`ลบ ${l.name}`}
+                >
+                  ลบ
+                </button>
+              }
+            >
+              {({ isOpen, close }) => (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isOpen) {
+                      close();
+                      return;
+                    }
+                    router.push(
+                      `/order/checkout/item/${encodeURIComponent(l.key)}`,
+                    );
+                  }}
+                  className="flex w-full items-center gap-3 bg-white p-3 text-left active:bg-gray-50"
+                  aria-label={`แก้ไข ${l.name}`}
+                >
+                  {menuItem?.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={menuItem.imageUrl}
+                      alt={l.name}
+                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft">
+                      <IconSkewerPlaceholder size={32} />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-gray-900">{l.name}</p>
+                    <p className="mt-0.5 text-xs font-medium text-site-primary">
+                      ฿{formatPrice(l.unitPrice + (l.optionsPrice ?? 0))} / ไม้
+                    </p>
+                    {l.optionNames?.length ? (
+                      <p className="mt-0.5 text-[11px] text-gray-500">
+                        {l.optionNames.join(" • ")}
+                      </p>
+                    ) : null}
+                    {l.note ? (
+                      <p className="mt-0.5 text-[11px] text-gray-500">
+                        หมายเหตุ: {l.note}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold text-gray-900">
+                      x{l.quantity}
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold text-gray-800">
+                      ฿{formatPrice(lineTotal(l))}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-site-primary">
+                      แก้ไข
+                    </p>
+                  </div>
+                </button>
+              )}
+            </SwipeToReveal>
+          );
+        })}
       </div>
 
       <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">

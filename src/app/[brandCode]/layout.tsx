@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { CustomerProvider } from "@/components/customer/CustomerProvider";
-import {
-  brandColorFromApi,
-  SiteBrandingProvider,
-} from "@/components/customer/SiteBrandingProvider";
+import { SiteBrandingProvider } from "@/components/customer/SiteBrandingProvider";
+import { brandColorFromApi } from "@/lib/color";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
 

@@ -38,3 +38,16 @@ export const BRAND_COLOR_PRESETS = [
   "#db2777",
   "#334155",
 ] as const;
+
+export function normalizePrimaryColor(
+  input: string | null | undefined,
+  fallback: string,
+): string {
+  return parseHexColor(input)?.hex ?? parseHexColor(fallback)?.hex ?? fallback;
+}
+
+export function brandColorFromApi(
+  color: string | null | undefined,
+): string {
+  return normalizePrimaryColor(color, DEFAULT_BRAND_COLOR);
+}

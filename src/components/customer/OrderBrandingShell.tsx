@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import {
-  brandColorFromApi,
   SiteBrandingProvider,
   type BrandingOverride,
 } from "@/components/customer/SiteBrandingProvider";
+import { brandColorFromApi } from "@/lib/color";
 import {
   loadActiveBrand,
   saveActiveBrand,

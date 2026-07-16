@@ -495,9 +495,28 @@ export default function StorePage() {
           >
             <BackIcon />
           </Link>
-          <p className="flex-1 truncate text-[17px] font-bold text-gray-900">
-            {displayName}
-          </p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[17px] font-bold text-gray-900">
+              {displayName}
+            </p>
+            {service && (
+              <p className="truncate text-[11px] text-gray-500">
+                <span
+                  className={
+                    service.openNow
+                      ? "font-semibold text-emerald-600"
+                      : "font-semibold text-red-500"
+                  }
+                >
+                  {service.openNow ? "เปิดอยู่" : "ปิดอยู่"}
+                </span>
+                {" · วันนี้ "}
+                <span className="tabular-nums">
+                  {formatTodayHoursSummary(service.schedule)}
+                </span>
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -554,6 +573,35 @@ export default function StorePage() {
             {categoryLine ? <span>{categoryLine}</span> : <span>฿9-฿35</span>}
           </div>
 
+          {service && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5">
+              {service.openNow ? (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[12px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  เปิดอยู่
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md bg-red-500 px-2 py-1 text-[12px] font-semibold text-white">
+                  ปิดอยู่
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-gray-900">
+                  วันนี้{" "}
+                  <span className="tabular-nums">
+                    {formatTodayHoursSummary(service.schedule)}
+                  </span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-gray-500">
+                  {fulfillment === "DELIVERY"
+                    ? "เวลาเปิดรับจัดส่ง"
+                    : "เวลาเปิดรับที่ร้าน"}
+                  {!service.openNow && service.acceptingOrders
+                    ? " · สั่งล่วงหน้าได้"
+                    : null}
+                </p>
+              </div>
+            </div>
+          )}
 
         </div>
 
@@ -565,6 +613,9 @@ export default function StorePage() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-site-primary">
                   {service.reason}
+                </p>
+                <p className="mt-0.5 text-xs font-medium text-site-primary/90">
+                  วันนี้ {formatTodayHoursSummary(service.schedule)}
                 </p>
                 <p className="mt-0.5 text-xs text-site-primary/80">
                   ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
@@ -578,6 +629,9 @@ export default function StorePage() {
               <LockIcon />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-red-600">{service.reason}</p>
+                <p className="mt-0.5 text-xs font-medium text-red-600/90">
+                  วันนี้ {formatTodayHoursSummary(service.schedule)}
+                </p>
                 <p className="mt-0.5 text-xs text-red-500/80">
                   ตอนนี้ยังสั่งซื้อไม่ได้ — ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
                 </p>

@@ -136,20 +136,17 @@ function SwipeToReveal({
   }
 
   return (
-    <div
-      className="relative overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm"
-      style={{ touchAction: "pan-y" }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
-    >
+    <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
       <div className="absolute inset-y-0 right-0 flex w-[84px] items-stretch">
         {action}
       </div>
       <div
         className={`will-change-transform ${dragging ? "" : "transition-transform duration-200"} bg-white`}
-        style={{ transform: `translateX(${translateX}px)` }}
+        style={{ transform: `translateX(${translateX}px)`, touchAction: "pan-y" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
       >
         {children({ isOpen: open, close: onClose })}
       </div>

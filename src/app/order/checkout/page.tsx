@@ -778,45 +778,45 @@ export default function CheckoutPage() {
         </Link>
       </div>
 
-      <div className="mx-4 mt-3 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] px-3 py-1">
+      <div className="mx-4 mt-3 space-y-3">
         {cart.map((l) => {
           const menuItem = branch?.menuItems.find(
             (m) => m.id === l.branchMenuItemId,
           );
           return (
-            <SwipeToReveal
-              key={l.key}
-              open={openSwipeKey === l.key}
-              onOpen={() => setOpenSwipeKey(l.key)}
-              onClose={() =>
-                setOpenSwipeKey((k) => (k === l.key ? null : k))
-              }
-              action={
-                <button
-                  type="button"
-                  onClick={() => removeLine(l.key)}
-                  className="flex w-full items-center justify-center bg-red-500 text-sm font-semibold text-white"
-                  aria-label={`ลบ ${l.name}`}
-                >
-                  ลบ
-                </button>
-              }
-            >
-              {({ isOpen, close }) => (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isOpen) {
-                      close();
-                      return;
-                    }
-                    router.push(
-                      `/order/checkout/item/${encodeURIComponent(l.key)}`,
-                    );
-                  }}
-                  className="flex w-full items-start gap-3 bg-white py-3 text-left active:bg-gray-50 border-b border-gray-100 last:border-0"
-                  aria-label={`แก้ไข ${l.name}`}
-                >
+            <div key={l.key} className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] border border-gray-100 overflow-hidden">
+              <SwipeToReveal
+                open={openSwipeKey === l.key}
+                onOpen={() => setOpenSwipeKey(l.key)}
+                onClose={() =>
+                  setOpenSwipeKey((k) => (k === l.key ? null : k))
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={() => removeLine(l.key)}
+                    className="flex w-full items-center justify-center bg-red-500 text-sm font-semibold text-white"
+                    aria-label={`ลบ ${l.name}`}
+                  >
+                    ลบ
+                  </button>
+                }
+              >
+                {({ isOpen, close }) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isOpen) {
+                        close();
+                        return;
+                      }
+                      router.push(
+                        `/order/checkout/item/${encodeURIComponent(l.key)}`,
+                      );
+                    }}
+                    className="flex w-full items-start gap-3 p-3 text-left active:bg-gray-50"
+                    aria-label={`แก้ไข ${l.name}`}
+                  >
                   {menuItem?.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -855,7 +855,8 @@ export default function CheckoutPage() {
                   </div>
                 </button>
               )}
-            </SwipeToReveal>
+              </SwipeToReveal>
+            </div>
           );
         })}
       </div>

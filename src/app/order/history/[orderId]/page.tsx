@@ -41,7 +41,7 @@ type OrderDetail = OrderData & {
   branch: OrderData["branch"] & { phone?: string | null };
   items: Array<
     OrderData["items"][number] & {
-      branchMenuItemId: string;
+      branchMenuItemId: string | null;
       branchMenuItem?: { imageUrl?: string | null } | null;
     }
   >;
@@ -185,6 +185,7 @@ export default function OrderDetailPage() {
     try {
       setFulfillment(order.fulfillmentType);
       for (const it of order.items) {
+        if (!it.branchMenuItemId) continue;
         addLine(order.branch.id, {
           branchMenuItemId: it.branchMenuItemId,
           name: it.itemName,

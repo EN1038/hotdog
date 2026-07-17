@@ -368,15 +368,16 @@ model Order {
 }
 
 model OrderItem {
-  id               String         @id @default(cuid())
+  id               String          @id @default(cuid())
   orderId          String
-  branchMenuItemId String
+  /// Nullable so admin can delete menu items; order history keeps itemName snapshot.
+  branchMenuItemId String?
   itemName         String
   quantity         Int
-  unitPrice        Decimal        @db.Decimal(10, 2)
+  unitPrice        Decimal         @db.Decimal(10, 2)
   optionsText      String?
-  optionsPrice     Decimal        @default(0) @db.Decimal(10, 2)
+  optionsPrice     Decimal         @default(0) @db.Decimal(10, 2)
   note             String?
-  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  branchMenuItem   BranchMenuItem @relation(fields: [branchMenuItemId], references: [id])
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  branchMenuItem   BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
 }

@@ -115,10 +115,12 @@ export async function GET(request: Request, { params }: Params) {
     const dayOrderIds = new Set<string>();
 
     for (const row of orderItems) {
+      if (!row.branchMenuItemId) continue;
+      const menuId = row.branchMenuItemId;
       const day = bangkokDateKey(row.order.createdAt);
       const lineRev =
         (Number(row.unitPrice) + Number(row.optionsPrice)) * row.quantity;
-      const prev = byMenu.get(row.branchMenuItemId) ?? {
+      const prev = byMenu.get(menuId) ?? {
         quantity: 0,
         revenue: 0,
         orderIds: new Set<string>(),
@@ -135,7 +137,7 @@ export async function GET(request: Request, { params }: Params) {
         prev.orderIds.add(row.orderId);
         dayOrderIds.add(row.orderId);
       }
-      byMenu.set(row.branchMenuItemId, prev);
+      byMenu.set(menuId, prev);
     }
 
     const ranked = [...byMenu.entries()]

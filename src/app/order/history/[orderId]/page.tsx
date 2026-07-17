@@ -12,6 +12,7 @@ import {
   canCustomerCancel,
   formatPrice,
   isActiveOrderStatus,
+  telHref,
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
@@ -76,11 +77,13 @@ function DetailRow({
   label,
   value,
   valueClassName = "text-gray-900",
+  href,
 }: {
   icon: (props: { size?: number; className?: string }) => React.ReactNode;
   label: string;
   value: string;
   valueClassName?: string;
+  href?: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
@@ -88,9 +91,20 @@ function DetailRow({
         <Icon size={14} className="shrink-0" />
         <span className="text-sm">{label}</span>
       </div>
-      <span className={`shrink-0 text-right text-sm font-medium ${valueClassName}`}>
-        {value}
-      </span>
+      {href ? (
+        <a
+          href={href}
+          className={`shrink-0 text-right text-sm font-semibold underline underline-offset-2 ${valueClassName}`}
+        >
+          {value}
+        </a>
+      ) : (
+        <span
+          className={`shrink-0 text-right text-sm font-medium ${valueClassName}`}
+        >
+          {value}
+        </span>
+      )}
     </div>
   );
 }
@@ -386,6 +400,8 @@ export default function OrderDetailPage() {
             icon={IconPhone}
             label="เบอร์โทร"
             value={order.customerPhone}
+            href={order.customerPhone ? telHref(order.customerPhone) : undefined}
+            valueClassName="text-site-primary"
           />
           {order.deliveryLocation && (
             <DetailRow

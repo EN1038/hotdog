@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { FulfillmentType } from "@prisma/client";
-import { formatPrice } from "@/lib/constants";
+import { formatPrice, telHref } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
 import {
@@ -31,10 +31,18 @@ import {
   IconBack,
   IconBranchPlaceholder,
   IconPhone,
+  IconPin,
   IconPlus,
   IconSkewerPlaceholder,
 } from "@/components/icons";
 import { pillTabButtonClass } from "@/components/customer/CustomerOrderHistoryList";
+import {
+  clearMenuItemScroll,
+  markMenuItemScroll,
+  menuItemDomId,
+  readMenuItemScroll,
+  scrollToMenuItem,
+} from "@/lib/menu-scroll-restore";
 
 type MainTab = "menu" | "history";
 
@@ -440,6 +448,33 @@ export default function StorePage() {
     return getBranchServiceStatus(branch, fulfillment);
   }, [branch, fulfillment]);
 
+  const branchPhone = branch?.phone?.trim() || branch?.brand?.contactPhone?.trim() || "";
+
+  // After returning from item detail (back or add-to-cart), land on the same row.
+  useEffect(() => {
+    if (loading || !branch || mainTab !== "menu") return;
+    const itemId = readMenuItemScroll(branch.id);
+    if (!itemId) return;
+
+    let cancelled = false;
+    let tries = 0;
+    const tryScroll = () => {
+      if (cancelled) return;
+      if (scrollToMenuItem(itemId)) {
+        clearMenuItemScroll();
+        return;
+      }
+      tries += 1;
+      if (tries < 20) window.setTimeout(tryScroll, 50);
+      else clearMenuItemScroll();
+    };
+    const t = window.setTimeout(tryScroll, 50);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [loading, branch, mainTab, groupedMenus]);
+
   const branchName = branch
     ? localizedName(branch.name, branch.nameTh, branch.nameEn)
     : "";
@@ -447,6 +482,16 @@ export default function StorePage() {
     ? localizedName(branch.brand.name, branch.brand.nameTh, branch.brand.nameEn)
     : "";
   const displayName = brandName ? `${brandName} - ${branchName}` : branchName;
+  const branchMapHref = (() => {
+    if (!branch) return "";
+    if (branch.latitude != null && branch.longitude != null) {
+      return `https://maps.google.com/?q=${branch.latitude},${branch.longitude}`;
+    }
+    const query = branch.address?.trim() || displayName.trim();
+    return query
+      ? `https://maps.google.com/?q=${encodeURIComponent(query)}`
+      : "";
+  })();
   const categoryLine = branch
     ? [
         restaurantCategoryLabel(branch.primaryCategory),
@@ -563,10 +608,34 @@ export default function StorePage() {
       {/* Content Shell */}
       <div className="relative z-10 -mt-6 rounded-t-[28px] bg-white pt-6 shadow-sm">
         <div className="px-4">
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-2xl font-extrabold leading-tight text-gray-900">
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="min-w-0 flex-1 text-2xl font-extrabold leading-tight text-gray-900">
               {displayName}
             </h1>
+            {(branchPhone || branchMapHref) && (
+              <div className="flex shrink-0 items-center gap-2 pt-0.5">
+                {branchPhone ? (
+                  <a
+                    href={telHref(branchPhone)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-site-primary shadow-sm transition-transform active:scale-95"
+                    aria-label="โทรหาร้าน"
+                  >
+                    <IconPhone size={18} />
+                  </a>
+                ) : null}
+                {branchMapHref ? (
+                  <a
+                    href={branchMapHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-site-primary shadow-sm transition-transform active:scale-95"
+                    aria-label="ดูแผนที่ร้าน"
+                  >
+                    <IconPin size={18} />
+                  </a>
+                ) : null}
+              </div>
+            )}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-600">
@@ -612,13 +681,7 @@ export default function StorePage() {
               <ClockIcon />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-site-primary">
-                  {service.reason}
-                </p>
-                <p className="mt-0.5 text-xs font-medium text-site-primary/90">
-                  วันนี้ {formatTodayHoursSummary(service.schedule)}
-                </p>
-                <p className="mt-0.5 text-xs text-site-primary/80">
-                  ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน — หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
+                  {service.reason} — ระบุเวลารับ/ส่งของวันนี้ตอนชำระเงิน หลังปิดรอบสุดท้ายแล้วสั่งไม่ได้
                 </p>
               </div>
             </div>
@@ -628,12 +691,8 @@ export default function StorePage() {
             <div className="mx-4 mb-3 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3.5">
               <LockIcon />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-red-600">{service.reason}</p>
-                <p className="mt-0.5 text-xs font-medium text-red-600/90">
-                  วันนี้ {formatTodayHoursSummary(service.schedule)}
-                </p>
-                <p className="mt-0.5 text-xs text-red-500/80">
-                  ตอนนี้ยังสั่งซื้อไม่ได้ — ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
+                <p className="text-sm font-bold text-red-600">
+                  {service.reason} — ตอนนี้ยังสั่งซื้อไม่ได้ ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
                 </p>
               </div>
             </div>
@@ -724,12 +783,14 @@ export default function StorePage() {
                         
                         const handleItemClick = (e: React.MouseEvent) => {
                           e.stopPropagation();
+                          markMenuItemScroll(branch.id, item.id);
                           router.push(`/order/store/${branch.id}/item/${item.id}`);
                         };
                         
                         return (
                           <div
                             key={item.id}
+                            id={menuItemDomId(item.id)}
                             onClick={handleItemClick}
                             className="flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-transform active:scale-[0.98]"
                           >

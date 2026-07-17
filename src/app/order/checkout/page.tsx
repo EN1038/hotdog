@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FulfillmentType, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS, formatPrice } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
-import { getBranchServiceStatus, isWithinWeeklyScheduleWithOvernight } from "@/lib/branch-hours";
+import {
+  getBranchServiceStatus,
+  isWithinWeeklyScheduleWithOvernight,
+  listSelectableHhmmToday,
+} from "@/lib/branch-hours";
 import { localizedName } from "@/lib/localized";
+import { clearMenuItemScroll } from "@/lib/menu-scroll-restore";
+import { WheelTimePicker } from "@/components/WheelTimePicker";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { LoadingState } from "@/components/LoadingState";
 import {
@@ -40,14 +46,6 @@ const CHECKOUT_PATH = "/order/checkout";
 const PENDING_SUBMIT_KEY = "skillsale_checkout_pending_submit";
 
 const SWIPE_ACTION_WIDTH = 84;
-
-function normalizeThaiTime(value: string) {
-  const thaiDigits = "๐๑๒๓๔๕๖๗๘๙";
-  return value
-    .replace(/[๐-๙]/g, (digit) => String(thaiDigits.indexOf(digit)))
-    .replace(/[^\d:]/g, "")
-    .slice(0, 5);
-}
 
 function parseThaiTime(value: string) {
   const match = value.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
@@ -252,8 +250,62 @@ export default function CheckoutPage() {
     setExpandedField(null);
   }, [fulfillment]);
 
+  const checkoutService = useMemo(() => {
+    if (!branch) return null;
+    return getBranchServiceStatus(branch, fulfillment);
+  }, [branch, fulfillment]);
+
+  const availableTimes = useMemo(() => {
+    if (!checkoutService) return [];
+    return listSelectableHhmmToday(checkoutService.schedule, new Date(), 15);
+  }, [checkoutService]);
+
+  const scheduledHourOptions = useMemo(
+    () => [...new Set(availableTimes.map((t) => t.slice(0, 2)))],
+    [availableTimes],
+  );
+
+  const scheduledHour =
+    scheduledTime.slice(0, 2) || scheduledHourOptions[0] || "09";
+
+  const scheduledMinuteOptions = useMemo(
+    () =>
+      availableTimes
+        .filter((t) => t.startsWith(`${scheduledHour}:`))
+        .map((t) => t.slice(3)),
+    [availableTimes, scheduledHour],
+  );
+
+  // Drop stale picks when hours/fulfillment change.
+  useEffect(() => {
+    if (!scheduledTime) return;
+    if (availableTimes.length === 0 || !availableTimes.includes(scheduledTime)) {
+      setScheduledTime("");
+    }
+  }, [availableTimes, scheduledTime]);
+
   function toggleExpanded(id: ExpandFieldId) {
-    setExpandedField((f) => (f === id ? null : id));
+    setExpandedField((f) => {
+      const next = f === id ? null : id;
+      if (
+        next === "scheduledTime" &&
+        !scheduledTime &&
+        availableTimes[0]
+      ) {
+        setScheduledTime(availableTimes[0]);
+      }
+      return next;
+    });
+  }
+
+  function onScheduledWheelChange(next: string) {
+    const [h] = next.split(":");
+    if (availableTimes.includes(next)) {
+      setScheduledTime(next);
+      return;
+    }
+    const fallback = availableTimes.find((t) => t.startsWith(`${h}:`));
+    if (fallback) setScheduledTime(fallback);
   }
 
   function goToLogin(options?: { pendingSubmit?: boolean }) {
@@ -307,7 +359,12 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  // Set when an order was just placed, so the empty-cart redirect below
+  // doesn't hijack the navigation to the confirmation page.
+  const orderPlacedRef = useRef(false);
+
   useEffect(() => {
+    if (orderPlacedRef.current) return;
     if (sessionChecked && cart.length === 0) {
       if (cartBranchId) {
         router.replace(`/order/store/${cartBranchId}`);
@@ -441,8 +498,9 @@ export default function CheckoutPage() {
         setError(data.error ?? "สั่งซื้อไม่สำเร็จ");
         return;
       }
+      orderPlacedRef.current = true;
       clearCart();
-      router.push(`/order/confirmation/${data.id}`);
+      router.replace(`/order/confirmation/${data.id}`);
     } finally {
       setSubmitting(false);
     }
@@ -649,21 +707,40 @@ export default function CheckoutPage() {
             expanded={expandedField === "scheduledTime"}
             onToggle={() => toggleExpanded("scheduledTime")}
           >
-            <input
-              autoFocus
-              type="text"
-              inputMode="numeric"
-              className={fieldInputClass}
-              value={scheduledTime}
-              onChange={(e) =>
-                setScheduledTime(normalizeThaiTime(e.target.value))
-              }
-              onBlur={() => {
-                const parsed = parseThaiTime(scheduledTime);
-                if (parsed) setScheduledTime(parsed.formatted);
-              }}
-              placeholder="16:30"
-            />
+            {availableTimes.length === 0 ? (
+              <p className="px-1 py-2 text-sm text-gray-500">
+                ตอนนี้ไม่มีช่วงเวลาว่างสำหรับวันนี้
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <WheelTimePicker
+                  value={
+                    scheduledTime ||
+                    availableTimes[0] ||
+                    "09:00"
+                  }
+                  onChange={onScheduledWheelChange}
+                  hourOptions={scheduledHourOptions}
+                  minuteOptions={
+                    scheduledMinuteOptions.length > 0
+                      ? scheduledMinuteOptions
+                      : ["00", "15", "30", "45"]
+                  }
+                />
+                {checkoutService?.openNow ? (
+                  <button
+                    type="button"
+                    onClick={() => setScheduledTime("")}
+                    className="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                  >
+                    ไม่ระบุ — รับเร็วที่สุด
+                  </button>
+                ) : null}
+                <p className="text-center text-[11px] text-gray-400">
+                  เลือกได้ทีละ 15 นาที เฉพาะในช่วงเปิดร้านวันนี้
+                </p>
+              </div>
+            )}
           </ExpandableFulfillmentRow>
 
           {fulfillment === "DELIVERY" && branch && (
@@ -816,6 +893,7 @@ export default function CheckoutPage() {
                         close();
                         return;
                       }
+                      clearMenuItemScroll();
                       router.push(
                         `/order/store/${cartBranchId}/item/${l.branchMenuItemId}?editKey=${encodeURIComponent(l.key)}&returnTo=${encodeURIComponent("/order/checkout")}`,
                       );

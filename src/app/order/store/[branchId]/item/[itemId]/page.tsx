@@ -19,6 +19,10 @@ import {
   IconPlus,
   IconSkewerPlaceholder,
 } from "@/components/icons";
+import {
+  clearMenuItemScroll,
+  markMenuItemScroll,
+} from "@/lib/menu-scroll-restore";
 
 type SelectedByGroup = Record<string, string[]>;
 
@@ -112,6 +116,18 @@ export default function ItemDetailPage() {
       })
       .finally(() => setLoading(false));
   }, [branchId]);
+
+  // Editing from checkout must not restore scroll on the store menu later.
+  useEffect(() => {
+    if (returnTo) clearMenuItemScroll();
+  }, [returnTo]);
+
+  // Ensure restore marker exists when leaving detail back to this store menu
+  // (covers direct links / refresh / add-to-cart push, not only list clicks).
+  useEffect(() => {
+    if (returnTo) return;
+    if (branchId && itemId) markMenuItemScroll(branchId, itemId);
+  }, [branchId, itemId, returnTo]);
 
   const item = useMemo(() => {
     return branch?.menuItems.find((m) => m.id === itemId) ?? null;
@@ -233,8 +249,10 @@ export default function ItemDetailPage() {
       addLine(branch.id, newLine);
     }
     if (returnTo) {
+      clearMenuItemScroll();
       router.push(returnTo);
     } else {
+      markMenuItemScroll(branch.id, item.id);
       router.push(`/order/store/${branch.id}`);
     }
   }
@@ -251,7 +269,13 @@ export default function ItemDetailPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f5f5f6]">
         <p className="text-gray-500">ไม่พบเมนูนี้</p>
-        <Link href={`/order/store/${branchId}`} className="text-site-primary underline">
+        <Link
+          href={`/order/store/${branchId}`}
+          onClick={() => {
+            if (itemId) markMenuItemScroll(branchId, itemId);
+          }}
+          className="text-site-primary underline"
+        >
           กลับหน้าเมนู
         </Link>
       </main>
@@ -265,9 +289,12 @@ export default function ItemDetailPage() {
           type="button"
           onClick={() => {
             if (returnTo) {
+              clearMenuItemScroll();
               router.push(returnTo);
             } else {
-              router.back();
+              markMenuItemScroll(branchId, itemId);
+              // Prefer explicit store URL so remount always restores scroll.
+              router.push(`/order/store/${branchId}`);
             }
           }}
           className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md text-gray-800 hover:bg-gray-50"

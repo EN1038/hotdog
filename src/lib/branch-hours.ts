@@ -110,6 +110,61 @@ function minutesSinceMidnight(hhmm: string): number {
   return h! * 60 + m!;
 }
 
+function formatMinutesAsHhmm(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60) % 24;
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Selectable HH:mm slots for the rest of today (Bangkok), within open hours.
+ * Defaults to 30-minute steps to match the wheel picker.
+ */
+export function listSelectableHhmmToday(
+  schedule: WeeklySchedule,
+  now: Date = new Date(),
+  stepMinutes = 30,
+): string[] {
+  const { dayOfWeek, minutes: nowMin } = getBangkokParts(now);
+  const day = schedule.find((d) => d.dayOfWeek === dayOfWeek);
+  if (!day || !day.isOpen) return [];
+
+  const earliest =
+    Math.ceil((nowMin + 1) / stepMinutes) * stepMinutes;
+  const out: string[] = [];
+
+  const pushRange = (startMin: number, endMinExclusive: number) => {
+    const from = Math.max(startMin, earliest);
+    // Align to step grid from midnight
+    let t = Math.ceil(from / stepMinutes) * stepMinutes;
+    if (t < from) t += stepMinutes;
+    for (; t < endMinExclusive && t < 24 * 60; t += stepMinutes) {
+      out.push(formatMinutesAsHhmm(t));
+    }
+  };
+
+  if (day.is24Hours) {
+    pushRange(0, 24 * 60);
+  } else {
+    for (const slot of day.slots) {
+      const a = minutesSinceMidnight(slot.opensAt);
+      const b = minutesSinceMidnight(slot.closesAt);
+      if (a === b) {
+        pushRange(0, 24 * 60);
+        continue;
+      }
+      if (a < b) {
+        pushRange(a, b);
+      } else {
+        // Overnight into tomorrow — only remaining portion today
+        pushRange(a, 24 * 60);
+      }
+    }
+  }
+
+  return [...new Set(out)].sort();
+}
+
 /** True if `minutes` falls in [open, close) — supports overnight. */
 function inSlot(minutes: number, opensAt: string, closesAt: string): boolean {
   const a = minutesSinceMidnight(opensAt);

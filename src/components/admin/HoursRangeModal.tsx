@@ -1,131 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
-const HOURS = Array.from({ length: 24 }, (_, i) =>
-  String(i).padStart(2, "0"),
-);
-const MINUTES = ["00", "30"];
-
-const ITEM_H = 40;
-
-function snapHhmm(value: string, fallback = "09:00"): string {
-  const [h, m] = (value || fallback).split(":");
-  const hour = HOURS.includes(h!) ? h! : fallback.slice(0, 2);
-  const minute = m === "30" ? "30" : "00";
-  return `${hour}:${minute}`;
-}
-
-
-function WheelColumn({
-  options,
-  value,
-  onChange,
-  ariaLabel,
-}: {
-  options: string[];
-  value: string;
-  onChange: (v: string) => void;
-  ariaLabel: string;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const ignoreScroll = useRef(false);
-  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const idx = Math.max(0, options.indexOf(value));
-    ignoreScroll.current = true;
-    el.scrollTop = idx * ITEM_H;
-    const t = window.setTimeout(() => {
-      ignoreScroll.current = false;
-    }, 80);
-    return () => window.clearTimeout(t);
-  }, [value, options]);
-
-  function snapToNearest() {
-    const el = ref.current;
-    if (!el || ignoreScroll.current) return;
-    const idx = Math.round(el.scrollTop / ITEM_H);
-    const clamped = Math.max(0, Math.min(options.length - 1, idx));
-    el.scrollTop = clamped * ITEM_H;
-    const next = options[clamped]!;
-    if (next !== value) onChange(next);
-  }
-
-  return (
-    <div className="relative h-[120px] w-16 shrink-0 overflow-hidden">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-[40px] z-10 h-10 rounded-lg border-y border-gray-200 bg-orange-50/40"
-        aria-hidden
-      />
-      <div
-        ref={ref}
-        role="listbox"
-        aria-label={ariaLabel}
-        className="h-full snap-y snap-mandatory overflow-y-scroll scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={{ paddingTop: ITEM_H, paddingBottom: ITEM_H }}
-        onScroll={() => {
-          if (scrollTimer.current) clearTimeout(scrollTimer.current);
-          scrollTimer.current = setTimeout(snapToNearest, 80);
-        }}
-      >
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            role="option"
-            aria-selected={opt === value}
-            className={`flex h-10 w-full snap-center items-center justify-center text-lg tabular-nums transition-colors ${
-              opt === value
-                ? "font-bold text-gray-900"
-                : "font-medium text-gray-300"
-            }`}
-            onClick={() => onChange(opt)}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function WheelTimePicker({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (hhmm: string) => void;
-}) {
-  const [h, m] = (value || "09:00").split(":");
-  const hour = HOURS.includes(h!) ? h! : "09";
-  const minute = m === "30" ? "30" : "00";
-
-  return (
-    <div>
-      <p className="mb-2 text-sm font-bold text-gray-900">{label}</p>
-      <div className="flex items-center justify-center gap-1 rounded-2xl bg-gray-50 py-2">
-        <WheelColumn
-          options={HOURS}
-          value={hour}
-          ariaLabel={`${label} ชั่วโมง`}
-          onChange={(nextH) => onChange(`${nextH}:${minute}`)}
-        />
-        <span className="pb-0.5 text-xl font-bold text-gray-400">:</span>
-        <WheelColumn
-          options={MINUTES}
-          value={minute}
-          ariaLabel={`${label} นาที`}
-          onChange={(nextM) => onChange(`${hour}:${nextM}`)}
-        />
-      </div>
-    </div>
-  );
-}
+import { useEffect, useState } from "react";
+import {
+  WheelTimePicker,
+  snapWheelHhmm,
+  WHEEL_MINUTES_HALF,
+} from "@/components/WheelTimePicker";
 
 export type HoursRangeDraft = {
   opensAt: string;
@@ -157,8 +37,8 @@ export function HoursRangeModal({
 
   useEffect(() => {
     if (!open) return;
-    setOpensAt(snapHhmm(initial.opensAt, "09:00"));
-    setClosesAt(snapHhmm(initial.closesAt, "17:00"));
+    setOpensAt(snapWheelHhmm(initial.opensAt, "09:00"));
+    setClosesAt(snapWheelHhmm(initial.closesAt, "17:00"));
     setIs24Hours(initial.is24Hours);
   }, [open, initial.opensAt, initial.closesAt, initial.is24Hours]);
 
@@ -199,11 +79,13 @@ export function HoursRangeModal({
               label="เวลาเปิด"
               value={opensAt}
               onChange={setOpensAt}
+              minuteOptions={[...WHEEL_MINUTES_HALF]}
             />
             <WheelTimePicker
               label="เวลาปิด"
               value={closesAt}
               onChange={setClosesAt}
+              minuteOptions={[...WHEEL_MINUTES_HALF]}
             />
           </div>
         )}
@@ -249,8 +131,8 @@ export function HoursRangeModal({
             type="button"
             onClick={() =>
               onConfirm({
-                opensAt: snapHhmm(opensAt, "09:00"),
-                closesAt: snapHhmm(closesAt, "17:00"),
+                opensAt: snapWheelHhmm(opensAt, "09:00"),
+                closesAt: snapWheelHhmm(closesAt, "17:00"),
                 is24Hours,
               })
             }
@@ -263,3 +145,6 @@ export function HoursRangeModal({
     </div>
   );
 }
+
+/** @deprecated Prefer importing from `@/components/WheelTimePicker` */
+export { WheelTimePicker } from "@/components/WheelTimePicker";

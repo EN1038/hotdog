@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -215,7 +216,20 @@ export async function DELETE(_request: Request, { params }: Params) {
     if (!existing) return jsonError("ไม่พบเมนู", 404);
 
     const ctx = await getBranchActivityContext(branchId);
-    await prisma.branchMenuItem.delete({ where: { id: itemId } });
+    try {
+      await prisma.branchMenuItem.delete({ where: { id: itemId } });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2003"
+      ) {
+        return jsonError(
+          "ลบเมนูไม่สำเร็จ เพราะยังมีข้อมูลอื่นที่อ้างอิงอยู่ ลองซ่อนจากลูกค้าแทน",
+          409,
+        );
+      }
+      throw error;
+    }
 
     await logAdminActivity(session, {
       action: "menu.delete",

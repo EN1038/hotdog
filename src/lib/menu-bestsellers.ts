@@ -23,6 +23,7 @@ export async function getBestsellerMenuItemIdsByBranch(
   const rows = await prisma.orderItem.groupBy({
     by: ["branchMenuItemId"],
     where: {
+      branchMenuItemId: { not: null },
       order: {
         branchId: { in: branchIds },
         status: OrderStatus.COMPLETED,
@@ -33,7 +34,9 @@ export async function getBestsellerMenuItemIdsByBranch(
 
   if (rows.length === 0) return result;
 
-  const itemIds = rows.map((r) => r.branchMenuItemId);
+  const itemIds = rows
+    .map((r) => r.branchMenuItemId)
+    .filter((id): id is string => Boolean(id));
 
   const items = await prisma.branchMenuItem.findMany({
     where: { id: { in: itemIds }, branchId: { in: branchIds } },
@@ -46,6 +49,7 @@ export async function getBestsellerMenuItemIdsByBranch(
 
   for (const row of rows) {
     const menuItemId = row.branchMenuItemId;
+    if (!menuItemId) continue;
     const branchId = branchByItem.get(menuItemId);
     if (!branchId) continue;
     const qty = row._sum.quantity ?? 0;

@@ -1196,6 +1196,43 @@ function BranchDetailContent() {
     return "closed";
   };
 
+  /** Header badge: schedule-aware, so users don't confuse the manual switch with "open now". */
+  const branchLiveBadge = (() => {
+    if (!branch.isOpen) {
+      return {
+        label: "ปิดร้าน",
+        className: "bg-slate-200 text-slate-600",
+        hint: "ปิดด้วยสวิตช์ร้าน — ลูกค้าสั่งไม่ได้",
+      };
+    }
+    const deliveryEnabled = branch.deliveryLocations.length > 0;
+    const anyOpenNow =
+      storefrontStatus.openNow ||
+      (deliveryEnabled && deliveryStatus.openNow);
+    if (anyOpenNow) {
+      return {
+        label: "เปิดรับออเดอร์",
+        className: "bg-emerald-100 text-emerald-700",
+        hint: "อยู่ในเวลาทำการตอนนี้",
+      };
+    }
+    const anyAdvance =
+      storefrontStatus.advanceOnly ||
+      (deliveryEnabled && deliveryStatus.advanceOnly);
+    if (anyAdvance) {
+      return {
+        label: "สั่งล่วงหน้าได้",
+        className: "bg-amber-100 text-amber-800",
+        hint: "นอกเวลาเปิด แต่ยังรับออเดอร์ล่วงหน้าได้",
+      };
+    }
+    return {
+      label: "ปิดตามตาราง",
+      className: "bg-rose-100 text-rose-800",
+      hint: "วันนี้/ตอนนี้ไม่อยู่ในเวลาทำการตามตารางที่ตั้งไว้",
+    };
+  })();
+
   return (
     <div>
       <Link
@@ -1219,13 +1256,10 @@ function BranchDetailContent() {
               {branch.name}
             </h2>
             <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                branch.isOpen
-                  ? "bg-emerald-100 text-emerald-700"
-                  : "bg-slate-200 text-slate-600"
-              }`}
+              title={branchLiveBadge.hint}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${branchLiveBadge.className}`}
             >
-              {branch.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
+              {branchLiveBadge.label}
             </span>
             {branch.isHidden && (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
@@ -1376,14 +1410,20 @@ function BranchDetailContent() {
                       <h3 className="font-semibold text-gray-900">สถานะร้าน</h3>
                       <div className="flex flex-wrap items-center justify-end gap-1.5">
                         <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            branch.isOpen
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-200 text-slate-600"
-                          }`}
+                          title={branchLiveBadge.hint}
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${branchLiveBadge.className}`}
                         >
-                          {branch.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
+                          {branchLiveBadge.label}
                         </span>
+                        {branch.isOpen &&
+                          branchLiveBadge.label !== "เปิดรับออเดอร์" && (
+                            <span
+                              title="สวิตช์ร้านยังเปิด — แต่ตอนนี้อยู่นอกเวลาทำการหรือปิดตามตาราง"
+                              className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600"
+                            >
+                              สวิตช์ร้าน: เปิด
+                            </span>
+                          )}
                         {branch.isHidden && (
                           <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                             ซ่อนจากลูกค้า
@@ -2477,12 +2517,12 @@ function BranchDetailContent() {
                   <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">
-                        สถานะร้านตอนนี้
+                        สวิตช์เปิด/ปิดร้าน
                       </p>
                       <p className="mt-0.5 text-xs text-gray-500">
                         {settings.isOpen
-                          ? "ร้านเปิด — กดปิดร้านถ้าต้องการหยุดรับออเดอร์ชั่วคราว"
-                          : "ร้านปิดชั่วคราว — ลูกค้าสั่งไม่ได้จนกว่าจะเปิดใหม่"}
+                          ? "สวิตช์เปิดอยู่ — ลูกค้าสั่งได้เฉพาะตอนที่อยู่ในเวลาทำการตามตารางด้วย"
+                          : "ปิดร้านชั่วคราวทั้งสาขา — ลูกค้าสั่งไม่ได้จนกว่าจะเปิดใหม่ (แม้ตารางจะเปิด)"}
                       </p>
                     </div>
                     {settings.isOpen ? (

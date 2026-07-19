@@ -93,7 +93,8 @@ export default function ItemDetailPage() {
   const editKey = searchParams.get("editKey");
   const isNew = searchParams.get("new") === "1";
   const returnTo = searchParams.get("returnTo");
-  const { cart, cartBranchId, addLine, replaceLine, fulfillment } = useCustomer();
+  const { cart, cartBranchId, addLine, replaceLine, removeLine, fulfillment } =
+    useCustomer();
 
   const [branch, setBranch] = useState<BranchData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -209,6 +210,25 @@ export default function ItemDetailPage() {
   function addToCart() {
     setError("");
     if (!item || !branch) return;
+
+    // Editing an existing cart line down to 0 = remove it
+    if (existingKey && qty <= 0) {
+      removeLine(existingKey);
+      if (returnTo) {
+        clearMenuItemScroll();
+        router.push(returnTo);
+      } else {
+        markMenuItemScroll(branch.id, item.id);
+        router.push(`/order/store/${branch.id}`);
+      }
+      return;
+    }
+
+    if (qty < 1) {
+      setError("กรุณาเลือกจำนวนอย่างน้อย 1");
+      return;
+    }
+
     if (cartBranchId && cartBranchId !== branch.id) {
       setError("ตะกร้ามีของจากสาขาอื่นอยู่ กรุณาเคลียร์ตะกร้าก่อน");
       return;
@@ -438,8 +458,11 @@ export default function ItemDetailPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setQty((q) => Math.max(1, q - 1))}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
+            onClick={() =>
+              setQty((q) => Math.max(existingKey ? 0 : 1, q - 1))
+            }
+            disabled={!existingKey && qty <= 1}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200 disabled:opacity-40"
             aria-label="ลดจำนวน"
           >
             <IconMinus size={18} />
@@ -460,10 +483,20 @@ export default function ItemDetailPage() {
         <button
           type="button"
           onClick={addToCart}
-          className="flex flex-1 items-center justify-between rounded-xl bg-site-primary px-4 py-3 font-bold text-white hover:opacity-90"
+          className={`flex flex-1 items-center justify-between rounded-xl px-4 py-3 font-bold text-white hover:opacity-90 ${
+            existingKey && qty <= 0 ? "bg-red-500" : "bg-site-primary"
+          }`}
         >
-          <span className="text-[17px]">{existingKey ? "อัปเดตตะกร้า" : "ใส่ตะกร้า"}</span>
-          <span className="text-[17px]">฿{formatPrice(lineTotal)}</span>
+          <span className="text-[17px]">
+            {existingKey && qty <= 0
+              ? "ลบออกจากตะกร้า"
+              : existingKey
+                ? "อัปเดตตะกร้า"
+                : "ใส่ตะกร้า"}
+          </span>
+          <span className="text-[17px]">
+            {existingKey && qty <= 0 ? "" : `฿${formatPrice(lineTotal)}`}
+          </span>
         </button>
       </div>
     </main>

@@ -121,6 +121,7 @@ export type OrderData = {
   addressDetail: string | null;
   scheduledAt: string | null;
   note: string | null;
+  cancelReason?: string | null;
   deliveryFee: string;
   discountAmount: string;
   createdAt: string;

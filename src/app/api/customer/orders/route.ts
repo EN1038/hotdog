@@ -82,47 +82,108 @@ export async function POST(request: Request) {
       return jsonError(service.reason);
     }
     if (!service.openNow) {
+      // Delivery has no scheduled-time picker — only allow when open now.
+      if (body.fulfillmentType === "DELIVERY") {
+        return jsonError(
+          "ยังไม่ถึงเวลาเปิดจัดส่ง กรุณารอถึงเวลาเปิด หรือเปลี่ยนเป็นรับที่ร้าน",
+        );
+      }
       if (!body.scheduledAt) {
         return jsonError(
-          "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้",
+          "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับสินค้าล่วงหน้าของวันนี้",
         );
       }
       const scheduled = new Date(body.scheduledAt);
       if (Number.isNaN(scheduled.getTime())) {
-        return jsonError("เวลานัดรับ/ส่งไม่ถูกต้อง");
+        return jsonError("เวลานัดรับไม่ถูกต้อง");
       }
       if (!isSameBangkokDay(scheduled, new Date())) {
         return jsonError("สั่งล่วงหน้าได้เฉพาะภายในวันนี้เท่านั้น");
       }
       if (scheduled.getTime() <= Date.now()) {
-        return jsonError("เวลานัดรับ/ส่งต้องเป็นเวลาหลังจากนี้");
+        return jsonError("เวลานัดรับต้องเป็นเวลาหลังจากนี้");
       }
     }
 
-    const branchMenu = await prisma.branchMenuItem.findMany({
-      where: {
-        branchId: body.branchId,
-        isHidden: false,
-        id: { in: body.items.map((i) => i.branchMenuItemId) },
-      },
-      include: {
-        optionGroupLinks: {
-          include: {
-            group: { include: { options: true } },
+    const requestedIds = body.items.map((i) => i.branchMenuItemId);
+    const [orderableMenus, anyMenus] = await Promise.all([
+      prisma.branchMenuItem.findMany({
+        where: {
+          branchId: body.branchId,
+          isHidden: false,
+          id: { in: requestedIds },
+        },
+        include: {
+          optionGroupLinks: {
+            include: {
+              group: { include: { options: true } },
+            },
           },
         },
-      },
-    });
+      }),
+      prisma.branchMenuItem.findMany({
+        where: { id: { in: requestedIds } },
+        select: {
+          id: true,
+          name: true,
+          branchId: true,
+          isHidden: true,
+          isOutOfStock: true,
+          sellDelivery: true,
+          sellPickup: true,
+          sellStorefront: true,
+        },
+      }),
+    ]);
 
-    const itemMap = new Map(branchMenu.map((bm) => [bm.id, bm]));
+    const itemMap = new Map(orderableMenus.map((bm) => [bm.id, bm]));
+    const anyMap = new Map(anyMenus.map((bm) => [bm.id, bm]));
     const channel = fulfillmentToChannel(body.fulfillmentType);
+    const unavailableItems: {
+      branchMenuItemId: string;
+      name: string;
+      reason: string;
+    }[] = [];
+
     for (const item of body.items) {
-      const menu = itemMap.get(item.branchMenuItemId);
-      if (!menu) return jsonError("มีรายการที่ไม่สามารถสั่งได้ในสาขานี้");
-      if (!isChannelSellEnabled(menu, channel)) {
-        return jsonError(`"${menu.name}" ไม่จำหน่ายในช่องทางที่เลือก`);
+      const orderable = itemMap.get(item.branchMenuItemId);
+      const any = anyMap.get(item.branchMenuItemId);
+      if (!orderable) {
+        unavailableItems.push({
+          branchMenuItemId: item.branchMenuItemId,
+          name: any?.name?.trim() || "รายการที่ไม่รู้จัก",
+          reason:
+            !any
+              ? "ถูกลบออกจากระบบแล้ว"
+              : any.branchId !== body.branchId
+                ? "ไม่ใช่เมนูของสาขานี้"
+                : any.isHidden
+                  ? "ถูกซ่อน / ไม่พร้อมขาย"
+                  : "ไม่สามารถสั่งได้ในสาขานี้",
+        });
+        continue;
       }
-      if (menu.isOutOfStock) return jsonError(`"${menu.name}" หมดชั่วคราว`);
+      if (!isChannelSellEnabled(orderable, channel)) {
+        unavailableItems.push({
+          branchMenuItemId: orderable.id,
+          name: orderable.name,
+          reason: "ไม่จำหน่ายในช่องทางที่เลือก",
+        });
+        continue;
+      }
+      if (orderable.isOutOfStock) {
+        unavailableItems.push({
+          branchMenuItemId: orderable.id,
+          name: orderable.name,
+          reason: "หมดชั่วคราว",
+        });
+      }
+    }
+
+    if (unavailableItems.length > 0) {
+      return jsonError("มีรายการที่ไม่สามารถสั่งได้", 400, {
+        unavailableItems,
+      });
     }
 
     let deliveryFee = new Prisma.Decimal(0);

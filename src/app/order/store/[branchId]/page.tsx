@@ -8,6 +8,7 @@ import { formatPrice, telHref } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
 import {
+  explainWhyOrdersBlocked,
   formatTodayHoursSummary,
   getBranchServiceStatus,
 } from "@/lib/branch-hours";
@@ -448,6 +449,11 @@ export default function StorePage() {
     return getBranchServiceStatus(branch, fulfillment);
   }, [branch, fulfillment]);
 
+  const orderBlock = useMemo(() => {
+    if (!branch) return null;
+    return explainWhyOrdersBlocked(branch, fulfillment);
+  }, [branch, fulfillment]);
+
   const branchPhone = branch?.phone?.trim() || branch?.brand?.contactPhone?.trim() || "";
 
   // After returning from item detail (back or add-to-cart), land on the same row.
@@ -691,8 +697,12 @@ export default function StorePage() {
             <div className="mx-4 mb-3 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3.5">
               <LockIcon />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-red-600">
-                  {service.reason} — ตอนนี้ยังสั่งซื้อไม่ได้ ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่
+                <p className="text-sm font-bold text-red-700">
+                  {orderBlock?.title ?? "ยังสั่งซื้อไม่ได้ตอนนี้"}
+                </p>
+                <p className="mt-1 text-sm font-medium leading-relaxed text-red-600/90">
+                  {orderBlock?.message ??
+                    "กรุณากลับมาสั่งใหม่ในเวลาทำการนะคะ"}
                 </p>
               </div>
             </div>

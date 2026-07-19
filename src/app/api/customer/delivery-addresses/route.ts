@@ -8,6 +8,9 @@ export type SavedDeliveryAddress = {
   locationName: string;
   addressDetail: string;
   deliveryFee: string;
+  isCustomAddress: boolean;
+  deliveryLatitude: number | null;
+  deliveryLongitude: number | null;
 };
 
 /** Past delivery addresses for this customer at a branch (most recent unique first). */
@@ -27,12 +30,15 @@ export async function GET(request: Request) {
       },
       select: {
         addressDetail: true,
+        deliveryLatitude: true,
+        deliveryLongitude: true,
         createdAt: true,
         deliveryLocation: {
           select: {
             id: true,
             name: true,
             deliveryFee: true,
+            isCustomAddress: true,
           },
         },
       },
@@ -47,7 +53,16 @@ export async function GET(request: Request) {
       const loc = order.deliveryLocation;
       const detail = order.addressDetail?.trim() ?? "";
       if (!loc || !detail) continue;
-      const key = `${loc.id}::${detail.toLowerCase()}`;
+      const lat = order.deliveryLatitude;
+      const lng = order.deliveryLongitude;
+      const pinKey =
+        lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng)
+          ? `${lat.toFixed(5)},${lng.toFixed(5)}`
+          : "";
+      const key = `${loc.id}::${detail.toLowerCase()}::${pinKey}`;
       if (seen.has(key)) continue;
       seen.add(key);
       items.push({
@@ -55,6 +70,11 @@ export async function GET(request: Request) {
         locationName: loc.name,
         addressDetail: detail,
         deliveryFee: String(loc.deliveryFee),
+        isCustomAddress: Boolean(loc.isCustomAddress),
+        deliveryLatitude:
+          lat != null && Number.isFinite(lat) ? lat : null,
+        deliveryLongitude:
+          lng != null && Number.isFinite(lng) ? lng : null,
       });
       if (items.length >= 8) break;
     }

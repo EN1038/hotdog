@@ -23,6 +23,12 @@ const loadBrandMeta = cache(async (brandCode: string) => {
         siteDescription: true,
         logoUrl: true,
         coverImageUrl: true,
+        branches: {
+          where: { isHidden: false },
+          select: { imageUrl: true },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+        },
       },
     });
   } catch {
@@ -47,7 +53,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       description,
       path: `/${brandCode}`,
       imageAlt: name,
-      imageCandidates: [brand.coverImageUrl, brand.logoUrl],
+      imageCandidates: [
+        brand.coverImageUrl,
+        brand.logoUrl,
+        brand.branches[0]?.imageUrl,
+      ],
     });
   } catch {
     return { title, description };

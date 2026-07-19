@@ -477,6 +477,16 @@ function BranchDetailContent() {
   const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [menuSetupModalOpen, setMenuSetupModalOpen] = useState(false);
+  const [stockPasteOpen, setStockPasteOpen] = useState(false);
+  const [stockPasteText, setStockPasteText] = useState("");
+  const [stockPasteBusy, setStockPasteBusy] = useState(false);
+  const [stockPasteResult, setStockPasteResult] = useState<{
+    hiddenCount: number;
+    toHide: { id: string; name: string; matchedFrom: string }[];
+    alreadyHidden: { id: string; name: string; matchedFrom: string }[];
+    notFound: { raw: string; name: string }[];
+    soldOutParsed: { raw: string; name: string }[];
+  } | null>(null);
   const [menuSearch, setMenuSearch] = useState("");
   const [menuCategoryFilter, setMenuCategoryFilter] = useState("ALL");
   const [menuStatusFilter, setMenuStatusFilter] = useState<
@@ -914,6 +924,56 @@ function BranchDetailContent() {
       method: "DELETE",
     });
     load();
+  }
+
+  async function applyStockPasteHide() {
+    if (!stockPasteText.trim()) {
+      toast.error("วางข้อความสต็อกก่อน");
+      return;
+    }
+    setStockPasteBusy(true);
+    setStockPasteResult(null);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${id}/menu-items/hide-from-stock-paste`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: stockPasteText, apply: true }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "ซ่อนเมนูไม่สำเร็จ");
+        return;
+      }
+      setStockPasteResult(data);
+      const hidden = data.hiddenCount ?? 0;
+      const notFoundCount = Array.isArray(data.notFound)
+        ? data.notFound.length
+        : 0;
+      if (hidden > 0) {
+        toast.success(
+          `ซ่อนแล้ว ${hidden} รายการ`,
+          notFoundCount
+            ? `ไม่พบในระบบ ${notFoundCount} รายการ`
+            : undefined,
+        );
+      } else {
+        toast.pushToast({
+          title: "ไม่มีรายการใหม่ที่ต้องซ่อน",
+          message: notFoundCount
+            ? `ไม่พบในระบบ ${notFoundCount} รายการ`
+            : "รายการหมดอาจซ่อนไว้แล้ว",
+          tone: "info",
+        });
+      }
+      await load();
+    } catch {
+      toast.error("ซ่อนเมนูไม่สำเร็จ");
+    } finally {
+      setStockPasteBusy(false);
+    }
   }
 
   async function toggleHidden(menuId: string, isHidden: boolean) {
@@ -1513,6 +1573,17 @@ function BranchDetailContent() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStockPasteResult(null);
+                      setStockPasteText("");
+                      setStockPasteOpen(true);
+                    }}
+                    className={btnOutline}
+                  >
+                    วางข้อความสต็อก
+                  </button>
                   <button
                     type="button"
                     onClick={() => setTab("copy")}
@@ -3192,6 +3263,98 @@ function BranchDetailContent() {
           </section>
         )}
       </div>
+
+      <AdminModal
+        open={stockPasteOpen}
+        title="ซ่อนเมนูจากข้อความสต็อก"
+        description='วางข้อความเช็คสต็อก — ระบบจะซ่อนเมนูที่ลงท้ายด้วยคำว่า "หมด"'
+        onClose={() => {
+          if (!stockPasteBusy) setStockPasteOpen(false);
+        }}
+        busy={stockPasteBusy}
+        maxWidthClassName="max-w-xl"
+      >
+        <div className="space-y-4 p-5">
+          <div>
+            <label className={adminLabelClass} htmlFor="stock-paste-text">
+              ข้อความจาก LINE / โน้ต
+            </label>
+            <textarea
+              id="stock-paste-text"
+              className={`${adminInputClass} min-h-[220px] font-mono text-xs leading-relaxed`}
+              value={stockPasteText}
+              onChange={(e) => setStockPasteText(e.target.value)}
+              placeholder={
+                "ตัวอย่าง\n3.เห็ดออริจิพัน            หมด\n7.บล็อคโคลี่            หมด\n11ปลาเส้น            หมด"
+              }
+              disabled={stockPasteBusy}
+            />
+          </div>
+
+          {stockPasteResult && (
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-sm">
+              <p className="font-semibold text-slate-900">
+                พบรายการหมด {stockPasteResult.soldOutParsed.length} ชื่อ ·
+                ซ่อนใหม่ {stockPasteResult.hiddenCount} รายการ
+                {stockPasteResult.alreadyHidden.length
+                  ? ` · ซ่อนอยู่แล้ว ${stockPasteResult.alreadyHidden.length}`
+                  : ""}
+              </p>
+              {stockPasteResult.toHide.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-emerald-800">
+                    ซ่อนแล้ว
+                  </p>
+                  <ul className="mt-1 max-h-32 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs text-slate-700">
+                    {stockPasteResult.toHide.map((m) => (
+                      <li key={m.id}>
+                        {m.name}
+                        {m.matchedFrom !== m.name ? (
+                          <span className="text-slate-400">
+                            {" "}
+                            (จาก “{m.matchedFrom}”)
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {stockPasteResult.notFound.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-amber-800">
+                    ไม่พบในระบบ ({stockPasteResult.notFound.length})
+                  </p>
+                  <ul className="mt-1 max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs text-slate-700">
+                    {stockPasteResult.notFound.map((n, i) => (
+                      <li key={`${n.name}-${i}`}>{n.name || n.raw}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              className={btnOutline}
+              disabled={stockPasteBusy}
+              onClick={() => setStockPasteOpen(false)}
+            >
+              ปิด
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={stockPasteBusy || !stockPasteText.trim()}
+              onClick={() => void applyStockPasteHide()}
+            >
+              {stockPasteBusy ? "กำลังซ่อน..." : "ยืนยันซ่อนเมนูที่หมด"}
+            </button>
+          </div>
+        </div>
+      </AdminModal>
 
       <AdminModal
         open={menuSetupModalOpen}

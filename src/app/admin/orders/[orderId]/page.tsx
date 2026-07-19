@@ -108,7 +108,7 @@ export default function AdminOrderDetailPage() {
     order.status === "COMPLETED" || order.status === "CANCELLED";
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="w-full">
       <div className="mb-4 flex items-center gap-3">
         <Link
           href={backHref}

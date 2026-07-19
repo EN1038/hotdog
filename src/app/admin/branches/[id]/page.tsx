@@ -160,6 +160,7 @@ type BranchDetail = {
     id: string;
     name: string;
     deliveryFee: string | number;
+    isCustomAddress?: boolean;
     address?: string | null;
     latitude?: number | null;
     longitude?: number | null;
@@ -466,12 +467,15 @@ function BranchDetailContent() {
   });
   const [locationName, setLocationName] = useState("");
   const [locationFee, setLocationFee] = useState("0");
+  const [locationCustomAddress, setLocationCustomAddress] = useState(false);
   const [locationMap, setLocationMap] = useState<MapLocationValue>(emptyLocationMap);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(
     null,
   );
   const [editLocationName, setEditLocationName] = useState("");
   const [editLocationFee, setEditLocationFee] = useState("0");
+  const [editLocationCustomAddress, setEditLocationCustomAddress] =
+    useState(false);
   const [editLocationMap, setEditLocationMap] =
     useState<MapLocationValue>(emptyLocationMap);
   const [staffModalOpen, setStaffModalOpen] = useState(false);
@@ -1058,6 +1062,7 @@ function BranchDetailContent() {
       body: JSON.stringify({
         name: locationName.trim(),
         deliveryFee: Number.isFinite(fee) && fee >= 0 ? fee : 0,
+        isCustomAddress: locationCustomAddress,
         address: locationMap.address.trim() || null,
         latitude: locationMap.latitude,
         longitude: locationMap.longitude,
@@ -1070,6 +1075,7 @@ function BranchDetailContent() {
     }
     setLocationName("");
     setLocationFee("0");
+    setLocationCustomAddress(false);
     setLocationMap(emptyLocationMap());
     setLocationModalOpen(false);
     toast.success("เพิ่มพื้นที่จัดส่งแล้ว");
@@ -1086,6 +1092,7 @@ function BranchDetailContent() {
         locationId,
         name: editLocationName.trim(),
         deliveryFee: Number.isFinite(fee) && fee >= 0 ? fee : 0,
+        isCustomAddress: editLocationCustomAddress,
         address: editLocationMap.address.trim() || null,
         latitude: editLocationMap.latitude,
         longitude: editLocationMap.longitude,
@@ -2217,6 +2224,7 @@ function BranchDetailContent() {
                 onClick={() => {
                   setLocationName("");
                   setLocationFee("0");
+                  setLocationCustomAddress(false);
                   setLocationMap(emptyLocationMap());
                   setLocationModalOpen(true);
                 }}
@@ -2246,6 +2254,7 @@ function BranchDetailContent() {
                   onClick={() => {
                     setLocationName("");
                     setLocationFee("0");
+                    setLocationCustomAddress(false);
                     setLocationMap(emptyLocationMap());
                     setLocationModalOpen(true);
                   }}
@@ -2286,18 +2295,43 @@ function BranchDetailContent() {
                           />
                         </div>
                       </div>
-                      <AdminMapLocationPicker
-                        value={editLocationMap}
-                        onChange={setEditLocationMap}
-                        addressLabel="ที่อยู่โซน (ไม่บังคับ · ช่วย admin)"
-                        addressPlaceholder="ที่อยู่หรือจุดอ้างอิงของพื้นที่นี้"
-                        referencePin={branchReferencePin()}
-                        onSuggestLabel={(label) => {
-                          if (!editLocationName.trim()) {
-                            setEditLocationName(label);
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-slate-300"
+                          checked={editLocationCustomAddress}
+                          onChange={(e) =>
+                            setEditLocationCustomAddress(e.target.checked)
                           }
-                        }}
-                      />
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-slate-900">
+                            ลูกค้ากำหนดที่อยู่เอง
+                          </span>
+                          <span className="mt-0.5 block text-xs text-slate-600">
+                            เหมาะกับ “พื้นที่อื่นๆ” — ลูกค้าพิมพ์ที่อยู่เต็มตอนสั่ง
+                            ไม่ต้องพึ่งหมุดโซน
+                          </span>
+                        </span>
+                      </label>
+                      {!editLocationCustomAddress ? (
+                        <AdminMapLocationPicker
+                          value={editLocationMap}
+                          onChange={setEditLocationMap}
+                          addressLabel="ที่อยู่โซน (ไม่บังคับ · ช่วย admin)"
+                          addressPlaceholder="ที่อยู่หรือจุดอ้างอิงของพื้นที่นี้"
+                          referencePin={branchReferencePin()}
+                          onSuggestLabel={(label) => {
+                            if (!editLocationName.trim()) {
+                              setEditLocationName(label);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                          โหมดนี้ไม่บังคับปักหมุดโซน — ลูกค้าจะกรอกที่อยู่จัดส่งเองตอน checkout
+                        </p>
+                      )}
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
@@ -2324,21 +2358,32 @@ function BranchDetailContent() {
                             ค่าส่ง ฿
                             {Number(loc.deliveryFee || 0).toLocaleString("th-TH")}
                           </span>
+                          {loc.isCustomAddress ? (
+                            <span className="ml-2 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">
+                              กรอกที่อยู่เอง
+                            </span>
+                          ) : null}
                         </p>
-                        {loc.address ? (
+                        {loc.isCustomAddress ? (
+                          <p className="mt-1 text-sm text-slate-500">
+                            ลูกค้าพิมพ์ที่อยู่จัดส่งเองตอนสั่ง
+                          </p>
+                        ) : loc.address ? (
                           <p className="mt-1 text-sm text-slate-500 line-clamp-2">
                             {loc.address}
                           </p>
                         ) : null}
-                        {loc.latitude != null && loc.longitude != null ? (
+                        {!loc.isCustomAddress &&
+                        loc.latitude != null &&
+                        loc.longitude != null ? (
                           <p className="mt-0.5 text-xs text-slate-400">
                             {loc.latitude}, {loc.longitude}
                           </p>
-                        ) : (
+                        ) : !loc.isCustomAddress ? (
                           <p className="mt-0.5 text-xs text-slate-400">
                             ยังไม่มีหมุดโซน
                           </p>
-                        )}
+                        ) : null}
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -2348,6 +2393,9 @@ function BranchDetailContent() {
                             setEditLocationName(loc.name);
                             setEditLocationFee(
                               String(Number(loc.deliveryFee || 0)),
+                            );
+                            setEditLocationCustomAddress(
+                              Boolean(loc.isCustomAddress),
                             );
                             setEditLocationMap({
                               address: loc.address ?? "",
@@ -2386,7 +2434,7 @@ function BranchDetailContent() {
                     <label className={adminLabelClass}>ชื่อพื้นที่</label>
                     <input
                       className={adminInputClass}
-                      placeholder="เช่น หอพัก A"
+                      placeholder="เช่น หอพัก A หรือ พื้นที่อื่นๆ"
                       value={locationName}
                       onChange={(e) => setLocationName(e.target.value)}
                       required
@@ -2405,16 +2453,39 @@ function BranchDetailContent() {
                     />
                   </div>
                 </div>
-                <AdminMapLocationPicker
-                  value={locationMap}
-                  onChange={setLocationMap}
-                  addressLabel="ที่อยู่โซน (ไม่บังคับ · ช่วย admin)"
-                  addressPlaceholder="ค้นหาหรือปักหมุด — ใช้เป็นจุดอ้างอิงโซน"
-                  referencePin={branchReferencePin()}
-                  onSuggestLabel={(label) => {
-                    if (!locationName.trim()) setLocationName(label);
-                  }}
-                />
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                    checked={locationCustomAddress}
+                    onChange={(e) => setLocationCustomAddress(e.target.checked)}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-slate-900">
+                      ลูกค้ากำหนดที่อยู่เอง
+                    </span>
+                    <span className="mt-0.5 block text-xs text-slate-600">
+                      เหมาะกับ “พื้นที่อื่นๆ” — ลูกค้าพิมพ์ที่อยู่เต็มตอนสั่ง
+                      ไม่ต้องพึ่งหมุดโซน
+                    </span>
+                  </span>
+                </label>
+                {!locationCustomAddress ? (
+                  <AdminMapLocationPicker
+                    value={locationMap}
+                    onChange={setLocationMap}
+                    addressLabel="ที่อยู่โซน (ไม่บังคับ · ช่วย admin)"
+                    addressPlaceholder="ค้นหาหรือปักหมุด — ใช้เป็นจุดอ้างอิงโซน"
+                    referencePin={branchReferencePin()}
+                    onSuggestLabel={(label) => {
+                      if (!locationName.trim()) setLocationName(label);
+                    }}
+                  />
+                ) : (
+                  <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                    โหมดนี้ไม่บังคับปักหมุดโซน — ลูกค้าจะกรอกที่อยู่จัดส่งเองตอน checkout
+                  </p>
+                )}
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                   <button
                     type="button"

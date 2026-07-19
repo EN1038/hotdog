@@ -30,6 +30,8 @@ export function AdminMapLocationPicker(props: {
   addressPlaceholder?: string;
   referencePin?: MapReferencePin | null;
   mapHeightClassName?: string;
+  geocodePath?: string;
+  hideAddressField?: boolean;
 }) {
   return <AdminMapLocationFieldInner {...props} />;
 }

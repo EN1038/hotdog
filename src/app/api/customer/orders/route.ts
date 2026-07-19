@@ -6,8 +6,11 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { requireCustomer } from "@/lib/auth";
+import {
+  CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH,
+  generateOrderNumber,
+} from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { generateOrderNumber } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { getBranchServiceStatus, isSameBangkokDay } from "@/lib/branch-hours";
 import {
@@ -29,6 +32,8 @@ const createOrderSchema = z.object({
   fulfillmentType: z.nativeEnum(FulfillmentType),
   deliveryLocationId: z.string().optional(),
   addressDetail: z.string().optional(),
+  deliveryLatitude: z.number().finite().optional(),
+  deliveryLongitude: z.number().finite().optional(),
   customerName: z.string().trim().min(1),
   scheduledAt: z.string().datetime().optional(),
   note: z.string().max(300).optional(),
@@ -203,6 +208,30 @@ export async function POST(request: Request) {
         }
         return jsonError("พื้นที่จัดส่งไม่ถูกต้อง");
       }
+      const detail = body.addressDetail?.trim() ?? "";
+      if (!detail) {
+        return jsonError("กรุณาระบุพื้นที่จัดส่งและที่อยู่");
+      }
+      if (
+        location.isCustomAddress &&
+        detail.length < CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH
+      ) {
+        return jsonError(
+          `กรุณากรอกที่อยู่ให้ละเอียดกว่านี้ (อย่างน้อย ${CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH} ตัวอักษร)`,
+        );
+      }
+      if (location.isCustomAddress) {
+        const lat = body.deliveryLatitude;
+        const lng = body.deliveryLongitude;
+        if (
+          lat == null ||
+          lng == null ||
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lng)
+        ) {
+          return jsonError("กรุณาปักหมุดจุดส่งบนแผนที่");
+        }
+      }
       deliveryFee = location.deliveryFee;
     }
 
@@ -284,6 +313,16 @@ export async function POST(request: Request) {
             addressDetail:
               body.fulfillmentType === "DELIVERY"
                 ? body.addressDetail?.trim()
+                : null,
+            deliveryLatitude:
+              body.fulfillmentType === "DELIVERY" &&
+              body.deliveryLatitude != null
+                ? body.deliveryLatitude
+                : null,
+            deliveryLongitude:
+              body.fulfillmentType === "DELIVERY" &&
+              body.deliveryLongitude != null
+                ? body.deliveryLongitude
                 : null,
             customerName: body.customerName,
             customerPhone: session.customerPhone ?? "",

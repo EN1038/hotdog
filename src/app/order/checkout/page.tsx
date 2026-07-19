@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FulfillmentType, PaymentMethod } from "@prisma/client";
-import { PAYMENT_METHOD_LABELS, formatPrice } from "@/lib/constants";
+import { PAYMENT_METHOD_LABELS, CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH, formatPrice } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
 import {
@@ -13,10 +13,13 @@ import {
   isWithinWeeklyScheduleWithOvernight,
   listSelectableHhmmToday,
 } from "@/lib/branch-hours";
+import { hasMapPin } from "@/lib/geo";
 import { localizedName } from "@/lib/localized";
 import { clearMenuItemScroll } from "@/lib/menu-scroll-restore";
 import { WheelTimePicker } from "@/components/WheelTimePicker";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import { CustomerDeliveryMapPin } from "@/components/customer/CustomerDeliveryMapPin";
+import type { MapLocationValue } from "@/components/customer/CustomerDeliveryMapPin";
 import { LoadingState } from "@/components/LoadingState";
 import {
   IconBack,
@@ -235,6 +238,11 @@ export default function CheckoutPage() {
   const [branchLoading, setBranchLoading] = useState(false);
   const [locationId, setLocationId] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
+  const [deliveryPin, setDeliveryPin] = useState<MapLocationValue>({
+    address: "",
+    latitude: null,
+    longitude: null,
+  });
   const [scheduledTime, setScheduledTime] = useState("");
   const [note, setNote] = useState("");
   const [payment, setPayment] = useState<PaymentMethod>("TRANSFER");
@@ -443,8 +451,42 @@ export default function CheckoutPage() {
     const loc = branch.deliveryLocations.find((l) => l.id === locationId);
     return loc ? Number(loc.deliveryFee) : 0;
   }, [fulfillment, branch, locationId]);
+  const selectedDeliveryLocation = useMemo(() => {
+    if (!branch || !locationId) return null;
+    return branch.deliveryLocations.find((l) => l.id === locationId) ?? null;
+  }, [branch, locationId]);
+  const isCustomAddressZone = Boolean(
+    selectedDeliveryLocation?.isCustomAddress,
+  );
+  const branchReferencePin =
+    branch && hasMapPin(branch)
+      ? {
+          latitude: branch.latitude!,
+          longitude: branch.longitude!,
+          label: branch.name,
+        }
+      : null;
   const discount = 0;
   const grandTotal = itemsTotal + deliveryFee - discount;
+
+  useEffect(() => {
+    if (fulfillment === "DELIVERY" && isCustomAddressZone) {
+      setExpandedField("addressDetail");
+    }
+  }, [fulfillment, isCustomAddressZone, locationId]);
+
+  useEffect(() => {
+    if (!isCustomAddressZone) {
+      setDeliveryPin({ address: "", latitude: null, longitude: null });
+    }
+  }, [isCustomAddressZone, locationId]);
+
+  function handleDeliveryPinChange(next: MapLocationValue) {
+    setDeliveryPin(next);
+    if (next.address.trim() && !addressDetail.trim()) {
+      setAddressDetail(next.address.trim());
+    }
+  }
 
   function dismissBlockModal() {
     const modal = blockModal;
@@ -507,7 +549,31 @@ export default function CheckoutPage() {
       return;
     }
     if (fulfillment === "DELIVERY" && !addressDetail.trim()) {
-      setError("กรุณากรอกที่อยู่จัดส่ง");
+      setError(
+        isCustomAddressZone
+          ? "กรุณากรอกที่อยู่จัดส่งให้ครบ"
+          : "กรุณากรอกที่อยู่จัดส่ง",
+      );
+      scrollAndExpand("addressDetail");
+      return;
+    }
+    if (
+      fulfillment === "DELIVERY" &&
+      isCustomAddressZone &&
+      addressDetail.trim().length < CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH
+    ) {
+      setError(
+        `กรุณากรอกที่อยู่ให้ละเอียดกว่านี้ (อย่างน้อย ${CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH} ตัวอักษร)`,
+      );
+      scrollAndExpand("addressDetail");
+      return;
+    }
+    if (
+      fulfillment === "DELIVERY" &&
+      isCustomAddressZone &&
+      !hasMapPin(deliveryPin)
+    ) {
+      setError("กรุณาปักหมุดจุดส่งบนแผนที่");
       scrollAndExpand("addressDetail");
       return;
     }
@@ -595,6 +661,14 @@ export default function CheckoutPage() {
             fulfillment === "DELIVERY" ? locationId : undefined,
           addressDetail:
             fulfillment === "DELIVERY" ? addressDetail : undefined,
+          deliveryLatitude:
+            fulfillment === "DELIVERY" && hasMapPin(deliveryPin)
+              ? deliveryPin.latitude
+              : undefined,
+          deliveryLongitude:
+            fulfillment === "DELIVERY" && hasMapPin(deliveryPin)
+              ? deliveryPin.longitude
+              : undefined,
           customerName: customerName,
           scheduledAt,
           note: note.trim() || undefined,
@@ -919,13 +993,17 @@ export default function CheckoutPage() {
                   {branch.deliveryLocations.map((loc) => {
                     const fee = Number(loc.deliveryFee);
                     const selected = locationId === loc.id;
+                    const custom = Boolean(loc.isCustomAddress);
                     return (
                       <button
                         key={loc.id}
                         type="button"
                         role="radio"
                         aria-checked={selected}
-                        onClick={() => setLocationId(loc.id)}
+                        onClick={() => {
+                          setLocationId(loc.id);
+                          if (custom) setExpandedField("addressDetail");
+                        }}
                         className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                           selected
                             ? "border-site-primary bg-site-primary-soft ring-1 ring-site-primary"
@@ -944,7 +1022,11 @@ export default function CheckoutPage() {
                           <span className="block text-sm font-medium text-gray-900">
                             {loc.name}
                           </span>
-                          {loc.address ? (
+                          {custom ? (
+                            <span className="mt-0.5 block text-xs leading-snug text-sky-700">
+                              ปักหมุด + กรอกที่อยู่เอง
+                            </span>
+                          ) : loc.address ? (
                             <span className="mt-0.5 block text-xs leading-snug text-gray-500">
                               {loc.address}
                             </span>
@@ -963,13 +1045,44 @@ export default function CheckoutPage() {
               <ExpandableFulfillmentRow
                 id="field-addressDetail"
                 icon={IconHome}
-                label="ที่อยู่จัดส่ง"
-                summary={addressDetail || "กรอกที่อยู่"}
+                label={
+                  isCustomAddressZone ? (
+                    <>
+                      ที่อยู่จัดส่ง{" "}
+                      <span className="text-site-primary">(กรอกเอง)</span>
+                    </>
+                  ) : (
+                    "ที่อยู่จัดส่ง"
+                  )
+                }
+                summary={
+                  isCustomAddressZone
+                    ? [
+                        hasMapPin(deliveryPin) ? "ปักหมุดแล้ว" : "ปักหมุดจุดส่ง",
+                        addressDetail.trim() || null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "ปักหมุด + กรอกที่อยู่"
+                    : addressDetail || "กรอกที่อยู่"
+                }
                 expanded={expandedField === "addressDetail"}
                 onToggle={() => toggleExpanded("addressDetail")}
               >
                 <div className="space-y-3">
-                  {usableSavedAddresses.length > 0 ? (
+                  {isCustomAddressZone ? (
+                    <>
+                      <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-900">
+                        พื้นที่นี้ให้คุณปักหมุดจุดส่งบนแผนที่ และพิมพ์รายละเอียดเพิ่ม
+                        (เช่น ห้อง / จุดสังเกต) — ร้านจะเห็นระยะทางจากสาขา
+                      </p>
+                      <CustomerDeliveryMapPin
+                        value={deliveryPin}
+                        onChange={handleDeliveryPinChange}
+                        referencePin={branchReferencePin}
+                      />
+                    </>
+                  ) : null}
+                  {usableSavedAddresses.length > 0 && !isCustomAddressZone ? (
                     <div>
                       <p className="mb-1.5 text-xs font-medium text-gray-500">
                         ที่อยู่ที่เคยใช้
@@ -1009,14 +1122,26 @@ export default function CheckoutPage() {
                     </div>
                   ) : null}
                   <textarea
-                    autoFocus={usableSavedAddresses.length === 0}
+                    autoFocus={
+                      isCustomAddressZone || usableSavedAddresses.length === 0
+                    }
                     className={`${fieldInputClass} resize-none`}
                     value={addressDetail}
                     onChange={(e) => setAddressDetail(e.target.value)}
-                    placeholder="เช่น ห้อง 302 ตึก B"
-                    rows={2}
+                    placeholder={
+                      isCustomAddressZone
+                        ? "เช่น 123/45 ซอยนวนคร 22 ใกล้ร้านสะดวกซื้อ ฝากไว้หน้าบ้าน"
+                        : "เช่น ห้อง 302 ตึก B"
+                    }
+                    rows={isCustomAddressZone ? 3 : 2}
                     maxLength={300}
                   />
+                  {isCustomAddressZone ? (
+                    <p className="text-right text-[11px] text-gray-400">
+                      {addressDetail.trim().length}/
+                      {CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH}+ ตัวอักษร
+                    </p>
+                  ) : null}
                 </div>
               </ExpandableFulfillmentRow>
             </>

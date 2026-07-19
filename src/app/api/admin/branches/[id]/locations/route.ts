@@ -26,6 +26,7 @@ const addressSchema = z
 const locationSchema = z.object({
   name: z.string().trim().min(1),
   deliveryFee: feeSchema.optional(),
+  isCustomAddress: z.boolean().optional(),
   address: addressSchema,
   latitude: coordSchema,
   longitude: coordSchema,
@@ -35,6 +36,7 @@ const patchSchema = z.object({
   locationId: z.string().min(1),
   name: z.string().trim().min(1),
   deliveryFee: feeSchema.optional(),
+  isCustomAddress: z.boolean().optional(),
   address: addressSchema,
   latitude: coordSchema,
   longitude: coordSchema,
@@ -56,6 +58,7 @@ export async function POST(request: Request, { params }: Params) {
         branchId,
         name: body.name,
         deliveryFee: body.deliveryFee ?? 0,
+        isCustomAddress: body.isCustomAddress ?? false,
         address: body.address ?? null,
         latitude: body.latitude ?? null,
         longitude: body.longitude ?? null,
@@ -98,6 +101,9 @@ export async function PATCH(request: Request, { params }: Params) {
         name: body.name,
         ...(body.deliveryFee !== undefined
           ? { deliveryFee: body.deliveryFee }
+          : {}),
+        ...(body.isCustomAddress !== undefined
+          ? { isCustomAddress: body.isCustomAddress }
           : {}),
         ...(body.address !== undefined ? { address: body.address } : {}),
         ...(body.latitude !== undefined ? { latitude: body.latitude } : {}),

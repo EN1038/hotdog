@@ -8,6 +8,7 @@ import { PAYMENT_METHOD_LABELS, formatPrice } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
 import {
+  explainWhyOrdersBlocked,
   getBranchServiceStatus,
   isWithinWeeklyScheduleWithOvernight,
   listSelectableHhmmToday,
@@ -413,8 +414,9 @@ export default function CheckoutPage() {
     }
     if (fulfillment === "DELIVERY" && !deliveryAvailable) {
       setBlockModal({
-        title: "ไม่สามารถสั่งจัดส่งได้",
-        message: "สาขานี้ยังไม่เปิดจัดส่ง กรุณาเลือกรับที่ร้านแทน",
+        title: "ยังสั่งจัดส่งไม่ได้",
+        message:
+          "สาขานี้ยังไม่เปิดบริการจัดส่ง กรุณาเปลี่ยนเป็นรับที่ร้านแทนนะคะ",
       });
       return;
     }
@@ -432,12 +434,13 @@ export default function CheckoutPage() {
     if (branch) {
       service = getBranchServiceStatus(branch, fulfillment);
       if (!service.acceptingOrders) {
-        const modeLabel =
-          fulfillment === "DELIVERY" ? "จัดส่ง" : "รับที่ร้าน";
-        setBlockModal({
-          title: "ไม่สามารถทำรายการได้",
-          message: `${service.reason} สำหรับโหมด${modeLabel} ตอนนี้ยังสั่งซื้อไม่ได้ ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่ในวันทำการ`,
-        });
+        const explained = explainWhyOrdersBlocked(branch, fulfillment);
+        setBlockModal(
+          explained ?? {
+            title: "ยังสั่งซื้อไม่ได้ตอนนี้",
+            message: "กรุณากลับมาสั่งใหม่ในเวลาทำการนะคะ",
+          },
+        );
         return;
       }
       if (!service.openNow && !scheduledTime.trim()) {
@@ -522,16 +525,27 @@ export default function CheckoutPage() {
 
   if (!sessionChecked || (cart.length > 0 && branchLoading && !branch)) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-4">
-        <LoadingState className="w-full max-w-sm" />
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-white px-4">
+        <LoadingState
+          className="w-full max-w-sm"
+          label={
+            !sessionChecked
+              ? "กำลังตรวจสอบการเข้าสู่ระบบ"
+              : "กำลังโหลดข้อมูลตะกร้า"
+          }
+        />
       </main>
     );
   }
 
   if (sessionChecked && cart.length === 0) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-4">
-        <LoadingState className="w-full max-w-sm" />
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-white px-4">
+        <LoadingState
+          className="w-full max-w-sm"
+          label="ตะกร้าว่าง — กำลังกลับไปหน้าร้าน"
+          recoveryAfterMs={6_000}
+        />
       </main>
     );
   }

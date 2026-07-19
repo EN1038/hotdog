@@ -354,6 +354,129 @@ export function getBranchServiceStatus(
   };
 }
 
+function formatThaiWeekdayDate(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    timeZone: BANGKOK,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(date);
+}
+
+function nextOpenDayPhrase(
+  schedule: WeeklySchedule,
+  fromDayOfWeek: number,
+): string {
+  for (let offset = 1; offset <= 7; offset++) {
+    const dow = (fromDayOfWeek + offset) % 7;
+    const day = schedule.find((d) => d.dayOfWeek === dow);
+    if (!day?.isOpen) continue;
+    if (day.is24Hours || day.slots.length > 0) {
+      if (offset === 1) return "พรุ่งนี้";
+      return `วัน${DAY_LABELS_TH[dow]}`;
+    }
+  }
+  return "วันเปิดทำการถัดไป";
+}
+
+function todaySlotBounds(day: DaySchedule): {
+  firstOpen: string | null;
+  lastClose: string | null;
+  firstOpenMin: number | null;
+} {
+  if (!day.isOpen || day.is24Hours || day.slots.length === 0) {
+    return { firstOpen: null, lastClose: null, firstOpenMin: null };
+  }
+  let firstOpenMin = Infinity;
+  let lastCloseMin = -1;
+  let firstOpen = day.slots[0]!.opensAt;
+  let lastClose = day.slots[0]!.closesAt;
+  for (const slot of day.slots) {
+    const openM = minutesSinceMidnight(slot.opensAt);
+    const closeM = minutesSinceMidnight(slot.closesAt);
+    if (openM < firstOpenMin) {
+      firstOpenMin = openM;
+      firstOpen = slot.opensAt;
+    }
+    // Prefer same-day close; overnight closes count as end-of-day for messaging
+    const effectiveClose = closeM > openM ? closeM : 24 * 60;
+    if (effectiveClose > lastCloseMin) {
+      lastCloseMin = effectiveClose;
+      lastClose = closeM > openM ? slot.closesAt : "24:00";
+    }
+  }
+  return {
+    firstOpen,
+    lastClose: lastClose === "24:00" ? "เที่ยงคืน" : lastClose,
+    firstOpenMin: Number.isFinite(firstOpenMin) ? firstOpenMin : null,
+  };
+}
+
+export type OrderBlockExplanation = {
+  title: string;
+  message: string;
+};
+
+/**
+ * Customer-friendly explanation when the branch cannot accept orders
+ * for the selected fulfillment right now.
+ */
+export function explainWhyOrdersBlocked(
+  branch: BranchHoursFields,
+  fulfillment: FulfillmentType | "PICKUP" | "DELIVERY",
+  now: Date = new Date(),
+): OrderBlockExplanation | null {
+  const status = getBranchServiceStatus(branch, fulfillment, now);
+  if (status.acceptingOrders) return null;
+
+  const mode = fulfillment === "DELIVERY" ? "จัดส่ง" : "รับที่ร้าน";
+  const todayLabel = formatThaiWeekdayDate(now);
+  const { dayOfWeek, minutes } = getBangkokParts(now);
+  const day = status.schedule.find((d) => d.dayOfWeek === dayOfWeek);
+
+  if (!branch.isOpen) {
+    return {
+      title: "ร้านปิดชั่วคราว",
+      message:
+        "ตอนนี้ร้านปิดรับออเดอร์ชั่วคราว กรุณากลับมาสั่งใหม่ภายหลังนะคะ",
+    };
+  }
+
+  if (!day || !day.isOpen || (!day.is24Hours && day.slots.length === 0)) {
+    const when = nextOpenDayPhrase(status.schedule, dayOfWeek);
+    const comeBack =
+      when === "พรุ่งนี้" ? "พรุ่งนี้" : `ใน${when}`;
+    return {
+      title: "วันนี้ร้านปิดทำการ",
+      message: `วันนี้เป็น${todayLabel} ร้านปิดทำการสำหรับ${mode} กรุณากลับมาสั่งใหม่${comeBack}นะคะ`,
+    };
+  }
+
+  const bounds = todaySlotBounds(day);
+  if (
+    bounds.firstOpenMin != null &&
+    minutes < bounds.firstOpenMin &&
+    bounds.firstOpen
+  ) {
+    return {
+      title: "ยังไม่ถึงเวลาเปิดร้าน",
+      message: `วันนี้ร้านเปิดรับ${mode}เวลา ${bounds.firstOpen} กรุณากลับมาสั่งเมื่อถึงเวลาเปิด หรือลองเปลี่ยนเป็นโหมดอื่นดูนะคะ`,
+    };
+  }
+
+  if (bounds.lastClose) {
+    return {
+      title: "วันนี้ปิดรับออเดอร์แล้ว",
+      message: `วันนี้เป็น${todayLabel} ปิดรับ${mode}แล้วตั้งแต่ ${bounds.lastClose} กรุณาสั่งใหม่พรุ่งนี้นะคะ`,
+    };
+  }
+
+  return {
+    title: "ยังสั่งซื้อไม่ได้ตอนนี้",
+    message: `ตอนนี้ยังไม่เปิดรับ${mode} กรุณากลับมาสั่งใหม่ในเวลาทำการนะคะ`,
+  };
+}
+
 /** Human summary for today for a schedule */
 export function formatTodayHoursSummary(
   schedule: WeeklySchedule,

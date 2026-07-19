@@ -11,12 +11,15 @@ type Props = {
   value: MapLocationValue;
   onChange: (next: MapLocationValue) => void;
   referencePin?: MapReferencePin | null;
+  /** When false, skip auto GPS (e.g. restored saved pin) */
+  autoLocate?: boolean;
 };
 
 export function CustomerDeliveryMapPin({
   value,
   onChange,
   referencePin = null,
+  autoLocate = true,
 }: Props) {
   const distanceLabel =
     hasMapPin(value) && referencePin && hasMapPin(referencePin)
@@ -33,8 +36,10 @@ export function CustomerDeliveryMapPin({
   return (
     <div className="space-y-2">
       <p className="text-xs leading-relaxed text-gray-600">
-        ระบบจะขอตำแหน่งปัจจุบันครั้งแรก — หรือกด “ตำแหน่งปัจจุบัน” /
-        ลากหมุดเอง ร้านจะเห็นระยะทางจากสาขา
+        {hasMapPin(value)
+          ? "ใช้หมุดที่บันทึกไว้ หรือลาก/กด “ตำแหน่งปัจจุบัน” เพื่อเปลี่ยน"
+          : "ระบบจะขอตำแหน่งปัจจุบันครั้งแรก — หรือกด “ตำแหน่งปัจจุบัน” / ลากหมุดเอง"}{" "}
+        ร้านจะเห็นระยะทางจากสาขา
       </p>
       <AdminMapLocationPicker
         value={value}
@@ -43,7 +48,7 @@ export function CustomerDeliveryMapPin({
         geocodePath="/api/customer/geocode"
         hideAddressField
         enableMyLocation
-        autoLocateOnMount
+        autoLocateOnMount={autoLocate && !hasMapPin(value)}
         mapHeightClassName="h-56"
         addressLabel="ที่อยู่จากแผนที่"
       />

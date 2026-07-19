@@ -263,8 +263,12 @@ export default function CheckoutPage() {
       locationName: string;
       addressDetail: string;
       deliveryFee: string;
+      isCustomAddress?: boolean;
+      deliveryLatitude?: number | null;
+      deliveryLongitude?: number | null;
     }[]
   >([]);
+  const savedAddressAppliedRef = useRef(false);
 
   useEffect(() => {
     if (!ALLOWED_PAYMENT_METHODS.includes(payment)) setPayment("TRANSFER");
@@ -372,6 +376,7 @@ export default function CheckoutPage() {
 
   // Load past delivery addresses for quick re-use (same branch).
   useEffect(() => {
+    savedAddressAppliedRef.current = false;
     if (!session || !cartBranchId || fulfillment !== "DELIVERY") {
       setSavedAddresses([]);
       return;
@@ -401,15 +406,57 @@ export default function CheckoutPage() {
     return savedAddresses.filter((a) => locIds.has(a.deliveryLocationId));
   }, [branch, savedAddresses]);
 
+  const savedForSelectedZone = useMemo(() => {
+    if (!locationId) return usableSavedAddresses;
+    return usableSavedAddresses.filter(
+      (a) => a.deliveryLocationId === locationId,
+    );
+  }, [usableSavedAddresses, locationId]);
+
   function applySavedAddress(saved: {
     deliveryLocationId: string;
     addressDetail: string;
+    deliveryLatitude?: number | null;
+    deliveryLongitude?: number | null;
   }) {
     setLocationId(saved.deliveryLocationId);
     setAddressDetail(saved.addressDetail);
+    if (
+      saved.deliveryLatitude != null &&
+      saved.deliveryLongitude != null &&
+      Number.isFinite(saved.deliveryLatitude) &&
+      Number.isFinite(saved.deliveryLongitude)
+    ) {
+      setDeliveryPin({
+        address: saved.addressDetail,
+        latitude: saved.deliveryLatitude,
+        longitude: saved.deliveryLongitude,
+      });
+    }
     setExpandedField(null);
     setError("");
   }
+
+  // Auto-fill most recent saved delivery address once per checkout visit.
+  useEffect(() => {
+    if (fulfillment !== "DELIVERY") {
+      savedAddressAppliedRef.current = false;
+      return;
+    }
+    if (savedAddressAppliedRef.current) return;
+    if (!branch || usableSavedAddresses.length === 0) return;
+    if (locationId || addressDetail.trim()) return;
+    const latest = usableSavedAddresses[0];
+    if (!latest) return;
+    savedAddressAppliedRef.current = true;
+    applySavedAddress(latest);
+  }, [
+    fulfillment,
+    branch,
+    usableSavedAddresses,
+    locationId,
+    addressDetail,
+  ]);
 
   // Wait for branch load — otherwise null branch looks like "no delivery".
   useEffect(() => {
@@ -479,7 +526,7 @@ export default function CheckoutPage() {
     if (!isCustomAddressZone) {
       setDeliveryPin({ address: "", latitude: null, longitude: null });
     }
-  }, [isCustomAddressZone, locationId]);
+  }, [isCustomAddressZone]);
 
   function handleDeliveryPinChange(next: MapLocationValue) {
     setDeliveryPin(next);
@@ -1002,7 +1049,21 @@ export default function CheckoutPage() {
                         aria-checked={selected}
                         onClick={() => {
                           setLocationId(loc.id);
-                          if (custom) setExpandedField("addressDetail");
+                          if (custom) {
+                            setExpandedField("addressDetail");
+                            const match = usableSavedAddresses.find(
+                              (a) => a.deliveryLocationId === loc.id,
+                            );
+                            if (match) {
+                              applySavedAddress(match);
+                            } else {
+                              setDeliveryPin({
+                                address: "",
+                                latitude: null,
+                                longitude: null,
+                              });
+                            }
+                          }
                         }}
                         className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                           selected
@@ -1075,10 +1136,62 @@ export default function CheckoutPage() {
                         พื้นที่นี้ให้คุณปักหมุดจุดส่งบนแผนที่ และพิมพ์รายละเอียดเพิ่ม
                         (เช่น ห้อง / จุดสังเกต) — ร้านจะเห็นระยะทางจากสาขา
                       </p>
+                      {(savedForSelectedZone.length > 0 ||
+                        usableSavedAddresses.some((a) => a.isCustomAddress)) && (
+                        <div>
+                          <p className="mb-1.5 text-xs font-medium text-gray-500">
+                            จุดส่งที่เคยใช้
+                          </p>
+                          <div className="flex flex-col gap-2">
+                            {(savedForSelectedZone.length > 0
+                              ? savedForSelectedZone
+                              : usableSavedAddresses.filter(
+                                  (a) => a.isCustomAddress,
+                                )
+                            ).map((saved) => {
+                              const active =
+                                locationId === saved.deliveryLocationId &&
+                                addressDetail.trim() ===
+                                  saved.addressDetail.trim() &&
+                                (saved.deliveryLatitude == null ||
+                                  (deliveryPin.latitude ===
+                                    saved.deliveryLatitude &&
+                                    deliveryPin.longitude ===
+                                      saved.deliveryLongitude));
+                              return (
+                                <button
+                                  key={`${saved.deliveryLocationId}:${saved.addressDetail}:${saved.deliveryLatitude ?? ""}:${saved.deliveryLongitude ?? ""}`}
+                                  type="button"
+                                  onClick={() => applySavedAddress(saved)}
+                                  className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                                    active
+                                      ? "border-site-primary bg-site-primary-soft ring-1 ring-site-primary"
+                                      : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  <span className="block text-sm font-medium text-gray-900">
+                                    {saved.addressDetail}
+                                  </span>
+                                  <span className="mt-0.5 block text-xs text-gray-500">
+                                    {saved.locationName}
+                                    {saved.deliveryLatitude != null
+                                      ? " · มีหมุดบันทึกไว้"
+                                      : ""}
+                                    {Number(saved.deliveryFee) > 0
+                                      ? ` · ค่าส่ง ฿${formatPrice(Number(saved.deliveryFee))}`
+                                      : " · ฟรี"}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <CustomerDeliveryMapPin
                         value={deliveryPin}
                         onChange={handleDeliveryPinChange}
                         referencePin={branchReferencePin}
+                        autoLocate={!hasMapPin(deliveryPin)}
                       />
                     </>
                   ) : null}

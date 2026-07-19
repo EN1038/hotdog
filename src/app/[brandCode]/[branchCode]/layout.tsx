@@ -11,24 +11,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { brandCode, branchCode } = await params;
 
   try {
-    const brand = await prisma.brand.findUnique({
-      where: { code: brandCode },
-      select: {
-        id: true,
-        name: true,
-        nameTh: true,
-        nameEn: true,
-        logoUrl: true,
-        coverImageUrl: true,
-      },
-    });
-    if (!brand) return {};
-
     const branch = await prisma.branch.findFirst({
       where: {
-        brandId: brand.id,
+        code: branchCode,
         isHidden: false,
-        OR: [{ code: branchCode }, { id: branchCode }],
+        brand: { code: brandCode },
       },
       select: {
         name: true,
@@ -36,21 +23,44 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
         nameEn: true,
         imageUrl: true,
         address: true,
+        brand: {
+          select: {
+            name: true,
+            nameTh: true,
+            nameEn: true,
+            logoUrl: true,
+            coverImageUrl: true,
+            siteTitle: true,
+            siteDescription: true,
+          },
+        },
       },
     });
+
     if (!branch) return {};
 
-    const brandName = localizedName(brand.name, brand.nameTh, brand.nameEn);
     const branchName = localizedName(
       branch.name,
       branch.nameTh,
       branch.nameEn,
     );
-    const displayName = `${brandName} - ${branchName}`;
-    const title = `สั่งอาหารจาก ${displayName}`;
-    const description = branch.address
-      ? `สั่งอาหารออนไลน์จาก ${displayName} · ${branch.address}`
-      : `ดูเมนูและสั่งอาหารออนไลน์จาก ${displayName}`;
+    const brandName = branch.brand
+      ? localizedName(
+          branch.brand.name,
+          branch.brand.nameTh,
+          branch.brand.nameEn,
+        )
+      : "";
+    const displayName = brandName
+      ? `${brandName} - ${branchName}`
+      : branchName;
+    const title =
+      branch.brand?.siteTitle?.trim() || `สั่งอาหารจาก ${displayName}`;
+    const description =
+      branch.brand?.siteDescription?.trim() ||
+      (branch.address
+        ? `สั่งอาหารออนไลน์จาก ${displayName} · ${branch.address}`
+        : `ดูเมนูและสั่งอาหารออนไลน์จาก ${displayName}`);
 
     return await buildOrderShareMetadata({
       title,
@@ -59,8 +69,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       imageAlt: displayName,
       imageCandidates: [
         branch.imageUrl,
-        brand.coverImageUrl,
-        brand.logoUrl,
+        branch.brand?.coverImageUrl,
+        branch.brand?.logoUrl,
       ],
     });
   } catch {

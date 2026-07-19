@@ -21,6 +21,8 @@ const patchSchema = z.object({
   imageUrl: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   roles: z.array(z.nativeEnum(StaffRole)).min(1).optional(),
+  lineUserId: z.string().nullable().optional(),
+  lineNotifyEnabled: z.boolean().optional(),
 });
 
 export async function PATCH(request: Request, { params }: Params) {
@@ -63,6 +65,12 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.age !== undefined && { age: body.age }),
         ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
         ...(body.isActive !== undefined && { isActive: body.isActive }),
+        ...(body.lineUserId !== undefined && {
+          lineUserId: body.lineUserId?.trim() ? body.lineUserId.trim() : null,
+        }),
+        ...(body.lineNotifyEnabled !== undefined && {
+          lineNotifyEnabled: body.lineNotifyEnabled,
+        }),
         ...(body.roles !== undefined && {
           roles: {
             deleteMany: {},

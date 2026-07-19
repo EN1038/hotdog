@@ -4,50 +4,49 @@ import { localizedName } from "@/lib/localized";
 import { buildOrderShareMetadata } from "@/lib/order-og";
 
 type Params = {
-  params: Promise<{ branchId: string }>;
+  params: Promise<{ brandCode: string; branchCode: string }>;
 };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const { branchId } = await params;
+  const { brandCode, branchCode } = await params;
 
   try {
+    const brand = await prisma.brand.findUnique({
+      where: { code: brandCode },
+      select: {
+        id: true,
+        name: true,
+        nameTh: true,
+        nameEn: true,
+        logoUrl: true,
+        coverImageUrl: true,
+      },
+    });
+    if (!brand) return {};
+
     const branch = await prisma.branch.findFirst({
-      where: { id: branchId, isHidden: false },
+      where: {
+        brandId: brand.id,
+        isHidden: false,
+        OR: [{ code: branchCode }, { id: branchCode }],
+      },
       select: {
         name: true,
         nameTh: true,
         nameEn: true,
         imageUrl: true,
         address: true,
-        brand: {
-          select: {
-            name: true,
-            nameTh: true,
-            nameEn: true,
-            logoUrl: true,
-            coverImageUrl: true,
-          },
-        },
       },
     });
-
     if (!branch) return {};
 
+    const brandName = localizedName(brand.name, brand.nameTh, brand.nameEn);
     const branchName = localizedName(
       branch.name,
       branch.nameTh,
       branch.nameEn,
     );
-    const brandName = branch.brand
-      ? localizedName(
-          branch.brand.name,
-          branch.brand.nameTh,
-          branch.brand.nameEn,
-        )
-      : "";
-    const displayName = brandName
-      ? `${brandName} - ${branchName}`
-      : branchName;
+    const displayName = `${brandName} - ${branchName}`;
     const title = `สั่งอาหารจาก ${displayName}`;
     const description = branch.address
       ? `สั่งอาหารออนไลน์จาก ${displayName} · ${branch.address}`
@@ -56,21 +55,20 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     return await buildOrderShareMetadata({
       title,
       description,
-      path: `/order/store/${branchId}`,
+      path: `/${brandCode}/${branchCode}`,
       imageAlt: displayName,
       imageCandidates: [
         branch.imageUrl,
-        branch.brand?.coverImageUrl,
-        branch.brand?.logoUrl,
+        brand.coverImageUrl,
+        brand.logoUrl,
       ],
     });
   } catch {
-    // Keep the storefront available if metadata lookup fails.
     return {};
   }
 }
 
-export default function StoreLayout({
+export default function BrandBranchLayout({
   children,
 }: {
   children: React.ReactNode;

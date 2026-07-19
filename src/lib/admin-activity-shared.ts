@@ -27,6 +27,7 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "share.create": "สร้างรหัสแชร์",
   "share.import": "นำเข้าจากรหัสแชร์",
   "site.update": "แก้ตั้งค่าแพลตฟอร์ม",
+  "line.update": "แก้ตั้งค่า LINE",
   "restaurant_type.create": "เพิ่มประเภทร้าน",
   "restaurant_type.update": "แก้ไขประเภทร้าน",
   "restaurant_type.delete": "ลบประเภทร้าน",

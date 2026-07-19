@@ -133,6 +133,8 @@ type BranchDetail = {
     age: number | null;
     imageUrl: string | null;
     isActive: boolean;
+    lineUserId?: string | null;
+    lineNotifyEnabled?: boolean;
     roles: { id: string; role: StaffRole }[];
   }[];
   menuItems: {
@@ -875,6 +877,21 @@ function BranchDetailContent() {
   function closeStaffModal() {
     setStaffModalOpen(false);
     resetStaffForm();
+  }
+
+  async function unlinkStaffLine(staffId: string) {
+    const ok = await confirm({
+      title: "ยกเลิกเชื่อม LINE?",
+      message: "พนักงานคนนี้จะไม่ได้รับแจ้งเตือนทาง LINE จนกว่าจะผูกใหม่",
+      confirmLabel: "ยกเลิกเชื่อม",
+    });
+    if (!ok) return;
+    await fetch(`/api/admin/branches/${id}/staff/${staffId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lineUserId: null }),
+    });
+    load();
   }
 
   async function toggleStaffActive(staffId: string, isActive: boolean) {
@@ -1766,6 +1783,10 @@ function BranchDetailContent() {
                 <p className="mt-0.5 text-sm text-gray-600">
                   {branch.staff.length} คน · รูปไม่บังคับ
                 </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  เชื่อม LINE: เพิ่มเพื่อน Official Account แล้วส่งเบอร์โทรในระบบมาในแชท
+                  (ตั้งค่าที่เมนู LINE แจ้งเตือน)
+                </p>
               </div>
               <button
                 type="button"
@@ -1818,6 +1839,15 @@ function BranchDetailContent() {
                               {ROLE_LABELS[r.role] ?? r.role}
                             </span>
                           ))}
+                          {s.lineUserId ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+                              LINE เชื่อมแล้ว
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
+                              LINE ยังไม่เชื่อม
+                            </span>
+                          )}
                           {s.gender && (
                             <span className="rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
                               {GENDER_LABELS[s.gender] ?? s.gender}
@@ -1833,6 +1863,15 @@ function BranchDetailContent() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <PhoneCallButton phone={s.phone} />
+                      {s.lineUserId ? (
+                        <button
+                          type="button"
+                          onClick={() => unlinkStaffLine(s.id)}
+                          className={btnOutline}
+                        >
+                          ยกเลิก LINE
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => startEditStaff(s)}

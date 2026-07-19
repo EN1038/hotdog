@@ -238,6 +238,10 @@ export default function CheckoutPage() {
   const [note, setNote] = useState("");
   const [payment, setPayment] = useState<PaymentMethod>("TRANSFER");
   const [error, setError] = useState("");
+  const [blockModal, setBlockModal] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [expandedField, setExpandedField] = useState<ExpandFieldId | null>(null);
   const [openSwipeKey, setOpenSwipeKey] = useState<string | null>(null);
@@ -248,6 +252,8 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     setExpandedField(null);
+    setBlockModal(null);
+    setError("");
   }, [fulfillment]);
 
   const checkoutService = useMemo(() => {
@@ -395,6 +401,7 @@ export default function CheckoutPage() {
     };
 
     setError("");
+    setBlockModal(null);
     if (!session) {
       goToLogin({ pendingSubmit: true });
       return;
@@ -405,8 +412,10 @@ export default function CheckoutPage() {
       return;
     }
     if (fulfillment === "DELIVERY" && !deliveryAvailable) {
-      setError("สาขานี้ยังไม่เปิดจัดส่ง — กรุณาเลือกรับที่ร้าน");
-      setFulfillment("PICKUP");
+      setBlockModal({
+        title: "ไม่สามารถสั่งจัดส่งได้",
+        message: "สาขานี้ยังไม่เปิดจัดส่ง กรุณาเลือกรับที่ร้านแทน",
+      });
       return;
     }
     if (fulfillment === "DELIVERY" && !locationId) {
@@ -423,7 +432,12 @@ export default function CheckoutPage() {
     if (branch) {
       service = getBranchServiceStatus(branch, fulfillment);
       if (!service.acceptingOrders) {
-        setError(service.reason);
+        const modeLabel =
+          fulfillment === "DELIVERY" ? "จัดส่ง" : "รับที่ร้าน";
+        setBlockModal({
+          title: "ไม่สามารถทำรายการได้",
+          message: `${service.reason} สำหรับโหมด${modeLabel} ตอนนี้ยังสั่งซื้อไม่ได้ ลองเปลี่ยนโหมดรับสินค้าหรือกลับมาใหม่ในวันทำการ`,
+        });
         return;
       }
       if (!service.openNow && !scheduledTime.trim()) {
@@ -1014,6 +1028,48 @@ export default function CheckoutPage() {
           </span>
         </button>
       </div>
+
+      {blockModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="checkout-block-title"
+          onClick={() => setBlockModal(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2
+                id="checkout-block-title"
+                className="text-lg font-bold text-gray-900"
+              >
+                {blockModal.title}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setBlockModal(null)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+                aria-label="ปิด"
+              >
+                <IconClose size={18} />
+              </button>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-gray-600">
+              {blockModal.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => setBlockModal(null)}
+              className="mt-5 w-full rounded-xl bg-site-primary py-3 text-sm font-semibold text-white hover:opacity-90"
+            >
+              เข้าใจแล้ว
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

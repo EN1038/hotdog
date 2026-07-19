@@ -139,6 +139,14 @@ model BrandMember {
   markHome        String   @default("logo")
   markOrder       String   @default("icon")
   markFavicon     String   @default("icon")
+  /// LINE Messaging API channel access token (optional; env can override)
+  lineChannelAccessToken String?
+  /// LINE Messaging API channel secret (optional; env can override)
+  lineChannelSecret      String?
+  /// Master switch for outbound LINE notifications
+  lineMessagingEnabled   Boolean  @default(false)
+  /// Notify linked branch staff when a new order arrives
+  lineNotifyStaffOnNewOrder Boolean @default(true)
   updatedAt       DateTime @updatedAt
 }
 
@@ -196,17 +204,20 @@ model Branch {
 }
 
 model Staff {
-  id        String                @id @default(cuid())
-  branchId  String
-  phone     String                @unique
-  name      String?
-  gender    String?
-  age       Int?
-  imageUrl  String?
-  isActive  Boolean               @default(true)
-  createdAt DateTime              @default(now())
-  branch    Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  roles     StaffRoleAssignment[]
+  id                String                @id @default(cuid())
+  branchId          String
+  phone             String                @unique
+  name              String?
+  gender            String?
+  age               Int?
+  imageUrl          String?
+  isActive          Boolean               @default(true)
+  /// LINE user id after staff adds the Official Account and links by phone
+  lineUserId        String?               @unique
+  lineNotifyEnabled Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  branch            Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  roles             StaffRoleAssignment[]
 }
 
 model StaffRoleAssignment {

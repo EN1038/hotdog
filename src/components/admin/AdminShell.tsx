@@ -124,6 +124,12 @@ const NAV_GROUPS: NavGroup[] = [
         platformOnly: true,
         icon: IconSettings,
       },
+      {
+        href: "/admin/line",
+        label: "LINE แจ้งเตือน",
+        platformOnly: true,
+        icon: IconChat,
+      },
     ],
   },
 ];
@@ -178,6 +184,33 @@ function IconSettings({
       />
       <path
         d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9c0 .7.4 1.3 1.1 1.5H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconChat({
+  size = 20,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className ? `block shrink-0 ${className}` : "block shrink-0"}
+      aria-hidden
+    >
+      <path
+        d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

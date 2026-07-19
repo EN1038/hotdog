@@ -15,6 +15,7 @@ import {
   isChannelSellEnabled,
   resolveSellPrice,
 } from "@/lib/menu-pricing";
+import { notifyStaffNewOrder } from "@/lib/line";
 
 const orderItemSchema = z.object({
   branchMenuItemId: z.string(),
@@ -253,6 +254,16 @@ export async function POST(request: Request) {
       }
     }
     if (!order) return jsonError("ไม่สามารถสร้างเลขออเดอร์ได้ กรุณาลองใหม่");
+
+    void notifyStaffNewOrder({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      branchId: order.branchId,
+      fulfillmentType: order.fulfillmentType,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      status: order.status,
+    });
 
     return jsonOk(order, 201);
   } catch (error) {

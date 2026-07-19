@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { OrderBrandingShell } from "@/components/customer/OrderBrandingShell";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
+import { buildOrderShareMetadata } from "@/lib/order-og";
 
 type Params = { params: Promise<{ brandCode: string }> };
 
@@ -14,7 +15,15 @@ const loadBrandMeta = cache(async (brandCode: string) => {
   try {
     return await prisma.brand.findUnique({
       where: { code: brandCode },
-      select: { name: true, nameTh: true, nameEn: true, siteTitle: true, siteDescription: true },
+      select: {
+        name: true,
+        nameTh: true,
+        nameEn: true,
+        siteTitle: true,
+        siteDescription: true,
+        logoUrl: true,
+        coverImageUrl: true,
+      },
     });
   } catch {
     return null;
@@ -25,11 +34,24 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { brandCode } = await params;
   const brand = await loadBrandMeta(brandCode);
   if (!brand) return {};
+
   const name = localizedName(brand.name, brand.nameTh, brand.nameEn);
-  return {
-    title: brand.siteTitle || name,
-    description: brand.siteDescription ?? undefined,
-  };
+  const title = brand.siteTitle?.trim() || `สั่งอาหารจาก ${name}`;
+  const description =
+    brand.siteDescription?.trim() ||
+    `ดูเมนูและสั่งอาหารออนไลน์จาก ${name}`;
+
+  try {
+    return await buildOrderShareMetadata({
+      title,
+      description,
+      path: `/${brandCode}`,
+      imageAlt: name,
+      imageCandidates: [brand.coverImageUrl, brand.logoUrl],
+    });
+  } catch {
+    return { title, description };
+  }
 }
 
 /**

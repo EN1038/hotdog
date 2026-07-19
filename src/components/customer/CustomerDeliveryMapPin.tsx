@@ -33,7 +33,8 @@ export function CustomerDeliveryMapPin({
   return (
     <div className="space-y-2">
       <p className="text-xs leading-relaxed text-gray-600">
-        แตะหรือลากหมุดบนแผนที่ไปยังจุดส่ง — ร้านจะเห็นระยะทางจากสาขา
+        ระบบจะขอตำแหน่งปัจจุบันครั้งแรก — หรือกด “ตำแหน่งปัจจุบัน” /
+        ลากหมุดเอง ร้านจะเห็นระยะทางจากสาขา
       </p>
       <AdminMapLocationPicker
         value={value}
@@ -41,6 +42,8 @@ export function CustomerDeliveryMapPin({
         referencePin={referencePin}
         geocodePath="/api/customer/geocode"
         hideAddressField
+        enableMyLocation
+        autoLocateOnMount
         mapHeightClassName="h-56"
         addressLabel="ที่อยู่จากแผนที่"
       />

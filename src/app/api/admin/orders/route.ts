@@ -48,7 +48,8 @@ export async function GET(request: Request) {
           ? { branch: { brandId: { in: accessible } } }
           : {}),
       ...(branchId ? { branchId } : {}),
-      ...(status && status in OrderStatus
+      ...(status &&
+      (Object.values(OrderStatus) as string[]).includes(status)
         ? { status: status as OrderStatus }
         : {}),
       ...(phoneQ

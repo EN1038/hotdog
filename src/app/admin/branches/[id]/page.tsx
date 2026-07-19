@@ -46,9 +46,11 @@ import {
   IconTrash,
   IconUser,
 } from "@/components/icons";
+import { OrderStatus } from "@prisma/client";
 import {
   formatThaiPhone,
   phoneDigits,
+  ORDER_STATUS_LABELS,
 } from "@/lib/constants";
 import {
   ensureWeeklySchedule,
@@ -480,6 +482,9 @@ function BranchDetailContent() {
     useState<MapLocationValue>(emptyLocationMap);
   const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<"" | OrderStatus>(
+    "",
+  );
   const [menuSetupModalOpen, setMenuSetupModalOpen] = useState(false);
   const [stockPasteOpen, setStockPasteOpen] = useState(false);
   const [stockPasteText, setStockPasteText] = useState("");
@@ -1887,7 +1892,54 @@ function BranchDetailContent() {
                 </div>
               )}
             </div>
-            <OrdersTable orders={branch.orders} />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setOrderStatusFilter("")}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                  orderStatusFilter === ""
+                    ? "bg-site-primary text-white"
+                    : "bg-white text-gray-700 ring-1 ring-gray-200"
+                }`}
+              >
+                ทั้งหมด
+              </button>
+              {(
+                [
+                  OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+                  OrderStatus.PREPARING,
+                  OrderStatus.READY_FOR_DELIVERY,
+                  OrderStatus.DELIVERING,
+                  OrderStatus.COMPLETED,
+                  OrderStatus.CANCELLED,
+                ] as OrderStatus[]
+              ).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setOrderStatusFilter(st)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                    orderStatusFilter === st
+                      ? "bg-site-primary text-white"
+                      : "bg-white text-gray-700 ring-1 ring-gray-200"
+                  }`}
+                >
+                  {ORDER_STATUS_LABELS[st]}
+                </button>
+              ))}
+            </div>
+            <OrdersTable
+              orders={
+                orderStatusFilter
+                  ? branch.orders.filter((o) => o.status === orderStatusFilter)
+                  : branch.orders
+              }
+              emptyText={
+                orderStatusFilter === OrderStatus.CANCELLED
+                  ? "ยังไม่มีออเดอร์ที่ยกเลิกในช่วง 100 รายการล่าสุด"
+                  : "ยังไม่มีออเดอร์"
+              }
+            />
           </div>
         )}
 

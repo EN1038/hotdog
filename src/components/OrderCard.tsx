@@ -11,6 +11,7 @@ import {
 import { IconArrowRight, IconLabel, IconNote } from "@/components/icons";
 import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
+import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
 
 type OrderItem = {
   id: string;
@@ -33,9 +34,11 @@ export type OrderCardData = {
   isNewCustomer?: boolean;
   note?: string | null;
   cancelReason?: string | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
   createdAt: string;
   customer?: { phone: string; name?: string | null } | null;
-  deliveryLocation: { name: string } | null;
+  deliveryLocation: { name: string; isCustomAddress?: boolean } | null;
   items: OrderItem[];
 };
 
@@ -45,6 +48,8 @@ type OrderCardProps = {
   onStatusChange?: (orderId: string, status: OrderStatus) => void;
   onRequestCancel?: (orderId: string) => void;
   showActions?: boolean;
+  /** Branch pin — used to show delivery distance */
+  branchPin?: { latitude: number; longitude: number } | null;
 };
 
 /** Workflow order — used to pick the main “next step” button on touch UIs. */
@@ -82,6 +87,7 @@ export function OrderCard({
   onStatusChange,
   onRequestCancel,
   showActions = false,
+  branchPin = null,
 }: OrderCardProps) {
   const colorClass = ORDER_STATUS_COLORS[order.status];
   const fulfillment = order.fulfillmentType ?? "DELIVERY";
@@ -109,6 +115,23 @@ export function OrderCard({
       ? FULFILLMENT_LABELS.PICKUP
       : (order.deliveryLocation?.name ?? FULFILLMENT_LABELS.DELIVERY);
 
+  const deliveryDistanceLabel =
+    branchPin &&
+    hasMapPin(branchPin) &&
+    order.deliveryLatitude != null &&
+    order.deliveryLongitude != null &&
+    Number.isFinite(order.deliveryLatitude) &&
+    Number.isFinite(order.deliveryLongitude)
+      ? formatDistanceKm(
+          distanceKm(
+            branchPin.latitude,
+            branchPin.longitude,
+            order.deliveryLatitude,
+            order.deliveryLongitude,
+          ),
+        )
+      : null;
+
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm ${colorClass}`}
@@ -122,6 +145,16 @@ export function OrderCard({
             <p className="mt-0.5 text-sm font-medium text-gray-700">
               {locationLabel}
             </p>
+            {order.deliveryLocation?.isCustomAddress ? (
+              <span className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+                ที่อยู่ลูกค้า
+              </span>
+            ) : null}
+            {deliveryDistanceLabel ? (
+              <p className="mt-1.5 text-sm font-bold text-sky-800">
+                ห่างจากร้าน ~{deliveryDistanceLabel}
+              </p>
+            ) : null}
           </div>
           <span className="shrink-0 rounded-lg bg-white/80 px-2.5 py-1.5 text-xs font-semibold text-gray-800 ring-1 ring-black/5">
             {getStaffStatusLabel(order.status, roles)}
@@ -129,7 +162,34 @@ export function OrderCard({
         </div>
 
         {order.addressDetail ? (
-          <p className="mt-2 text-base text-gray-800">{order.addressDetail}</p>
+          <p
+            className={`mt-2 text-base text-gray-800 ${
+              order.deliveryLocation?.isCustomAddress
+                ? "rounded-xl bg-sky-50 px-3 py-2 font-medium text-sky-950"
+                : ""
+            }`}
+          >
+            {order.deliveryLocation?.isCustomAddress ? (
+              <span className="mb-0.5 block text-xs font-semibold text-sky-700">
+                ส่งที่
+              </span>
+            ) : null}
+            {order.addressDetail}
+          </p>
+        ) : null}
+
+        {order.deliveryLatitude != null &&
+        order.deliveryLongitude != null &&
+        Number.isFinite(order.deliveryLatitude) &&
+        Number.isFinite(order.deliveryLongitude) ? (
+          <a
+            href={`https://maps.google.com/?q=${order.deliveryLatitude},${order.deliveryLongitude}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex text-sm font-medium text-site-primary underline"
+          >
+            เปิดในแผนที่
+          </a>
         ) : null}
 
         <div className="mt-3 flex flex-wrap items-center gap-2">

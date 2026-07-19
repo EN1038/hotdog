@@ -1,10 +1,11 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireCustomer } from "@/lib/auth";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { nominatimReverse, nominatimSearch } from "@/lib/nominatim";
 
+/** Geocode for logged-in customers (delivery pin on custom zones). */
 export async function GET(request: Request) {
   try {
-    await requireAdmin();
+    await requireCustomer();
     const { searchParams } = new URL(request.url);
     const latRaw = searchParams.get("lat");
     const lngRaw = searchParams.get("lng") ?? searchParams.get("lon");

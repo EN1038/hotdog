@@ -317,15 +317,17 @@ model BranchMenuItemOptionGroup {
 }
 
 model DeliveryLocation {
-  id          String  @id @default(cuid())
-  branchId    String
-  name        String
-  deliveryFee Decimal @default(0) @db.Decimal(10, 2)
-  address     String?
-  latitude    Float?
-  longitude   Float?
-  branch      Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  orders      Order[]
+  id               String  @id @default(cuid())
+  branchId         String
+  name             String
+  deliveryFee      Decimal @default(0) @db.Decimal(10, 2)
+  /// When true, customer must enter a full delivery address at checkout
+  isCustomAddress  Boolean @default(false)
+  address          String?
+  latitude         Float?
+  longitude        Float?
+  branch           Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orders           Order[]
 }
 
 model Customer {
@@ -359,6 +361,9 @@ model Order {
   fulfillmentType    FulfillmentType   @default(DELIVERY)
   deliveryLocationId String?
   addressDetail      String?
+  /// Pin for custom / “อื่น” delivery — distance shown to staff
+  deliveryLatitude   Float?
+  deliveryLongitude  Float?
   customerName       String            @default("")
   customerPhone      String            @default("")
   /// True when this was the customer's first order at this branch

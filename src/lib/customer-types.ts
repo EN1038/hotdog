@@ -84,6 +84,7 @@ export type BranchData = {
     name: string;
     deliveryFee: string;
     address?: string | null;
+    isCustomAddress?: boolean;
   }[];
 };
 
@@ -122,11 +123,23 @@ export type OrderData = {
   scheduledAt: string | null;
   note: string | null;
   cancelReason?: string | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
   deliveryFee: string;
   discountAmount: string;
   createdAt: string;
-  branch: { id: string; name: string; imageUrl?: string | null };
-  deliveryLocation: { id: string; name: string } | null;
+  branch: {
+    id: string;
+    name: string;
+    imageUrl?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  };
+  deliveryLocation: {
+    id: string;
+    name: string;
+    isCustomAddress?: boolean;
+  } | null;
   items: OrderItemData[];
 };
 

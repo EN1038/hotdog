@@ -29,6 +29,10 @@ export default function StaffPage() {
   const [orders, setOrders] = useState<OrderCardData[]>([]);
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [branchName, setBranchName] = useState("");
+  const [branchPin, setBranchPin] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [autoAcceptOrders, setAutoAcceptOrders] = useState(false);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,6 +117,7 @@ export default function StaffPage() {
     setOrders(nextOrders);
     setRoles(data.roles ?? []);
     setBranchName(data.branchName ?? "");
+    setBranchPin(data.branchPin ?? null);
     setAutoAcceptOrders(Boolean(data.autoAcceptOrders));
     setLoading(false);
   }, [router, flashNewOrders]);
@@ -338,6 +343,7 @@ export default function StaffPage() {
               order={order}
               roles={roles}
               showActions
+              branchPin={branchPin}
               onStatusChange={handleStatusChange}
               onRequestCancel={(id) => setCancelOrderId(id)}
             />

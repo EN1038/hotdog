@@ -25,15 +25,21 @@ export async function GET() {
       ],
     };
 
-    const orders = await prisma.order.findMany({
-      where,
-      include: {
-        customer: true,
-        deliveryLocation: true,
-        items: { include: { branchMenuItem: true } },
-      },
-      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
-    });
+    const [branch, orders] = await Promise.all([
+      prisma.branch.findUnique({
+        where: { id: session.branchId },
+        select: { latitude: true, longitude: true },
+      }),
+      prisma.order.findMany({
+        where,
+        include: {
+          customer: true,
+          deliveryLocation: true,
+          items: { include: { branchMenuItem: true } },
+        },
+        orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+      }),
+    ]);
 
     return jsonOk({
       orders,
@@ -41,6 +47,13 @@ export async function GET() {
       branchName: session.branchName,
       brand: session.brand,
       autoAcceptOrders: session.autoAcceptOrders ?? false,
+      branchPin:
+        branch?.latitude != null &&
+        branch?.longitude != null &&
+        Number.isFinite(branch.latitude) &&
+        Number.isFinite(branch.longitude)
+          ? { latitude: branch.latitude, longitude: branch.longitude }
+          : null,
     });
   } catch (error) {
     return handleApiError(error);

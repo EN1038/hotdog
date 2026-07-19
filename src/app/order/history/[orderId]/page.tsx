@@ -16,6 +16,7 @@ import {
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
+import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { CancelReasonModal } from "@/components/CancelReasonModal";
@@ -411,20 +412,66 @@ export default function OrderDetailPage() {
             <DetailRow
               icon={IconPin}
               label="พื้นที่จัดส่ง"
-              value={order.deliveryLocation.name}
+              value={
+                order.deliveryLocation.isCustomAddress
+                  ? `${order.deliveryLocation.name} (ที่อยู่ลูกค้า)`
+                  : order.deliveryLocation.name
+              }
             />
           )}
           {order.addressDetail && (
             <div className="flex items-start justify-between gap-3 py-2">
               <div className="flex shrink-0 items-center gap-2 text-gray-500">
                 <IconHome size={14} />
-                <span className="text-sm">ที่อยู่</span>
+                <span className="text-sm">
+                  {order.deliveryLocation?.isCustomAddress
+                    ? "ที่อยู่จัดส่ง"
+                    : "ที่อยู่"}
+                </span>
               </div>
-              <span className="text-right text-sm font-medium text-gray-900">
+              <span
+                className={`text-right text-sm font-medium ${
+                  order.deliveryLocation?.isCustomAddress
+                    ? "text-sky-900"
+                    : "text-gray-900"
+                }`}
+              >
                 {order.addressDetail}
               </span>
             </div>
           )}
+          {order.deliveryLatitude != null &&
+          order.deliveryLongitude != null &&
+          Number.isFinite(order.deliveryLatitude) &&
+          Number.isFinite(order.deliveryLongitude) ? (
+            <>
+              {hasMapPin(order.branch) ? (
+                <DetailRow
+                  icon={IconPin}
+                  label="ระยะจากร้าน"
+                  value={`~${formatDistanceKm(
+                    distanceKm(
+                      order.branch.latitude!,
+                      order.branch.longitude!,
+                      order.deliveryLatitude,
+                      order.deliveryLongitude,
+                    ),
+                  )}`}
+                  valueClassName="text-sky-800"
+                />
+              ) : null}
+              <div className="py-2 text-right">
+                <a
+                  href={`https://maps.google.com/?q=${order.deliveryLatitude},${order.deliveryLongitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-site-primary underline"
+                >
+                  เปิดจุดส่งในแผนที่
+                </a>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
 

@@ -64,6 +64,9 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CARD: "บัตรเครดิต",
 };
 
+/** Min length for address when delivery zone is “customer defines address”. */
+export const CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH = 8;
+
 /** Customers can cancel only while the store has not accepted the order yet. */
 export function canCustomerCancel(status: OrderStatus): boolean {
   return status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE;

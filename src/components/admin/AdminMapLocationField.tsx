@@ -59,6 +59,10 @@ type Props = {
   addressPlaceholder?: string;
   referencePin?: MapReferencePin | null;
   mapHeightClassName?: string;
+  /** Geocode API path (admin or customer) */
+  geocodePath?: string;
+  /** Hide the address text field (e.g. checkout keeps a separate note field) */
+  hideAddressField?: boolean;
 };
 
 type GeocodeHit = {
@@ -107,6 +111,8 @@ export function AdminMapLocationField({
   addressPlaceholder = "บ้านเลขที่ ถนน แขวง/ตำบล จังหวัด — กรอกเองได้เสมอ",
   referencePin = null,
   mapHeightClassName = "h-64",
+  geocodePath = "/api/admin/geocode",
+  hideAddressField = false,
 }: Props) {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<GeocodeHit[]>([]);
@@ -178,7 +184,7 @@ export function AdminMapLocationField({
       setSearchError("");
       try {
         const res = await fetch(
-          `/api/admin/geocode?q=${encodeURIComponent(query.trim())}`,
+          `${geocodePath}?q=${encodeURIComponent(query.trim())}`,
         );
         const data = await res.json();
         if (!res.ok) {
@@ -200,13 +206,13 @@ export function AdminMapLocationField({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query]);
+  }, [query, geocodePath]);
 
   async function fillAddressFromPin(lat: number, lng: number) {
     setResolvingAddress(true);
     try {
       const res = await fetch(
-        `/api/admin/geocode?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
+        `${geocodePath}?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
       );
       const data = await res.json();
       if (res.ok && typeof data.address === "string" && data.address.trim()) {
@@ -274,20 +280,24 @@ export function AdminMapLocationField({
 
   return (
     <div className="space-y-3">
-      <div>
-        <label className={adminLabelClass}>{addressLabel}</label>
-        <textarea
-          className={`${adminInputClass} min-h-[72px]`}
-          value={value.address}
-          onChange={(e) => onChange({ ...value, address: e.target.value })}
-          placeholder={addressPlaceholder}
-          rows={3}
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          คลิกหรือลากหมุดบนแผนที่ แล้วระบบจะดึงที่อยู่ใกล้เคียงมาให้ (แก้เองได้)
-          {resolvingAddress ? " · กำลังดึงที่อยู่..." : null}
-        </p>
-      </div>
+      {!hideAddressField ? (
+        <div>
+          <label className={adminLabelClass}>{addressLabel}</label>
+          <textarea
+            className={`${adminInputClass} min-h-[72px]`}
+            value={value.address}
+            onChange={(e) => onChange({ ...value, address: e.target.value })}
+            placeholder={addressPlaceholder}
+            rows={3}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            คลิกหรือลากหมุดบนแผนที่ แล้วระบบจะดึงที่อยู่ใกล้เคียงมาให้ (แก้เองได้)
+            {resolvingAddress ? " · กำลังดึงที่อยู่..." : null}
+          </p>
+        </div>
+      ) : resolvingAddress ? (
+        <p className="text-xs text-slate-500">กำลังดึงที่อยู่จากหมุด...</p>
+      ) : null}
 
       <div ref={searchWrapRef} className="relative">
         <label className={adminLabelClass}>ค้นหาที่อยู่ / สถานที่</label>

@@ -69,6 +69,20 @@ export function canCustomerCancel(status: OrderStatus): boolean {
   return status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE;
 }
 
+/** Staff (seller) can cancel before the order is out for delivery / completed. */
+export function canStaffCancel(
+  roles: StaffRole[],
+  status: OrderStatus,
+): boolean {
+  if (!hasSellerRole(roles)) return false;
+  return (
+    status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE ||
+    status === OrderStatus.PREPARING ||
+    status === OrderStatus.READY_FOR_PICKUP ||
+    status === OrderStatus.READY_FOR_DELIVERY
+  );
+}
+
 /** Terminal statuses no longer need live polling. */
 export function isTerminalOrderStatus(status: OrderStatus): boolean {
   return (
@@ -106,13 +120,13 @@ type TransitionMap = Partial<Record<OrderStatus, OrderStatus[]>>;
 function sellerTransitions(fulfillment: FulfillmentType): TransitionMap {
   if (fulfillment === "PICKUP") {
     return {
-      WAITING_FOR_STORE_ACCEPTANCE: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
+      WAITING_FOR_STORE_ACCEPTANCE: [OrderStatus.PREPARING],
       PREPARING: [OrderStatus.READY_FOR_PICKUP, OrderStatus.WAITING_FOR_STORE_ACCEPTANCE],
       READY_FOR_PICKUP: [OrderStatus.COMPLETED, OrderStatus.PREPARING],
     };
   }
   return {
-    WAITING_FOR_STORE_ACCEPTANCE: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
+    WAITING_FOR_STORE_ACCEPTANCE: [OrderStatus.PREPARING],
     PREPARING: [OrderStatus.READY_FOR_DELIVERY, OrderStatus.WAITING_FOR_STORE_ACCEPTANCE],
     READY_FOR_DELIVERY: [OrderStatus.PREPARING],
   };

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { OrderStatus } from "@prisma/client";
 import { OrderCard, StatusLegend, type OrderCardData } from "@/components/OrderCard";
+import { CancelReasonModal } from "@/components/CancelReasonModal";
 import { logout } from "@/components/LoginForm";
 import { LoadingState } from "@/components/LoadingState";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
@@ -35,6 +36,8 @@ export default function StaffPage() {
   const [soundError, setSoundError] = useState("");
   const [newOrderFlash, setNewOrderFlash] = useState(false);
   const [preferSound, setPreferSound] = useState(false);
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const knownIdsRef = useRef<Set<string> | null>(null);
   const soundOnRef = useRef(false);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,6 +200,28 @@ export default function StaffPage() {
     }
   }
 
+  async function handleConfirmCancel(reason: string) {
+    if (!cancelOrderId) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/staff/orders/${cancelOrderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: OrderStatus.CANCELLED,
+          cancelReason: reason,
+        }),
+      });
+      if (res.ok) {
+        setCancelOrderId(null);
+        clearTitleAlert();
+        fetchOrders();
+      }
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
@@ -306,7 +331,7 @@ export default function StaffPage() {
             : "ไม่มีออเดอร์ที่รอดำเนินการ"}
         </p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredOrders.map((order) => (
             <OrderCard
               key={order.id}
@@ -314,10 +339,21 @@ export default function StaffPage() {
               roles={roles}
               showActions
               onStatusChange={handleStatusChange}
+              onRequestCancel={(id) => setCancelOrderId(id)}
             />
           ))}
         </div>
       )}
+
+      <CancelReasonModal
+        open={Boolean(cancelOrderId)}
+        busy={cancelling}
+        description="กรุณาระบุเหตุผลการยกเลิก — ระบบจะบันทึกเหตุผลนี้ไว้กับออเดอร์"
+        onClose={() => {
+          if (!cancelling) setCancelOrderId(null);
+        }}
+        onConfirm={handleConfirmCancel}
+      />
     </main>
   );
 }

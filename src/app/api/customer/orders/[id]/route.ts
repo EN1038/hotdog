@@ -28,13 +28,15 @@ export async function GET(_request: Request, { params }: Params) {
 
 const patchSchema = z.object({
   action: z.literal("cancel"),
+  cancelReason: z.string().trim().min(2).max(200),
 });
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
     const session = await requireCustomer();
     const { id } = await params;
-    patchSchema.parse(await request.json());
+    const body = patchSchema.parse(await request.json());
+    const reason = body.cancelReason.trim();
 
     const cancelled = await prisma.order.updateMany({
       where: {
@@ -42,7 +44,11 @@ export async function PATCH(request: Request, { params }: Params) {
         customerId: session.customerId,
         status: OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
       },
-      data: { status: OrderStatus.CANCELLED, cancelledAt: new Date() },
+      data: {
+        status: OrderStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelReason: reason,
+      },
     });
 
     if (cancelled.count === 0) {

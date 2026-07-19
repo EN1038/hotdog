@@ -18,7 +18,7 @@ import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "@/components/customer/CustomerProvider";
-import { useConfirm } from "@/components/ConfirmDialog";
+import { CancelReasonModal } from "@/components/CancelReasonModal";
 import { OrderTimeline } from "@/components/customer/OrderTimeline";
 import { LoadingState } from "@/components/LoadingState";
 import {
@@ -113,11 +113,11 @@ export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const router = useRouter();
   const { addLine, setFulfillment } = useCustomer();
-  const { confirm } = useConfirm();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [error, setError] = useState("");
 
@@ -152,26 +152,21 @@ export default function OrderDetailPage() {
     );
   }, [authRequired, orderId, router]);
 
-  async function cancelOrder() {
-    const ok = await confirm({
-      title: "ยกเลิกออเดอร์?",
-      message: "ยืนยันยกเลิกออเดอร์นี้ — การกระทำนี้อาจไม่สามารถย้อนกลับได้",
-      confirmLabel: "ยกเลิกออเดอร์",
-    });
-    if (!ok) return;
+  async function cancelOrder(reason: string) {
     setError("");
     setCancelling(true);
     try {
       const res = await fetch(`/api/customer/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
+        body: JSON.stringify({ action: "cancel", cancelReason: reason }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "ยกเลิกไม่สำเร็จ");
         return;
       }
+      setCancelModalOpen(false);
       setOrder(data);
     } finally {
       setCancelling(false);
@@ -322,6 +317,14 @@ export default function OrderDetailPage() {
             label="หมายเหตุ"
             value={order.note || "-"}
           />
+          {order.status === OrderStatus.CANCELLED && order.cancelReason ? (
+            <DetailRow
+              icon={IconClose}
+              label="เหตุผลการยกเลิก"
+              value={order.cancelReason}
+              valueClassName="text-red-600"
+            />
+          ) : null}
         </div>
       </div>
 
@@ -438,7 +441,7 @@ export default function OrderDetailPage() {
               </p>
               <button
                 type="button"
-                onClick={cancelOrder}
+                onClick={() => setCancelModalOpen(true)}
                 disabled={cancelling}
                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-red-500 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 disabled:opacity-50"
               >
@@ -466,6 +469,16 @@ export default function OrderDetailPage() {
           )}
         </div>
       )}
+
+      <CancelReasonModal
+        open={cancelModalOpen}
+        busy={cancelling}
+        description="กรุณาระบุเหตุผลการยกเลิก — สามารถยกเลิกได้ก่อนร้านรับออเดอร์เท่านั้น"
+        onClose={() => {
+          if (!cancelling) setCancelModalOpen(false);
+        }}
+        onConfirm={cancelOrder}
+      />
     </main>
   );
 }

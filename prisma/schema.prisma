@@ -370,6 +370,8 @@ model Order {
   discountAmount     Decimal           @default(0) @db.Decimal(10, 2)
   status             OrderStatus       @default(WAITING_FOR_STORE_ACCEPTANCE)
   cancelledAt        DateTime?
+  /// Why the order was cancelled (customer or staff)
+  cancelReason       String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   customer           Customer          @relation(fields: [customerId], references: [id])

@@ -242,10 +242,21 @@ export default function CheckoutPage() {
   const [blockModal, setBlockModal] = useState<{
     title: string;
     message: string;
+    items?: { branchMenuItemId?: string; name: string; reason: string }[];
+    /** When true, dismissing removes these menu items from the cart */
+    removeUnavailableOnDismiss?: boolean;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [expandedField, setExpandedField] = useState<ExpandFieldId | null>(null);
   const [openSwipeKey, setOpenSwipeKey] = useState<string | null>(null);
+  const [savedAddresses, setSavedAddresses] = useState<
+    {
+      deliveryLocationId: string;
+      locationName: string;
+      addressDetail: string;
+      deliveryFee: string;
+    }[]
+  >([]);
 
   useEffect(() => {
     if (!ALLOWED_PAYMENT_METHODS.includes(payment)) setPayment("TRANSFER");
@@ -255,6 +266,9 @@ export default function CheckoutPage() {
     setExpandedField(null);
     setBlockModal(null);
     setError("");
+    if (fulfillment === "DELIVERY") {
+      setScheduledTime("");
+    }
   }, [fulfillment]);
 
   const checkoutService = useMemo(() => {
@@ -348,7 +362,46 @@ export default function CheckoutPage() {
       .finally(() => setBranchLoading(false));
   }, [cartBranchId]);
 
+  // Load past delivery addresses for quick re-use (same branch).
+  useEffect(() => {
+    if (!session || !cartBranchId || fulfillment !== "DELIVERY") {
+      setSavedAddresses([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(
+      `/api/customer/delivery-addresses?branchId=${encodeURIComponent(cartBranchId)}`,
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !Array.isArray(data.items)) return;
+        setSavedAddresses(data.items);
+      })
+      .catch(() => {
+        if (!cancelled) setSavedAddresses([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, cartBranchId, fulfillment]);
+
   const deliveryAvailable = (branch?.deliveryLocations.length ?? 0) > 0;
+
+  const usableSavedAddresses = useMemo(() => {
+    if (!branch) return [];
+    const locIds = new Set(branch.deliveryLocations.map((l) => l.id));
+    return savedAddresses.filter((a) => locIds.has(a.deliveryLocationId));
+  }, [branch, savedAddresses]);
+
+  function applySavedAddress(saved: {
+    deliveryLocationId: string;
+    addressDetail: string;
+  }) {
+    setLocationId(saved.deliveryLocationId);
+    setAddressDetail(saved.addressDetail);
+    setExpandedField(null);
+    setError("");
+  }
 
   // Wait for branch load — otherwise null branch looks like "no delivery".
   useEffect(() => {
@@ -392,6 +445,34 @@ export default function CheckoutPage() {
   }, [fulfillment, branch, locationId]);
   const discount = 0;
   const grandTotal = itemsTotal + deliveryFee - discount;
+
+  function dismissBlockModal() {
+    const modal = blockModal;
+    setBlockModal(null);
+    if (!modal?.removeUnavailableOnDismiss || !modal.items?.length) return;
+
+    const ids = new Set(
+      modal.items
+        .map((it) => it.branchMenuItemId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    // Fallback: match by name if id missing (older responses)
+    const names = new Set(
+      modal.items
+        .filter((it) => !it.branchMenuItemId)
+        .map((it) => it.name.trim())
+        .filter(Boolean),
+    );
+
+    for (const line of cart) {
+      if (
+        ids.has(line.branchMenuItemId) ||
+        names.has(line.name.trim())
+      ) {
+        removeLine(line.key);
+      }
+    }
+  }
 
   async function submitOrder() {
     const scrollAndExpand = (fieldId: ExpandFieldId) => {
@@ -443,18 +524,29 @@ export default function CheckoutPage() {
         );
         return;
       }
-      if (!service.openNow && !scheduledTime.trim()) {
-        setError(
-          "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้",
-        );
-        scrollAndExpand("scheduledTime");
-        return;
+      if (!service.openNow) {
+        if (fulfillment === "DELIVERY") {
+          setBlockModal({
+            title: "ยังสั่งจัดส่งไม่ได้ตอนนี้",
+            message:
+              "ยังไม่ถึงเวลาเปิดจัดส่ง กรุณารอถึงเวลาเปิด หรือเปลี่ยนเป็นรับที่ร้านแล้วเลือกเวลารับล่วงหน้า",
+          });
+          return;
+        }
+        if (!scheduledTime.trim()) {
+          setError(
+            "ยังไม่ถึงเวลาเปิด กรุณาเลือกเวลารับสินค้าล่วงหน้าของวันนี้",
+          );
+          scrollAndExpand("scheduledTime");
+          return;
+        }
       }
     }
-    const parsedScheduledTime = scheduledTime
-      ? parseThaiTime(scheduledTime)
-      : null;
-    if (scheduledTime && !parsedScheduledTime) {
+    const parsedScheduledTime =
+      fulfillment === "PICKUP" && scheduledTime
+        ? parseThaiTime(scheduledTime)
+        : null;
+    if (fulfillment === "PICKUP" && scheduledTime && !parsedScheduledTime) {
       setError("กรุณากรอกเวลารับสินค้าแบบ 24 ชั่วโมง เช่น 18:30");
       scrollAndExpand("scheduledTime");
       return;
@@ -466,7 +558,7 @@ export default function CheckoutPage() {
       );
       const scheduledDate = new Date(scheduledAtPreview);
       if (scheduledDate.getTime() <= Date.now()) {
-        setError("เวลานัดรับ/ส่งต้องเป็นเวลาหลังจากนี้ในวันนี้");
+        setError("เวลานัดรับต้องเป็นเวลาหลังจากนี้ในวันนี้");
         scrollAndExpand("scheduledTime");
         return;
       }
@@ -475,8 +567,13 @@ export default function CheckoutPage() {
         scrollAndExpand("scheduledTime");
         return;
       }
-    } else if (branch && service && !service.openNow) {
-      setError("กรุณาเลือกเวลารับ/ส่งล่วงหน้าของวันนี้");
+    } else if (
+      fulfillment === "PICKUP" &&
+      branch &&
+      service &&
+      !service.openNow
+    ) {
+      setError("กรุณาเลือกเวลารับสินค้าล่วงหน้าของวันนี้");
       scrollAndExpand("scheduledTime");
       return;
     }
@@ -512,7 +609,30 @@ export default function CheckoutPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "สั่งซื้อไม่สำเร็จ");
+        const unavailable = Array.isArray(data.unavailableItems)
+          ? (data.unavailableItems as {
+              branchMenuItemId?: string;
+              name: string;
+              reason: string;
+            }[])
+          : undefined;
+        if (unavailable?.length) {
+          setBlockModal({
+            title: "มีรายการที่สั่งไม่ได้",
+            message:
+              "รายการด้านล่างสั่งไม่ได้ในตอนนี้ เมื่อกดรับทราบ ระบบจะลบรายการเหล่านี้ออกจากตะกร้า และคำนวณราคารวมใหม่ให้",
+            items: unavailable,
+            removeUnavailableOnDismiss: true,
+          });
+        } else {
+          setBlockModal({
+            title: "สั่งซื้อไม่สำเร็จ",
+            message:
+              data.error ??
+              "ไม่สามารถสั่งซื้อได้ กรุณาตรวจสอบรายการแล้วลองใหม่",
+          });
+        }
+        setError("");
         return;
       }
       orderPlacedRef.current = true;
@@ -724,52 +844,56 @@ export default function CheckoutPage() {
             </button>
           )}
 
-          <div className="h-px bg-gray-100" />
-          <ExpandableFulfillmentRow
-            id="field-scheduledTime"
-            icon={IconClock}
-            label="เวลารับสินค้า"
-            summary={
-              scheduledTime ? `${scheduledTime} เป็นต้นไป` : "เลือกเวลา"
-            }
-            expanded={expandedField === "scheduledTime"}
-            onToggle={() => toggleExpanded("scheduledTime")}
-          >
-            {availableTimes.length === 0 ? (
-              <p className="px-1 py-2 text-sm text-gray-500">
-                ตอนนี้ไม่มีช่วงเวลาว่างสำหรับวันนี้
-              </p>
-            ) : (
-              <div className="space-y-3">
-                <WheelTimePicker
-                  value={
-                    scheduledTime ||
-                    availableTimes[0] ||
-                    "09:00"
-                  }
-                  onChange={onScheduledWheelChange}
-                  hourOptions={scheduledHourOptions}
-                  minuteOptions={
-                    scheduledMinuteOptions.length > 0
-                      ? scheduledMinuteOptions
-                      : ["00", "15", "30", "45"]
-                  }
-                />
-                {checkoutService?.openNow ? (
-                  <button
-                    type="button"
-                    onClick={() => setScheduledTime("")}
-                    className="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-                  >
-                    ไม่ระบุ — รับเร็วที่สุด
-                  </button>
-                ) : null}
-                <p className="text-center text-[11px] text-gray-400">
-                  เลือกได้ทีละ 15 นาที เฉพาะในช่วงเปิดร้านวันนี้
-                </p>
-              </div>
-            )}
-          </ExpandableFulfillmentRow>
+          {fulfillment === "PICKUP" && (
+            <>
+              <div className="h-px bg-gray-100" />
+              <ExpandableFulfillmentRow
+                id="field-scheduledTime"
+                icon={IconClock}
+                label="เวลารับสินค้า"
+                summary={
+                  scheduledTime ? `${scheduledTime} เป็นต้นไป` : "เลือกเวลา"
+                }
+                expanded={expandedField === "scheduledTime"}
+                onToggle={() => toggleExpanded("scheduledTime")}
+              >
+                {availableTimes.length === 0 ? (
+                  <p className="px-1 py-2 text-sm text-gray-500">
+                    ตอนนี้ไม่มีช่วงเวลาว่างสำหรับวันนี้
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <WheelTimePicker
+                      value={
+                        scheduledTime ||
+                        availableTimes[0] ||
+                        "09:00"
+                      }
+                      onChange={onScheduledWheelChange}
+                      hourOptions={scheduledHourOptions}
+                      minuteOptions={
+                        scheduledMinuteOptions.length > 0
+                          ? scheduledMinuteOptions
+                          : ["00", "15", "30", "45"]
+                      }
+                    />
+                    {checkoutService?.openNow ? (
+                      <button
+                        type="button"
+                        onClick={() => setScheduledTime("")}
+                        className="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                      >
+                        ไม่ระบุ — รับเร็วที่สุด
+                      </button>
+                    ) : null}
+                    <p className="text-center text-[11px] text-gray-400">
+                      เลือกได้ทีละ 15 นาที เฉพาะในช่วงเปิดร้านวันนี้
+                    </p>
+                  </div>
+                )}
+              </ExpandableFulfillmentRow>
+            </>
+          )}
 
           {fulfillment === "DELIVERY" && branch && (
             <>
@@ -844,15 +968,56 @@ export default function CheckoutPage() {
                 expanded={expandedField === "addressDetail"}
                 onToggle={() => toggleExpanded("addressDetail")}
               >
-                <textarea
-                  autoFocus
-                  className={`${fieldInputClass} resize-none`}
-                  value={addressDetail}
-                  onChange={(e) => setAddressDetail(e.target.value)}
-                  placeholder="เช่น ห้อง 302 ตึก B"
-                  rows={2}
-                  maxLength={300}
-                />
+                <div className="space-y-3">
+                  {usableSavedAddresses.length > 0 ? (
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-gray-500">
+                        ที่อยู่ที่เคยใช้
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {usableSavedAddresses.map((saved) => {
+                          const active =
+                            locationId === saved.deliveryLocationId &&
+                            addressDetail.trim() === saved.addressDetail.trim();
+                          return (
+                            <button
+                              key={`${saved.deliveryLocationId}:${saved.addressDetail}`}
+                              type="button"
+                              onClick={() => applySavedAddress(saved)}
+                              className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                                active
+                                  ? "border-site-primary bg-site-primary-soft ring-1 ring-site-primary"
+                                  : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span className="block text-sm font-medium text-gray-900">
+                                {saved.addressDetail}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-gray-500">
+                                {saved.locationName}
+                                {Number(saved.deliveryFee) > 0
+                                  ? ` · ค่าส่ง ฿${formatPrice(Number(saved.deliveryFee))}`
+                                  : " · ฟรี"}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-2 text-[11px] text-gray-400">
+                        หรือกรอกที่อยู่ใหม่ด้านล่าง
+                      </p>
+                    </div>
+                  ) : null}
+                  <textarea
+                    autoFocus={usableSavedAddresses.length === 0}
+                    className={`${fieldInputClass} resize-none`}
+                    value={addressDetail}
+                    onChange={(e) => setAddressDetail(e.target.value)}
+                    placeholder="เช่น ห้อง 302 ตึก B"
+                    rows={2}
+                    maxLength={300}
+                  />
+                </div>
               </ExpandableFulfillmentRow>
             </>
           )}
@@ -1049,7 +1214,7 @@ export default function CheckoutPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="checkout-block-title"
-          onClick={() => setBlockModal(null)}
+          onClick={() => dismissBlockModal()}
         >
           <div
             className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
@@ -1064,7 +1229,7 @@ export default function CheckoutPage() {
               </h2>
               <button
                 type="button"
-                onClick={() => setBlockModal(null)}
+                onClick={() => dismissBlockModal()}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
                 aria-label="ปิด"
               >
@@ -1074,12 +1239,27 @@ export default function CheckoutPage() {
             <p className="mt-2 text-sm leading-relaxed text-gray-600">
               {blockModal.message}
             </p>
+            {blockModal.items && blockModal.items.length > 0 ? (
+              <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                {blockModal.items.map((it, idx) => (
+                  <li
+                    key={`${it.branchMenuItemId ?? it.name}-${idx}`}
+                    className="leading-snug"
+                  >
+                    <span className="font-semibold">{it.name}</span>
+                    <span className="text-red-700/80"> — {it.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <button
               type="button"
-              onClick={() => setBlockModal(null)}
+              onClick={() => dismissBlockModal()}
               className="mt-5 w-full rounded-xl bg-site-primary py-3 text-sm font-semibold text-white hover:opacity-90"
             >
-              เข้าใจแล้ว
+              {blockModal.removeUnavailableOnDismiss
+                ? "รับทราบ — ลบรายการออก"
+                : "เข้าใจแล้ว"}
             </button>
           </div>
         </div>

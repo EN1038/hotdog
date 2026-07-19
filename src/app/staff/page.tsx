@@ -332,7 +332,7 @@ export default function StaffPage() {
       {filteredOrders.length === 0 ? (
         <p className="rounded-lg bg-white p-8 text-center text-gray-500">
           {statusFilter === OrderStatus.COMPLETED
-            ? "ยังไม่มีออเดอร์ที่เสร็จสิ้นวันนี้"
+            ? "ยังไม่มีออเดอร์ที่เสร็จสิ้นหรือยกเลิกวันนี้"
             : "ไม่มีออเดอร์ที่รอดำเนินการ"}
         </p>
       ) : (

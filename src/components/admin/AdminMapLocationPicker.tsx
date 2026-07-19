@@ -32,6 +32,8 @@ export function AdminMapLocationPicker(props: {
   mapHeightClassName?: string;
   geocodePath?: string;
   hideAddressField?: boolean;
+  enableMyLocation?: boolean;
+  autoLocateOnMount?: boolean;
 }) {
   return <AdminMapLocationFieldInner {...props} />;
 }

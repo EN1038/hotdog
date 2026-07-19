@@ -271,6 +271,10 @@ export function getStaffFilterStatuses(
   ) {
     return [OrderStatus.READY_FOR_DELIVERY, OrderStatus.READY_FOR_PICKUP];
   }
+  // แท็บเสร็จสิ้น รวมออเดอร์ที่ยกเลิกวันนี้ด้วย
+  if (selected === OrderStatus.COMPLETED) {
+    return [OrderStatus.COMPLETED, OrderStatus.CANCELLED];
+  }
   return [selected];
 }
 

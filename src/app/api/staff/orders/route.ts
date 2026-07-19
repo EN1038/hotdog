@@ -9,7 +9,7 @@ export async function GET() {
     const session = await requireStaff();
     const todayStart = startOfTodayBangkok();
 
-    // คิวที่ยังไม่จบ + ออเดอร์เสร็จสิ้นของวันนี้ (สำหรับแท็บเสร็จสิ้น)
+    // คิวที่ยังไม่จบ + ออเดอร์เสร็จสิ้น/ยกเลิกของวันนี้ (แท็บเสร็จสิ้น)
     const where: Prisma.OrderWhereInput = {
       branchId: session.branchId,
       OR: [
@@ -21,6 +21,13 @@ export async function GET() {
         {
           status: OrderStatus.COMPLETED,
           updatedAt: { gte: todayStart },
+        },
+        {
+          status: OrderStatus.CANCELLED,
+          OR: [
+            { cancelledAt: { gte: todayStart } },
+            { updatedAt: { gte: todayStart } },
+          ],
         },
       ],
     };

@@ -63,6 +63,10 @@ type Props = {
   geocodePath?: string;
   /** Hide the address text field (e.g. checkout keeps a separate note field) */
   hideAddressField?: boolean;
+  /** Show “ตำแหน่งปัจจุบัน” button */
+  enableMyLocation?: boolean;
+  /** Request GPS once on mount when there is no pin yet */
+  autoLocateOnMount?: boolean;
 };
 
 type GeocodeHit = {
@@ -113,6 +117,8 @@ export function AdminMapLocationField({
   mapHeightClassName = "h-64",
   geocodePath = "/api/admin/geocode",
   hideAddressField = false,
+  enableMyLocation = false,
+  autoLocateOnMount = false,
 }: Props) {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<GeocodeHit[]>([]);
@@ -120,9 +126,12 @@ export function AdminMapLocationField({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [resolvingAddress, setResolvingAddress] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reverseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
+  const autoLocateTriedRef = useRef(false);
   const onChangeRef = useRef(onChange);
   const valueRef = useRef(value);
   const onSuggestLabelRef = useRef(onSuggestLabel);
@@ -267,6 +276,48 @@ export function AdminMapLocationField({
     });
   }
 
+  function locateMe() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocateError("เบราว์เซอร์นี้ไม่รองรับตำแหน่งปัจจุบัน");
+      return;
+    }
+    setLocateError("");
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        setPin(pos.coords.latitude, pos.coords.longitude);
+      },
+      (err) => {
+        setLocating(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocateError("ไม่ได้รับอนุญาตใช้ตำแหน่ง — กดอนุญาตในเบราว์เซอร์แล้วลองใหม่");
+        } else if (err.code === err.TIMEOUT) {
+          setLocateError("ค้นหาตำแหน่งหมดเวลา ลองใหม่");
+        } else {
+          setLocateError("หาตำแหน่งปัจจุบันไม่สำเร็จ");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60_000 },
+    );
+  }
+
+  useEffect(() => {
+    if (!autoLocateOnMount || autoLocateTriedRef.current) return;
+    const current = valueRef.current;
+    if (
+      current.latitude != null &&
+      current.longitude != null &&
+      Number.isFinite(current.latitude) &&
+      Number.isFinite(current.longitude)
+    ) {
+      return;
+    }
+    autoLocateTriedRef.current = true;
+    locateMe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount when empty
+  }, [autoLocateOnMount]);
+
   function pickHit(h: GeocodeHit) {
     setPin(h.latitude, h.longitude, {
       address: h.label,
@@ -394,7 +445,9 @@ export function AdminMapLocationField({
         <p>
           {hasPin
             ? `พิกัด: ${value.latitude}, ${value.longitude}`
-            : "ยังไม่ปักหมุด — ค้นหา คลิกแผนที่ หรือใช้ตำแหน่งร้าน"}
+            : enableMyLocation
+              ? "ยังไม่ปักหมุด — ค้นหา คลิกแผนที่ หรือใช้ตำแหน่งปัจจุบัน"
+              : "ยังไม่ปักหมุด — ค้นหา คลิกแผนที่ หรือใช้ตำแหน่งร้าน"}
         </p>
         <div className="flex flex-wrap gap-2">
           {hasPin && (
@@ -402,6 +455,16 @@ export function AdminMapLocationField({
               ล้างพิกัด
             </button>
           )}
+          {enableMyLocation ? (
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={locating}
+              onClick={locateMe}
+            >
+              {locating ? "กำลังหาตำแหน่ง…" : "ตำแหน่งปัจจุบัน"}
+            </button>
+          ) : null}
           {hasReference && (
             <button
               type="button"
@@ -413,7 +476,7 @@ export function AdminMapLocationField({
               ใช้ตำแหน่งร้าน
             </button>
           )}
-          {!hasPin && !hasReference && (
+          {!hasPin && !hasReference && !enableMyLocation && (
             <button
               type="button"
               className={btnPrimary}
@@ -424,6 +487,9 @@ export function AdminMapLocationField({
           )}
         </div>
       </div>
+      {locateError ? (
+        <p className="text-xs text-red-600">{locateError}</p>
+      ) : null}
     </div>
   );
 }

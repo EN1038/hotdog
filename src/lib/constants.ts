@@ -97,6 +97,21 @@ export function isActiveOrderStatus(status: OrderStatus): boolean {
   return !isTerminalOrderStatus(status);
 }
 
+/** Poll faster while waiting for the shop to accept. */
+export function orderStatusPollIntervalMs(status: OrderStatus): number {
+  return status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE ? 4_000 : 10_000;
+}
+
+export function ordersListPollIntervalMs(
+  orders: Array<{ status: OrderStatus }>,
+): number {
+  return orders.some(
+    (o) => o.status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+  )
+    ? 4_000
+    : 10_000;
+}
+
 /** Statuses shown on the customer tracking timeline for a given fulfillment type. */
 export function getTimelineStatuses(
   fulfillment: FulfillmentType,

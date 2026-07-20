@@ -9,6 +9,7 @@ import {
   formatPrice,
   formatThaiPhone,
   isActiveOrderStatus,
+  orderStatusPollIntervalMs,
   telHref,
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
@@ -101,7 +102,9 @@ export default function ConfirmationPage() {
 
   usePollingRefresh(load, {
     enabled: order != null && isActiveOrderStatus(order.status),
-    intervalMs: 10_000,
+    intervalMs: order
+      ? orderStatusPollIntervalMs(order.status)
+      : 10_000,
   });
 
   useEffect(() => {
@@ -321,7 +324,7 @@ export default function ConfirmationPage() {
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-site-primary-soft text-site-primary">
                 <IconPin size={16} />
               </span>
-              <span className="text-sm text-gray-500">ที่อยู่จัดส่ง</span>
+              <span className="text-sm text-gray-500">รายละเอียดที่อยู่</span>
             </div>
             <span className="max-w-[60%] text-right text-sm font-medium text-gray-900">
               {order.addressDetail}

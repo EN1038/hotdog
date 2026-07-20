@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { isActiveOrderStatus } from "@/lib/constants";
+import { isActiveOrderStatus, ordersListPollIntervalMs } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "@/components/customer/CustomerProvider";
@@ -46,7 +46,7 @@ export default function HistoryPage() {
 
   usePollingRefresh(silentRefresh, {
     enabled: Boolean(session) && hasActiveOrders,
-    intervalMs: 10_000,
+    intervalMs: ordersListPollIntervalMs(orders),
   });
 
   useEffect(() => {

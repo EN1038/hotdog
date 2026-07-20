@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OrderStatus } from "@prisma/client";
 import { OrderCard, StatusLegend, type OrderCardData } from "@/components/OrderCard";
@@ -42,6 +43,10 @@ export default function StaffPage() {
   const [preferSound, setPreferSound] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [statusNotice, setStatusNotice] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const knownIdsRef = useRef<Set<string> | null>(null);
   const soundOnRef = useRef(false);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,9 +204,21 @@ export default function StaffPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       clearTitleAlert();
-      fetchOrders();
+      void fetchOrders();
+      return;
+    }
+    void fetchOrders();
+    if (data.statusChanged) {
+      setStatusNotice({
+        title: "สถานะออเดอร์เปลี่ยนแล้ว",
+        message: data.currentStatusLabel
+          ? `${data.error ?? "อัปเดตไม่สำเร็จ"}\nสถานะปัจจุบัน: ${data.currentStatusLabel}`
+          : (data.error ??
+            "สถานะออเดอร์เปลี่ยนแล้ว — อัปเดตรายการให้ล่าสุดแล้ว"),
+      });
     }
   }
 
@@ -217,10 +234,23 @@ export default function StaffPage() {
           cancelReason: reason,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setCancelOrderId(null);
         clearTitleAlert();
-        fetchOrders();
+        void fetchOrders();
+        return;
+      }
+      setCancelOrderId(null);
+      void fetchOrders();
+      if (data.statusChanged) {
+        setStatusNotice({
+          title: "สถานะออเดอร์เปลี่ยนแล้ว",
+          message: data.currentStatusLabel
+            ? `${data.error ?? "ยกเลิกไม่สำเร็จ"}\nสถานะปัจจุบัน: ${data.currentStatusLabel}`
+            : (data.error ??
+              "สถานะออเดอร์เปลี่ยนแล้ว — อัปเดตรายการให้ล่าสุดแล้ว"),
+        });
       }
     } finally {
       setCancelling(false);
@@ -247,13 +277,21 @@ export default function StaffPage() {
             ) : null}
             <h1 className="text-xl font-bold text-gray-900">{branchName}</h1>
           </div>
-          <button
-            type="button"
-            onClick={() => logout("/staff/login")}
-            className="shrink-0 cursor-pointer text-sm text-site-primary hover:underline"
-          >
-            ออกจากระบบ
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <Link
+              href="/staff/new-order"
+              className="rounded-xl bg-site-primary px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
+            >
+              คีย์ออเดอร์
+            </Link>
+            <button
+              type="button"
+              onClick={() => logout("/staff/login")}
+              className="cursor-pointer text-sm text-site-primary hover:underline"
+            >
+              ออกจากระบบ
+            </button>
+          </div>
         </div>
         <div className="mt-0.5 flex items-baseline justify-between gap-3">
           <p className="min-w-0 truncate text-sm text-gray-600">
@@ -360,6 +398,36 @@ export default function StaffPage() {
         }}
         onConfirm={handleConfirmCancel}
       />
+
+      {statusNotice ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <button
+            type="button"
+            aria-label="ปิด"
+            className="absolute inset-0"
+            onClick={() => setStatusNotice(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+          >
+            <h2 className="text-lg font-bold text-gray-900">
+              {statusNotice.title}
+            </h2>
+            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-600">
+              {statusNotice.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => setStatusNotice(null)}
+              className="mt-5 w-full rounded-xl bg-site-primary py-3 text-sm font-semibold text-white hover:opacity-90"
+            >
+              รับทราบ
+            </button>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

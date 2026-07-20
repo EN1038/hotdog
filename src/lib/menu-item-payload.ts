@@ -7,18 +7,6 @@ const optionalPositivePrice = z
   .nullable()
   .optional();
 
-export const menuPromoFieldsSchema = z.object({
-  sellDelivery: z.boolean().optional(),
-  sellPickup: z.boolean().optional(),
-  sellStorefront: z.boolean().optional(),
-  promoEnabled: z.boolean().optional(),
-  promoType: z.enum(["AMOUNT", "PERCENT"]).nullable().optional(),
-  promoValue: z.number().positive().nullable().optional(),
-  promoContinuous: z.boolean().optional(),
-  promoStartsAt: z.string().datetime().nullable().optional(),
-  promoEndsAt: z.string().datetime().nullable().optional(),
-});
-
 export const menuChannelPriceSchema = z.object({
   price: z.number().positive(),
   pickupPrice: optionalPositivePrice,
@@ -32,13 +20,15 @@ export const menuItemCreateSchema = z
     categoryId: z.string().nullable().optional(),
     imageUrl: z.string().optional().nullable(),
     isHidden: z.boolean().optional(),
+    hideFromStaff: z.boolean().optional(),
     isOutOfStock: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
     optionGroupIds: z.array(z.string()).optional(),
+    sellDelivery: z.boolean().optional(),
+    sellPickup: z.boolean().optional(),
+    sellStorefront: z.boolean().optional(),
   })
-  .merge(menuChannelPriceSchema)
-  .merge(menuPromoFieldsSchema)
-  .superRefine(validatePromoFields);
+  .merge(menuChannelPriceSchema);
 
 export const menuItemPatchSchema = z
   .object({
@@ -50,79 +40,15 @@ export const menuItemPatchSchema = z
     categoryId: z.string().nullable().optional(),
     imageUrl: z.string().optional().nullable(),
     isHidden: z.boolean().optional(),
+    hideFromStaff: z.boolean().optional(),
     isOutOfStock: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
     optionGroupIds: z.array(z.string()).optional(),
+    sellDelivery: z.boolean().optional(),
+    sellPickup: z.boolean().optional(),
+    sellStorefront: z.boolean().optional(),
   })
-  .merge(menuPromoFieldsSchema)
-  .superRefine((data, ctx) => {
-    if (data.promoEnabled) {
-      validatePromoFields(
-        {
-          promoEnabled: data.promoEnabled,
-          promoType: data.promoType,
-          promoValue: data.promoValue,
-          promoContinuous: data.promoContinuous,
-          promoStartsAt: data.promoStartsAt,
-          promoEndsAt: data.promoEndsAt,
-        },
-        ctx,
-      );
-    }
-  });
-
-function validatePromoFields(
-  data: {
-    promoEnabled?: boolean;
-    promoType?: "AMOUNT" | "PERCENT" | null;
-    promoValue?: number | null;
-    promoContinuous?: boolean;
-    promoStartsAt?: string | null;
-    promoEndsAt?: string | null;
-  },
-  ctx: z.RefinementCtx,
-) {
-  if (!data.promoEnabled) return;
-  if (!data.promoType) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "เลือกประเภทส่วนลด",
-      path: ["promoType"],
-    });
-  }
-  if (data.promoValue == null || data.promoValue <= 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "ใส่ค่าส่วนลด",
-      path: ["promoValue"],
-    });
-  }
-  if (data.promoType === "PERCENT" && (data.promoValue ?? 0) > 100) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "เปอร์เซ็นต์ต้องไม่เกิน 100",
-      path: ["promoValue"],
-    });
-  }
-  if (!data.promoContinuous) {
-    if (!data.promoStartsAt || !data.promoEndsAt) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "ระบุวันเริ่มและวันสิ้นสุดโปรโมชั่น",
-        path: ["promoStartsAt"],
-      });
-    } else if (
-      new Date(data.promoStartsAt).getTime() >
-      new Date(data.promoEndsAt).getTime()
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "วันสิ้นสุดต้องหลังวันเริ่ม",
-        path: ["promoEndsAt"],
-      });
-    }
-  }
-}
+  .merge(menuChannelPriceSchema.partial());
 
 export function buildMenuPricingWriteData(
   body: {
@@ -132,12 +58,6 @@ export function buildMenuPricingWriteData(
     sellDelivery?: boolean;
     sellPickup?: boolean;
     sellStorefront?: boolean;
-    promoEnabled?: boolean;
-    promoType?: "AMOUNT" | "PERCENT" | null;
-    promoValue?: number | null;
-    promoContinuous?: boolean;
-    promoStartsAt?: string | null;
-    promoEndsAt?: string | null;
   },
   existing?: {
     price: { toString(): string } | number | string;
@@ -181,18 +101,11 @@ export function buildMenuPricingWriteData(
           : null,
   });
 
-  // If patch only changes promo/channel flags without touching prices,
-  // still rewrite normalized prices when price fields were in the body
-  // or when creating. For patch without price keys, keep existing unless
-  // delivery price was updated.
   const touchPrices =
     body.price !== undefined ||
     body.pickupPrice !== undefined ||
     body.storefrontPrice !== undefined ||
     !existing;
-
-  const promoEnabled = body.promoEnabled ?? false;
-  const promoContinuous = body.promoContinuous ?? false;
 
   return {
     ...(touchPrices
@@ -209,33 +122,5 @@ export function buildMenuPricingWriteData(
     ...(body.sellStorefront !== undefined && {
       sellStorefront: body.sellStorefront,
     }),
-    ...(body.promoEnabled !== undefined && {
-      promoEnabled: body.promoEnabled,
-    }),
-    ...(body.promoType !== undefined && {
-      promoType: promoEnabled ? body.promoType : null,
-    }),
-    ...(body.promoValue !== undefined && {
-      promoValue: promoEnabled ? body.promoValue : null,
-    }),
-    ...(body.promoContinuous !== undefined && {
-      promoContinuous: body.promoContinuous,
-    }),
-    ...(body.promoStartsAt !== undefined || body.promoEnabled !== undefined
-      ? {
-          promoStartsAt:
-            promoEnabled && !promoContinuous && body.promoStartsAt
-              ? new Date(body.promoStartsAt)
-              : null,
-        }
-      : {}),
-    ...(body.promoEndsAt !== undefined || body.promoEnabled !== undefined
-      ? {
-          promoEndsAt:
-            promoEnabled && !promoContinuous && body.promoEndsAt
-              ? new Date(body.promoEndsAt)
-              : null,
-        }
-      : {}),
   };
 }

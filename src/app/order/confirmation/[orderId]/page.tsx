@@ -7,7 +7,9 @@ import {
   FULFILLMENT_LABELS,
   PAYMENT_METHOD_LABELS,
   formatPrice,
+  formatThaiPhone,
   isActiveOrderStatus,
+  telHref,
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal } from "@/lib/customer-types";
@@ -34,10 +36,11 @@ import {
 type ConfirmationOrder = OrderData & {
   branch: OrderData["branch"] & {
     address?: string | null;
+    phone?: string | null;
     isOpen?: boolean;
     allowAdvanceOrder?: boolean;
     closesAt?: string | null;
-    brand?: { name: string } | null;
+    brand?: { name: string; contactPhone?: string | null } | null;
   };
   items: Array<
     OrderData["items"][number] & {
@@ -45,12 +48,6 @@ type ConfirmationOrder = OrderData & {
     }
   >;
 };
-
-function maskPhone(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length < 10) return phone;
-  return `${digits.slice(0, 2)}x-xxx-${digits.slice(-4)}`;
-}
 
 function InfoRow({
   icon: Icon,
@@ -157,6 +154,8 @@ export default function ConfirmationPage() {
 
   const branch = order.branch;
   const shopName = branch.brand?.name ?? branch.name;
+  const branchPhone =
+    branch.phone?.trim() || branch.brand?.contactPhone?.trim() || "";
   const shopClosedHint =
     !branch.isOpen && branch.closesAt
       ? `ร้านจะเปิดอีกครั้ง ${branch.closesAt}`
@@ -173,7 +172,7 @@ export default function ConfirmationPage() {
 
   return (
     <main className="min-h-screen bg-[#f5f5f6] pb-28">
-      <header className="sticky top-0 z-10 border-b bg-white px-4 py-3">
+      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white px-4 py-3">
         <div className="flex items-center gap-3">
           <Link
             href={`/order/store/${branch.id}`}
@@ -204,10 +203,24 @@ export default function ConfirmationPage() {
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-site-primary text-white">
           <IconReceipt size={22} />
         </span>
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-xs text-gray-500">เลขที่ออเดอร์</p>
           <p className="text-2xl font-bold text-site-primary">#{order.orderNumber}</p>
         </div>
+        {branchPhone ? (
+          <a
+            href={telHref(branchPhone)}
+            className="flex shrink-0 flex-col items-center gap-1 transition-transform active:scale-95"
+            aria-label={`ติดต่อร้าน ${formatThaiPhone(branchPhone)}`}
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-full border border-gray-200 bg-white text-site-primary shadow-sm">
+              <IconPhone size={22} />
+            </span>
+            <span className="text-center text-[10px] font-medium leading-tight text-gray-500">
+              ติดต่อร้าน
+            </span>
+          </a>
+        ) : null}
       </div>
 
       <div className="mx-4 mt-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
@@ -289,7 +302,7 @@ export default function ConfirmationPage() {
         <InfoRow
           icon={IconPhone}
           label="เบอร์โทร"
-          value={maskPhone(order.customerPhone)}
+          value={formatThaiPhone(order.customerPhone)}
         />
         {order.fulfillmentType === "DELIVERY" && order.deliveryLocation ? (
           <InfoRow
@@ -392,7 +405,7 @@ export default function ConfirmationPage() {
         เมื่อร้านเปิด ระบบจะแจ้งสถานะออเดอร์ให้โดยอัตโนมัติ
       </p>
 
-      <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 gap-2 border-t bg-white p-4">
+      <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 gap-2 border-t border-gray-100 bg-white p-4">
         <Link
           href="/order/history"
           className="flex flex-1 items-center justify-center rounded-xl border border-site-primary py-3 text-center text-sm font-semibold text-site-primary"

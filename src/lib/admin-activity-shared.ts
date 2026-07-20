@@ -18,6 +18,7 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "category.create": "เพิ่มหมวดหมู่",
   "category.update": "แก้ไขหมวดหมู่",
   "category.delete": "ลบหมวดหมู่",
+  "category.reorder": "จัดลำดับหมวดหมู่",
   "option.create": "เพิ่มตัวเลือก",
   "option.update": "แก้ไขตัวเลือก",
   "option.delete": "ลบตัวเลือก",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AdminLoadingState,
   adminInputClass,
@@ -35,16 +35,61 @@ export function BranchCategoryLibrary({ branchId }: Props) {
   );
   const [usageLoading, setUsageLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const categoriesRef = useRef<BranchCategory[]>([]);
+  const dragStartOrderRef = useRef<string[]>([]);
 
   async function load() {
     const res = await fetch(`/api/admin/branches/${branchId}/categories`);
-    if (res.ok) setCategories(await res.json());
+    if (res.ok) {
+      const next = await res.json();
+      categoriesRef.current = next;
+      setCategories(next);
+    }
     setLoading(false);
   }
 
   useEffect(() => {
     load();
   }, [branchId]);
+
+  function reorderCategories(list: BranchCategory[], activeId: string, overId: string) {
+    const fromIndex = list.findIndex((category) => category.id === activeId);
+    const toIndex = list.findIndex((category) => category.id === overId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return list;
+
+    const next = [...list];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next.map((category, index) => ({ ...category, sortOrder: index }));
+  }
+
+  async function persistOrder(nextCategories: BranchCategory[]) {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/branches/${branchId}/categories`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderedIds: nextCategories.map((category) => category.id),
+        }),
+      });
+      const data = await res.json().catch(() => []);
+      if (!res.ok) {
+        toast.error("บันทึกลำดับไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        await load();
+        return;
+      }
+      categoriesRef.current = data;
+      setCategories(data);
+      toast.success("บันทึกลำดับหมวดแล้ว");
+    } finally {
+      setSaving(false);
+      setDraggingId(null);
+      setDragOverId(null);
+    }
+  }
 
   async function createCategory(e: React.FormEvent) {
     e.preventDefault();
@@ -143,6 +188,46 @@ export function BranchCategoryLibrary({ branchId }: Props) {
     }
   }
 
+  function onDragStart(categoryId: string) {
+    if (editingId || saving || deleting) return;
+    dragStartOrderRef.current = categoriesRef.current.map((category) => category.id);
+    setDraggingId(categoryId);
+    setDragOverId(categoryId);
+  }
+
+  function onDragOver(e: React.DragEvent<HTMLDivElement>, categoryId: string) {
+    e.preventDefault();
+    if (!draggingId || draggingId === categoryId) return;
+    setDragOverId(categoryId);
+    setCategories((current) => {
+      const next = reorderCategories(current, draggingId, categoryId);
+      categoriesRef.current = next;
+      return next;
+    });
+  }
+
+  async function onDrop(categoryId: string) {
+    if (!draggingId) return;
+    const ordered = reorderCategories(categoriesRef.current, draggingId, categoryId);
+    const changed = ordered.some(
+      (category, index) => dragStartOrderRef.current[index] !== category.id,
+    );
+    if (!changed) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+    categoriesRef.current = ordered;
+    setCategories(ordered);
+    await persistOrder(ordered);
+  }
+
+  function onDragEnd() {
+    dragStartOrderRef.current = [];
+    setDraggingId(null);
+    setDragOverId(null);
+  }
+
   if (loading) {
     return <AdminLoadingState compact label="กำลังโหลดหมวดหมู่" />;
   }
@@ -175,10 +260,29 @@ export function BranchCategoryLibrary({ branchId }: Props) {
       </form>
 
       <div className="space-y-2">
+        {categories.length > 1 && (
+          <p className="text-sm text-slate-500">
+            ลากการ์ดเพื่อจัดลำดับการแสดงผลของหมวดหมู่บนหน้าเมนู
+          </p>
+        )}
         {categories.map((cat) => (
           <div
             key={cat.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4"
+            draggable={editingId !== cat.id && !saving && !deleting}
+            onDragStart={() => onDragStart(cat.id)}
+            onDragOver={(e) => onDragOver(e, cat.id)}
+            onDragEnd={onDragEnd}
+            onDrop={(e) => {
+              e.preventDefault();
+              void onDrop(cat.id);
+            }}
+            className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4 transition ${
+              draggingId === cat.id
+                ? "border-slate-300 opacity-60 shadow-sm"
+                : dragOverId === cat.id
+                  ? "border-amber-300 bg-amber-50/70"
+                  : "border-slate-200"
+            } ${editingId === cat.id ? "" : "cursor-move"}`}
           >
             {editingId === cat.id ? (
               <div className="flex w-full flex-wrap items-center gap-2">
@@ -205,16 +309,20 @@ export function BranchCategoryLibrary({ branchId }: Props) {
               </div>
             ) : (
               <>
-                <div>
-                  <p className="font-semibold text-slate-900">{cat.name}</p>
-                  <p className="text-sm text-slate-500">
-                    ใช้กับเมนู {cat._count?.menuItems ?? 0} รายการ
-                  </p>
+                <div className="flex items-start gap-3">
+                  <div className="select-none pt-0.5 text-slate-400">::</div>
+                  <div>
+                    <p className="font-semibold text-slate-900">{cat.name}</p>
+                    <p className="text-sm text-slate-500">
+                      ใช้กับเมนู {cat._count?.menuItems ?? 0} รายการ
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     className={btnOutline}
+                    disabled={Boolean(draggingId) || saving}
                     onClick={() => {
                       setEditingId(cat.id);
                       setEditName(cat.name);
@@ -225,6 +333,7 @@ export function BranchCategoryLibrary({ branchId }: Props) {
                   <button
                     type="button"
                     className={btnDanger}
+                    disabled={Boolean(draggingId) || deleting}
                     onClick={() => openDelete(cat)}
                   >
                     ลบ

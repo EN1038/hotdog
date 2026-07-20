@@ -31,12 +31,15 @@ export type OrderCardData = {
   fulfillmentType?: FulfillmentType;
   addressDetail: string | null;
   customerName?: string;
+  customerPhone?: string;
   isNewCustomer?: boolean;
   note?: string | null;
   cancelReason?: string | null;
   deliveryLatitude?: number | null;
   deliveryLongitude?: number | null;
   createdAt: string;
+  createdByStaffId?: string | null;
+  promoSummary?: string | null;
   customer?: { phone: string; name?: string | null } | null;
   deliveryLocation: { name: string; isCustomAddress?: boolean } | null;
   items: OrderItem[];
@@ -132,6 +135,11 @@ export function OrderCard({
         )
       : null;
 
+  const contactPhone =
+    order.customerPhone?.trim() ||
+    order.customer?.phone?.trim() ||
+    "";
+
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm ${colorClass}`}
@@ -145,6 +153,11 @@ export function OrderCard({
             <p className="mt-0.5 text-sm font-medium text-gray-700">
               {locationLabel}
             </p>
+            {order.createdByStaffId ? (
+              <span className="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
+                คีย์โดยพนักงาน
+              </span>
+            ) : null}
             {order.deliveryLocation?.isCustomAddress ? (
               <span className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
                 ที่อยู่ลูกค้า
@@ -201,10 +214,10 @@ export function OrderCard({
           )}
         </div>
 
-        {order.customer?.phone ? (
+        {contactPhone && !contactPhone.startsWith("walkin:") ? (
           <div className="mt-2">
             <PhoneCallButton
-              phone={order.customer.phone}
+              phone={contactPhone}
               showNumber
               size={18}
               className="min-h-11 px-3.5 py-2.5 text-base"

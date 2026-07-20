@@ -7,6 +7,7 @@ import type { FulfillmentType } from "@prisma/client";
 import { formatPrice, telHref } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
+import { fulfillmentToChannel } from "@/lib/menu-pricing";
 import {
   explainWhyOrdersBlocked,
   formatTodayHoursSummary,
@@ -22,7 +23,6 @@ import { syncActiveBrandFromApi } from "@/components/customer/OrderBrandingShell
 import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
 import {
   MenuBestSellerTag,
-  MenuPromoBadge,
   MenuPromoPrice,
   menuItemSellPrice,
   menuItemVisibleForFulfillment,
@@ -44,6 +44,7 @@ import {
   readMenuItemScroll,
   scrollToMenuItem,
 } from "@/lib/menu-scroll-restore";
+import { isStaffKeyedOrderActive } from "@/lib/staff-keyed-order";
 
 type MainTab = "menu" | "history";
 
@@ -281,6 +282,11 @@ export default function StorePage() {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
+  const [staffKeyedOrder, setStaffKeyedOrder] = useState(false);
+
+  useEffect(() => {
+    setStaffKeyedOrder(isStaffKeyedOrderActive());
+  }, []);
   const [isScrolled, setIsScrolled] = useState(false);
   
   const isManualScrolling = useRef(false);
@@ -416,7 +422,9 @@ export default function StorePage() {
     return groups;
   }, [branch, fulfillment]);
 
-  const categories = useMemo(() => groupedMenus.map(g => g.name), [groupedMenus]);
+  const categories = useMemo(() => {
+    return groupedMenus.map((g) => g.name);
+  }, [groupedMenus]);
 
   useEffect(() => {
     if (categories.length > 0 && !activeCategory) {
@@ -522,7 +530,7 @@ export default function StorePage() {
         .join(" · ")
     : "";
 
-  const backHref = "/order";
+  const backHref = staffKeyedOrder ? "/staff" : "/order";
 
   if (loading) {
     return (
@@ -760,11 +768,13 @@ export default function StorePage() {
         </div>
 
         <div className="w-full">
-          <div className="bg-white border-b border-gray-200">
-            <MainTabs active={mainTab} onChange={setMainTab} />
-          </div>
+          {!staffKeyedOrder && (
+            <div className="bg-white border-b border-gray-200">
+              <MainTabs active={mainTab} onChange={setMainTab} />
+            </div>
+          )}
 
-          {mainTab === "menu" ? (
+          {(staffKeyedOrder || mainTab === "menu") ? (
             <>
               {/* Sticky Filter Bar */}
               {categories.length > 1 && (
@@ -829,7 +839,6 @@ export default function StorePage() {
                                   <IconSkewerPlaceholder size={40} />
                                 </div>
                               )}
-                              <MenuPromoBadge label={priced.label} />
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-[15px] font-bold text-gray-900">

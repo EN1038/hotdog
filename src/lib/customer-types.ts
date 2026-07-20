@@ -8,13 +8,22 @@ export type MenuOptionData = {
   id: string;
   name: string;
   priceDelta: string;
+  isOutOfStock?: boolean;
+  /** จากเมนู (โปรเลือกไม้) */
+  imageUrl?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  categorySortOrder?: number;
 };
 
 export type MenuOptionGroupData = {
   id: string;
   name: string;
+  mode?: "MANUAL" | "FROM_MENU";
   required: boolean;
+  minSelect: number;
   maxSelect: number;
+  allowDuplicateSelections?: boolean;
   options: MenuOptionData[];
 };
 
@@ -27,12 +36,6 @@ export type MenuItemData = {
   sellDelivery?: boolean;
   sellPickup?: boolean;
   sellStorefront?: boolean;
-  promoEnabled?: boolean;
-  promoType?: "AMOUNT" | "PERCENT" | null;
-  promoValue?: string | null;
-  promoContinuous?: boolean;
-  promoStartsAt?: string | null;
-  promoEndsAt?: string | null;
   description: string | null;
   category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;

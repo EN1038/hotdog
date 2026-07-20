@@ -69,9 +69,6 @@ export async function POST(request: Request, { params }: Params) {
       }
     }
 
-    const promoEnabled = body.promoEnabled ?? false;
-    const promoContinuous = body.promoContinuous ?? false;
-
     const item = await prisma.branchMenuItem.create({
       data: {
         branchId,
@@ -82,22 +79,11 @@ export async function POST(request: Request, { params }: Params) {
         sellDelivery: body.sellDelivery ?? true,
         sellPickup: body.sellPickup ?? true,
         sellStorefront: body.sellStorefront ?? true,
-        promoEnabled,
-        promoType: promoEnabled ? (body.promoType ?? null) : null,
-        promoValue: promoEnabled ? (body.promoValue ?? null) : null,
-        promoContinuous,
-        promoStartsAt:
-          promoEnabled && !promoContinuous && body.promoStartsAt
-            ? new Date(body.promoStartsAt)
-            : null,
-        promoEndsAt:
-          promoEnabled && !promoContinuous && body.promoEndsAt
-            ? new Date(body.promoEndsAt)
-            : null,
         description: body.description ?? null,
         categoryId,
         imageUrl: body.imageUrl ?? null,
         isHidden: body.isHidden ?? false,
+        hideFromStaff: body.hideFromStaff ?? false,
         isOutOfStock: body.isOutOfStock ?? false,
         sortOrder: body.sortOrder ?? 0,
         ...(optionGroupIds.length

@@ -454,6 +454,18 @@ export default function StorePage() {
     return explainWhyOrdersBlocked(branch, fulfillment);
   }, [branch, fulfillment]);
 
+  const closedBannerText = useMemo(() => {
+    if (!service || service.openNow) return null;
+    const hours = formatTodayHoursSummary(service.schedule);
+    const reopen = hours.match(/^(\d{2}:\d{2})/);
+    const openAt = reopen ? `เปิด ${reopen[1]}` : hours;
+
+    if (service.acceptingOrders) {
+      return `ปิดอยู่ · ${openAt} · สั่งจองล่วงหน้าได้แล้ว`;
+    }
+    return `ปิดอยู่ · ${openAt}`;
+  }, [service]);
+
   const branchPhone = branch?.phone?.trim() || branch?.brand?.contactPhone?.trim() || "";
 
   // After returning from item detail (back or add-to-cart), land on the same row.
@@ -611,6 +623,14 @@ export default function StorePage() {
         )}
       </div>
 
+      {service && !service.openNow && closedBannerText ? (
+        <div className="relative z-0 -mt-6 rounded-t-[28px] bg-[#e53935] px-4 pb-10 pt-3.5">
+          <p className="text-center text-[15px] font-medium leading-snug text-white tabular-nums">
+            {closedBannerText}
+          </p>
+        </div>
+      ) : null}
+
       {/* Content Shell */}
       <div className="relative z-10 -mt-6 rounded-t-[28px] bg-white pt-6 shadow-sm">
         <div className="px-4">
@@ -618,47 +638,42 @@ export default function StorePage() {
             <h1 className="min-w-0 flex-1 text-2xl font-extrabold leading-tight text-gray-900">
               {displayName}
             </h1>
-            {(branchPhone || branchMapHref) && (
-              <div className="flex shrink-0 items-center gap-2 pt-0.5">
-                {branchPhone ? (
-                  <a
-                    href={telHref(branchPhone)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-site-primary shadow-sm transition-transform active:scale-95"
-                    aria-label="โทรหาร้าน"
-                  >
-                    <IconPhone size={18} />
-                  </a>
-                ) : null}
-                {branchMapHref ? (
-                  <a
-                    href={branchMapHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-site-primary shadow-sm transition-transform active:scale-95"
-                    aria-label="ดูแผนที่ร้าน"
-                  >
-                    <IconPin size={18} />
-                  </a>
-                ) : null}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-600">
-            {categoryLine ? <span>{categoryLine}</span> : <span>฿9-฿35</span>}
-          </div>
-
-          {service && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5">
-              {service.openNow ? (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[12px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                  เปิดอยู่
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-md bg-red-500 px-2 py-1 text-[12px] font-semibold text-white">
-                  ปิดอยู่
-                </span>
+            <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
+              {(branchPhone || branchMapHref) && (
+                <div className="flex items-center gap-2">
+                  {branchPhone ? (
+                    <a
+                      href={telHref(branchPhone)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-site-primary shadow-sm transition-transform active:scale-95"
+                      aria-label="โทรหาร้าน"
+                    >
+                      <IconPhone size={18} />
+                    </a>
+                  ) : null}
+                  {branchMapHref ? (
+                    <a
+                      href={branchMapHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-site-primary shadow-sm transition-transform active:scale-95"
+                      aria-label="ดูแผนที่ร้าน"
+                    >
+                      <IconPin size={18} />
+                    </a>
+                  ) : null}
+                </div>
               )}
+              <p className="max-w-[9.5rem] text-right text-[12px] leading-snug text-gray-500">
+                {categoryLine || "฿9-฿35"}
+              </p>
+            </div>
+          </div>
+
+          {service?.openNow ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5">
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[12px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                เปิดอยู่
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-semibold text-gray-900">
                   วันนี้{" "}
@@ -670,13 +685,10 @@ export default function StorePage() {
                   {fulfillment === "DELIVERY"
                     ? "เวลาเปิดรับจัดส่ง"
                     : "เวลาเปิดรับที่ร้าน"}
-                  {!service.openNow && service.acceptingOrders
-                    ? " · สั่งล่วงหน้าได้"
-                    : null}
                 </p>
               </div>
             </div>
-          )}
+          ) : null}
 
         </div>
 
@@ -834,9 +846,7 @@ export default function StorePage() {
                               </p>
                             </div>
                             <div className="shrink-0">
-                              {item.isOutOfStock ? (
-                                <span className="text-xs text-gray-400">หมด</span>
-                              ) : (
+                              {item.isOutOfStock ? null : (
                                 <button
                                   type="button"
                                   onClick={handleItemClick}

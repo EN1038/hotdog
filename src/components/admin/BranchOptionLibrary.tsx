@@ -11,6 +11,7 @@ import {
 import { AdminUsageDeleteModal } from "@/components/admin/AdminUsageDeleteModal";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { OptionGroupMenuSourceEditor } from "@/components/admin/OptionGroupMenuSourceEditor";
 
 export type BranchOption = {
   id: string;
@@ -21,9 +22,16 @@ export type BranchOption = {
 export type BranchOptionGroup = {
   id: string;
   name: string;
+  mode?: "MANUAL" | "FROM_MENU";
   required: boolean;
+  minSelect?: number;
   maxSelect: number;
+  allowDuplicateSelections?: boolean;
   options: BranchOption[];
+  menuItemSources?: Array<{
+    menuItemId: string;
+    isEnabled: boolean;
+  }>;
   _count?: { menuItemLinks: number };
   menuItemLinks?: Array<{ menuItem: { id: string; name: string } }>;
 };
@@ -82,12 +90,16 @@ export function BranchOptionLibrary({ branchId }: Props) {
 
   const [newGroup, setNewGroup] = useState({
     name: "",
+    mode: "MANUAL" as "MANUAL" | "FROM_MENU",
     required: false,
+    minSelect: "0",
     maxSelect: "1",
+    allowDuplicateSelections: false,
   });
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroup, setEditGroup] = useState({
     name: "",
+    minSelect: "0",
     maxSelect: "1",
   });
   const [newOptionByGroup, setNewOptionByGroup] = useState<
@@ -139,8 +151,12 @@ export function BranchOptionLibrary({ branchId }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newGroup.name.trim(),
-          required: newGroup.required,
+          mode: newGroup.mode,
+          required: newGroup.required || newGroup.mode === "FROM_MENU",
+          minSelect: parseInt(newGroup.minSelect || "0", 10),
           maxSelect: parseInt(newGroup.maxSelect || "1", 10),
+          allowDuplicateSelections:
+            newGroup.allowDuplicateSelections || newGroup.mode === "FROM_MENU",
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -148,7 +164,14 @@ export function BranchOptionLibrary({ branchId }: Props) {
         toast.error("สร้างหัวข้อไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
         return;
       }
-      setNewGroup({ name: "", required: false, maxSelect: "1" });
+      setNewGroup({
+        name: "",
+        mode: "MANUAL",
+        required: false,
+        minSelect: "0",
+        maxSelect: "1",
+        allowDuplicateSelections: false,
+      });
       setCollapsed((c) => ({ ...c, [data.id]: false }));
       await load();
       setFocusGroupId(data.id);
@@ -162,6 +185,7 @@ export function BranchOptionLibrary({ branchId }: Props) {
     setEditingGroupId(group.id);
     setEditGroup({
       name: group.name,
+      minSelect: String(group.minSelect ?? 0),
       maxSelect: String(group.maxSelect),
     });
     setCollapsed((c) => ({ ...c, [group.id]: false }));
@@ -196,6 +220,7 @@ export function BranchOptionLibrary({ branchId }: Props) {
     }
     await saveGroupMeta(groupId, {
       name: editGroup.name.trim(),
+      minSelect: parseInt(editGroup.minSelect || "0", 10),
       maxSelect: parseInt(editGroup.maxSelect || "1", 10),
     });
     setEditingGroupId(null);
@@ -363,6 +388,33 @@ export function BranchOptionLibrary({ branchId }: Props) {
             setNewGroup((g) => ({ ...g, name: e.target.value }))
           }
         />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-sm text-gray-700">
+            ประเภท
+            <select
+              className={`${adminInputClass} mt-1`}
+              value={newGroup.mode}
+              onChange={(e) => {
+                const mode = e.target.value as "MANUAL" | "FROM_MENU";
+                setNewGroup((g) => ({
+                  ...g,
+                  mode,
+                  ...(mode === "FROM_MENU"
+                    ? {
+                        minSelect: "11",
+                        maxSelect: "11",
+                        allowDuplicateSelections: true,
+                        required: true,
+                      }
+                    : {}),
+                }));
+              }}
+            >
+              <option value="MANUAL">กำหนดเอง (ชื่อ + ราคา)</option>
+              <option value="FROM_MENU">จากรายการเมนู (โปรเลือกไม้)</option>
+            </select>
+          </label>
+        </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Toggle
             checked={newGroup.required}
@@ -370,7 +422,19 @@ export function BranchOptionLibrary({ branchId }: Props) {
             label="บังคับเลือก"
           />
           <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm text-gray-800">
-            เลือกได้สูงสุด
+            ขั้นต่ำ
+            <input
+              type="number"
+              min={0}
+              className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-900"
+              value={newGroup.minSelect}
+              onChange={(e) =>
+                setNewGroup((g) => ({ ...g, minSelect: e.target.value }))
+              }
+            />
+          </label>
+          <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm text-gray-800">
+            สูงสุด
             <input
               type="number"
               min={1}
@@ -385,6 +449,11 @@ export function BranchOptionLibrary({ branchId }: Props) {
             สร้างหัวข้อ
           </button>
         </div>
+        {newGroup.mode === "FROM_MENU" && (
+          <p className="text-xs text-gray-500">
+            หลังสร้างแล้ว ให้ติ๊กเมนูที่อนุญาตให้เลือก — ลูกค้าเลือกซ้ำได้จนครบจำนวนสูงสุด
+          </p>
+        )}
       </form>
 
       <div className="space-y-3">
@@ -429,6 +498,21 @@ export function BranchOptionLibrary({ branchId }: Props) {
                         }
                       />
                       <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm">
+                        ขั้นต่ำ
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                          value={editGroup.minSelect}
+                          onChange={(e) =>
+                            setEditGroup((g) => ({
+                              ...g,
+                              minSelect: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm">
                         สูงสุด
                         <input
                           type="number"
@@ -463,13 +547,21 @@ export function BranchOptionLibrary({ branchId }: Props) {
                     <>
                       <p className="font-semibold text-gray-900">
                         {group.name}
+                        {group.mode === "FROM_MENU" && (
+                          <span className="ml-2 rounded bg-site-primary-soft px-2 py-0.5 text-[10px] font-bold text-site-primary">
+                            จากเมนู
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-gray-500">
-                        เลือกได้สูงสุด {group.maxSelect}
+                        เลือก {group.minSelect ?? 0}–{group.maxSelect} รายการ
+                        {group.allowDuplicateSelections ? " · เลือกซ้ำได้" : ""}
                         {group._count
                           ? ` · ใช้กับ ${group._count.menuItemLinks} เมนู`
                           : ""}
-                        {` · ${group.options.length} ตัวเลือก`}
+                        {group.mode === "FROM_MENU"
+                          ? ` · ${group.menuItemSources?.filter((s) => s.isEnabled).length ?? 0} เมนูในชุด`
+                          : ` · ${group.options.length} ตัวเลือก`}
                       </p>
                     </>
                   )}
@@ -503,6 +595,19 @@ export function BranchOptionLibrary({ branchId }: Props) {
 
               {!isCollapsed && (
                 <div className="space-y-3 border-t border-gray-100 px-4 py-3">
+                  {group.mode === "FROM_MENU" ? (
+                    <OptionGroupMenuSourceEditor
+                      branchId={branchId}
+                      groupId={group.id}
+                      enabledIds={
+                        group.menuItemSources
+                          ?.filter((s) => s.isEnabled)
+                          .map((s) => s.menuItemId) ?? []
+                      }
+                      onSaved={load}
+                    />
+                  ) : (
+                    <>
                   <ul className="space-y-2">
                     {group.options.map((opt) => (
                       <li
@@ -642,6 +747,8 @@ export function BranchOptionLibrary({ branchId }: Props) {
                       + เพิ่มตัวเลือก
                     </button>
                   </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

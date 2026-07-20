@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/auth";
 import {
   canStaffCancel,
   canStaffUpdateStatus,
+  ORDER_STATUS_LABELS,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -14,6 +15,17 @@ const statusSchema = z.object({
 });
 
 type Params = { params: Promise<{ id: string }> };
+
+async function loadStaffOrder(id: string, branchId: string) {
+  return prisma.order.findFirst({
+    where: { id, branchId },
+    include: {
+      customer: true,
+      deliveryLocation: true,
+      items: { include: { branchMenuItem: true } },
+    },
+  });
+}
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
@@ -50,7 +62,15 @@ export async function PATCH(request: Request, { params }: Params) {
         },
       });
       if (moved.count === 0) {
-        return jsonError("ไม่สามารถยกเลิกได้ สถานะออเดอร์เปลี่ยนไปแล้ว");
+        const latest = await loadStaffOrder(id, session.branchId);
+        return jsonError("ไม่สามารถยกเลิกได้ สถานะออเดอร์เปลี่ยนไปแล้ว", 409, {
+          statusChanged: true,
+          currentStatus: latest?.status ?? null,
+          currentStatusLabel: latest
+            ? ORDER_STATUS_LABELS[latest.status]
+            : null,
+          order: latest,
+        });
       }
     } else {
       if (
@@ -73,18 +93,23 @@ export async function PATCH(request: Request, { params }: Params) {
         data: { status: body.status },
       });
       if (moved.count === 0) {
-        return jsonError("ไม่สามารถเปลี่ยนสถานะได้ สถานะออเดอร์เปลี่ยนไปแล้ว");
+        const latest = await loadStaffOrder(id, session.branchId);
+        return jsonError(
+          "ไม่สามารถเปลี่ยนสถานะได้ สถานะออเดอร์เปลี่ยนไปแล้ว",
+          409,
+          {
+            statusChanged: true,
+            currentStatus: latest?.status ?? null,
+            currentStatusLabel: latest
+              ? ORDER_STATUS_LABELS[latest.status]
+              : null,
+            order: latest,
+          },
+        );
       }
     }
 
-    const updated = await prisma.order.findFirst({
-      where: { id, branchId: session.branchId },
-      include: {
-        customer: true,
-        deliveryLocation: true,
-        items: { include: { branchMenuItem: true } },
-      },
-    });
+    const updated = await loadStaffOrder(id, session.branchId);
     return jsonOk(updated);
   } catch (error) {
     return handleApiError(error);

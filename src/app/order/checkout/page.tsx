@@ -18,6 +18,8 @@ import { localizedName } from "@/lib/localized";
 import { clearMenuItemScroll } from "@/lib/menu-scroll-restore";
 import { WheelTimePicker } from "@/components/WheelTimePicker";
 import { useCustomer } from "@/components/customer/CustomerProvider";
+import { useStaffKeyedOrder } from "@/hooks/useStaffKeyedOrder";
+import { clearStaffKeyedOrder } from "@/lib/staff-keyed-order";
 import { CustomerDeliveryMapPin } from "@/components/customer/CustomerDeliveryMapPin";
 import type { MapLocationValue } from "@/components/customer/CustomerDeliveryMapPin";
 import { LoadingState } from "@/components/LoadingState";
@@ -233,6 +235,12 @@ export default function CheckoutPage() {
     removeLine,
     clearCart,
   } = useCustomer();
+  const {
+    active: staffKeyedOrder,
+    context: staffOrderContext,
+    ready: staffKeyedReady,
+  } = useStaffKeyedOrder();
+  const isStaffKeyed = staffKeyedOrder && Boolean(staffOrderContext);
 
   const [branch, setBranch] = useState<BranchData | null>(null);
   const [branchLoading, setBranchLoading] = useState(false);
@@ -351,11 +359,15 @@ export default function CheckoutPage() {
   }
 
   function goBackToMenu() {
+    if (isStaffKeyed && cartBranchId) {
+      router.push(`/order/store/${cartBranchId}`);
+      return;
+    }
     if (cartBranchId) {
       router.push(`/order/store/${cartBranchId}`);
       return;
     }
-    router.push("/order");
+    router.push(isStaffKeyed ? "/staff" : "/order");
   }
 
   useEffect(() => {
@@ -377,7 +389,12 @@ export default function CheckoutPage() {
   // Load past delivery addresses for quick re-use (same branch).
   useEffect(() => {
     savedAddressAppliedRef.current = false;
-    if (!session || !cartBranchId || fulfillment !== "DELIVERY") {
+    if (
+      isStaffKeyed ||
+      !session ||
+      !cartBranchId ||
+      fulfillment !== "DELIVERY"
+    ) {
       setSavedAddresses([]);
       return;
     }
@@ -396,7 +413,7 @@ export default function CheckoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [session, cartBranchId, fulfillment]);
+  }, [isStaffKeyed, session, cartBranchId, fulfillment]);
 
   const deliveryAvailable = (branch?.deliveryLocations.length ?? 0) > 0;
 
@@ -480,14 +497,20 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (orderPlacedRef.current) return;
-    if (sessionChecked && cart.length === 0) {
+    const ready = isStaffKeyed ? staffKeyedReady : sessionChecked;
+    if (ready && cart.length === 0) {
+      if (isStaffKeyed) {
+        clearStaffKeyedOrder();
+        router.replace("/staff");
+        return;
+      }
       if (cartBranchId) {
         router.replace(`/order/store/${cartBranchId}`);
       } else {
         router.replace("/order");
       }
     }
-  }, [sessionChecked, cart.length, cartBranchId, router]);
+  }, [isStaffKeyed, staffKeyedReady, sessionChecked, cart.length, cartBranchId, router]);
 
   const itemsTotal = useMemo(
     () => cart.reduce((s, l) => s + lineTotal(l), 0),
@@ -513,8 +536,8 @@ export default function CheckoutPage() {
           label: branch.name,
         }
       : null;
-  const discount = 0;
-  const grandTotal = itemsTotal + deliveryFee - discount;
+
+  const grandTotal = itemsTotal + deliveryFee;
 
   useEffect(() => {
     if (fulfillment === "DELIVERY" && isCustomAddressZone) {
@@ -573,14 +596,19 @@ export default function CheckoutPage() {
 
     setError("");
     setBlockModal(null);
-    if (!session) {
-      goToLogin({ pendingSubmit: true });
-      return;
-    }
-    const customerName = session.name?.trim() ?? "";
-    if (!customerName) {
-      goToLogin({ pendingSubmit: true });
-      return;
+    const customerName = isStaffKeyed
+      ? (staffOrderContext!.staffDisplayName.trim() || staffOrderContext!.staffPhone)
+      : (session?.name?.trim() ?? "");
+
+    if (!isStaffKeyed) {
+      if (!session) {
+        goToLogin({ pendingSubmit: true });
+        return;
+      }
+      if (!customerName) {
+        goToLogin({ pendingSubmit: true });
+        return;
+      }
     }
     if (fulfillment === "DELIVERY" && !deliveryAvailable) {
       setBlockModal({
@@ -598,8 +626,8 @@ export default function CheckoutPage() {
     if (fulfillment === "DELIVERY" && !addressDetail.trim()) {
       setError(
         isCustomAddressZone
-          ? "กรุณากรอกที่อยู่จัดส่งให้ครบ"
-          : "กรุณากรอกที่อยู่จัดส่ง",
+          ? "กรุณากรอกรายละเอียดที่อยู่ให้ครบ"
+          : "กรุณากรอกรายละเอียดที่อยู่",
       );
       scrollAndExpand("addressDetail");
       return;
@@ -610,7 +638,7 @@ export default function CheckoutPage() {
       addressDetail.trim().length < CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH
     ) {
       setError(
-        `กรุณากรอกที่อยู่ให้ละเอียดกว่านี้ (อย่างน้อย ${CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH} ตัวอักษร)`,
+        `กรุณากรอกรายละเอียดที่อยู่ให้ละเอียดกว่านี้ (อย่างน้อย ${CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH} ตัวอักษร)`,
       );
       scrollAndExpand("addressDetail");
       return;
@@ -625,7 +653,7 @@ export default function CheckoutPage() {
       return;
     }
     let service;
-    if (branch) {
+    if (!isStaffKeyed && branch) {
       service = getBranchServiceStatus(branch, fulfillment);
       if (!service.acceptingOrders) {
         const explained = explainWhyOrdersBlocked(branch, fulfillment);
@@ -654,6 +682,8 @@ export default function CheckoutPage() {
           return;
         }
       }
+    } else if (branch) {
+      service = getBranchServiceStatus(branch, fulfillment);
     }
     const parsedScheduledTime =
       fulfillment === "PICKUP" && scheduledTime
@@ -675,12 +705,17 @@ export default function CheckoutPage() {
         scrollAndExpand("scheduledTime");
         return;
       }
-      if (service && !isWithinWeeklyScheduleWithOvernight(service.schedule, scheduledDate)) {
+      if (
+        !isStaffKeyed &&
+        service &&
+        !isWithinWeeklyScheduleWithOvernight(service.schedule, scheduledDate)
+      ) {
         setError("เวลารับสินค้าที่คุณระบุอยู่นอกเวลาทำการของร้าน กรุณาระบุเวลาใหม่");
         scrollAndExpand("scheduledTime");
         return;
       }
     } else if (
+      !isStaffKeyed &&
       fulfillment === "PICKUP" &&
       branch &&
       service &&
@@ -698,10 +733,38 @@ export default function CheckoutPage() {
             parsedScheduledTime.minutes,
           )
         : undefined;
-      const res = await fetch("/api/customer/orders", {
+      const res = await fetch(
+        isStaffKeyed ? "/api/staff/orders" : "/api/customer/orders",
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(
+          isStaffKeyed
+            ? {
+                fulfillmentType: fulfillment,
+                deliveryLocationId:
+                  fulfillment === "DELIVERY" ? locationId : undefined,
+                addressDetail:
+                  fulfillment === "DELIVERY" ? addressDetail : undefined,
+                deliveryLatitude:
+                  fulfillment === "DELIVERY" && hasMapPin(deliveryPin)
+                    ? deliveryPin.latitude
+                    : undefined,
+                deliveryLongitude:
+                  fulfillment === "DELIVERY" && hasMapPin(deliveryPin)
+                    ? deliveryPin.longitude
+                    : undefined,
+                scheduledAt,
+                note: note.trim() || undefined,
+                paymentMethod: payment,
+                items: cart.map((l) => ({
+                  branchMenuItemId: l.branchMenuItemId,
+                  quantity: l.quantity,
+                  optionIds: l.optionIds ?? [],
+                  note: l.note?.trim() || undefined,
+                })),
+              }
+            : {
           branchId: cartBranchId,
           fulfillmentType: fulfillment,
           deliveryLocationId:
@@ -726,8 +789,10 @@ export default function CheckoutPage() {
             optionIds: l.optionIds ?? [],
             note: l.note?.trim() || undefined,
           })),
-        }),
-      });
+        },
+        ),
+      },
+      );
       const data = await res.json();
       if (!res.ok) {
         const unavailable = Array.isArray(data.unavailableItems)
@@ -758,20 +823,29 @@ export default function CheckoutPage() {
       }
       orderPlacedRef.current = true;
       clearCart();
+      if (isStaffKeyed) {
+        clearStaffKeyedOrder();
+        router.replace("/staff");
+        return;
+      }
       router.replace(`/order/confirmation/${data.id}`);
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (!sessionChecked || (cart.length > 0 && branchLoading && !branch)) {
+  const authReady = isStaffKeyed ? staffKeyedReady : sessionChecked;
+
+  if (!authReady || (cart.length > 0 && branchLoading && !branch)) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-white px-4">
         <LoadingState
           className="w-full max-w-sm"
           label={
-            !sessionChecked
-              ? "กำลังตรวจสอบการเข้าสู่ระบบ"
+            !authReady
+              ? isStaffKeyed
+                ? "กำลังโหลดโหมดคีย์ออเดอร์"
+                : "กำลังตรวจสอบการเข้าสู่ระบบ"
               : "กำลังโหลดข้อมูลตะกร้า"
           }
         />
@@ -779,7 +853,7 @@ export default function CheckoutPage() {
     );
   }
 
-  if (sessionChecked && cart.length === 0) {
+  if (authReady && cart.length === 0) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-white px-4">
         <LoadingState
@@ -910,7 +984,7 @@ export default function CheckoutPage() {
         )}
 
         <div className="mt-3 overflow-hidden rounded-xl border border-gray-100">
-          {session?.name ? (
+          {isStaffKeyed || session?.name ? (
             <div
               className="flex w-full items-center gap-3 bg-white px-3.5 py-3 text-left"
               aria-label="ชื่อผู้สั่ง"
@@ -920,7 +994,9 @@ export default function CheckoutPage() {
               </span>
               <span className="flex-1 text-sm text-gray-700">ชื่อผู้สั่ง</span>
               <span className="max-w-[45%] truncate text-sm text-gray-900">
-                {session.name}
+                {isStaffKeyed
+                  ? staffOrderContext!.staffDisplayName
+                  : session!.name}
               </span>
             </div>
           ) : (
@@ -939,7 +1015,7 @@ export default function CheckoutPage() {
           )}
 
           <div className="h-px bg-gray-100" />
-          {session ? (
+          {isStaffKeyed || session ? (
             <div
               className="flex w-full items-center gap-3 bg-white px-3.5 py-3 text-left"
               aria-label="เบอร์โทร"
@@ -948,7 +1024,9 @@ export default function CheckoutPage() {
                 <IconPhone size={16} className="text-gray-500" />
               </span>
               <span className="flex-1 text-sm text-gray-700">เบอร์โทร</span>
-              <span className="text-sm text-gray-900">{session.phone}</span>
+              <span className="text-sm text-gray-900">
+                {isStaffKeyed ? staffOrderContext!.staffPhone : session!.phone}
+              </span>
             </div>
           ) : (
             <button
@@ -1107,14 +1185,10 @@ export default function CheckoutPage() {
                 id="field-addressDetail"
                 icon={IconHome}
                 label={
-                  isCustomAddressZone ? (
-                    <>
-                      ที่อยู่จัดส่ง{" "}
-                      <span className="text-site-primary">(กรอกเอง)</span>
-                    </>
-                  ) : (
-                    "ที่อยู่จัดส่ง"
-                  )
+                  <>
+                    รายละเอียดที่อยู่{" "}
+                    <span className="text-site-primary">(บังคับ)</span>
+                  </>
                 }
                 summary={
                   isCustomAddressZone
@@ -1123,8 +1197,8 @@ export default function CheckoutPage() {
                         addressDetail.trim() || null,
                       ]
                         .filter(Boolean)
-                        .join(" · ") || "ปักหมุด + กรอกที่อยู่"
-                    : addressDetail || "กรอกที่อยู่"
+                        .join(" · ") || "ปักหมุด + กรอกรายละเอียด"
+                    : addressDetail || "เช่น ห้อง / ตึก / จุดสังเกต"
                 }
                 expanded={expandedField === "addressDetail"}
                 onToggle={() => toggleExpanded("addressDetail")}
@@ -1133,8 +1207,8 @@ export default function CheckoutPage() {
                   {isCustomAddressZone ? (
                     <>
                       <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-900">
-                        พื้นที่นี้ให้คุณปักหมุดจุดส่งบนแผนที่ และพิมพ์รายละเอียดเพิ่ม
-                        (เช่น ห้อง / จุดสังเกต) — ร้านจะเห็นระยะทางจากสาขา
+                        ระบบจะปักหมุดจาก GPS และเติมที่อยู่จากแผนที่ให้อัตโนมัติ —
+                        จากนั้นพิมพ์จุดสังเกตต่อท้ายได้ เช่น ตึกสีเทา มีฟิตเนสข้างหน้า
                       </p>
                       {(savedForSelectedZone.length > 0 ||
                         usableSavedAddresses.some((a) => a.isCustomAddress)) && (
@@ -1194,7 +1268,12 @@ export default function CheckoutPage() {
                         autoLocate={!hasMapPin(deliveryPin)}
                       />
                     </>
-                  ) : null}
+                  ) : (
+                    <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
+                      ใช้บอกจุดส่งในพื้นที่ที่เลือก เช่น ห้อง ตึก จุดสังเกต —
+                      ไม่ใช่หมายเหตุอาหาร
+                    </p>
+                  )}
                   {usableSavedAddresses.length > 0 && !isCustomAddressZone ? (
                     <div>
                       <p className="mb-1.5 text-xs font-medium text-gray-500">
@@ -1230,7 +1309,7 @@ export default function CheckoutPage() {
                         })}
                       </div>
                       <p className="mt-2 text-[11px] text-gray-400">
-                        หรือกรอกที่อยู่ใหม่ด้านล่าง
+                        หรือกรอกรายละเอียดใหม่ด้านล่าง
                       </p>
                     </div>
                   ) : null}
@@ -1243,17 +1322,29 @@ export default function CheckoutPage() {
                     onChange={(e) => setAddressDetail(e.target.value)}
                     placeholder={
                       isCustomAddressZone
-                        ? "เช่น 123/45 ซอยนวนคร 22 ใกล้ร้านสะดวกซื้อ ฝากไว้หน้าบ้าน"
-                        : "เช่น ห้อง 302 ตึก B"
+                        ? addressDetail.trim()
+                          ? "เพิ่มจุดสังเกตต่อท้ายได้ เช่น ตึกสีเทา มีฟิตเนสข้างหน้า"
+                          : "รอระบบเติมจากแผนที่ หรือพิมพ์ที่อยู่เอง…"
+                        : "เช่น ห้อง 302 ตึก B / หน้าบ้านสีขาว"
                     }
                     rows={isCustomAddressZone ? 3 : 2}
                     maxLength={300}
                   />
                   {isCustomAddressZone ? (
-                    <p className="text-right text-[11px] text-gray-400">
-                      {addressDetail.trim().length}/
-                      {CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH}+ ตัวอักษร
-                    </p>
+                    <div className="flex items-start justify-between gap-3 text-[11px] leading-relaxed text-gray-500">
+                      <p className="min-w-0 flex-1">
+                        {deliveryPin.address.trim() &&
+                        addressDetail.trim().startsWith(deliveryPin.address.trim())
+                          ? "ที่อยู่ด้านบนมาจากแผนที่แล้ว — เพิ่มจุดสังเกตต่อท้ายได้ตามต้องการ"
+                          : hasMapPin(deliveryPin)
+                            ? "ปักหมุดแล้ว — ตรวจที่อยู่ให้ถูก และเพิ่มจุดสังเกตให้หาเจอง่ายขึ้น"
+                            : "ปักหมุดก่อน ระบบจะช่วยเติมที่อยู่จากแผนที่"}
+                      </p>
+                      <span className="shrink-0 tabular-nums text-gray-400">
+                        {addressDetail.trim().length}/
+                        {CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH}+
+                      </span>
+                    </div>
                   ) : null}
                 </div>
               </ExpandableFulfillmentRow>
@@ -1269,7 +1360,7 @@ export default function CheckoutPage() {
                 <span className="text-gray-400">(ไม่บังคับ)</span>
               </>
             }
-            summary={note || "เพิ่มหมายเหตุ"}
+            summary={note || "เพิ่มหมายเหตุอาหาร"}
             expanded={expandedField === "note"}
             onToggle={() => toggleExpanded("note")}
           >
@@ -1278,7 +1369,7 @@ export default function CheckoutPage() {
               className={`${fieldInputClass} resize-none`}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="เช่น ไม่ใส่ผักชี / เผ็ดน้อย"
+              placeholder="เช่น ไม่ใส่ผักชี / เผ็ดน้อย / ไม่เอาน้ำแข็ง"
               maxLength={200}
               rows={2}
             />
@@ -1352,12 +1443,12 @@ export default function CheckoutPage() {
                       </p>
                     </div>
                     {l.optionNames?.length ? (
-                      <p className="mt-1 text-[13px] text-gray-500">
+                      <p className="mt-1 break-all text-[13px] text-gray-500">
                         {l.optionNames.join(", ")}
                       </p>
                     ) : null}
                     {l.note ? (
-                      <p className="mt-0.5 text-[13px] text-gray-500">
+                      <p className="mt-0.5 line-clamp-3 break-all text-[13px] text-gray-500">
                         หมายเหตุ: {l.note}
                       </p>
                     ) : null}
@@ -1410,10 +1501,6 @@ export default function CheckoutPage() {
         <div className="flex justify-between py-0.5 text-gray-600">
           <span>ค่าจัดส่ง</span>
           <span>฿{formatPrice(deliveryFee)}</span>
-        </div>
-        <div className="flex justify-between py-0.5 text-gray-600">
-          <span>ส่วนลด</span>
-          <span>฿{formatPrice(discount)}</span>
         </div>
         <div className="mt-1 flex justify-between border-t border-gray-100 pt-2 font-bold text-gray-900">
           <span>รวมทั้งหมด</span>

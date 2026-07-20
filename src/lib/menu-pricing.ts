@@ -1,4 +1,4 @@
-import type { FulfillmentType, MenuPromoType } from "@prisma/client";
+import type { FulfillmentType } from "@prisma/client";
 
 export type MenuPriceChannel = "delivery" | "pickup" | "storefront";
 
@@ -9,12 +9,6 @@ export type MenuPricingFields = {
   sellDelivery?: boolean;
   sellPickup?: boolean;
   sellStorefront?: boolean;
-  promoEnabled?: boolean;
-  promoType?: MenuPromoType | null;
-  promoValue?: number | string | { toString(): string } | null;
-  promoContinuous?: boolean;
-  promoStartsAt?: Date | string | null;
-  promoEndsAt?: Date | string | null;
 };
 
 export type PromoResult = {
@@ -69,100 +63,19 @@ export function resolveChannelPrice(
   return roundMoney(toNumber(item.storefrontPrice) ?? delivery);
 }
 
-function asDate(value: Date | string | null | undefined): Date | null {
-  if (!value) return null;
-  const d = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-export function isPromoActive(
-  item: MenuPricingFields,
-  now: Date = new Date(),
-): boolean {
-  if (!item.promoEnabled) return false;
-  if (!item.promoType) return false;
-  const value = toNumber(item.promoValue);
-  if (value == null || value <= 0) return false;
-  if (item.promoContinuous) return true;
-  const start = asDate(item.promoStartsAt);
-  const end = asDate(item.promoEndsAt);
-  if (!start || !end) return false;
-  return now.getTime() >= start.getTime() && now.getTime() <= end.getTime();
-}
-
-export function formatPromoLabel(
-  promoType: MenuPromoType,
-  promoValue: number,
-): string {
-  if (promoType === "PERCENT") {
-    const pct = Number.isInteger(promoValue)
-      ? String(promoValue)
-      : String(roundMoney(promoValue));
-    return `ลด ${pct}%`;
-  }
-  const amount = Number.isInteger(promoValue)
-    ? String(promoValue)
-    : promoValue.toLocaleString("th-TH", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      });
-  return `ลด ฿${amount}`;
-}
-
-/**
- * Apply promo to a base channel price.
- * Does not apply to storefront (caller should skip) or options.
- */
-export function applyPromo(
-  basePrice: number,
-  item: MenuPricingFields,
-  now: Date = new Date(),
-): PromoResult {
-  const original = roundMoney(basePrice);
-  if (!isPromoActive(item, now) || !item.promoType) {
-    return {
-      final: original,
-      original,
-      discounted: false,
-      label: null,
-      savings: 0,
-    };
-  }
-  const promoValue = toNumber(item.promoValue) ?? 0;
-  let final = original;
-  if (item.promoType === "PERCENT") {
-    final = original * (1 - promoValue / 100);
-  } else {
-    final = original - promoValue;
-  }
-  final = roundMoney(Math.max(0, final));
-  const savings = roundMoney(Math.max(0, original - final));
-  if (savings <= 0) {
-    return {
-      final: original,
-      original,
-      discounted: false,
-      label: null,
-      savings: 0,
-    };
-  }
-  return {
-    final,
-    original,
-    discounted: true,
-    label: formatPromoLabel(item.promoType, promoValue),
-    savings,
-  };
-}
-
-/** Price for online order channels (delivery/pickup) including active promo. */
+/** Sell price for a channel (no item-level promos). */
 export function resolveSellPrice(
   item: MenuPricingFields,
-  channel: Exclude<MenuPriceChannel, "storefront">,
-  now: Date = new Date(),
+  channel: MenuPriceChannel,
 ): PromoResult {
   const base = resolveChannelPrice(item, channel);
-  return applyPromo(base, item, now);
+  return {
+    final: base,
+    original: base,
+    discounted: false,
+    label: null,
+    savings: 0,
+  };
 }
 
 /** Normalize optional channel prices: empty → delivery price. */

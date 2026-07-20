@@ -23,68 +23,12 @@ import {
   clearMenuItemScroll,
   markMenuItemScroll,
 } from "@/lib/menu-scroll-restore";
-
-type SelectedByGroup = Record<string, string[]>;
-
-function CheckIndicator({
-  checked,
-  variant,
-}: {
-  checked: boolean;
-  variant: "radio" | "checkbox";
-}) {
-  if (variant === "radio") {
-    return (
-      <span
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-          checked ? "border-site-primary bg-site-primary" : "border-gray-300 bg-white"
-        }`}
-        aria-hidden
-      >
-        {checked && <span className="h-2 w-2 rounded-full bg-white" />}
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${
-        checked ? "border-site-primary bg-site-primary" : "border-gray-300 bg-white"
-      }`}
-      aria-hidden
-    >
-      {checked && <IconCheck size={14} className="text-white" />}
-    </span>
-  );
-}
-
-function validateSelections(
-  optionGroups: MenuOptionGroupData[],
-  selectedByGroup: SelectedByGroup,
-) {
-  for (const group of optionGroups) {
-    if (!group.required) continue;
-    const selected = selectedByGroup[group.id] ?? [];
-    if (selected.length === 0) return { error: `กรุณาเลือก "${group.name}"`, groupId: group.id };
-  }
-  return null;
-}
-
-function computeOptions(
-  item: MenuItemData,
-  selectedByGroup: SelectedByGroup,
-): { optionIds: string[]; optionNames: string[]; optionsPrice: number } {
-  const optionIds = Object.values(selectedByGroup).flat();
-  const allOptions = item.optionGroups.flatMap((g) => g.options);
-  const chosen = optionIds
-    .map((id) => allOptions.find((o) => o.id === id))
-    .filter((o): o is NonNullable<typeof o> => Boolean(o));
-  return {
-    optionIds: chosen.map((o) => o.id),
-    optionNames: chosen.map((o) => o.name),
-    optionsPrice: chosen.reduce((s, o) => s + Number(o.priceDelta), 0),
-  };
-}
+import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
+import {
+  computeSelectedOptions,
+  validateOptionGroupSelections,
+  type SelectedByGroup,
+} from "@/lib/option-selection";
 
 export default function ItemDetailPage() {
   const { branchId, itemId } = useParams<{ branchId: string; itemId: string }>();
@@ -178,34 +122,12 @@ export default function ItemDetailPage() {
   );
   const itemBasePrice = priced?.final ?? 0;
   const computed = useMemo(
-    () => (item ? computeOptions(item, selectedByGroup) : null),
+    () =>
+      item ? computeSelectedOptions(item.optionGroups, selectedByGroup) : null,
     [item, selectedByGroup],
   );
   const unitTotal = item ? itemBasePrice + (computed?.optionsPrice ?? 0) : 0;
   const lineTotal = unitTotal * qty;
-
-  function toggleOption(groupId: string, optionId: string, maxSelect: number) {
-    setSelectedByGroup((prev) => {
-      const current = prev[groupId] ?? [];
-      const has = current.includes(optionId);
-      let next: string[] = current;
-      if (has) {
-        next = current.filter((id) => id !== optionId);
-      } else if (maxSelect <= 1) {
-        next = [optionId];
-      } else if (current.length < maxSelect) {
-        next = [...current, optionId];
-      }
-      
-      // Clear error for this group if we select an option
-      if (next.length > 0 && errorGroupId === groupId) {
-        setErrorGroupId(null);
-        setError("");
-      }
-      
-      return { ...prev, [groupId]: next };
-    });
-  }
 
   function addToCart() {
     setError("");
@@ -241,7 +163,10 @@ export default function ItemDetailPage() {
       setError("เมนูนี้หมดชั่วคราว");
       return;
     }
-    const validation = validateSelections(item.optionGroups, selectedByGroup);
+    const validation = validateOptionGroupSelections(
+      item.optionGroups,
+      selectedByGroup,
+    );
     if (validation) {
       setError(validation.error);
       setErrorGroupId(validation.groupId);
@@ -251,7 +176,7 @@ export default function ItemDetailPage() {
       }, 50);
       return;
     }
-    const opts = computeOptions(item, selectedByGroup);
+    const opts = computeSelectedOptions(item.optionGroups, selectedByGroup);
     const newLine = {
       branchMenuItemId: item.id,
       name: item.name,
@@ -355,27 +280,25 @@ export default function ItemDetailPage() {
             <p className="text-sm text-gray-500">เมนูนี้ไม่มีตัวเลือกเพิ่มเติม</p>
           </div>
         ) : (
-          item.optionGroups.map((group, gi) => {
-            const isSingle = group.maxSelect <= 1;
-            const selected = selectedByGroup[group.id] ?? [];
-            const selectedCount = selected.length;
-            return (
-              <div id={`option-group-${group.id}`} key={group.id} className={`transition-colors duration-300 ${gi > 0 ? "border-t border-gray-100" : ""} ${errorGroupId === group.id ? "bg-red-50/30" : ""}`}>
+          item.optionGroups.map((group, gi) => (
+              <div
+                id={`option-group-${group.id}`}
+                key={group.id}
+                className={`transition-colors duration-300 ${gi > 0 ? "border-t border-gray-100" : ""} ${errorGroupId === group.id ? "bg-red-50/30" : ""}`}
+              >
                 <div className="flex items-start justify-between gap-4 px-4 pb-1 pt-4">
-                  <div>
-                    <p className={`text-[16px] font-bold ${errorGroupId === group.id ? "text-red-600" : "text-gray-900"}`}>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={`text-[16px] font-bold ${errorGroupId === group.id ? "text-red-600" : "text-gray-900"}`}
+                    >
                       {group.name}
                     </p>
-                    {!isSingle && group.maxSelect > 1 && (
-                      <p className={`mt-0.5 text-[13px] ${errorGroupId === group.id ? "text-red-500" : "text-gray-400"}`}>
-                        เลือกได้สูงสุด {group.maxSelect}
-                        {selectedCount > 0 && ` • เลือกแล้ว ${selectedCount}`}
-                      </p>
-                    )}
                   </div>
                   <div className="shrink-0 mt-0.5">
                     {group.required ? (
-                      <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold ${errorGroupId === group.id ? "bg-red-100 text-red-700" : "bg-orange-100 text-site-primary"}`}>
+                      <span
+                        className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold ${errorGroupId === group.id ? "bg-red-100 text-red-700" : "bg-orange-100 text-site-primary"}`}
+                      >
                         จำเป็น
                       </span>
                     ) : (
@@ -385,46 +308,32 @@ export default function ItemDetailPage() {
                     )}
                   </div>
                 </div>
-                
-                {errorGroupId === group.id && (
-                  <div className="mx-4 mt-1 mb-2 rounded-lg bg-red-100 px-3 py-2 text-[13px] font-medium text-red-600 flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    กรุณาเลือกตัวเลือกในหัวข้อนี้
+
+                <div className="px-4 pb-1">
+                  <MenuOptionGroupPicker
+                    group={group}
+                    selectedIds={selectedByGroup[group.id] ?? []}
+                    onChange={(ids) => {
+                      setSelectedByGroup((prev) => ({
+                        ...prev,
+                        [group.id]: ids,
+                      }));
+                      if (ids.length > 0 && errorGroupId === group.id) {
+                        setErrorGroupId(null);
+                        setError("");
+                      }
+                    }}
+                    highlightError={errorGroupId === group.id}
+                  />
+                </div>
+
+                {errorGroupId === group.id && error ? (
+                  <div className="mx-4 mt-1 mb-2 flex items-center gap-2 rounded-lg bg-red-100 px-3 py-2 text-[13px] font-medium text-red-600">
+                    {error}
                   </div>
-                )}
-                <ul className="pb-2">
-                  {group.options.map((opt) => {
-                    const active = selected.includes(opt.id);
-                    const atMax = !isSingle && !active && selectedCount >= group.maxSelect;
-                    return (
-                      <li key={opt.id}>
-                        <button
-                          type="button"
-                          disabled={atMax}
-                          onClick={() => toggleOption(group.id, opt.id, group.maxSelect)}
-                          className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
-                            atMax ? "cursor-not-allowed opacity-40" : "active:bg-gray-50"
-                          } ${active ? "bg-site-primary-soft/40" : ""}`}
-                        >
-                          <span className="min-w-0 flex-1">
-                            <span className={`text-[15px] ${active ? "font-semibold text-gray-900" : "text-gray-800"}`}>
-                              {opt.name}
-                            </span>
-                            {Number(opt.priceDelta) > 0 && (
-                              <span className="ml-1.5 text-[15px] font-medium text-site-primary">
-                                +฿{formatPrice(opt.priceDelta)}
-                              </span>
-                            )}
-                          </span>
-                          <CheckIndicator checked={active} variant={isSingle ? "radio" : "checkbox"} />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                ) : null}
               </div>
-            );
-          })
+            ))
         )}
       </section>
 

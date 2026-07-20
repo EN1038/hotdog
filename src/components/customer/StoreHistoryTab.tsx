@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { isActiveOrderStatus } from "@/lib/constants";
+import { isActiveOrderStatus, ordersListPollIntervalMs } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "./CustomerProvider";
@@ -56,7 +56,7 @@ export function StoreHistoryTab({ branchId }: StoreHistoryTabProps) {
 
   usePollingRefresh(silentRefresh, {
     enabled: Boolean(session) && hasActiveOrders,
-    intervalMs: 10_000,
+    intervalMs: ordersListPollIntervalMs(orders),
   });
 
   const filtered = useMemo(

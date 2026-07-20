@@ -12,6 +12,7 @@ import {
   canCustomerCancel,
   formatPrice,
   isActiveOrderStatus,
+  orderStatusPollIntervalMs,
   telHref,
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
@@ -119,6 +120,10 @@ export default function OrderDetailPage() {
   const [authRequired, setAuthRequired] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [statusNotice, setStatusNotice] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const [reordering, setReordering] = useState(false);
   const [error, setError] = useState("");
 
@@ -126,24 +131,32 @@ export default function OrderDetailPage() {
     const res = await fetch(`/api/customer/orders/${orderId}`);
     if (res.status === 401) {
       setAuthRequired(true);
-      return;
+      return null;
     }
     if (!res.ok) {
       setNotFound(true);
-      return;
+      return null;
     }
     setAuthRequired(false);
     setNotFound(false);
-    setOrder(await res.json());
+    const data = (await res.json()) as OrderDetail;
+    setOrder(data);
+    return data;
   }, [orderId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  usePollingRefresh(load, {
+  const silentRefresh = useCallback(async () => {
+    await load();
+  }, [load]);
+
+  usePollingRefresh(silentRefresh, {
     enabled: order != null && isActiveOrderStatus(order.status),
-    intervalMs: 10_000,
+    intervalMs: order
+      ? orderStatusPollIntervalMs(order.status)
+      : 10_000,
   });
 
   useEffect(() => {
@@ -164,7 +177,27 @@ export default function OrderDetailPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "ยกเลิกไม่สำเร็จ");
+        setCancelModalOpen(false);
+        if (data.order) {
+          setOrder(data.order as OrderDetail);
+        } else {
+          await load();
+        }
+        if (data.statusChanged || data.order) {
+          const statusLabel =
+            data.order?.status && data.order.status in ORDER_STATUS_LABELS
+              ? ORDER_STATUS_LABELS[data.order.status as OrderStatus]
+              : null;
+          setStatusNotice({
+            title: "สถานะออเดอร์เปลี่ยนแล้ว",
+            message: statusLabel
+              ? `${data.error ?? "ไม่สามารถยกเลิกได้"}\nสถานะปัจจุบัน: ${statusLabel}`
+              : (data.error ??
+                "สถานะออเดอร์เปลี่ยนแล้ว — อัปเดตหน้าจอให้ล่าสุดแล้ว"),
+          });
+        } else {
+          setError(data.error ?? "ยกเลิกไม่สำเร็จ");
+        }
         return;
       }
       setCancelModalOpen(false);
@@ -423,11 +456,7 @@ export default function OrderDetailPage() {
             <div className="flex items-start justify-between gap-3 py-2">
               <div className="flex shrink-0 items-center gap-2 text-gray-500">
                 <IconHome size={14} />
-                <span className="text-sm">
-                  {order.deliveryLocation?.isCustomAddress
-                    ? "ที่อยู่จัดส่ง"
-                    : "ที่อยู่"}
-                </span>
+                <span className="text-sm">รายละเอียดที่อยู่</span>
               </div>
               <span
                 className={`text-right text-sm font-medium ${
@@ -526,6 +555,36 @@ export default function OrderDetailPage() {
         }}
         onConfirm={cancelOrder}
       />
+
+      {statusNotice ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <button
+            type="button"
+            aria-label="ปิด"
+            className="absolute inset-0"
+            onClick={() => setStatusNotice(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+          >
+            <h2 className="text-lg font-bold text-gray-900">
+              {statusNotice.title}
+            </h2>
+            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-600">
+              {statusNotice.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => setStatusNotice(null)}
+              className="mt-5 w-full rounded-xl bg-site-primary py-3 text-sm font-semibold text-white hover:opacity-90"
+            >
+              รับทราบ
+            </button>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

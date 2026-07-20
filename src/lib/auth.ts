@@ -153,7 +153,9 @@ export async function requireStaff() {
 
   return {
     ...session,
+    staffId: staff.id,
     staffPhone: staff.phone,
+    staffDisplayName: staff.name?.trim() || staff.phone,
     branchId: staff.branchId,
     staffRoles,
     branchName: staff.branch.name,

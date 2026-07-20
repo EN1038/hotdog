@@ -12,8 +12,8 @@ import {
 } from "@/lib/admin-activity";
 import {
   menuItemPatchSchema,
+  buildMenuPricingWriteData,
 } from "@/lib/menu-item-payload";
-import { normalizeChannelPrices } from "@/lib/menu-pricing";
 
 type Params = { params: Promise<{ id: string; itemId: string }> };
 
@@ -80,53 +80,20 @@ export async function PATCH(request: Request, { params }: Params) {
       });
     }
 
-    const deliveryPrice =
-      body.price !== undefined ? body.price : Number(existing.price);
-    const touchPrices =
-      body.price !== undefined ||
-      body.pickupPrice !== undefined ||
-      body.storefrontPrice !== undefined;
-
-    const prices = touchPrices
-      ? normalizeChannelPrices({
-          price: deliveryPrice,
-          pickupPrice:
-            body.pickupPrice !== undefined
-              ? body.pickupPrice
-              : existing.pickupPrice != null
-                ? Number(existing.pickupPrice)
-                : null,
-          storefrontPrice:
-            body.storefrontPrice !== undefined
-              ? body.storefrontPrice
-              : existing.storefrontPrice != null
-                ? Number(existing.storefrontPrice)
-                : null,
-        })
-      : null;
-
-    const promoEnabled =
-      body.promoEnabled !== undefined
-        ? body.promoEnabled
-        : existing.promoEnabled;
-    const promoContinuous =
-      body.promoContinuous !== undefined
-        ? body.promoContinuous
-        : existing.promoContinuous;
+    const pricing = buildMenuPricingWriteData(body, existing);
 
     const updated = await prisma.branchMenuItem.update({
       where: { id: itemId },
       data: {
         ...(body.name !== undefined && { name: body.name }),
-        ...(prices && {
-          price: prices.price,
-          pickupPrice: prices.pickupPrice,
-          storefrontPrice: prices.storefrontPrice,
-        }),
+        ...(pricing ?? {}),
         ...(body.description !== undefined && { description: body.description }),
         ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
         ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
         ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
+        ...(body.hideFromStaff !== undefined && {
+          hideFromStaff: body.hideFromStaff,
+        }),
         ...(body.isOutOfStock !== undefined && {
           isOutOfStock: body.isOutOfStock,
         }),
@@ -138,50 +105,6 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.sellStorefront !== undefined && {
           sellStorefront: body.sellStorefront,
         }),
-        ...(body.promoEnabled !== undefined && {
-          promoEnabled: body.promoEnabled,
-        }),
-        ...(body.promoType !== undefined || body.promoEnabled === false
-          ? {
-              promoType: promoEnabled
-                ? (body.promoType ?? existing.promoType)
-                : null,
-            }
-          : {}),
-        ...(body.promoValue !== undefined || body.promoEnabled === false
-          ? {
-              promoValue: promoEnabled
-                ? (body.promoValue ?? existing.promoValue)
-                : null,
-            }
-          : {}),
-        ...(body.promoContinuous !== undefined && {
-          promoContinuous: body.promoContinuous,
-        }),
-        ...(body.promoStartsAt !== undefined ||
-        body.promoEnabled !== undefined ||
-        body.promoContinuous !== undefined
-          ? {
-              promoStartsAt:
-                promoEnabled && !promoContinuous
-                  ? body.promoStartsAt
-                    ? new Date(body.promoStartsAt)
-                    : existing.promoStartsAt
-                  : null,
-            }
-          : {}),
-        ...(body.promoEndsAt !== undefined ||
-        body.promoEnabled !== undefined ||
-        body.promoContinuous !== undefined
-          ? {
-              promoEndsAt:
-                promoEnabled && !promoContinuous
-                  ? body.promoEndsAt
-                    ? new Date(body.promoEndsAt)
-                    : existing.promoEndsAt
-                  : null,
-            }
-          : {}),
       },
       include: itemInclude,
     });

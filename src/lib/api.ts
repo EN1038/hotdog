@@ -58,11 +58,20 @@ export function handleApiError(error: unknown) {
     if (error.code === "P2025") {
       return jsonError("ไม่พบข้อมูล", 404);
     }
+    if (error.code === "P2021") {
+      return jsonError(
+        "ตารางโปรโมชั่นยังไม่พร้อม — รัน prisma db push หรือ migrate deploy",
+        503,
+      );
+    }
   }
 
   if (error instanceof Prisma.PrismaClientValidationError) {
     console.error("[api] Prisma validation", error.message);
-    return jsonError("ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", 400);
+    const msg = error.message.includes("imageUrl")
+      ? "ฐานข้อมูลยังไม่มีคอลัมน์รูปโปร — รัน prisma db push แล้วรีสตาร์ท dev server"
+      : "ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง";
+    return jsonError(msg, 400);
   }
 
   if (error instanceof ZodError) {

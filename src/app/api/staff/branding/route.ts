@@ -6,7 +6,10 @@ export async function GET() {
   try {
     const session = await requireStaff();
     return jsonOk({
+      branchId: session.branchId,
       branchName: session.branchName,
+      staffDisplayName: session.staffDisplayName,
+      staffPhone: session.staffPhone,
       brand: session.brand,
       autoAcceptOrders: session.autoAcceptOrders ?? false,
     });

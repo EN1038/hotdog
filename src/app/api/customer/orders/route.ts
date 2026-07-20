@@ -19,6 +19,10 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { notifyStaffNewOrder } from "@/lib/line";
+import {
+  optionGroupDetailInclude,
+  resolveOrderItemOptionsFromPrisma,
+} from "@/lib/menu-option-groups";
 
 const orderItemSchema = z.object({
   branchMenuItemId: z.string(),
@@ -121,7 +125,7 @@ export async function POST(request: Request) {
         include: {
           optionGroupLinks: {
             include: {
-              group: { include: { options: true } },
+              group: { include: optionGroupDetailInclude },
             },
           },
         },
@@ -248,31 +252,17 @@ export async function POST(request: Request) {
     for (const item of body.items) {
       const menu = itemMap.get(item.branchMenuItemId)!;
       const groups = menu.optionGroupLinks.map((l) => l.group);
-      const allOptions = groups.flatMap((g) => g.options);
-      const chosen = item.optionIds
-        .map((id) => allOptions.find((o) => o.id === id))
-        .filter((o): o is NonNullable<typeof o> => Boolean(o));
-
-      if (chosen.length !== item.optionIds.length) {
-        return jsonError(`ตัวเลือกของ "${menu.name}" ไม่ถูกต้อง`);
+      const resolved = resolveOrderItemOptionsFromPrisma(
+        groups,
+        item.optionIds,
+      );
+      if (!resolved.ok) {
+        return jsonError(`ตัวเลือกของ "${menu.name}" ไม่ถูกต้อง: ${resolved.error}`);
       }
-
-      for (const group of groups) {
-        const selectedInGroup = chosen.filter((o) =>
-          group.options.some((go) => go.id === o.id),
-        );
-        if (group.required && selectedInGroup.length < 1) {
-          return jsonError(`กรุณาเลือก "${group.name}"`);
-        }
-        if (selectedInGroup.length > group.maxSelect) {
-          return jsonError(
-            `"${group.name}" เลือกได้สูงสุด ${group.maxSelect} รายการ`,
-          );
-        }
-      }
+      const chosen = resolved.chosen;
 
       const optionsPrice = chosen.reduce(
-        (sum, o) => sum.add(o.priceDelta),
+        (sum, o) => sum.add(new Prisma.Decimal(o.priceDelta)),
         new Prisma.Decimal(0),
       );
       const priced = resolveSellPrice(menu, channel);
@@ -330,11 +320,15 @@ export async function POST(request: Request) {
             scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
             note: body.note?.trim() || null,
             paymentMethod: body.paymentMethod,
-            deliveryFee,
+            deliveryFee: new Prisma.Decimal(deliveryFee),
+            discountAmount: new Prisma.Decimal(0),
+            promoSummary: null,
             status: branch.autoAcceptOrders
               ? OrderStatus.PREPARING
               : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
-            items: { create: orderItems },
+            items: {
+              create: orderItems,
+            },
           },
           include: {
             branch: true,

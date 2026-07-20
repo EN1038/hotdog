@@ -54,20 +54,27 @@ export async function PATCH(request: Request, { params }: Params) {
     if (cancelled.count === 0) {
       const order = await prisma.order.findFirst({
         where: { id, customerId: session.customerId },
+        include: {
+          branch: { include: { brand: true } },
+          deliveryLocation: true,
+          items: { include: { branchMenuItem: true } },
+        },
       });
       if (!order) return jsonError("ไม่พบออเดอร์", 404);
-      if (!canCustomerCancel(order.status)) {
-        return jsonError("สามารถยกเลิกออเดอร์ได้ก่อนร้านรับออเดอร์เท่านั้น");
-      }
-      return jsonError("ไม่สามารถยกเลิกได้ สถานะออเดอร์เปลี่ยนไปแล้ว");
+      const message = canCustomerCancel(order.status)
+        ? "ไม่สามารถยกเลิกได้ สถานะออเดอร์เปลี่ยนไปแล้ว"
+        : order.status === OrderStatus.CANCELLED
+          ? "ออเดอร์นี้ถูกยกเลิกแล้ว"
+          : "ร้านรับออเดอร์แล้ว หรือสถานะเปลี่ยนไปแล้ว จึงยกเลิกไม่ได้";
+      return jsonError(message, 409, { statusChanged: true, order });
     }
 
     const updated = await prisma.order.findFirst({
       where: { id, customerId: session.customerId },
       include: {
-        branch: true,
+        branch: { include: { brand: true } },
         deliveryLocation: true,
-        items: true,
+        items: { include: { branchMenuItem: true } },
       },
     });
     return jsonOk(updated);

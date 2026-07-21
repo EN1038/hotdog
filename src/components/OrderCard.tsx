@@ -15,7 +15,7 @@ import { IconArrowRight, IconLabel, IconNote } from "@/components/icons";
 import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
-import { formatQueueNumber } from "@/lib/order-queue";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 
 type OrderItem = {
   id: string;

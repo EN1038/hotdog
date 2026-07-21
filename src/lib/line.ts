@@ -222,6 +222,7 @@ export async function tryLinkStaffByPhoneMessage(
 export type NewOrderNotifyInput = {
   id: string;
   orderNumber: string;
+  queueNumber?: number | null;
   branchId: string;
   fulfillmentType: string;
   customerName: string;
@@ -258,7 +259,9 @@ export async function notifyStaffNewOrder(order: NewOrderNotifyInput) {
     const staffUrl = appAbsoluteUrl("/staff");
     const text = [
       "ออเดอร์ใหม่",
-      `#${order.orderNumber}`,
+      order.queueNumber != null
+        ? `คิว ${order.queueNumber} · #${order.orderNumber}`
+        : `#${order.orderNumber}`,
       `${fulfillment} · ${order.customerName || "ลูกค้า"}`,
       order.customerPhone ? `โทร ${order.customerPhone}` : null,
       staffUrl ? `เปิดดู: ${staffUrl}` : null,

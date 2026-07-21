@@ -40,6 +40,7 @@ export async function GET(request: Request) {
     }
 
     const phoneQ = q.replace(/\D/g, "");
+    const queueQ = /^\d{1,6}$/.test(q) ? Number.parseInt(q, 10) : null;
 
     const where = {
       ...(effectiveBrandId
@@ -52,12 +53,15 @@ export async function GET(request: Request) {
       (Object.values(OrderStatus) as string[]).includes(status)
         ? { status: status as OrderStatus }
         : {}),
-      ...(phoneQ
+      ...(q
         ? {
             OR: [
-              { customerPhone: { contains: phoneQ } },
+              ...(phoneQ
+                ? [{ customerPhone: { contains: phoneQ } }]
+                : []),
               { orderNumber: { contains: q, mode: "insensitive" as const } },
               { customerName: { contains: q, mode: "insensitive" as const } },
+              ...(queueQ != null ? [{ queueNumber: queueQ }] : []),
             ],
           }
         : {}),
@@ -94,9 +98,10 @@ export async function GET(request: Request) {
     return jsonOk({
       requiresBrand: false,
       total,
-      orders: orders.map((o) => ({
+        orders: orders.map((o) => ({
         id: o.id,
         orderNumber: o.orderNumber,
+        queueNumber: o.queueNumber,
         status: o.status,
         fulfillmentType: o.fulfillmentType,
         customerName: o.customerName,

@@ -1,3 +1,4 @@
+import { OptionGroupMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
 
@@ -17,6 +18,73 @@ export type BranchImportResult = {
   menuItems: number;
   locations: number;
 };
+
+const optionGroupImportInclude = {
+  options: { orderBy: { createdAt: "asc" as const } },
+  menuItemSources: { orderBy: { sortOrder: "asc" as const } },
+} as const;
+
+type SourceOptionGroup = {
+  id: string;
+  name: string;
+  mode: OptionGroupMode;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  allowDuplicateSelections: boolean;
+  options: Array<{ name: string; priceDelta: unknown }>;
+  menuItemSources: Array<{
+    menuItemId: string;
+    sortOrder: number;
+    isEnabled: boolean;
+    priceDelta: unknown;
+  }>;
+};
+
+function buildOptionGroupCreateData(
+  src: SourceOptionGroup,
+  targetBranchId: string,
+  menuItemIdMap: Map<string, string>,
+) {
+  const fromMenu = src.mode === OptionGroupMode.FROM_MENU;
+  const menuSources = fromMenu
+    ? src.menuItemSources
+        .map((s) => {
+          const menuItemId = menuItemIdMap.get(s.menuItemId);
+          if (!menuItemId) return null;
+          return {
+            menuItemId,
+            sortOrder: s.sortOrder,
+            isEnabled: s.isEnabled,
+            priceDelta: s.priceDelta,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => row != null)
+    : [];
+
+  return {
+    branchId: targetBranchId,
+    name: src.name,
+    mode: src.mode,
+    required: src.required,
+    minSelect: src.minSelect,
+    maxSelect: src.maxSelect,
+    allowDuplicateSelections: src.allowDuplicateSelections,
+    ...(!fromMenu && src.options.length > 0
+      ? {
+          options: {
+            create: src.options.map((o) => ({
+              name: o.name,
+              priceDelta: o.priceDelta,
+            })),
+          },
+        }
+      : {}),
+    ...(fromMenu && menuSources.length > 0
+      ? { menuItemSources: { create: menuSources } }
+      : {}),
+  };
+}
 
 /** Copy categories, option library, menu (and optional locations) from source → target */
 export async function importBranchCatalog(opts: {
@@ -44,7 +112,7 @@ export async function importBranchCatalog(opts: {
       }),
       prisma.branchOptionGroup.findMany({
         where: { branchId: sourceBranchId },
-        include: { options: { orderBy: { createdAt: "asc" } } },
+        include: optionGroupImportInclude,
         orderBy: { createdAt: "asc" },
       }),
       prisma.branchMenuItem.findMany({
@@ -92,77 +160,16 @@ export async function importBranchCatalog(opts: {
     categoryIdMap.set(src.id, dest.id);
   }
 
-  const targetGroups = await prisma.branchOptionGroup.findMany({
-    where: { branchId: targetBranchId },
-  });
-  const groupByName = new Map(targetGroups.map((g) => [g.name, g]));
-  const groupIdMap = new Map<string, string>();
-
-  let optionGroupsCreated = 0;
-  for (const src of sourceOptionGroups) {
-    let dest = groupByName.get(src.name);
-    if (!dest) {
-      dest = await prisma.branchOptionGroup.create({
-        data: {
-          branchId: targetBranchId,
-          name: src.name,
-          required: src.required,
-          maxSelect: src.maxSelect,
-          options: {
-            create: src.options.map((o) => ({
-              name: o.name,
-              priceDelta: o.priceDelta,
-            })),
-          },
-        },
-      });
-      groupByName.set(dest.name, dest);
-      optionGroupsCreated += 1;
-    }
-    groupIdMap.set(src.id, dest.id);
-  }
-
-  // Also map groups referenced by items that might not be in library loop (same)
-  for (const item of sourceItems) {
-    for (const link of item.optionGroupLinks) {
-      if (groupIdMap.has(link.group.id)) continue;
-      const src = await prisma.branchOptionGroup.findUnique({
-        where: { id: link.group.id },
-        include: { options: true },
-      });
-      if (!src) continue;
-      let dest = groupByName.get(src.name);
-      if (!dest) {
-        dest = await prisma.branchOptionGroup.create({
-          data: {
-            branchId: targetBranchId,
-            name: src.name,
-            required: src.required,
-            maxSelect: src.maxSelect,
-            options: {
-              create: src.options.map((o) => ({
-                name: o.name,
-                priceDelta: o.priceDelta,
-              })),
-            },
-          },
-        });
-        groupByName.set(dest.name, dest);
-        optionGroupsCreated += 1;
-      }
-      groupIdMap.set(src.id, dest.id);
-    }
-  }
-
   if (overwriteMenu) {
     await prisma.branchMenuItem.deleteMany({
       where: { branchId: targetBranchId },
     });
   }
 
+  const menuItemIdMap = new Map<string, string>();
   let menuItemsCreated = 0;
   for (const item of sourceItems) {
-    await prisma.branchMenuItem.create({
+    const created = await prisma.branchMenuItem.create({
       data: {
         branchId: targetBranchId,
         name: item.name,
@@ -186,15 +193,60 @@ export async function importBranchCatalog(opts: {
         isHidden: item.isHidden,
         isOutOfStock: item.isOutOfStock,
         sortOrder: item.sortOrder,
-        optionGroupLinks: {
-          create: item.optionGroupLinks
-            .map((link) => groupIdMap.get(link.group.id))
-            .filter((id): id is string => Boolean(id))
-            .map((groupId) => ({ groupId })),
-        },
       },
     });
+    menuItemIdMap.set(item.id, created.id);
     menuItemsCreated += 1;
+  }
+
+  const targetGroups = await prisma.branchOptionGroup.findMany({
+    where: { branchId: targetBranchId },
+  });
+  const groupByName = new Map(targetGroups.map((g) => [g.name, g]));
+  const groupIdMap = new Map<string, string>();
+  let optionGroupsCreated = 0;
+
+  async function ensureGroupMapped(src: SourceOptionGroup) {
+    if (groupIdMap.has(src.id)) return;
+    let dest = groupByName.get(src.name);
+    if (!dest) {
+      dest = await prisma.branchOptionGroup.create({
+        data: buildOptionGroupCreateData(src, targetBranchId, menuItemIdMap),
+      });
+      groupByName.set(dest.name, dest);
+      optionGroupsCreated += 1;
+    }
+    groupIdMap.set(src.id, dest.id);
+  }
+
+  for (const src of sourceOptionGroups) {
+    await ensureGroupMapped(src);
+  }
+
+  for (const item of sourceItems) {
+    for (const link of item.optionGroupLinks) {
+      if (groupIdMap.has(link.group.id)) continue;
+      const src = await prisma.branchOptionGroup.findUnique({
+        where: { id: link.group.id },
+        include: optionGroupImportInclude,
+      });
+      if (!src) continue;
+      await ensureGroupMapped(src);
+    }
+  }
+
+  for (const item of sourceItems) {
+    const destMenuItemId = menuItemIdMap.get(item.id);
+    if (!destMenuItemId) continue;
+    const links = item.optionGroupLinks
+      .map((link) => groupIdMap.get(link.group.id))
+      .filter((id): id is string => Boolean(id))
+      .map((groupId) => ({ menuItemId: destMenuItemId, groupId }));
+    if (links.length === 0) continue;
+    await prisma.branchMenuItemOptionGroup.createMany({
+      data: links,
+      skipDuplicates: true,
+    });
   }
 
   let locationsCreated = 0;

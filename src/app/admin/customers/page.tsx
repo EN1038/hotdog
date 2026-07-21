@@ -67,6 +67,7 @@ type OrderRow = {
   id: string;
 
   orderNumber: string;
+  queueNumber?: number | null;
 
   status: OrderStatus;
 
@@ -520,7 +521,7 @@ export default function AdminOrdersPage() {
 
                     <td className="px-4 py-3 font-medium text-slate-900">
 
-                      #{order.orderNumber}
+                      คิว {order.queueNumber ?? "—"} · #{order.orderNumber}
 
                     </td>
 

@@ -14,6 +14,7 @@ import {
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal } from "@/lib/customer-types";
+import { formatQueueNumber } from "@/lib/order-queue";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { OrderConfirmationTimeline } from "@/components/customer/OrderConfirmationTimeline";
 import { LoadingState } from "@/components/LoadingState";
@@ -207,8 +208,16 @@ export default function ConfirmationPage() {
           <IconReceipt size={22} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-gray-500">เลขที่ออเดอร์</p>
-          <p className="text-2xl font-bold text-site-primary">#{order.orderNumber}</p>
+          <p className="text-xs text-gray-500">เลขคิว</p>
+          <p className="text-3xl font-bold text-site-primary">
+            {formatQueueNumber(order.queueNumber)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            เลขที่ออเดอร์{" "}
+            <span className="font-semibold text-gray-800">
+              #{order.orderNumber}
+            </span>
+          </p>
         </div>
         {branchPhone ? (
           <a

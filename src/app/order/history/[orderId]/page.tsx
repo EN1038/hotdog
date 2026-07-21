@@ -17,6 +17,7 @@ import {
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
+import { formatQueueNumber } from "@/lib/order-queue";
 import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "@/components/customer/CustomerProvider";
@@ -293,7 +294,13 @@ export default function OrderDetailPage() {
       <div className="mx-4 mt-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="font-bold text-gray-900">#{order.orderNumber}</p>
+            <p className="text-xs font-medium text-gray-500">เลขคิว</p>
+            <p className="text-2xl font-bold text-site-primary">
+              {formatQueueNumber(order.queueNumber)}
+            </p>
+            <p className="mt-0.5 font-bold text-gray-900">
+              บิล #{order.orderNumber}
+            </p>
             <p className="text-xs text-gray-500">
               {created.toLocaleDateString("th-TH", {
                 day: "numeric",

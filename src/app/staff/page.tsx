@@ -24,6 +24,18 @@ import {
 
 const DEFAULT_DOC_TITLE = "Staff | SkillSale";
 
+type BranchServiceSlice = {
+  openNow: boolean;
+  acceptingOrders: boolean;
+  reason: string;
+};
+
+type BranchStatus = {
+  isOpen: boolean;
+  pickup: BranchServiceSlice;
+  delivery: BranchServiceSlice;
+};
+
 export default function StaffPage() {
   const router = useRouter();
   const branding = useSiteBranding();
@@ -35,6 +47,10 @@ export default function StaffPage() {
     longitude: number;
   } | null>(null);
   const [autoAcceptOrders, setAutoAcceptOrders] = useState(false);
+  const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
+  const [canToggleStore, setCanToggleStore] = useState(false);
+  const [storeToggleBusy, setStoreToggleBusy] = useState(false);
+  const [storeToggleError, setStoreToggleError] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
@@ -124,6 +140,8 @@ export default function StaffPage() {
     setBranchName(data.branchName ?? "");
     setBranchPin(data.branchPin ?? null);
     setAutoAcceptOrders(Boolean(data.autoAcceptOrders));
+    if (data.branchStatus) setBranchStatus(data.branchStatus);
+    setCanToggleStore(Boolean(data.canToggleStore));
     setLoading(false);
   }, [router, flashNewOrders]);
 
@@ -195,6 +213,41 @@ export default function StaffPage() {
       localStorage.setItem(STAFF_SOUND_PREF_KEY, "0");
     } catch {
       /* ignore */
+    }
+  }
+
+  async function toggleStoreOpen(nextOpen: boolean) {
+    if (!canToggleStore || storeToggleBusy) return;
+    if (
+      !nextOpen &&
+      !window.confirm(
+        "ปิดร้านชั่วคราว? ลูกค้าจะสั่งออเดอร์ออนไลน์ไม่ได้จนกว่าจะเปิดร้านอีกครั้ง (พนักงานยังคีย์ออเดอร์ได้)",
+      )
+    ) {
+      return;
+    }
+    setStoreToggleBusy(true);
+    setStoreToggleError("");
+    try {
+      const res = await fetch("/api/staff/branch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isOpen: nextOpen }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStoreToggleError(data.error ?? "เปลี่ยนสถานะร้านไม่สำเร็จ");
+        return;
+      }
+      if (data.isOpen != null) {
+        setBranchStatus({
+          isOpen: data.isOpen,
+          pickup: data.pickup,
+          delivery: data.delivery,
+        });
+      }
+    } finally {
+      setStoreToggleBusy(false);
     }
   }
 
@@ -277,13 +330,24 @@ export default function StaffPage() {
             ) : null}
             <h1 className="text-xl font-bold text-gray-900">{branchName}</h1>
           </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <Link
-              href="/staff/new-order"
-              className="rounded-xl bg-site-primary px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
-            >
-              คีย์ออเดอร์
-            </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            {!soundOn ? (
+              <button
+                type="button"
+                onClick={enableSound}
+                className="cursor-pointer rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100"
+              >
+                เปิดเสียง
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={disableSound}
+                className="cursor-pointer rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100"
+              >
+                เสียงเปิด
+              </button>
+            )}
             <button
               type="button"
               onClick={() => logout("/staff/login")}
@@ -311,43 +375,85 @@ export default function StaffPage() {
         </div>
       </header>
 
+      {soundError ? (
+        <p className="mb-3 text-xs text-red-600">{soundError}</p>
+      ) : null}
+
       {!soundOn && (
-        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 sm:p-4">
-          <p className="text-sm font-medium text-amber-950">
-            {preferSound
-              ? "แตะเพื่อเปิดเสียงแจ้งเตือนอีกครั้ง"
-              : "เปิดเสียงแจ้งเตือนเมื่อมีออเดอร์ใหม่"}
-          </p>
-          <p className="mt-1 text-xs text-amber-800">
-            บนเว็บต้องกดเปิดเองครั้งหนึ่งต่อรอบที่เปิดหน้านี้ ตามนโยบายเบราว์เซอร์
-          </p>
-          <button
-            type="button"
-            onClick={enableSound}
-            className="mt-3 w-full cursor-pointer rounded-xl bg-amber-600 px-4 py-3 text-base font-semibold text-white hover:bg-amber-700 sm:w-auto"
-          >
-            เปิดเสียงแจ้งเตือน
-          </button>
-          {soundError ? (
-            <p className="mt-2 text-xs text-red-600">{soundError}</p>
-          ) : null}
-        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          {preferSound
+            ? "แตะ «เปิดเสียง» ด้านบนเพื่อเปิดเสียงแจ้งเตือนอีกครั้ง (ต้องกดเองตามนโยบายเบราว์เซอร์)"
+            : "แตะ «เปิดเสียง» ด้านบนเมื่อต้องการได้ยินแจ้งเตือนออเดอร์ใหม่"}
+        </p>
       )}
 
-      {soundOn && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-          <p className="text-sm font-medium text-emerald-900">
-            เสียงแจ้งเตือนเปิดอยู่
-          </p>
-          <button
-            type="button"
-            onClick={disableSound}
-            className="cursor-pointer text-sm text-emerald-800 underline"
-          >
-            ปิดเสียง
-          </button>
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900">สถานะร้าน</p>
+            <p
+              className={`mt-1 text-base font-bold ${
+                branchStatus?.isOpen !== false
+                  ? "text-emerald-700"
+                  : "text-red-700"
+              }`}
+            >
+              {branchStatus?.isOpen !== false
+                ? "เปิดรับออเดอร์ (สวิตช์)"
+                : "ปิดร้านชั่วคราว"}
+            </p>
+            {branchStatus ? (
+              <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                <li>
+                  หน้าร้าน: {branchStatus.pickup.reason}
+                  {branchStatus.pickup.acceptingOrders
+                    ? " — ลูกค้าสั่งได้"
+                    : " — ลูกค้าสั่งไม่ได้"}
+                </li>
+                <li>
+                  เดลิเวอรี: {branchStatus.delivery.reason}
+                  {branchStatus.delivery.acceptingOrders
+                    ? " — ลูกค้าสั่งได้"
+                    : " — ลูกค้าสั่งไม่ได้"}
+                </li>
+              </ul>
+            ) : null}
+            {storeToggleError ? (
+              <p className="mt-2 text-xs text-red-600">{storeToggleError}</p>
+            ) : null}
+          </div>
+          {canToggleStore && branchStatus ? (
+            branchStatus.isOpen ? (
+              <button
+                type="button"
+                disabled={storeToggleBusy}
+                onClick={() => void toggleStoreOpen(false)}
+                className="shrink-0 cursor-pointer rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-60"
+              >
+                {storeToggleBusy ? "กำลังบันทึก…" : "ปิดร้าน"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={storeToggleBusy}
+                onClick={() => void toggleStoreOpen(true)}
+                className="shrink-0 cursor-pointer rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {storeToggleBusy ? "กำลังบันทึก…" : "เปิดร้าน"}
+              </button>
+            )
+          ) : null}
         </div>
-      )}
+      </div>
+
+      <div className="mb-4">
+        <Link
+          href="/staff/new-order"
+          className="flex w-full items-center justify-center rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white shadow-sm hover:opacity-95"
+        >
+          คีย์ออเดอร์
+        </Link>
+      </div>
 
       {newOrderFlash && (
         <div
@@ -381,6 +487,7 @@ export default function StaffPage() {
               order={order}
               roles={roles}
               showActions
+              collapsibleItems
               branchPin={branchPin}
               onStatusChange={handleStatusChange}
               onRequestCancel={(id) => setCancelOrderId(id)}

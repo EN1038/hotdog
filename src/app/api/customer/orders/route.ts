@@ -19,6 +19,7 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { notifyStaffNewOrder } from "@/lib/line";
+import { createOrderWithDailyQueue } from "@/lib/order-queue";
 import {
   optionGroupDetailInclude,
   resolveOrderItemOptionsFromPrisma,
@@ -290,9 +291,11 @@ export async function POST(request: Request) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const orderNumber = generateOrderNumber();
       try {
-        order = await prisma.order.create({
+        order = await createOrderWithDailyQueue(body.branchId, (queue) => ({
           data: {
             orderNumber,
+            queueNumber: queue.queueNumber,
+            queueBusinessDate: queue.queueBusinessDate,
             customerId: session.customerId!,
             branchId: body.branchId,
             fulfillmentType: body.fulfillmentType,
@@ -335,7 +338,7 @@ export async function POST(request: Request) {
             deliveryLocation: true,
             items: true,
           },
-        });
+        }));
         break;
       } catch (e) {
         if (
@@ -352,6 +355,7 @@ export async function POST(request: Request) {
     void notifyStaffNewOrder({
       id: order.id,
       orderNumber: order.orderNumber,
+      queueNumber: order.queueNumber,
       branchId: order.branchId,
       fulfillmentType: order.fulfillmentType,
       customerName: order.customerName,

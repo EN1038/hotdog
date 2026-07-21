@@ -386,6 +386,10 @@ model CustomerOtpChallenge {
 model Order {
   id                 String            @id @default(cuid())
   orderNumber        String            @unique
+  /// Per-branch daily queue (1, 2, 3…) reset each Bangkok calendar day
+  queueNumber        Int
+  /// Bangkok business date for queue reset (paired with queueNumber)
+  queueBusinessDate  DateTime          @db.Date
   customerId         String
   branchId           String
   fulfillmentType    FulfillmentType   @default(DELIVERY)
@@ -418,6 +422,9 @@ model Order {
   deliveryLocation   DeliveryLocation? @relation(fields: [deliveryLocationId], references: [id])
   createdByStaff     Staff?            @relation("OrderCreatedByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
   items              OrderItem[]
+
+  @@unique([branchId, queueBusinessDate, queueNumber])
+  @@index([branchId, queueBusinessDate])
 }
 
 model OrderItem {

@@ -17,7 +17,7 @@ import {
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal, orderItemsTotal } from "@/lib/customer-types";
-import { formatQueueNumber } from "@/lib/order-queue";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { useCustomer } from "@/components/customer/CustomerProvider";

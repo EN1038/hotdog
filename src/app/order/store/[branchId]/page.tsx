@@ -828,7 +828,7 @@ export default function StorePage() {
                             aria-disabled={item.isOutOfStock || undefined}
                             className={`flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)] ${
                               item.isOutOfStock
-                                ? "opacity-50"
+                                ? ""
                                 : "cursor-pointer transition-transform active:scale-[0.98]"
                             }`}
                           >
@@ -838,15 +838,30 @@ export default function StorePage() {
                                 <img
                                   src={item.imageUrl}
                                   alt={item.name}
-                                  className="h-full w-full object-cover"
+                                  className={`h-full w-full object-cover ${
+                                    item.isOutOfStock ? "opacity-45" : ""
+                                  }`}
                                 />
                               ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                                <div
+                                  className={`flex h-full w-full items-center justify-center bg-site-primary-soft ${
+                                    item.isOutOfStock ? "opacity-45" : ""
+                                  }`}
+                                >
                                   <IconSkewerPlaceholder size={40} />
                                 </div>
                               )}
+                              {item.isOutOfStock ? (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                  <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[12px] font-bold tracking-wide text-white shadow-sm">
+                                    หมด
+                                  </span>
+                                </div>
+                              ) : null}
                             </div>
-                            <div className="min-w-0 flex-1">
+                            <div
+                              className={`min-w-0 flex-1 ${item.isOutOfStock ? "opacity-45" : ""}`}
+                            >
                               <p className="text-[15px] font-bold text-gray-900">
                                 {item.name}
                               </p>
@@ -855,16 +870,17 @@ export default function StorePage() {
                                   {item.description}
                                 </p>
                               )}
-                              {item.isOutOfStock ? (
-                                <p className="mt-0.5 text-xs text-gray-400">หมดชั่วคราว</p>
-                              ) : null}
                               <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
                                 <MenuPromoPrice priced={priced} />
                                 <MenuBestSellerTag show={item.isBestSeller} />
                               </p>
                             </div>
                             <div className="shrink-0">
-                              {item.isOutOfStock ? null : (
+                              {item.isOutOfStock ? (
+                                <span className="inline-flex items-center rounded-full bg-gray-800 px-2.5 py-1 text-[12px] font-bold text-white">
+                                  หมด
+                                </span>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={handleItemClick}

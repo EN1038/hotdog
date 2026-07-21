@@ -20,7 +20,7 @@ import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { IconBack } from "@/components/icons";
 import { LoadingState } from "@/components/LoadingState";
-import { formatQueueNumber } from "@/lib/order-queue";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 
 type AdminOrderDetail = {
   id: string;

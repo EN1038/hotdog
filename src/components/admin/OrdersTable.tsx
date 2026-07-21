@@ -17,7 +17,7 @@ import {
   adminTheadClass,
   adminTrClass,
 } from "@/components/admin/admin-ui";
-import { formatQueueNumber } from "@/lib/order-queue";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 
 export type AdminOrderRow = {
   id: string;

@@ -1,4 +1,4 @@
-import { OptionGroupMode } from "@prisma/client";
+import { OptionGroupMode, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
 
@@ -32,12 +32,12 @@ type SourceOptionGroup = {
   minSelect: number;
   maxSelect: number;
   allowDuplicateSelections: boolean;
-  options: Array<{ name: string; priceDelta: unknown }>;
+  options: Array<{ name: string; priceDelta: Prisma.Decimal }>;
   menuItemSources: Array<{
     menuItemId: string;
     sortOrder: number;
     isEnabled: boolean;
-    priceDelta: unknown;
+    priceDelta: Prisma.Decimal;
   }>;
 };
 

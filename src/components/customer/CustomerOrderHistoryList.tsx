@@ -5,7 +5,7 @@ import { OrderStatus } from "@prisma/client";
 import { FULFILLMENT_LABELS, formatPrice } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal } from "@/lib/customer-types";
-import { formatQueueNumber } from "@/lib/order-queue";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 import {
   IconBag,
   IconCheck,

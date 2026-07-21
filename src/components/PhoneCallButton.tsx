@@ -23,12 +23,12 @@ export function PhoneCallButton({
   return (
     <a
       href={telHref(digits)}
-      className={`inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-sm font-medium text-emerald-800 transition hover:bg-emerald-100 ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-800 transition hover:bg-emerald-100 ${showNumber ? "px-2.5 py-1.5" : "px-2 py-1"} ${className}`}
       title={`โทร ${formatThaiPhone(digits)}`}
       onClick={(e) => e.stopPropagation()}
     >
       <IconPhone size={size} className="text-emerald-700" />
-      {showNumber ? formatThaiPhone(digits) : "โทร"}
+      {showNumber ? formatThaiPhone(digits) : null}
     </a>
   );
 }

@@ -114,16 +114,103 @@ export function BranchOptionLibrary({ branchId }: Props) {
     null,
   );
   const [deleting, setDeleting] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const dragStartOrderRef = useRef<string[]>([]);
+  const libraryRef = useRef<BranchOptionGroup[]>([]);
 
   async function load() {
-    const res = await fetch(`/api/admin/branches/${branchId}/option-groups`);
-    if (res.ok) setLibrary(await res.json());
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/admin/branches/${branchId}/option-groups`);
+      if (res.ok) {
+        const data = await res.json();
+        setLibrary(data);
+        libraryRef.current = data;
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     load();
   }, [branchId]);
+
+  function reorderGroups(
+    groups: BranchOptionGroup[],
+    dragId: string,
+    overId: string,
+  ) {
+    const list = [...groups];
+    const fromIndex = list.findIndex((g) => g.id === dragId);
+    const toIndex = list.findIndex((g) => g.id === overId);
+    if (fromIndex < 0 || toIndex < 0) return list;
+    const [dragged] = list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, dragged);
+    return list;
+  }
+
+  async function persistOrder(orderedList: BranchOptionGroup[]) {
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/option-groups/reorder`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderedIds: orderedList.map((g) => g.id),
+          }),
+        },
+      );
+      if (!res.ok) {
+        toast.error("บันทึกการจัดเรียงไม่สำเร็จ");
+        await load();
+      }
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการจัดเรียง");
+      await load();
+    }
+  }
+
+  function onDragStart(groupId: string) {
+    if (editingGroupId || saving || deleting) return;
+    dragStartOrderRef.current = libraryRef.current.map((g) => g.id);
+    setDraggingId(groupId);
+    setDragOverId(groupId);
+  }
+
+  function onDragOver(e: React.DragEvent<HTMLDivElement>, groupId: string) {
+    e.preventDefault();
+    if (!draggingId || draggingId === groupId) return;
+    setDragOverId(groupId);
+    setLibrary((current) => {
+      const next = reorderGroups(current, draggingId, groupId);
+      libraryRef.current = next;
+      return next;
+    });
+  }
+
+  async function onDrop(groupId: string) {
+    if (!draggingId) return;
+    const ordered = reorderGroups(libraryRef.current, draggingId, groupId);
+    const changed = ordered.some(
+      (g, index) => dragStartOrderRef.current[index] !== g.id,
+    );
+    if (!changed) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+    libraryRef.current = ordered;
+    setLibrary(ordered);
+    await persistOrder(ordered);
+  }
+
+  function onDragEnd() {
+    dragStartOrderRef.current = [];
+    setDraggingId(null);
+    setDragOverId(null);
+  }
 
   useEffect(() => {
     if (!focusGroupId) return;
@@ -465,9 +552,32 @@ export function BranchOptionLibrary({ branchId }: Props) {
               ref={(el) => {
                 groupRefs.current[group.id] = el;
               }}
-              className="rounded-xl border border-gray-200 bg-white transition"
+              draggable={!saving && !deleting && editingGroupId !== group.id}
+              onDragStart={() => onDragStart(group.id)}
+              onDragOver={(e) => onDragOver(e, group.id)}
+              onDrop={(e) => {
+                e.preventDefault();
+                onDrop(group.id);
+              }}
+              onDragEnd={onDragEnd}
+              className={`rounded-xl border border-gray-200 bg-white transition-all ${
+                draggingId === group.id
+                  ? "opacity-40"
+                  : dragOverId === group.id
+                    ? "scale-[1.01] shadow-lg ring-2 ring-site-primary ring-offset-1"
+                    : ""
+              }`}
             >
               <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+                <div
+                  className={`flex cursor-grab items-center justify-center text-gray-400 hover:text-gray-600 ${
+                    editingGroupId === group.id ? "invisible" : ""
+                  }`}
+                  aria-label="ลากเพื่อสลับลำดับ"
+                  title="ลากเพื่อสลับลำดับ"
+                >
+                  <span className="text-xl leading-none">⋮⋮</span>
+                </div>
                 <button
                   type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"

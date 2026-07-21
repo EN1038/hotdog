@@ -142,6 +142,8 @@ export default function MenuItemEditorPage() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [shopCode, setShopCode] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   function applyItem(data: MenuItemDetail) {
     setItem(data);

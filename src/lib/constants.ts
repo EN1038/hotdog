@@ -295,13 +295,26 @@ export function getStaffFilterStatuses(
 
 /** เริ่มต้นวันตามเวลาไทย (Asia/Bangkok) */
 export function startOfTodayBangkok(now = new Date()): Date {
-  const dateStr = new Intl.DateTimeFormat("en-CA", {
+  const dateStr = bangkokDateKey(now);
+  return new Date(`${dateStr}T00:00:00+07:00`);
+}
+
+/** `YYYY-MM-DD` in Asia/Bangkok */
+export function bangkokDateKey(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(now);
-  return new Date(`${dateStr}T00:00:00+07:00`);
+}
+
+export function startOfBangkokDayFromKey(key: string): Date {
+  return new Date(`${key}T00:00:00+07:00`);
+}
+
+export function isBangkokDateKey(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 export function normalizePhone(phone: string): string {

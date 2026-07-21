@@ -12,6 +12,7 @@ import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 import type { StaffRole } from "@/lib/constants";
 import {
   formatStaffRoles,
+  bangkokDateKey,
   getStaffFilterStatuses,
   getStaffLegendStatuses,
 } from "@/lib/constants";
@@ -36,6 +37,24 @@ type BranchStatus = {
   delivery: BranchServiceSlice;
 };
 
+type DayStats = {
+  totalOrders: number;
+  cancelledOrders: number;
+  acceptedOrders: number;
+  revenueBaht: number;
+};
+
+function formatViewDateLabel(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00+07:00`);
+  return new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
+
 export default function StaffPage() {
   const router = useRouter();
   const branding = useSiteBranding();
@@ -51,6 +70,9 @@ export default function StaffPage() {
   const [canToggleStore, setCanToggleStore] = useState(false);
   const [storeToggleBusy, setStoreToggleBusy] = useState(false);
   const [storeToggleError, setStoreToggleError] = useState("");
+  const [viewDate, setViewDate] = useState(() => bangkokDateKey());
+  const [isViewingToday, setIsViewingToday] = useState(true);
+  const [dayStats, setDayStats] = useState<DayStats | null>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
@@ -112,16 +134,25 @@ export default function StaffPage() {
   );
 
   const fetchOrders = useCallback(async () => {
-    const res = await fetch("/api/staff/orders");
+    const res = await fetch(
+      `/api/staff/orders?date=${encodeURIComponent(viewDate)}`,
+    );
     if (res.status === 401) {
       router.push("/staff/login");
       return;
     }
     const data = await res.json();
     const nextOrders: OrderCardData[] = data.orders ?? [];
+    const viewingToday = Boolean(data.isToday);
+    setIsViewingToday(viewingToday);
+    if (data.viewDate) setViewDate(data.viewDate);
+    if (data.dayStats) setDayStats(data.dayStats);
+
     const nextIds = new Set(nextOrders.map((o) => o.id));
 
-    if (knownIdsRef.current === null) {
+    if (!viewingToday) {
+      knownIdsRef.current = nextIds;
+    } else if (knownIdsRef.current === null) {
       knownIdsRef.current = nextIds;
     } else {
       const added = nextOrders.filter((o) => !knownIdsRef.current!.has(o.id));
@@ -143,7 +174,21 @@ export default function StaffPage() {
     if (data.branchStatus) setBranchStatus(data.branchStatus);
     setCanToggleStore(Boolean(data.canToggleStore));
     setLoading(false);
-  }, [router, flashNewOrders]);
+  }, [router, flashNewOrders, viewDate]);
+
+  function goToToday() {
+    const today = bangkokDateKey();
+    knownIdsRef.current = null;
+    setViewDate(today);
+    setLoading(true);
+  }
+
+  function onViewDateChange(next: string) {
+    if (!next) return;
+    knownIdsRef.current = null;
+    setViewDate(next);
+    setLoading(true);
+  }
 
   useEffect(() => {
     const legend = getStaffLegendStatuses(roles, { autoAcceptOrders });
@@ -162,19 +207,21 @@ export default function StaffPage() {
 
   useEffect(() => {
     void fetchOrders();
+    if (viewDate !== bangkokDateKey()) return;
     const interval = setInterval(() => {
       void fetchOrders();
     }, 5000);
     return () => clearInterval(interval);
-  }, [fetchOrders]);
+  }, [fetchOrders, viewDate]);
 
   useEffect(() => {
+    if (viewDate !== bangkokDateKey()) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") void fetchOrders();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [fetchOrders]);
+  }, [fetchOrders, viewDate]);
 
   useEffect(() => {
     return () => {
@@ -217,7 +264,7 @@ export default function StaffPage() {
   }
 
   async function toggleStoreOpen(nextOpen: boolean) {
-    if (!canToggleStore || storeToggleBusy) return;
+    if (!isViewingToday || !canToggleStore || storeToggleBusy) return;
     if (
       !nextOpen &&
       !window.confirm(
@@ -252,6 +299,7 @@ export default function StaffPage() {
   }
 
   async function handleStatusChange(orderId: string, status: OrderStatus) {
+    if (!isViewingToday) return;
     const res = await fetch(`/api/staff/orders/${orderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -276,7 +324,7 @@ export default function StaffPage() {
   }
 
   async function handleConfirmCancel(reason: string) {
-    if (!cancelOrderId) return;
+    if (!cancelOrderId || !isViewingToday) return;
     setCancelling(true);
     try {
       const res = await fetch(`/api/staff/orders/${cancelOrderId}`, {
@@ -357,21 +405,92 @@ export default function StaffPage() {
             </button>
           </div>
         </div>
-        <div className="mt-0.5 flex items-baseline justify-between gap-3">
-          <p className="min-w-0 truncate text-sm text-gray-600">
-            พนักงาน: {formatStaffRoles(roles)}
-          </p>
-          <p
-            className={`shrink-0 whitespace-nowrap text-xs font-medium ${
-              autoAcceptOrders
-                ? "animate-pulse text-emerald-600"
-                : "text-gray-500"
-            }`}
-          >
-            {autoAcceptOrders
-              ? "รับออเดอร์อัตโนมัติ: เปิดอยู่"
-              : "รับออเดอร์อัตโนมัติ: ปิดอยู่"}
-          </p>
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm text-gray-600">
+              พนักงาน: {formatStaffRoles(roles)}
+            </p>
+            {branchStatus ? (
+              <div className="mt-1 text-[11px] leading-snug text-gray-500">
+                <span
+                  className={
+                    branchStatus.isOpen ? "text-emerald-700" : "text-red-700"
+                  }
+                >
+                  สถานะร้าน:{" "}
+                  {branchStatus.isOpen ? "เปิด (สวิตช์)" : "ปิดชั่วคราว"}
+                </span>
+                {" · "}
+                หน้าร้าน{" "}
+                {branchStatus.pickup.acceptingOrders ? "รับสั่งได้" : "ไม่รับ"}
+                {" · "}
+                เดลิเวอรี{" "}
+                {branchStatus.delivery.acceptingOrders
+                  ? "รับสั่งได้"
+                  : "ไม่รับ"}
+                {canToggleStore && isViewingToday ? (
+                  <span className="ml-1.5 inline-flex gap-1">
+                    {branchStatus.isOpen ? (
+                      <button
+                        type="button"
+                        disabled={storeToggleBusy}
+                        onClick={() => void toggleStoreOpen(false)}
+                        className="cursor-pointer font-semibold text-red-700 underline disabled:opacity-60"
+                      >
+                        ปิดร้าน
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={storeToggleBusy}
+                        onClick={() => void toggleStoreOpen(true)}
+                        className="cursor-pointer font-semibold text-emerald-700 underline disabled:opacity-60"
+                      >
+                        เปิดร้าน
+                      </button>
+                    )}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {storeToggleError ? (
+              <p className="mt-0.5 text-[11px] text-red-600">
+                {storeToggleError}
+              </p>
+            ) : null}
+            <p
+              className={`mt-1 text-[11px] font-medium ${
+                autoAcceptOrders
+                  ? "animate-pulse text-emerald-600"
+                  : "text-gray-400"
+              }`}
+            >
+              {autoAcceptOrders
+                ? "รับออเดอร์อัตโนมัติ: เปิดอยู่"
+                : "รับออเดอร์อัตโนมัติ: ปิดอยู่"}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+              ดูรายการวันที่
+            </label>
+            <input
+              type="date"
+              value={viewDate}
+              max={bangkokDateKey()}
+              onChange={(e) => onViewDateChange(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900"
+            />
+            {!isViewingToday ? (
+              <button
+                type="button"
+                onClick={goToToday}
+                className="cursor-pointer text-xs font-semibold text-site-primary underline"
+              >
+                กลับวันนี้
+              </button>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -386,76 +505,69 @@ export default function StaffPage() {
             : "แตะ «เปิดเสียง» ด้านบนเมื่อต้องการได้ยินแจ้งเตือนออเดอร์ใหม่"}
         </p>
       )}
-
-      <div className="mb-4 rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900">สถานะร้าน</p>
-            <p
-              className={`mt-1 text-base font-bold ${
-                branchStatus?.isOpen !== false
-                  ? "text-emerald-700"
-                  : "text-red-700"
-              }`}
-            >
-              {branchStatus?.isOpen !== false
-                ? "เปิดรับออเดอร์ (สวิตช์)"
-                : "ปิดร้านชั่วคราว"}
-            </p>
-            {branchStatus ? (
-              <ul className="mt-2 space-y-1 text-xs text-gray-600">
-                <li>
-                  หน้าร้าน: {branchStatus.pickup.reason}
-                  {branchStatus.pickup.acceptingOrders
-                    ? " — ลูกค้าสั่งได้"
-                    : " — ลูกค้าสั่งไม่ได้"}
-                </li>
-                <li>
-                  เดลิเวอรี: {branchStatus.delivery.reason}
-                  {branchStatus.delivery.acceptingOrders
-                    ? " — ลูกค้าสั่งได้"
-                    : " — ลูกค้าสั่งไม่ได้"}
-                </li>
-              </ul>
-            ) : null}
-            {storeToggleError ? (
-              <p className="mt-2 text-xs text-red-600">{storeToggleError}</p>
-            ) : null}
-          </div>
-          {canToggleStore && branchStatus ? (
-            branchStatus.isOpen ? (
-              <button
-                type="button"
-                disabled={storeToggleBusy}
-                onClick={() => void toggleStoreOpen(false)}
-                className="shrink-0 cursor-pointer rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-60"
-              >
-                {storeToggleBusy ? "กำลังบันทึก…" : "ปิดร้าน"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={storeToggleBusy}
-                onClick={() => void toggleStoreOpen(true)}
-                className="shrink-0 cursor-pointer rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-              >
-                {storeToggleBusy ? "กำลังบันทึก…" : "เปิดร้าน"}
-              </button>
-            )
-          ) : null}
+      {!isViewingToday ? (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+          กำลังดูข้อมูลวันที่ {formatViewDateLabel(viewDate)} —{" "}
+          <button
+            type="button"
+            onClick={goToToday}
+            className="cursor-pointer font-semibold text-site-primary underline"
+          >
+            กลับวันนี้
+          </button>{" "}
+          เพื่อรับออเดอร์ คีย์ออเดอร์ หรือเปลี่ยนสถานะ
         </div>
-      </div>
+      ) : null}
+
+      {dayStats ? (
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+            <p className="text-[11px] text-gray-500">ออเดอร์ทั้งหมด</p>
+            <p className="text-lg font-bold text-gray-900">
+              {dayStats.totalOrders}
+            </p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+            <p className="text-[11px] text-gray-500">รับแล้ว</p>
+            <p className="text-lg font-bold text-emerald-700">
+              {dayStats.acceptedOrders}
+            </p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+            <p className="text-[11px] text-gray-500">ยกเลิก</p>
+            <p className="text-lg font-bold text-red-700">
+              {dayStats.cancelledOrders}
+            </p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+            <p className="text-[11px] text-gray-500">ยอดรวม (เสร็จสิ้น)</p>
+            <p className="text-lg font-bold text-site-primary">
+              {dayStats.revenueBaht.toLocaleString("th-TH")} บาท
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mb-4">
-        <Link
-          href="/staff/new-order"
-          className="flex w-full items-center justify-center rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white shadow-sm hover:opacity-95"
-        >
-          คีย์ออเดอร์
-        </Link>
+        {isViewingToday ? (
+          <Link
+            href="/staff/new-order"
+            className="flex w-full items-center justify-center rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white shadow-sm hover:opacity-95"
+          >
+            คีย์ออเดอร์
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={goToToday}
+            className="flex w-full cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-3.5 text-base font-semibold text-gray-500"
+          >
+            คีย์ออเดอร์ (กลับวันนี้ก่อน)
+          </button>
+        )}
       </div>
 
-      {newOrderFlash && (
+      {newOrderFlash && isViewingToday && (
         <div
           className="mb-4 animate-pulse rounded-xl border-2 border-site-primary bg-site-primary px-4 py-3 text-center text-base font-bold text-white"
           role="status"
@@ -475,9 +587,11 @@ export default function StaffPage() {
 
       {filteredOrders.length === 0 ? (
         <p className="rounded-lg bg-white p-8 text-center text-gray-500">
-          {statusFilter === OrderStatus.COMPLETED
-            ? "ยังไม่มีออเดอร์ที่เสร็จสิ้นหรือยกเลิกวันนี้"
-            : "ไม่มีออเดอร์ที่รอดำเนินการ"}
+          {!isViewingToday
+            ? "ไม่มีออเดอร์ในวันนี้"
+            : statusFilter === OrderStatus.COMPLETED
+              ? "ยังไม่มีออเดอร์ที่เสร็จสิ้นหรือยกเลิกวันนี้"
+              : "ไม่มีออเดอร์ที่รอดำเนินการ"}
         </p>
       ) : (
         <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -486,7 +600,7 @@ export default function StaffPage() {
               key={order.id}
               order={order}
               roles={roles}
-              showActions
+              showActions={isViewingToday}
               collapsibleItems
               branchPin={branchPin}
               onStatusChange={handleStatusChange}

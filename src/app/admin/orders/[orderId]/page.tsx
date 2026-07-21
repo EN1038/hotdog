@@ -20,10 +20,12 @@ import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { IconBack } from "@/components/icons";
 import { LoadingState } from "@/components/LoadingState";
+import { formatQueueNumber } from "@/lib/order-queue";
 
 type AdminOrderDetail = {
   id: string;
   orderNumber: string;
+  queueNumber: number;
   status: OrderStatus;
   fulfillmentType: FulfillmentType;
   paymentMethod: PaymentMethod;
@@ -129,7 +131,10 @@ export default function AdminOrderDetailPage() {
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-lg font-bold text-gray-900">
+              <p className="text-2xl font-bold text-gray-900">
+                คิว {formatQueueNumber(order.queueNumber)}
+              </p>
+              <p className="text-lg font-bold text-gray-700">
                 #{order.orderNumber}
               </p>
               <p className="mt-0.5 text-sm text-gray-500">

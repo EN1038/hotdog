@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
@@ -29,6 +29,11 @@ import {
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
+import {
+  applyOptionDefaultsToGroups,
+  loadBranchOptionDefaults,
+  rememberGroupSelection,
+} from "@/lib/option-defaults-prefs";
 
 export default function ItemDetailPage() {
   const { branchId, itemId } = useParams<{ branchId: string; itemId: string }>();
@@ -48,9 +53,7 @@ export default function ItemDetailPage() {
   const [error, setError] = useState("");
   const [errorGroupId, setErrorGroupId] = useState<string | null>(null);
   const [existingKey, setExistingKey] = useState<string | null>(null);
-  
-  // Track if we've initialized from cart so we don't overwrite user edits if cart object changes reference
-  const [initializedFromCart, setInitializedFromCart] = useState(false);
+  const optionInitKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     fetch("/api/customer/branches")
@@ -79,42 +82,52 @@ export default function ItemDetailPage() {
   }, [branch, itemId]);
 
   useEffect(() => {
-    if (!item || initializedFromCart) return;
+    if (!item) return;
 
-    // Determine which existing line to edit (if any)
-    let existingLine = null;
-    if (editKey) {
-      existingLine = cart.find((l) => l.key === editKey);
-    } else if (!isNew) {
-      existingLine = cart.find((l) => l.branchMenuItemId === item.id);
-    }
-    
-    if (existingLine) {
+    const sessionKey = `${itemId}|${editKey ?? ""}|${isNew ? 1 : 0}`;
+
+    function applyFromLine(existingLine: (typeof cart)[number]) {
       setExistingKey(existingLine.key);
       setQty(existingLine.quantity);
       setNote(existingLine.note || "");
-      
       const initial: SelectedByGroup = {};
       for (const group of item.optionGroups) {
-        const groupOptionIds = group.options.map(o => o.id);
-        initial[group.id] = existingLine.optionIds.filter(id => groupOptionIds.includes(id));
+        const groupOptionIds = group.options.map((o) => o.id);
+        initial[group.id] = existingLine.optionIds.filter((id) =>
+          groupOptionIds.includes(id),
+        );
       }
       setSelectedByGroup(initial);
-    } else {
-      setExistingKey(null);
-      setQty(1);
-      setNote("");
-      
-      const initial: SelectedByGroup = {};
-      for (const group of item.optionGroups) initial[group.id] = [];
-      setSelectedByGroup(initial);
     }
-    
-    // Only mark as initialized if cart has loaded (CustomerProvider hydrates it)
-    // If cart is empty, we assume it's loaded if we've waited a bit, but typically CustomerProvider sets it on mount.
-    // We can just mark it initialized.
-    setInitializedFromCart(true);
-  }, [itemId, item, cart, initializedFromCart]);
+
+    if (editKey) {
+      const existingLine = cart.find((l) => l.key === editKey);
+      if (!existingLine) return;
+      if (optionInitKeyRef.current === sessionKey) return;
+      optionInitKeyRef.current = sessionKey;
+      applyFromLine(existingLine);
+      return;
+    }
+
+    if (optionInitKeyRef.current === sessionKey) return;
+    optionInitKeyRef.current = sessionKey;
+
+    if (!isNew) {
+      const existingLine = cart.find((l) => l.branchMenuItemId === item.id);
+      if (existingLine) {
+        applyFromLine(existingLine);
+        return;
+      }
+    }
+
+    setExistingKey(null);
+    setQty(1);
+    setNote("");
+    const remembered = loadBranchOptionDefaults(branchId);
+    setSelectedByGroup(
+      applyOptionDefaultsToGroups(item.optionGroups, remembered),
+    );
+  }, [itemId, editKey, isNew, item, cart, branchId]);
 
   const priced = useMemo(
     () => (item ? menuItemSellPrice(item, fulfillment) : null),
@@ -318,6 +331,7 @@ export default function ItemDetailPage() {
                         ...prev,
                         [group.id]: ids,
                       }));
+                      rememberGroupSelection(branchId, group, ids);
                       if (ids.length > 0 && errorGroupId === group.id) {
                         setErrorGroupId(null);
                         setError("");

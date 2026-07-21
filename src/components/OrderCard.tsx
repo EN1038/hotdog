@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { OrderStatus, type FulfillmentType } from "@prisma/client";
 import {
   FULFILLMENT_LABELS,
@@ -12,6 +15,7 @@ import { IconArrowRight, IconLabel, IconNote } from "@/components/icons";
 import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
+import { formatQueueNumber } from "@/lib/order-queue";
 
 type OrderItem = {
   id: string;
@@ -27,6 +31,7 @@ type OrderItem = {
 export type OrderCardData = {
   id: string;
   orderNumber?: string;
+  queueNumber?: number | null;
   status: OrderStatus;
   fulfillmentType?: FulfillmentType;
   addressDetail: string | null;
@@ -51,6 +56,8 @@ type OrderCardProps = {
   onStatusChange?: (orderId: string, status: OrderStatus) => void;
   onRequestCancel?: (orderId: string) => void;
   showActions?: boolean;
+  /** รายการเมนูพับได้ — ใช้บนหน้า staff */
+  collapsibleItems?: boolean;
   /** Branch pin — used to show delivery distance */
   branchPin?: { latitude: number; longitude: number } | null;
 };
@@ -90,8 +97,10 @@ export function OrderCard({
   onStatusChange,
   onRequestCancel,
   showActions = false,
+  collapsibleItems = false,
   branchPin = null,
 }: OrderCardProps) {
+  const [itemsExpanded, setItemsExpanded] = useState(false);
   const colorClass = ORDER_STATUS_COLORS[order.status];
   const fulfillment = order.fulfillmentType ?? "DELIVERY";
   const allowed =
@@ -147,9 +156,14 @@ export function OrderCard({
       <div className="flex-1 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xl font-bold tracking-tight text-gray-900">
-              {order.orderNumber ? `#${order.orderNumber}` : "ออเดอร์"}
+            <p className="text-2xl font-extrabold tracking-tight text-gray-900">
+              คิว {formatQueueNumber(order.queueNumber)}
             </p>
+            {order.orderNumber ? (
+              <p className="mt-0.5 text-sm font-medium text-gray-500">
+                บิล #{order.orderNumber}
+              </p>
+            ) : null}
             <p className="mt-0.5 text-sm font-medium text-gray-700">
               {locationLabel}
             </p>
@@ -243,31 +257,86 @@ export function OrderCard({
           </p>
         ) : null}
 
-        <ul className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl bg-white/70 ring-1 ring-black/5">
-          {order.items.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-start gap-3 px-3 py-2.5 text-sm text-gray-900"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-sm font-bold text-gray-800">
-                {item.quantity}
-              </span>
-              <div className="min-w-0 flex-1 pt-0.5">
-                <p className="font-medium leading-snug">
-                  {(item.itemName || item.branchMenuItem?.name) ?? "-"}
-                </p>
-                {item.optionsText ? (
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    {item.optionsText}
-                  </p>
-                ) : null}
-                {item.note ? (
-                  <p className="mt-0.5 text-xs text-orange-600">{item.note}</p>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-4">
+          {collapsibleItems ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setItemsExpanded((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl bg-white/70 px-3 py-2.5 text-left text-sm ring-1 ring-black/5"
+              >
+                <span className="font-medium text-gray-800">
+                  {order.items.length} รายการ
+                  {!itemsExpanded ? (
+                    <span className="ml-1 font-normal text-gray-500">
+                      · แตะเพื่อดูรายละเอียด
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 text-xs font-semibold text-site-primary">
+                  {itemsExpanded ? "ซ่อนรายการ" : "ดูรายการ"}
+                </span>
+              </button>
+              {itemsExpanded ? (
+                <ul className="mt-2 divide-y divide-gray-100 overflow-hidden rounded-xl bg-white/70 ring-1 ring-black/5">
+                  {order.items.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-start gap-3 px-3 py-2.5 text-sm text-gray-900"
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-sm font-bold text-gray-800">
+                        {item.quantity}
+                      </span>
+                      <div className="min-w-0 flex-1 pt-0.5">
+                        <p className="font-medium leading-snug">
+                          {(item.itemName || item.branchMenuItem?.name) ?? "-"}
+                        </p>
+                        {item.optionsText ? (
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {item.optionsText}
+                          </p>
+                        ) : null}
+                        {item.note ? (
+                          <p className="mt-0.5 text-xs text-orange-600">
+                            {item.note}
+                          </p>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl bg-white/70 ring-1 ring-black/5">
+              {order.items.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-start gap-3 px-3 py-2.5 text-sm text-gray-900"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-sm font-bold text-gray-800">
+                    {item.quantity}
+                  </span>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <p className="font-medium leading-snug">
+                      {(item.itemName || item.branchMenuItem?.name) ?? "-"}
+                    </p>
+                    {item.optionsText ? (
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {item.optionsText}
+                      </p>
+                    ) : null}
+                    {item.note ? (
+                      <p className="mt-0.5 text-xs text-orange-600">
+                        {item.note}
+                      </p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         <p className="mt-3 text-right text-base font-bold text-gray-900">
           รวม {total.toLocaleString("th-TH")} บาท

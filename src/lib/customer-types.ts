@@ -117,6 +117,7 @@ export type OrderItemData = {
 export type OrderData = {
   id: string;
   orderNumber: string;
+  queueNumber: number;
   status: OrderStatus;
   fulfillmentType: FulfillmentType;
   paymentMethod: PaymentMethod;

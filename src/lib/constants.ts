@@ -313,6 +313,14 @@ export function startOfBangkokDayFromKey(key: string): Date {
   return new Date(`${key}T00:00:00+07:00`);
 }
 
+/**
+ * Prisma `@db.Date` value for a Bangkok business-day key (`YYYY-MM-DD`).
+ * PostgreSQL stores the calendar date; use UTC midnight on that date (not +07:00 instant).
+ */
+export function queueBusinessDateFromKey(key: string): Date {
+  return new Date(`${key}T00:00:00.000Z`);
+}
+
 export function isBangkokDateKey(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }

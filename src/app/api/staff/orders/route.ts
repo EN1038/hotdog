@@ -11,8 +11,7 @@ import {
   bangkokDateKey,
   generateOrderNumber,
   isBangkokDateKey,
-  startOfBangkokDayFromKey,
-  startOfTodayBangkok,
+  queueBusinessDateFromKey,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -125,8 +124,7 @@ export async function GET(request: Request) {
     const viewDateKey =
       dateParam && isBangkokDateKey(dateParam) ? dateParam : todayKey;
     const isToday = viewDateKey === todayKey;
-    const businessDate = startOfBangkokDayFromKey(viewDateKey);
-    const todayStart = startOfTodayBangkok();
+    const businessDate = queueBusinessDateFromKey(viewDateKey);
 
     const statsOrders = await prisma.order.findMany({
       where: {
@@ -148,32 +146,10 @@ export async function GET(request: Request) {
     });
     const dayStats = computeStaffDayStats(statsOrders);
 
-    const where: Prisma.OrderWhereInput = isToday
-      ? {
-          branchId: session.branchId,
-          OR: [
-            {
-              status: {
-                notIn: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
-              },
-            },
-            {
-              status: OrderStatus.COMPLETED,
-              updatedAt: { gte: todayStart },
-            },
-            {
-              status: OrderStatus.CANCELLED,
-              OR: [
-                { cancelledAt: { gte: todayStart } },
-                { updatedAt: { gte: todayStart } },
-              ],
-            },
-          ],
-        }
-      : {
-          branchId: session.branchId,
-          queueBusinessDate: businessDate,
-        };
+    const where: Prisma.OrderWhereInput = {
+      branchId: session.branchId,
+      queueBusinessDate: businessDate,
+    };
 
     const [branch, orders] = await Promise.all([
       prisma.branch.findUnique({

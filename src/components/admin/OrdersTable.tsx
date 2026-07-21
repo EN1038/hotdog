@@ -17,10 +17,12 @@ import {
   adminTheadClass,
   adminTrClass,
 } from "@/components/admin/admin-ui";
+import { formatQueueNumber } from "@/lib/order-queue";
 
 export type AdminOrderRow = {
   id: string;
   orderNumber?: string;
+  queueNumber?: number | null;
   status: OrderStatus;
   fulfillmentType?: FulfillmentType;
   paymentMethod?: keyof typeof PAYMENT_METHOD_LABELS;
@@ -119,7 +121,7 @@ export function OrdersTable({
                     className="font-medium text-site-primary underline-offset-2 group-hover:underline"
                   >
                     {order.orderNumber
-                      ? `#${order.orderNumber}`
+                      ? `คิว ${formatQueueNumber(order.queueNumber)} · #${order.orderNumber}`
                       : order.id.slice(-6)}
                   </Link>
                 </td>

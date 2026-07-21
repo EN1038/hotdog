@@ -5,6 +5,7 @@ import { OrderStatus } from "@prisma/client";
 import { FULFILLMENT_LABELS, formatPrice } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal } from "@/lib/customer-types";
+import { formatQueueNumber } from "@/lib/order-queue";
 import {
   IconBag,
   IconCheck,
@@ -157,7 +158,12 @@ export function CustomerOrderHistoryList({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="font-bold text-gray-900">#{o.orderNumber}</p>
+                <p className="font-bold text-gray-900">
+                  คิว {formatQueueNumber(o.queueNumber)}
+                  <span className="ml-2 text-sm font-medium text-gray-500">
+                    #{o.orderNumber}
+                  </span>
+                </p>
                 <p className="mt-0.5 text-xs text-gray-400">
                   {created.toLocaleDateString("th-TH", {
                     day: "numeric",

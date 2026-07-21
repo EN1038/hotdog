@@ -14,7 +14,7 @@ import {
 } from "@/lib/constants";
 import type { OrderData } from "@/lib/customer-types";
 import { orderGrandTotal } from "@/lib/customer-types";
-import { formatQueueNumber } from "@/lib/order-queue";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 import { usePollingRefresh } from "@/lib/use-polling-refresh";
 import { OrderConfirmationTimeline } from "@/components/customer/OrderConfirmationTimeline";
 import { LoadingState } from "@/components/LoadingState";

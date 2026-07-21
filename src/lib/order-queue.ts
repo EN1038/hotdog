@@ -2,14 +2,11 @@ import type { Prisma } from "@prisma/client";
 import { startOfTodayBangkok } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 
+export { formatQueueNumber } from "@/lib/order-queue-format";
+
 /** Bangkok calendar date (midnight +07) for queue reset boundaries. */
 export function bangkokQueueBusinessDate(at = new Date()): Date {
   return startOfTodayBangkok(at);
-}
-
-export function formatQueueNumber(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return String(Math.trunc(n));
 }
 
 const MAX_QUEUE_ALLOC_ATTEMPTS = 12;

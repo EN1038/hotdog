@@ -83,6 +83,7 @@ export default function ItemDetailPage() {
 
   useEffect(() => {
     if (!item) return;
+    const menuItem = item;
 
     const sessionKey = `${itemId}|${editKey ?? ""}|${isNew ? 1 : 0}`;
 
@@ -91,7 +92,7 @@ export default function ItemDetailPage() {
       setQty(existingLine.quantity);
       setNote(existingLine.note || "");
       const initial: SelectedByGroup = {};
-      for (const group of item.optionGroups) {
+      for (const group of menuItem.optionGroups) {
         const groupOptionIds = group.options.map((o) => o.id);
         initial[group.id] = existingLine.optionIds.filter((id) =>
           groupOptionIds.includes(id),
@@ -113,7 +114,7 @@ export default function ItemDetailPage() {
     optionInitKeyRef.current = sessionKey;
 
     if (!isNew) {
-      const existingLine = cart.find((l) => l.branchMenuItemId === item.id);
+      const existingLine = cart.find((l) => l.branchMenuItemId === menuItem.id);
       if (existingLine) {
         applyFromLine(existingLine);
         return;
@@ -125,7 +126,7 @@ export default function ItemDetailPage() {
     setNote("");
     const remembered = loadBranchOptionDefaults(branchId);
     setSelectedByGroup(
-      applyOptionDefaultsToGroups(item.optionGroups, remembered),
+      applyOptionDefaultsToGroups(menuItem.optionGroups, remembered),
     );
   }, [itemId, editKey, isNew, item, cart, branchId]);
 

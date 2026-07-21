@@ -851,13 +851,6 @@ export default function StorePage() {
                                   <IconSkewerPlaceholder size={40} />
                                 </div>
                               )}
-                              {item.isOutOfStock ? (
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                                  <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[12px] font-bold tracking-wide text-white shadow-sm">
-                                    หมด
-                                  </span>
-                                </div>
-                              ) : null}
                             </div>
                             <div
                               className={`min-w-0 flex-1 ${item.isOutOfStock ? "opacity-45" : ""}`}
@@ -877,7 +870,7 @@ export default function StorePage() {
                             </div>
                             <div className="shrink-0">
                               {item.isOutOfStock ? (
-                                <span className="inline-flex items-center rounded-full bg-gray-800 px-2.5 py-1 text-[12px] font-bold text-white">
+                                <span className="inline-flex items-center rounded-full bg-site-primary-soft px-2.5 py-1 text-[12px] font-bold text-site-primary">
                                   หมด
                                 </span>
                               ) : (

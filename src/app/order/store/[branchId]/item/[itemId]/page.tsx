@@ -284,6 +284,9 @@ export default function ItemDetailPage() {
         {item.description && (
           <p className="mt-1 text-[15px] text-gray-500 leading-relaxed">{item.description}</p>
         )}
+        {item.isOutOfStock ? (
+          <p className="mt-2 text-sm font-medium text-gray-400">หมดชั่วคราว</p>
+        ) : null}
       </header>
 
       <div className="h-2 w-full bg-[#f5f5f6]"></div>
@@ -379,49 +382,61 @@ export default function ItemDetailPage() {
       )}
 
       <div className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-md -translate-x-1/2 items-center gap-4 bg-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
-        <div className="flex items-center gap-3">
+        {item.isOutOfStock ? (
           <button
             type="button"
-            onClick={() =>
-              setQty((q) => Math.max(existingKey ? 0 : 1, q - 1))
-            }
-            disabled={!existingKey && qty <= 1}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200 disabled:opacity-40"
-            aria-label="ลดจำนวน"
+            disabled
+            className="flex flex-1 items-center justify-center rounded-xl bg-gray-200 px-4 py-3 font-bold text-gray-500"
           >
-            <IconMinus size={18} />
+            <span className="text-[17px]">หมดชั่วคราว</span>
           </button>
-          <span className="w-5 text-center text-[17px] font-bold text-gray-900">
-            {qty}
-          </span>
-          <button
-            type="button"
-            onClick={() => setQty((q) => q + 1)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
-            aria-label="เพิ่มจำนวน"
-          >
-            <IconPlus size={18} />
-          </button>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setQty((q) => Math.max(existingKey ? 0 : 1, q - 1))
+                }
+                disabled={!existingKey && qty <= 1}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200 disabled:opacity-40"
+                aria-label="ลดจำนวน"
+              >
+                <IconMinus size={18} />
+              </button>
+              <span className="w-5 text-center text-[17px] font-bold text-gray-900">
+                {qty}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQty((q) => q + 1)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
+                aria-label="เพิ่มจำนวน"
+              >
+                <IconPlus size={18} />
+              </button>
+            </div>
 
-        <button
-          type="button"
-          onClick={addToCart}
-          className={`flex flex-1 items-center justify-between rounded-xl px-4 py-3 font-bold text-white hover:opacity-90 ${
-            existingKey && qty <= 0 ? "bg-red-500" : "bg-site-primary"
-          }`}
-        >
-          <span className="text-[17px]">
-            {existingKey && qty <= 0
-              ? "ลบออกจากตะกร้า"
-              : existingKey
-                ? "อัปเดตตะกร้า"
-                : "ใส่ตะกร้า"}
-          </span>
-          <span className="text-[17px]">
-            {existingKey && qty <= 0 ? "" : `฿${formatPrice(lineTotal)}`}
-          </span>
-        </button>
+            <button
+              type="button"
+              onClick={addToCart}
+              className={`flex flex-1 items-center justify-between rounded-xl px-4 py-3 font-bold text-white hover:opacity-90 ${
+                existingKey && qty <= 0 ? "bg-red-500" : "bg-site-primary"
+              }`}
+            >
+              <span className="text-[17px]">
+                {existingKey && qty <= 0
+                  ? "ลบออกจากตะกร้า"
+                  : existingKey
+                    ? "อัปเดตตะกร้า"
+                    : "ใส่ตะกร้า"}
+              </span>
+              <span className="text-[17px]">
+                {existingKey && qty <= 0 ? "" : `฿${formatPrice(lineTotal)}`}
+              </span>
+            </button>
+          </>
+        )}
       </div>
     </main>
   );

@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/auth";
 import {
   canStaffCancel,
   canStaffUpdateStatus,
+  bangkokDateKey,
   ORDER_STATUS_LABELS,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
@@ -37,6 +38,13 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { id, branchId: session.branchId },
     });
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
+
+    if (bangkokDateKey(order.queueBusinessDate) !== bangkokDateKey()) {
+      return jsonError(
+        "แก้ไขได้เฉพาะออเดอร์ของวันนี้ — กลับไปที่วันปัจจุบันก่อน",
+        403,
+      );
+    }
 
     const roles = session.staffRoles ?? [];
 

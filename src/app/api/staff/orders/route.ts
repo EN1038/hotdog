@@ -8,7 +8,10 @@ import { z } from "zod";
 import { requireStaff } from "@/lib/auth";
 import {
   CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH,
+  bangkokDateKey,
   generateOrderNumber,
+  isBangkokDateKey,
+  startOfBangkokDayFromKey,
   startOfTodayBangkok,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
@@ -27,6 +30,54 @@ import {
   getBranchServiceStatus,
   type BranchHoursFields,
 } from "@/lib/branch-hours";
+import {
+  isCancelledStatus,
+  isRevenueStatus,
+  orderGrandTotal,
+} from "@/lib/order-totals";
+
+type OrderWithItems = {
+  status: OrderStatus;
+  deliveryFee: unknown;
+  discountAmount: unknown;
+  items: Array<{
+    quantity: number;
+    unitPrice: unknown;
+    optionsPrice: unknown;
+  }>;
+};
+
+function computeStaffDayStats(orders: OrderWithItems[]) {
+  let cancelledOrders = 0;
+  let acceptedOrders = 0;
+  let revenueBaht = 0;
+  for (const o of orders) {
+    if (isCancelledStatus(o.status)) {
+      cancelledOrders += 1;
+      continue;
+    }
+    if (o.status !== OrderStatus.WAITING_FOR_STORE_ACCEPTANCE) {
+      acceptedOrders += 1;
+    }
+    if (isRevenueStatus(o.status)) {
+      revenueBaht += orderGrandTotal(
+        o.items.map((i) => ({
+          quantity: i.quantity,
+          unitPrice: Number(i.unitPrice),
+          optionsPrice: Number(i.optionsPrice),
+        })),
+        Number(o.deliveryFee),
+        Number(o.discountAmount),
+      );
+    }
+  }
+  return {
+    totalOrders: orders.length,
+    cancelledOrders,
+    acceptedOrders,
+    revenueBaht,
+  };
+}
 
 function branchStatusSummary(branch: BranchHoursFields) {
   const pickup = getBranchServiceStatus(branch, "PICKUP");
@@ -65,33 +116,64 @@ const createStaffOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await requireStaff();
+    const { searchParams } = new URL(request.url);
+    const dateParam = searchParams.get("date");
+    const todayKey = bangkokDateKey();
+    const viewDateKey =
+      dateParam && isBangkokDateKey(dateParam) ? dateParam : todayKey;
+    const isToday = viewDateKey === todayKey;
+    const businessDate = startOfBangkokDayFromKey(viewDateKey);
     const todayStart = startOfTodayBangkok();
 
-    // คิวที่ยังไม่จบ + ออเดอร์เสร็จสิ้น/ยกเลิกของวันนี้ (แท็บเสร็จสิ้น)
-    const where: Prisma.OrderWhereInput = {
-      branchId: session.branchId,
-      OR: [
-        {
-          status: {
-            notIn: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+    const statsOrders = await prisma.order.findMany({
+      where: {
+        branchId: session.branchId,
+        queueBusinessDate: businessDate,
+      },
+      select: {
+        status: true,
+        deliveryFee: true,
+        discountAmount: true,
+        items: {
+          select: {
+            quantity: true,
+            unitPrice: true,
+            optionsPrice: true,
           },
         },
-        {
-          status: OrderStatus.COMPLETED,
-          updatedAt: { gte: todayStart },
-        },
-        {
-          status: OrderStatus.CANCELLED,
+      },
+    });
+    const dayStats = computeStaffDayStats(statsOrders);
+
+    const where: Prisma.OrderWhereInput = isToday
+      ? {
+          branchId: session.branchId,
           OR: [
-            { cancelledAt: { gte: todayStart } },
-            { updatedAt: { gte: todayStart } },
+            {
+              status: {
+                notIn: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+              },
+            },
+            {
+              status: OrderStatus.COMPLETED,
+              updatedAt: { gte: todayStart },
+            },
+            {
+              status: OrderStatus.CANCELLED,
+              OR: [
+                { cancelledAt: { gte: todayStart } },
+                { updatedAt: { gte: todayStart } },
+              ],
+            },
           ],
-        },
-      ],
-    };
+        }
+      : {
+          branchId: session.branchId,
+          queueBusinessDate: businessDate,
+        };
 
     const [branch, orders] = await Promise.all([
       prisma.branch.findUnique({
@@ -124,6 +206,9 @@ export async function GET() {
 
     return jsonOk({
       orders,
+      viewDate: viewDateKey,
+      isToday,
+      dayStats,
       roles: session.staffRoles,
       branchName: session.branchName,
       brand: session.brand,

@@ -815,6 +815,7 @@ export default function StorePage() {
                         
                         const handleItemClick = (e: React.MouseEvent) => {
                           e.stopPropagation();
+                          if (item.isOutOfStock) return;
                           markMenuItemScroll(branch.id, item.id);
                           router.push(`/order/store/${branch.id}/item/${item.id}`);
                         };
@@ -823,8 +824,13 @@ export default function StorePage() {
                           <div
                             key={item.id}
                             id={menuItemDomId(item.id)}
-                            onClick={handleItemClick}
-                            className="flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-transform active:scale-[0.98]"
+                            onClick={item.isOutOfStock ? undefined : handleItemClick}
+                            aria-disabled={item.isOutOfStock || undefined}
+                            className={`flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)] ${
+                              item.isOutOfStock
+                                ? "opacity-50"
+                                : "cursor-pointer transition-transform active:scale-[0.98]"
+                            }`}
                           >
                             <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
                               {item.imageUrl ? (
@@ -849,6 +855,9 @@ export default function StorePage() {
                                   {item.description}
                                 </p>
                               )}
+                              {item.isOutOfStock ? (
+                                <p className="mt-0.5 text-xs text-gray-400">หมดชั่วคราว</p>
+                              ) : null}
                               <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
                                 <MenuPromoPrice priced={priced} />
                                 <MenuBestSellerTag show={item.isBestSeller} />

@@ -88,7 +88,19 @@ export function handleApiError(error: unknown) {
     if (error.message === "FORBIDDEN") {
       return jsonError("ไม่มีสิทธิ์เข้าถึง", 403);
     }
-    if (error.message.includes("Invalid `") || error.message.length > 180) {
+    const raw = error.message;
+    if (
+      raw.includes("queueNumber") ||
+      raw.includes("queueBusinessDate") ||
+      (raw.includes("Order") && raw.includes("does not exist"))
+    ) {
+      return jsonError(
+        "ฐานข้อมูลยังไม่อัปเดต (เลขคิวรายวัน) — รัน prisma migrate deploy บนเซิร์ฟเวอร์แล้วรีสตาร์ท",
+        503,
+      );
+    }
+    if (raw.includes("Invalid `") || raw.length > 180) {
+      console.error("[api] Prisma/runtime", raw);
       return jsonError("บันทึกไม่สำเร็จ กรุณาลองใหม่", 400);
     }
     return jsonError(error.message, 400);

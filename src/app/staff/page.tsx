@@ -22,6 +22,7 @@ import {
   unlockOrderAlertSound,
   vibrateForNewOrder,
 } from "@/lib/staff-order-alert";
+import { IconLogout, IconVolume, IconVolumeOff } from "@/components/icons";
 
 const DEFAULT_DOC_TITLE = "Staff | SkillSale";
 
@@ -67,9 +68,6 @@ export default function StaffPage() {
   } | null>(null);
   const [autoAcceptOrders, setAutoAcceptOrders] = useState(false);
   const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
-  const [canToggleStore, setCanToggleStore] = useState(false);
-  const [storeToggleBusy, setStoreToggleBusy] = useState(false);
-  const [storeToggleError, setStoreToggleError] = useState("");
   const [viewDate, setViewDate] = useState(() => bangkokDateKey());
   const [isViewingToday, setIsViewingToday] = useState(true);
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
@@ -172,7 +170,6 @@ export default function StaffPage() {
     setBranchPin(data.branchPin ?? null);
     setAutoAcceptOrders(Boolean(data.autoAcceptOrders));
     if (data.branchStatus) setBranchStatus(data.branchStatus);
-    setCanToggleStore(Boolean(data.canToggleStore));
     setLoading(false);
   }, [router, flashNewOrders, viewDate]);
 
@@ -263,41 +260,6 @@ export default function StaffPage() {
     }
   }
 
-  async function toggleStoreOpen(nextOpen: boolean) {
-    if (!isViewingToday || !canToggleStore || storeToggleBusy) return;
-    if (
-      !nextOpen &&
-      !window.confirm(
-        "ปิดร้านชั่วคราว? ลูกค้าจะสั่งออเดอร์ออนไลน์ไม่ได้จนกว่าจะเปิดร้านอีกครั้ง (พนักงานยังคีย์ออเดอร์ได้)",
-      )
-    ) {
-      return;
-    }
-    setStoreToggleBusy(true);
-    setStoreToggleError("");
-    try {
-      const res = await fetch("/api/staff/branch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isOpen: nextOpen }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setStoreToggleError(data.error ?? "เปลี่ยนสถานะร้านไม่สำเร็จ");
-        return;
-      }
-      if (data.isOpen != null) {
-        setBranchStatus({
-          isOpen: data.isOpen,
-          pickup: data.pickup,
-          delivery: data.delivery,
-        });
-      }
-    } finally {
-      setStoreToggleBusy(false);
-    }
-  }
-
   async function handleStatusChange(orderId: string, status: OrderStatus) {
     if (!isViewingToday) return;
     const res = await fetch(`/api/staff/orders/${orderId}`, {
@@ -378,30 +340,36 @@ export default function StaffPage() {
             ) : null}
             <h1 className="text-xl font-bold text-gray-900">{branchName}</h1>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             {!soundOn ? (
               <button
                 type="button"
                 onClick={enableSound}
-                className="cursor-pointer rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100"
+                aria-label="เปิดเสียงแจ้งเตือน"
+                title="เปิดเสียงแจ้งเตือน"
+                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-amber-400 bg-amber-50 text-amber-950 hover:bg-amber-100"
               >
-                เปิดเสียง
+                <IconVolumeOff size={22} aria-hidden />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={disableSound}
-                className="cursor-pointer rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100"
+                aria-label="ปิดเสียงแจ้งเตือน"
+                title="ปิดเสียงแจ้งเตือน"
+                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
               >
-                เสียงเปิด
+                <IconVolume size={22} aria-hidden />
               </button>
             )}
             <button
               type="button"
               onClick={() => logout("/staff/login")}
-              className="cursor-pointer text-sm text-site-primary hover:underline"
+              aria-label="ออกจากระบบ"
+              title="ออกจากระบบ"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-site-primary"
             >
-              ออกจากระบบ
+              <IconLogout size={22} aria-hidden />
             </button>
           </div>
         </div>
@@ -411,52 +379,26 @@ export default function StaffPage() {
               พนักงาน: {formatStaffRoles(roles)}
             </p>
             {branchStatus ? (
-              <div className="mt-1 text-[11px] leading-snug text-gray-500">
-                <span
+              <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-gray-500">
+                <p
                   className={
                     branchStatus.isOpen ? "text-emerald-700" : "text-red-700"
                   }
                 >
                   สถานะร้าน:{" "}
-                  {branchStatus.isOpen ? "เปิด (สวิตช์)" : "ปิดชั่วคราว"}
-                </span>
-                {" · "}
-                หน้าร้าน{" "}
-                {branchStatus.pickup.acceptingOrders ? "รับสั่งได้" : "ไม่รับ"}
-                {" · "}
-                เดลิเวอรี{" "}
-                {branchStatus.delivery.acceptingOrders
-                  ? "รับสั่งได้"
-                  : "ไม่รับ"}
-                {canToggleStore && isViewingToday ? (
-                  <span className="ml-1.5 inline-flex gap-1">
-                    {branchStatus.isOpen ? (
-                      <button
-                        type="button"
-                        disabled={storeToggleBusy}
-                        onClick={() => void toggleStoreOpen(false)}
-                        className="cursor-pointer font-semibold text-red-700 underline disabled:opacity-60"
-                      >
-                        ปิดร้าน
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={storeToggleBusy}
-                        onClick={() => void toggleStoreOpen(true)}
-                        className="cursor-pointer font-semibold text-emerald-700 underline disabled:opacity-60"
-                      >
-                        เปิดร้าน
-                      </button>
-                    )}
-                  </span>
-                ) : null}
+                  {branchStatus.isOpen ? "เปิด" : "ปิดชั่วคราว"}
+                </p>
+                <p>
+                  หน้าร้าน{" "}
+                  {branchStatus.pickup.acceptingOrders ? "รับสั่งได้" : "ไม่รับ"}
+                </p>
+                <p>
+                  เดลิเวอรี{" "}
+                  {branchStatus.delivery.acceptingOrders
+                    ? "รับสั่งได้"
+                    : "ไม่รับ"}
+                </p>
               </div>
-            ) : null}
-            {storeToggleError ? (
-              <p className="mt-0.5 text-[11px] text-red-600">
-                {storeToggleError}
-              </p>
             ) : null}
             <p
               className={`mt-1 text-[11px] font-medium ${
@@ -472,7 +414,7 @@ export default function StaffPage() {
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-              ดูรายการวันที่
+              ดูรายการวันที่ (เวลาไทย)
             </label>
             <input
               type="date"
@@ -481,6 +423,9 @@ export default function StaffPage() {
               onChange={(e) => onViewDateChange(e.target.value)}
               className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900"
             />
+            <p className="max-w-[11rem] text-right text-[11px] font-medium text-gray-600">
+              {formatViewDateLabel(viewDate)}
+            </p>
             {!isViewingToday ? (
               <button
                 type="button"
@@ -498,51 +443,32 @@ export default function StaffPage() {
         <p className="mb-3 text-xs text-red-600">{soundError}</p>
       ) : null}
 
-      {!soundOn && (
-        <p className="mb-3 text-xs text-gray-500">
-          {preferSound
-            ? "แตะ «เปิดเสียง» ด้านบนเพื่อเปิดเสียงแจ้งเตือนอีกครั้ง (ต้องกดเองตามนโยบายเบราว์เซอร์)"
-            : "แตะ «เปิดเสียง» ด้านบนเมื่อต้องการได้ยินแจ้งเตือนออเดอร์ใหม่"}
-        </p>
-      )}
-      {!isViewingToday ? (
-        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
-          กำลังดูข้อมูลวันที่ {formatViewDateLabel(viewDate)} —{" "}
-          <button
-            type="button"
-            onClick={goToToday}
-            className="cursor-pointer font-semibold text-site-primary underline"
-          >
-            กลับวันนี้
-          </button>{" "}
-          เพื่อรับออเดอร์ คีย์ออเดอร์ หรือเปลี่ยนสถานะ
-        </div>
-      ) : null}
+
 
       {dayStats ? (
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] text-gray-500">ออเดอร์ทั้งหมด</p>
-            <p className="text-lg font-bold text-gray-900">
-              {dayStats.totalOrders}
+        <div className="mb-3 grid grid-cols-4 gap-1.5">
+          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+            <p className="text-[10px] text-gray-500">ทั้งหมด</p>
+            <p className="text-base font-bold text-gray-900">
+              {dayStats.totalOrders.toLocaleString("th-TH")}
             </p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] text-gray-500">รับแล้ว</p>
-            <p className="text-lg font-bold text-emerald-700">
-              {dayStats.acceptedOrders}
+          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+            <p className="text-[10px] text-gray-500">รับแล้ว</p>
+            <p className="text-base font-bold text-emerald-700">
+              {dayStats.acceptedOrders.toLocaleString("th-TH")}
             </p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] text-gray-500">ยกเลิก</p>
-            <p className="text-lg font-bold text-red-700">
-              {dayStats.cancelledOrders}
+          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+            <p className="text-[10px] text-gray-500">ยกเลิก</p>
+            <p className="text-base font-bold text-red-700">
+              {dayStats.cancelledOrders.toLocaleString("th-TH")}
             </p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] text-gray-500">ยอดรวม (เสร็จสิ้น)</p>
-            <p className="text-lg font-bold text-site-primary">
-              {dayStats.revenueBaht.toLocaleString("th-TH")} บาท
+          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+            <p className="text-[10px] text-gray-500">ยอดรวม</p>
+            <p className="text-sm font-bold text-site-primary">
+              {dayStats.revenueBaht.toLocaleString("th-TH")}฿
             </p>
           </div>
         </div>

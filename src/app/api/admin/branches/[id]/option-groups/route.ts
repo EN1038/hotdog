@@ -49,7 +49,7 @@ export async function GET(_request: Request, { params }: Params) {
     const groups = await prisma.branchOptionGroup.findMany({
       where: { branchId },
       include: branchOptionGroupInclude,
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
     return jsonOk(groups);
   } catch (error) {

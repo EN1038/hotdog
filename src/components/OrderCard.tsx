@@ -16,6 +16,10 @@ import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
 import { formatQueueNumber } from "@/lib/order-queue-format";
+import {
+  countOptionsInText,
+  isPackLikeOptions,
+} from "@/lib/order-item-display";
 
 type OrderItem = {
   id: string;
@@ -277,7 +281,11 @@ export function OrderCard({
               </button>
               {itemsExpanded ? (
                 <ul className="mt-1.5 divide-y divide-gray-100 overflow-hidden rounded-lg bg-white/70 ring-1 ring-black/5">
-                  {order.items.map((item) => (
+                  {order.items.map((item) => {
+                    const packPieces = isPackLikeOptions(item.optionsText)
+                      ? countOptionsInText(item.optionsText) * item.quantity
+                      : 0;
+                    return (
                     <li
                       key={item.id}
                       className="flex items-start gap-2 px-2.5 py-2 text-xs text-gray-900"
@@ -288,6 +296,11 @@ export function OrderCard({
                       <div className="min-w-0 flex-1 pt-0.5">
                         <p className="font-medium leading-snug">
                           {(item.itemName || item.branchMenuItem?.name) ?? "-"}
+                          {packPieces > 0 ? (
+                            <span className="ml-1 font-semibold text-amber-700">
+                              · {packPieces} ชิ้นในชุด
+                            </span>
+                          ) : null}
                         </p>
                         {item.optionsText ? (
                           <p className="mt-0.5 text-[11px] text-gray-500">
@@ -301,13 +314,18 @@ export function OrderCard({
                         ) : null}
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               ) : null}
             </>
           ) : (
             <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg bg-white/70 ring-1 ring-black/5">
-              {order.items.map((item) => (
+              {order.items.map((item) => {
+                const packPieces = isPackLikeOptions(item.optionsText)
+                  ? countOptionsInText(item.optionsText) * item.quantity
+                  : 0;
+                return (
                 <li
                   key={item.id}
                   className="flex items-start gap-2 px-2.5 py-2 text-xs text-gray-900"
@@ -318,6 +336,11 @@ export function OrderCard({
                   <div className="min-w-0 flex-1 pt-0.5">
                     <p className="font-medium leading-snug">
                       {(item.itemName || item.branchMenuItem?.name) ?? "-"}
+                      {packPieces > 0 ? (
+                        <span className="ml-1 font-semibold text-amber-700">
+                          · {packPieces} ชิ้นในชุด
+                        </span>
+                      ) : null}
                     </p>
                     {item.optionsText ? (
                       <p className="mt-0.5 text-[11px] text-gray-500">
@@ -331,7 +354,8 @@ export function OrderCard({
                     ) : null}
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>

@@ -24,6 +24,7 @@ export type MenuOptionGroupData = {
   minSelect: number;
   maxSelect: number;
   allowDuplicateSelections?: boolean;
+  sortOrder?: number;
   options: MenuOptionData[];
 };
 

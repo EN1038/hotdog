@@ -3,6 +3,10 @@ import { prisma } from "@/lib/db";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { bangkokDateKey } from "@/lib/branch-hours";
+import { queueBusinessDateFromKey } from "@/lib/constants";
+import {
+  getOperatingDayState,
+} from "@/lib/operating-day";
 import {
   BESTSELLER_MIN_QTY,
   BESTSELLER_TOP_N,
@@ -12,18 +16,6 @@ type Params = { params: Promise<{ id: string }> };
 
 const TREND_DAYS = 7;
 const TREND_SERIES_TOP = 5;
-
-function bangkokDayBounds(dateYmd: string): { start: Date; end: Date } | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) return null;
-  const start = new Date(`${dateYmd}T00:00:00+07:00`);
-  if (Number.isNaN(start.getTime())) return null;
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  return { start, end };
-}
-
-function todayYmdBangkok(): string {
-  return bangkokDateKey(new Date());
-}
 
 function addDaysYmd(dateYmd: string, delta: number): string {
   const start = new Date(`${dateYmd}T12:00:00+07:00`);
@@ -52,19 +44,25 @@ export async function GET(request: Request, { params }: Params) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: branchId },
-      select: { id: true },
+      select: {
+        id: true,
+        businessDayCutoffTime: true,
+        lateEntryUntilTime: true,
+      },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
+    const dayState = getOperatingDayState(branch);
     const { searchParams } = new URL(request.url);
-    const date = searchParams.get("date")?.trim() || todayYmdBangkok();
-    const bounds = bangkokDayBounds(date);
-    if (!bounds) return jsonError("รูปแบบวันที่ไม่ถูกต้อง (ใช้ YYYY-MM-DD)");
+    const date = searchParams.get("date")?.trim() || dayState.operatingDay;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return jsonError("รูปแบบวันที่ไม่ถูกต้อง (ใช้ YYYY-MM-DD)");
+    }
 
     const includeTrend = searchParams.get("trend") !== "0";
     const trendDays = buildDayWindow(date, TREND_DAYS);
-    const trendStart = bangkokDayBounds(trendDays[0]!.date)?.start;
-    const trendEnd = bounds.end;
+    const dayStart = queueBusinessDateFromKey(trendDays[0]!.date);
+    const dayEnd = queueBusinessDateFromKey(date);
 
     const menuItems = await prisma.branchMenuItem.findMany({
       where: { branchId },
@@ -86,10 +84,9 @@ export async function GET(request: Request, { params }: Params) {
         order: {
           branchId,
           status: OrderStatus.COMPLETED,
-          createdAt: {
-            gte: includeTrend && trendStart ? trendStart : bounds.start,
-            lt: trendEnd,
-          },
+          queueBusinessDate: includeTrend
+            ? { gte: dayStart, lte: dayEnd }
+            : dayEnd,
         },
         ...(menuIds.length ? { branchMenuItemId: { in: menuIds } } : {}),
       },
@@ -99,7 +96,7 @@ export async function GET(request: Request, { params }: Params) {
         unitPrice: true,
         optionsPrice: true,
         orderId: true,
-        order: { select: { createdAt: true } },
+        order: { select: { queueBusinessDate: true } },
       },
     });
 
@@ -117,7 +114,7 @@ export async function GET(request: Request, { params }: Params) {
     for (const row of orderItems) {
       if (!row.branchMenuItemId) continue;
       const menuId = row.branchMenuItemId;
-      const day = bangkokDateKey(row.order.createdAt);
+      const day = bangkokDateKey(row.order.queueBusinessDate);
       const lineRev =
         (Number(row.unitPrice) + Number(row.optionsPrice)) * row.quantity;
       const prev = byMenu.get(menuId) ?? {
@@ -243,6 +240,7 @@ export async function GET(request: Request, { params }: Params) {
 
     return jsonOk({
       date,
+      operatingDay: dayState.operatingDay,
       summary: {
         completedOrders: dayOrderIds.size,
         totalQty,

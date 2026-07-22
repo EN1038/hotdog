@@ -20,6 +20,7 @@ import { WheelTimePicker } from "@/components/WheelTimePicker";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import { useStaffKeyedOrder } from "@/hooks/useStaffKeyedOrder";
 import { clearStaffKeyedOrder } from "@/lib/staff-keyed-order";
+import { StaffOperatingRoundBanner } from "@/components/staff/StaffOperatingRoundBanner";
 import { CustomerDeliveryMapPin } from "@/components/customer/CustomerDeliveryMapPin";
 import type { MapLocationValue } from "@/components/customer/CustomerDeliveryMapPin";
 import { LoadingState } from "@/components/LoadingState";
@@ -880,6 +881,17 @@ export default function CheckoutPage() {
           <h1 className="font-bold text-gray-900">สรุปรายการสั่งซื้อ</h1>
         </div>
       </header>
+
+      {isStaffKeyed && staffOrderContext ? (
+        <div className="border-b border-gray-100 bg-white px-4 py-2">
+          <StaffOperatingRoundBanner
+            compact
+            operatingDay={staffOrderContext.operatingDay}
+            businessDayCutoffTime={staffOrderContext.businessDayCutoffTime}
+            lateEntryUntilTime={staffOrderContext.lateEntryUntilTime}
+          />
+        </div>
+      ) : null}
 
       {branch && (
         <div className="mx-4 mt-3 flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">

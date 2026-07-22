@@ -30,6 +30,7 @@ import { BranchCategoryLibrary } from "@/components/admin/BranchCategoryLibrary"
 import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
 import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
+import { BranchOrdersPanel } from "@/components/admin/BranchOrdersPanel";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { MenuBestSellerTag } from "@/components/customer/MenuChannelPrice";
@@ -46,11 +47,9 @@ import {
   IconTrash,
   IconUser,
 } from "@/components/icons";
-import { OrderStatus } from "@prisma/client";
 import {
   formatThaiPhone,
   phoneDigits,
-  ORDER_STATUS_LABELS,
 } from "@/lib/constants";
 import {
   ensureWeeklySchedule,
@@ -126,6 +125,8 @@ type BranchDetail = {
   deliveryHours: unknown;
   allowAdvanceOrder: boolean;
   autoAcceptOrders: boolean;
+  businessDayCutoffTime?: string;
+  lateEntryUntilTime?: string | null;
   brand: Brand | null;
   staff: {
     id: string;
@@ -443,6 +444,8 @@ function BranchDetailContent() {
     isHidden: false,
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
+    businessDayCutoffTime: "00:00",
+    lateEntryUntilTime: "",
     storefrontHours: null as WeeklySchedule | null,
     deliveryHours: null as WeeklySchedule | null,
   });
@@ -482,9 +485,6 @@ function BranchDetailContent() {
     useState<MapLocationValue>(emptyLocationMap);
   const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
-  const [orderStatusFilter, setOrderStatusFilter] = useState<"" | OrderStatus>(
-    "",
-  );
   const [menuSetupModalOpen, setMenuSetupModalOpen] = useState(false);
   const [stockPasteOpen, setStockPasteOpen] = useState(false);
   const [stockPasteText, setStockPasteText] = useState("");
@@ -571,6 +571,8 @@ function BranchDetailContent() {
       isHidden: data.isHidden ?? false,
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
+      businessDayCutoffTime: data.businessDayCutoffTime ?? "00:00",
+      lateEntryUntilTime: data.lateEntryUntilTime ?? "",
       storefrontHours: ensureWeeklySchedule(
         data.storefrontHours,
         data.opensAt,
@@ -695,6 +697,10 @@ function BranchDetailContent() {
         isOpen: settings.isOpen,
         allowAdvanceOrder: settings.allowAdvanceOrder,
         autoAcceptOrders: settings.autoAcceptOrders,
+        businessDayCutoffTime: settings.businessDayCutoffTime || "00:00",
+        lateEntryUntilTime: settings.lateEntryUntilTime.trim()
+          ? settings.lateEntryUntilTime.trim()
+          : null,
         storefrontHours: settings.storefrontHours,
         deliveryHours: settings.deliveryHours,
       }),
@@ -1872,76 +1878,7 @@ function BranchDetailContent() {
           </div>
         )}
 
-        {activeTab === "orders" && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <h3 className="font-semibold text-gray-900">ออเดอร์</h3>
-                <p className="text-sm text-gray-500">
-                  แสดงล่าสุดสูงสุด 100 รายการ · ยอดคำนวณจากรายการ + ค่าส่ง − ส่วนลด
-                </p>
-              </div>
-              {stats && (
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
-                    รายได้ {money(stats.completedRevenue)} ฿
-                  </span>
-                  <span className="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-600">
-                    ยกเลิก {money(stats.cancelledRevenue)} ฿
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setOrderStatusFilter("")}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                  orderStatusFilter === ""
-                    ? "bg-site-primary text-white"
-                    : "bg-white text-gray-700 ring-1 ring-gray-200"
-                }`}
-              >
-                ทั้งหมด
-              </button>
-              {(
-                [
-                  OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
-                  OrderStatus.PREPARING,
-                  OrderStatus.READY_FOR_DELIVERY,
-                  OrderStatus.DELIVERING,
-                  OrderStatus.COMPLETED,
-                  OrderStatus.CANCELLED,
-                ] as OrderStatus[]
-              ).map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => setOrderStatusFilter(st)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                    orderStatusFilter === st
-                      ? "bg-site-primary text-white"
-                      : "bg-white text-gray-700 ring-1 ring-gray-200"
-                  }`}
-                >
-                  {ORDER_STATUS_LABELS[st]}
-                </button>
-              ))}
-            </div>
-            <OrdersTable
-              orders={
-                orderStatusFilter
-                  ? branch.orders.filter((o) => o.status === orderStatusFilter)
-                  : branch.orders
-              }
-              emptyText={
-                orderStatusFilter === OrderStatus.CANCELLED
-                  ? "ยังไม่มีออเดอร์ที่ยกเลิกในช่วง 100 รายการล่าสุด"
-                  : "ยังไม่มีออเดอร์"
-              }
-            />
-          </div>
-        )}
+        {activeTab === "orders" && <BranchOrdersPanel branchId={id} />}
 
         {activeTab === "staff" && (
           <div className={panelClass}>
@@ -3012,6 +2949,83 @@ function BranchDetailContent() {
                       />
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* 4b. Operating day / late entry */}
+              <div className="space-y-3 border-t border-slate-100 pt-8">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    รอบวันธุรกิจและปิดรอบคีย์ออเดอร์
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    สำหรับร้านเปิดข้ามวัน เช่น 16:30–01:00 — ตั้งเวลาตัดรอบให้คิวและสรุปยอดอยู่รอบเดิม
+                    และกำหนดเวลาตายตัวที่พนักงานยังคีย์ออเดอร์รอบนั้นได้
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      className={adminLabelClass}
+                      htmlFor="business-day-cutoff"
+                    >
+                      ตัดรอบวันธุรกิจเวลา
+                    </label>
+                    <input
+                      id="business-day-cutoff"
+                      type="time"
+                      className={adminInputClass}
+                      value={settings.businessDayCutoffTime || "00:00"}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          businessDayCutoffTime: e.target.value || "00:00",
+                        }))
+                      }
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      ค่าเริ่มต้น 00:00 = ตัดตามเที่ยงคืน (เหมือนเดิม) · ร้านข้ามวันแนะนำ
+                      04:00
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      className={adminLabelClass}
+                      htmlFor="late-entry-until"
+                    >
+                      พนักงานคีย์ออเดอร์ได้ถึง
+                    </label>
+                    <input
+                      id="late-entry-until"
+                      type="time"
+                      className={adminInputClass}
+                      value={settings.lateEntryUntilTime}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          lateEntryUntilTime: e.target.value,
+                        }))
+                      }
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      ว่างไว้ = คีย์ได้จนถึงเวลาตัดรอบ · ร้านข้ามวันเช่น คีย์ได้ถึง
+                      03:00 แล้วตัดรอบ 04:00
+                    </p>
+                    {settings.lateEntryUntilTime ? (
+                      <button
+                        type="button"
+                        className="mt-1 text-xs font-semibold text-site-primary underline"
+                        onClick={() =>
+                          setSettings((s) => ({
+                            ...s,
+                            lateEntryUntilTime: "",
+                          }))
+                        }
+                      >
+                        ล้างค่า (คีย์ได้จนตัดรอบ)
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 

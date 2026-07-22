@@ -12,6 +12,11 @@ import {
   formatPrice,
 } from "@/lib/constants";
 import {
+  countOptionsInText,
+  isPackLikeOptions,
+  summarizeOrderItems,
+} from "@/lib/order-item-display";
+import {
   orderGrandTotal,
   orderItemsSubtotal,
 } from "@/lib/order-totals";
@@ -98,7 +103,7 @@ export default function AdminOrderDetailPage() {
   }
 
   const created = new Date(order.createdAt);
-  const itemCount = order.items.reduce((n, it) => n + it.quantity, 0);
+  const itemsSummary = summarizeOrderItems(order.items);
   const itemsTotal = orderItemsSubtotal(order.items);
   const grand = orderGrandTotal(
     order.items,
@@ -191,7 +196,12 @@ export default function AdminOrderDetailPage() {
             <div>
               <dt className="text-xs text-gray-500">จำนวนรายการ</dt>
               <dd className="mt-0.5 font-medium text-gray-900">
-                {itemCount} ชิ้น
+                {itemsSummary.primary}
+                {itemsSummary.secondary ? (
+                  <span className="mt-0.5 block text-sm font-medium text-amber-700">
+                    {itemsSummary.secondary}
+                  </span>
+                ) : null}
               </dd>
             </div>
             {order.fulfillmentType === "DELIVERY" && (
@@ -255,9 +265,23 @@ export default function AdminOrderDetailPage() {
                     <p className="mt-0.5 text-xs text-gray-600">
                       ฿{formatPrice(Number(it.unitPrice) + Number(it.optionsPrice))}{" "}
                       × {it.quantity}
-                      {it.optionsText ? ` · ${it.optionsText}` : ""}
+                      {isPackLikeOptions(it.optionsText) ? (
+                        <span className="ml-1 font-medium text-amber-700">
+                          · {countOptionsInText(it.optionsText) * it.quantity}{" "}
+                          ชิ้นในชุด
+                        </span>
+                      ) : it.optionsText ? (
+                        ` · ${it.optionsText}`
+                      ) : (
+                        ""
+                      )}
                       {it.note ? ` · ${it.note}` : ""}
                     </p>
+                    {isPackLikeOptions(it.optionsText) && it.optionsText ? (
+                      <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                        {it.optionsText}
+                      </p>
+                    ) : null}
                   </div>
                   <span className="shrink-0 font-semibold text-gray-900">
                     ฿{formatPrice(line)}

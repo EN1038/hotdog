@@ -64,6 +64,7 @@ type OrderCardProps = {
   collapsibleItems?: boolean;
   /** Branch pin — used to show delivery distance */
   branchPin?: { latitude: number; longitude: number } | null;
+  highlight?: boolean;
 };
 
 /** Workflow order — used to pick the main “next step” button on touch UIs. */
@@ -103,6 +104,7 @@ export function OrderCard({
   showActions = false,
   collapsibleItems = false,
   branchPin = null,
+  highlight = false,
 }: OrderCardProps) {
   const [itemsExpanded, setItemsExpanded] = useState(false);
   const colorClass = ORDER_STATUS_COLORS[order.status];
@@ -155,7 +157,10 @@ export function OrderCard({
 
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-xl border-2 bg-white shadow-sm ${colorClass}`}
+      id={`staff-order-card-${order.id}`}
+      className={`flex flex-col overflow-hidden rounded-xl border-2 bg-white shadow-sm transition-all ${
+        highlight ? "ring-4 ring-site-primary/30 ring-offset-2" : ""
+      } ${colorClass}`}
     >
       <div className="flex-1 p-3">
         <div className="flex items-start justify-between gap-2">

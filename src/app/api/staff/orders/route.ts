@@ -507,7 +507,23 @@ export async function POST(request: Request) {
     }
     if (!order) return jsonError("ไม่สามารถสร้างเลขออเดอร์ได้ กรุณาลองใหม่");
 
-    return jsonOk(order, 201);
+    const totalAmount = orderGrandTotal(
+      orderItems.map((item) => ({
+        quantity: item.quantity,
+        unitPrice: Number(item.unitPrice),
+        optionsPrice: Number(item.optionsPrice),
+      })),
+      Number(deliveryFee),
+      0,
+    );
+
+    return jsonOk(
+      {
+        ...order,
+        totalAmount,
+      },
+      201,
+    );
   } catch (error) {
     return handleApiError(error);
   }

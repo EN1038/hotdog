@@ -101,6 +101,43 @@ export function StaffOrderSummary({
   );
 }
 
+export function StaffOrderStickySummary({
+  label = "ดูสรุปรายการ",
+  lineCount,
+  pieceCount,
+  totalAmount,
+  onClick,
+}: {
+  label?: string;
+  lineCount: number;
+  pieceCount: number;
+  totalAmount: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-2xl border border-gray-200 bg-white/95 px-4 py-3 text-left shadow-lg backdrop-blur active:scale-[0.99]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-site-primary">{label}</p>
+          <p className="mt-0.5 truncate text-sm text-gray-700">
+            {lineCount} รายการ · {pieceCount} ชิ้น
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-xs text-gray-500">ยอดรวม</p>
+          <p className="text-sm font-bold text-gray-900">
+            {formatPrice(totalAmount)}฿
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export function StaffKeyOrderAlertModal({
   open,
   title = "กรอกข้อมูลไม่ครบ",

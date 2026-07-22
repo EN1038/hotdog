@@ -9,6 +9,7 @@ import {
   PAYMENT_METHOD_LABELS,
 } from "@/lib/constants";
 import { orderGrandTotal } from "@/lib/order-totals";
+import { summarizeOrderItems } from "@/lib/order-item-display";
 import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import {
@@ -40,6 +41,7 @@ export type AdminOrderRow = {
     unitPrice: string | number;
     optionsPrice?: string | number;
     itemName: string;
+    optionsText?: string | null;
   }>;
 };
 
@@ -99,16 +101,18 @@ export function OrdersTable({
               order.deliveryFee,
               order.discountAmount,
             );
-            const itemCount = order.items.reduce(
-              (n, it) => n + it.quantity,
-              0,
-            );
+            const itemsSummary = summarizeOrderItems(order.items);
             const channel =
               order.fulfillmentType === "PICKUP"
                 ? FULFILLMENT_LABELS.PICKUP
                 : (order.deliveryLocation?.name ??
                   FULFILLMENT_LABELS.DELIVERY);
             const href = `/admin/orders/${order.id}`;
+            const packNames = itemsSummary.hasPack
+              ? order.items
+                  .filter((it) => it.optionsText && it.itemName)
+                  .map((it) => it.itemName)
+              : [];
 
             return (
               <tr
@@ -168,8 +172,22 @@ export function OrdersTable({
                     )}
                   </Link>
                 </td>
-                <td className="whitespace-nowrap px-3 py-3 text-gray-600">
-                  <Link href={href}>{itemCount} ชิ้น</Link>
+                <td className="px-3 py-3 text-gray-600">
+                  <Link href={href} className="block">
+                    <p className="font-medium text-gray-800">
+                      {itemsSummary.primary}
+                    </p>
+                    {itemsSummary.secondary ? (
+                      <p className="text-xs font-medium text-amber-700">
+                        {itemsSummary.secondary}
+                      </p>
+                    ) : null}
+                    {packNames.length > 0 ? (
+                      <p className="mt-0.5 max-w-[12rem] truncate text-xs text-gray-500">
+                        {packNames.join(", ")}
+                      </p>
+                    ) : null}
+                  </Link>
                 </td>
                 <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-900">
                   <Link href={href}>{formatMoney(total)} ฿</Link>
@@ -189,7 +207,7 @@ export function OrdersTable({
         </tbody>
       </table>
       <p className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
-        กดที่เลขที่ออเดอร์หรือแถวเพื่อดูรายละเอียด
+        กดที่เลขที่ออเดอร์หรือแถวเพื่อดูรายละเอียด · ชุดโปร (เลือกไม้) แสดงจำนวนชิ้นในชุดแยกจากจำนวนรายการ
       </p>
     </div>
   );

@@ -17,6 +17,7 @@ import {
   btnOutline,
 } from "@/components/admin/AdminShell";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
+import { DateInput } from "@/components/DateInput";
 import {
   ADMIN_ACTIVITY_ACTION_OPTIONS,
   activityActionLabel,
@@ -204,12 +205,11 @@ export default function ActivityLogsPage() {
 
         <div>
           <label className={adminLabelClass}>ตั้งแต่</label>
-          <input
-            type="date"
+          <DateInput
             className={adminInputClass}
             value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
+            onChange={(next) => {
+              setFrom(next);
               setPage(1);
             }}
           />
@@ -217,12 +217,11 @@ export default function ActivityLogsPage() {
 
         <div>
           <label className={adminLabelClass}>ถึง</label>
-          <input
-            type="date"
+          <DateInput
             className={adminInputClass}
             value={to}
-            onChange={(e) => {
-              setTo(e.target.value);
+            onChange={(next) => {
+              setTo(next);
               setPage(1);
             }}
           />

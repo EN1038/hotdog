@@ -17,6 +17,8 @@ type Props = {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   highlightError?: boolean;
+  /** Tighter padding for nested staff quick-order cards */
+  compact?: boolean;
 };
 
 function OptionThumb({
@@ -60,32 +62,34 @@ function CategoryFilterBar({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="-mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
-      <button
-        type="button"
-        onClick={() => onChange("ALL")}
-        className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
-          value === "ALL"
-            ? "bg-site-primary text-white"
-            : "bg-gray-100 text-gray-700"
-        }`}
-      >
-        ทั้งหมด
-      </button>
-      {categories.map((cat) => (
+    <div className="mt-2 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex w-max min-w-full gap-2">
         <button
-          key={cat.id}
           type="button"
-          onClick={() => onChange(cat.id)}
+          onClick={() => onChange("ALL")}
           className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
-            value === cat.id
+            value === "ALL"
               ? "bg-site-primary text-white"
               : "bg-gray-100 text-gray-700"
           }`}
         >
-          {cat.name}
+          ทั้งหมด
         </button>
-      ))}
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => onChange(cat.id)}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+              value === cat.id
+                ? "bg-site-primary text-white"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -151,6 +155,7 @@ export function MenuOptionGroupPicker({
   selectedIds,
   onChange,
   highlightError,
+  compact = false,
 }: Props) {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const selectedCount = selectionCount(selectedIds);
@@ -158,6 +163,8 @@ export function MenuOptionGroupPicker({
   const fromMenu = group.mode === "FROM_MENU";
   const categories = useMenuOptionCategories(group.options);
   const showCategoryFilter = fromMenu && categories.length > 1;
+  const rowPad = compact ? "py-2.5" : "px-4 py-3";
+  const btnSize = compact ? "h-8 w-8" : "h-9 w-9";
 
   const visibleOptions = useMemo(() => {
     if (!showCategoryFilter || categoryFilter === "ALL") return group.options;
@@ -181,7 +188,7 @@ export function MenuOptionGroupPicker({
   if (useQty) {
     const qtyMap = optionIdsToQtyMap(selectedIds);
     return (
-      <div>
+      <div className="w-full min-w-0 max-w-full">
         {subtitle && (
           <p
             className={`mt-0.5 text-[13px] ${
@@ -198,7 +205,7 @@ export function MenuOptionGroupPicker({
             onChange={setCategoryFilter}
           />
         ) : null}
-        <ul className="pb-2">
+        <ul className="w-full min-w-0 pb-1">
           {visibleOptions.map((opt) => {
             const qty = qtyMap[opt.id] ?? 0;
             const disabled = opt.isOutOfStock;
@@ -207,15 +214,21 @@ export function MenuOptionGroupPicker({
             return (
               <li
                 key={opt.id}
-                className={`flex w-full items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-b-0 ${
+                className={`grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-gray-50 last:border-b-0 ${rowPad} ${
                   disabled ? "opacity-50" : ""
                 }`}
               >
                 {showThumb ? (
-                  <OptionThumb name={opt.name} imageUrl={opt.imageUrl} />
-                ) : null}
-                <div className="min-w-0 flex-1">
-                  <p className="text-[15px] font-medium leading-snug text-gray-900">
+                  <OptionThumb
+                    name={opt.name}
+                    imageUrl={opt.imageUrl}
+                    size={compact ? 44 : 56}
+                  />
+                ) : (
+                  <span className="w-0" aria-hidden />
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-medium leading-snug text-gray-900">
                     {opt.name}
                   </p>
                   {opt.isOutOfStock ? (
@@ -227,7 +240,7 @@ export function MenuOptionGroupPicker({
                     </p>
                   )}
                 </div>
-                <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+                <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     disabled={disabled || qty <= 0}
@@ -238,12 +251,12 @@ export function MenuOptionGroupPicker({
                         ),
                       )
                     }
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-lg text-gray-700 disabled:opacity-40"
+                    className={`flex ${btnSize} items-center justify-center rounded-full bg-gray-100 text-lg text-gray-700 disabled:opacity-40`}
                     aria-label={`ลด ${opt.name}`}
                   >
                     −
                   </button>
-                  <span className="w-7 text-center text-sm font-bold tabular-nums">
+                  <span className="w-5 text-center text-sm font-bold tabular-nums">
                     {qty}
                   </span>
                   <button
@@ -256,17 +269,17 @@ export function MenuOptionGroupPicker({
                         ),
                       )
                     }
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-site-primary text-white disabled:opacity-40"
+                    className={`flex ${btnSize} items-center justify-center rounded-full bg-site-primary text-white disabled:opacity-40`}
                     aria-label={`เพิ่ม ${opt.name}`}
                   >
-                    <IconPlus size={16} />
+                    <IconPlus size={compact ? 14 : 16} />
                   </button>
                 </div>
               </li>
             );
           })}
           {visibleOptions.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-gray-500">
+            <li className="px-2 py-6 text-center text-sm text-gray-500">
               ไม่มีเมนูในหมวดนี้
             </li>
           )}
@@ -289,7 +302,7 @@ export function MenuOptionGroupPicker({
   }
 
   return (
-    <div>
+    <div className="w-full min-w-0 max-w-full">
       {subtitle && (
         <p
           className={`mt-0.5 text-[13px] ${
@@ -306,36 +319,42 @@ export function MenuOptionGroupPicker({
           onChange={setCategoryFilter}
         />
       ) : null}
-      <ul className="pb-2">
+      <ul className="w-full min-w-0 divide-y divide-gray-50 pb-1">
         {visibleOptions.map((opt) => {
           const active = selectedIds.includes(opt.id);
           const atMax = !isSingle && !active && selectedCount >= group.maxSelect;
           const showThumb = fromMenu || Boolean(opt.imageUrl);
           return (
-            <li key={opt.id}>
+            <li key={opt.id} className="min-w-0">
               <button
                 type="button"
                 disabled={atMax || opt.isOutOfStock}
                 onClick={() => toggle(opt.id)}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
+                className={`grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left transition-colors ${rowPad} ${
                   atMax || opt.isOutOfStock
                     ? "cursor-not-allowed opacity-40"
                     : "active:bg-gray-50"
                 } ${active ? "bg-site-primary-soft/40" : ""}`}
               >
                 {showThumb ? (
-                  <OptionThumb name={opt.name} imageUrl={opt.imageUrl} size={48} />
-                ) : null}
-                <span className="min-w-0 flex-1">
+                  <OptionThumb
+                    name={opt.name}
+                    imageUrl={opt.imageUrl}
+                    size={compact ? 40 : 48}
+                  />
+                ) : (
+                  <span className="w-0" aria-hidden />
+                )}
+                <span className="min-w-0">
                   <span
-                    className={`text-[15px] ${
+                    className={`block truncate text-[15px] leading-snug ${
                       active ? "font-semibold text-gray-900" : "text-gray-800"
                     }`}
                   >
                     {opt.name}
                   </span>
                   {Number(opt.priceDelta) > 0 && (
-                    <span className="ml-1.5 text-[15px] font-medium text-site-primary">
+                    <span className="text-[15px] font-medium text-site-primary">
                       +฿{formatPrice(opt.priceDelta)}
                     </span>
                   )}

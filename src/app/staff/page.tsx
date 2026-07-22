@@ -23,6 +23,8 @@ import {
 } from "@/lib/staff-order-alert";
 import { IconLogout, IconVolume, IconVolumeOff } from "@/components/icons";
 import { StaffRoundSelector } from "@/components/staff/StaffRoundSelector";
+import type { MenuItemData } from "@/lib/customer-types";
+import { isPromoMenuItem } from "@/lib/staff-key-order";
 
 const DEFAULT_DOC_TITLE = "Staff | SkillSale";
 
@@ -67,6 +69,10 @@ export default function StaffPage() {
   const [businessDayCutoffTime, setBusinessDayCutoffTime] =
     useState("00:00");
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
+  const [promoLink, setPromoLink] = useState<{
+    href: string;
+    label: string;
+  }>({ href: "/staff/key-order/promo", label: "แบบโปรโมชั่น" });
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
@@ -231,6 +237,41 @@ export default function StaffPage() {
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       if (titleTimerRef.current) clearInterval(titleTimerRef.current);
       document.title = DEFAULT_DOC_TITLE;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/staff/menu?channel=storefront");
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        const items = Array.isArray(data.menuItems)
+          ? (data.menuItems as MenuItemData[])
+          : [];
+        const promos = items.filter(
+          (item) => isPromoMenuItem(item) && !item.isOutOfStock,
+        );
+        if (cancelled) return;
+        if (promos.length === 1) {
+          const only = promos[0]!;
+          setPromoLink({
+            href: `/staff/key-order/promo/${only.id}`,
+            label: only.name,
+          });
+        } else {
+          setPromoLink({
+            href: "/staff/key-order/promo",
+            label: "แบบโปรโมชั่น",
+          });
+        }
+      } catch {
+        /* keep default label */
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -476,10 +517,13 @@ export default function StaffPage() {
                 แบบธรรมดา
               </Link>
               <Link
-                href="/staff/key-order/promo"
+                href={promoLink.href}
+                title={promoLink.label}
                 className="flex items-center justify-center rounded-xl bg-amber-500 px-3 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-amber-600"
               >
-                แบบโปรโมชั่น
+                <span className="line-clamp-2 text-center leading-snug">
+                  {promoLink.label}
+                </span>
               </Link>
             </div>
             <Link

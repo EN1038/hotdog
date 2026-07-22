@@ -249,7 +249,7 @@ export function formatOperatingDayShort(dateYmd: string): string {
 /**
  * Human window for an operating round that may span midnight.
  * cutoff 00:00 → null (calendar day, no overnight window).
- * Compact one-line form, e.g. "11:00 น. (22–23 ก.ค.)"
+ * Compact one-line form, e.g. "ตัดรอบ 11:00 น. (22–23 ก.ค.)"
  */
 export function formatOperatingRoundWindow(
   operatingDayKey: string,
@@ -271,8 +271,8 @@ export function formatOperatingRoundWindow(
       startMonth === endMonth
         ? `${startDay}–${endDay} ${startMonth}`
         : `${startDay} ${startMonth}–${endDay} ${endMonth}`;
-    return `${cutoff} น. (${range})`;
+    return `ตัดรอบ ${cutoff} น. (${range})`;
   } catch {
-    return `${cutoff} น. (${formatOperatingDayShort(operatingDayKey)}–${formatOperatingDayShort(nextKey)})`;
+    return `ตัดรอบ ${cutoff} น. (${formatOperatingDayShort(operatingDayKey)}–${formatOperatingDayShort(nextKey)})`;
   }
 }

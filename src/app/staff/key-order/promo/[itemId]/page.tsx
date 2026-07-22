@@ -18,6 +18,7 @@ import {
 import {
   StaffKeyOrderAlertModal,
   StaffOrderSummary,
+  StaffOrderStickySummary,
   scrollToStaffAnchor,
 } from "@/components/staff/StaffOrderSummary";
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
@@ -39,6 +40,7 @@ import {
   type SelectedByGroup,
 } from "@/lib/option-selection";
 import { sortByThaiName } from "@/lib/thai-sort";
+import { saveStaffOrderFeedback } from "@/lib/staff-order-feedback";
 
 export default function StaffPromoKeyOrderDetailPage() {
   const { itemId } = useParams<{ itemId: string }>();
@@ -66,6 +68,7 @@ export default function StaffPromoKeyOrderDetailPage() {
   const [fulfillment, setFulfillment] = useState<StaffFulfillmentState>(
     emptyStaffFulfillment,
   );
+  const [showStickySummary, setShowStickySummary] = useState(true);
 
   useEffect(() => {
     if (blocked || roundLoading || !roundState) return;
@@ -156,6 +159,19 @@ export default function StaffPromoKeyOrderDetailPage() {
     return items + deliveryFee;
   }, [summaryLines, deliveryFee]);
 
+  useEffect(() => {
+    const summary = document.getElementById("staff-order-summary");
+    if (!summary) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowStickySummary(!entry.isIntersecting);
+      },
+      { rootMargin: "0px 0px -96px 0px", threshold: 0.05 },
+    );
+    observer.observe(summary);
+    return () => observer.disconnect();
+  }, [summaryLines.length, deliveryFee]);
+
   function clearValidation() {
     setError("");
     setAlertMessage(null);
@@ -231,11 +247,28 @@ export default function StaffPromoKeyOrderDetailPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        saveStaffOrderFeedback({
+          kind: "error",
+          message: data.error ?? "บันทึกไม่สำเร็จ",
+        });
         fail(data.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
+      saveStaffOrderFeedback({
+        kind: "success",
+        message: "บันทึกออเดอร์แล้ว",
+        orderId: typeof data.id === "string" ? data.id : undefined,
+        queueNumber:
+          typeof data.queueNumber === "number" ? data.queueNumber : null,
+        totalAmount:
+          typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
+      });
       router.replace("/staff");
     } catch {
+      saveStaffOrderFeedback({
+        kind: "error",
+        message: "บันทึกไม่สำเร็จ กรุณาลองใหม่",
+      });
       fail("บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setSubmitting(false);
@@ -282,6 +315,19 @@ export default function StaffPromoKeyOrderDetailPage() {
         </button>
       }
     >
+      {showStickySummary ? (
+        <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
+          <div className="mx-auto max-w-lg">
+            <StaffOrderStickySummary
+              lineCount={summaryLines.length}
+              pieceCount={quantity}
+              totalAmount={orderTotal}
+              onClick={() => scrollToStaffAnchor("staff-order-summary")}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <StaffRoundStatusStrip state={roundState} />
 
       {promoCount > 1 ? (

@@ -8,9 +8,11 @@ import { OrderCard, StatusLegend, type OrderCardData } from "@/components/OrderC
 import { CancelReasonModal } from "@/components/CancelReasonModal";
 import { logout } from "@/components/LoginForm";
 import { LoadingState } from "@/components/LoadingState";
+import { useToast } from "@/components/admin/Toast";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 import type { StaffRole } from "@/lib/constants";
 import {
+  formatPrice,
   formatStaffRoles,
   getStaffFilterStatuses,
   getStaffLegendStatuses,
@@ -25,6 +27,8 @@ import { IconLogout, IconVolume, IconVolumeOff } from "@/components/icons";
 import { StaffRoundSelector } from "@/components/staff/StaffRoundSelector";
 import type { MenuItemData } from "@/lib/customer-types";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
+import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 
 const DEFAULT_DOC_TITLE = "Staff | SkillSale";
 
@@ -50,6 +54,7 @@ type DayStats = {
 export default function StaffPage() {
   const router = useRouter();
   const branding = useSiteBranding();
+  const { success: pushSuccessToast, error: pushErrorToast } = useToast();
   const [orders, setOrders] = useState<OrderCardData[]>([]);
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [branchName, setBranchName] = useState("");
@@ -81,14 +86,15 @@ export default function StaffPage() {
   const [preferSound, setPreferSound] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const [statusNotice, setStatusNotice] = useState<{
-    title: string;
-    message: string;
-  } | null>(null);
+  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(
+    null,
+  );
   const knownIdsRef = useRef<Set<string> | null>(null);
   const soundOnRef = useRef(false);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrolledToCreatedOrderRef = useRef(false);
 
   useEffect(() => {
     soundOnRef.current = soundOn;
@@ -101,6 +107,28 @@ export default function StaffPage() {
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    const feedback = takeStaffOrderFeedback();
+    if (!feedback) return;
+    if (feedback.kind === "success") {
+      pushSuccessToast(
+        feedback.message,
+        `${feedback.queueNumber != null ? `คิว ${formatQueueNumber(feedback.queueNumber)}` : "สร้างออเดอร์แล้ว"}${
+          typeof feedback.totalAmount === "number"
+            ? ` · ${formatPrice(feedback.totalAmount)}฿`
+            : ""
+        }`,
+      );
+    } else {
+      pushErrorToast("บันทึกไม่สำเร็จ", feedback.message);
+    }
+    if (feedback.orderId) {
+      scrolledToCreatedOrderRef.current = false;
+      setStatusFilter(null);
+      setHighlightedOrderId(feedback.orderId);
+    }
+  }, [pushErrorToast, pushSuccessToast]);
 
   const clearTitleAlert = useCallback(() => {
     if (titleTimerRef.current) {
@@ -236,6 +264,7 @@ export default function StaffPage() {
     return () => {
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       if (titleTimerRef.current) clearInterval(titleTimerRef.current);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
       document.title = DEFAULT_DOC_TITLE;
     };
   }, []);
@@ -274,6 +303,20 @@ export default function StaffPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!highlightedOrderId || scrolledToCreatedOrderRef.current) return;
+    const target = orders.find((order) => order.id === highlightedOrderId);
+    if (!target) return;
+    const el = document.getElementById(`staff-order-card-${highlightedOrderId}`);
+    if (!el) return;
+    scrolledToCreatedOrderRef.current = true;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedOrderId(null);
+    }, 5000);
+  }, [orders, highlightedOrderId]);
 
   async function enableSound() {
     setSoundError("");
@@ -317,19 +360,22 @@ export default function StaffPage() {
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       clearTitleAlert();
+      pushSuccessToast("อัปเดตสถานะแล้ว");
       void fetchOrders();
       return;
     }
     void fetchOrders();
     if (data.statusChanged) {
-      setStatusNotice({
-        title: "สถานะออเดอร์เปลี่ยนแล้ว",
-        message: data.currentStatusLabel
-          ? `${data.error ?? "อัปเดตไม่สำเร็จ"}\nสถานะปัจจุบัน: ${data.currentStatusLabel}`
+      pushErrorToast(
+        "สถานะออเดอร์เปลี่ยนแล้ว",
+        data.currentStatusLabel
+          ? `${data.error ?? "อัปเดตไม่สำเร็จ"} สถานะปัจจุบัน: ${data.currentStatusLabel}`
           : (data.error ??
             "สถานะออเดอร์เปลี่ยนแล้ว — อัปเดตรายการให้ล่าสุดแล้ว"),
-      });
+      );
+      return;
     }
+    pushErrorToast("อัปเดตไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
   }
 
   async function handleConfirmCancel(reason: string) {
@@ -348,20 +394,23 @@ export default function StaffPage() {
       if (res.ok) {
         setCancelOrderId(null);
         clearTitleAlert();
+        pushSuccessToast("ยกเลิกออเดอร์แล้ว");
         void fetchOrders();
         return;
       }
       setCancelOrderId(null);
       void fetchOrders();
       if (data.statusChanged) {
-        setStatusNotice({
-          title: "สถานะออเดอร์เปลี่ยนแล้ว",
-          message: data.currentStatusLabel
-            ? `${data.error ?? "ยกเลิกไม่สำเร็จ"}\nสถานะปัจจุบัน: ${data.currentStatusLabel}`
+        pushErrorToast(
+          "สถานะออเดอร์เปลี่ยนแล้ว",
+          data.currentStatusLabel
+            ? `${data.error ?? "ยกเลิกไม่สำเร็จ"} สถานะปัจจุบัน: ${data.currentStatusLabel}`
             : (data.error ??
               "สถานะออเดอร์เปลี่ยนแล้ว — อัปเดตรายการให้ล่าสุดแล้ว"),
-        });
+        );
+        return;
       }
+      pushErrorToast("ยกเลิกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
     } finally {
       setCancelling(false);
     }
@@ -584,6 +633,7 @@ export default function StaffPage() {
               showActions={isViewingToday && canEnter}
               collapsibleItems
               branchPin={branchPin}
+              highlight={order.id === highlightedOrderId}
               onStatusChange={handleStatusChange}
               onRequestCancel={(id) => setCancelOrderId(id)}
             />
@@ -600,36 +650,6 @@ export default function StaffPage() {
         }}
         onConfirm={handleConfirmCancel}
       />
-
-      {statusNotice ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <button
-            type="button"
-            aria-label="ปิด"
-            className="absolute inset-0"
-            onClick={() => setStatusNotice(null)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
-          >
-            <h2 className="text-lg font-bold text-gray-900">
-              {statusNotice.title}
-            </h2>
-            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-600">
-              {statusNotice.message}
-            </p>
-            <button
-              type="button"
-              onClick={() => setStatusNotice(null)}
-              className="mt-5 w-full rounded-xl bg-site-primary py-3 text-sm font-semibold text-white hover:opacity-90"
-            >
-              รับทราบ
-            </button>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

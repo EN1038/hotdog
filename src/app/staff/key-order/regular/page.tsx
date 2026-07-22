@@ -15,6 +15,12 @@ import {
   validateStaffFulfillment,
   type StaffFulfillmentState,
 } from "@/components/staff/StaffQuickFulfillment";
+import {
+  StaffKeyOrderAlertModal,
+  StaffOrderSummary,
+  scrollToStaffAnchor,
+  type StaffOrderSummaryLine,
+} from "@/components/staff/StaffOrderSummary";
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { formatPrice } from "@/lib/constants";
@@ -31,9 +37,11 @@ import {
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
 import {
+  computeSelectedOptions,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
+import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
 
 type MenuPayload = {
   branchName?: string;
@@ -51,6 +59,7 @@ export default function StaffRegularKeyOrderPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [branchName, setBranchName] = useState("");
   const [menuItems, setMenuItems] = useState<MenuItemData[]>([]);
   const [deliveryLocations, setDeliveryLocations] = useState<
@@ -92,9 +101,11 @@ export default function StaffRegularKeyOrderPage() {
   const channel = fulfillmentToChannel(fulfillment.fulfillmentType);
 
   const regularItems = useMemo(() => {
-    return menuItems
-      .filter(isRegularMenuItem)
-      .filter((item) => isChannelSellEnabled(item, channel));
+    return sortByThaiName(
+      menuItems
+        .filter(isRegularMenuItem)
+        .filter((item) => isChannelSellEnabled(item, channel)),
+    );
   }, [menuItems, channel]);
 
   const categories = useMemo(() => {
@@ -106,15 +117,18 @@ export default function StaffRegularKeyOrderPage() {
       if (!map.has(id)) map.set(id, { id, name, sortOrder });
     }
     return [...map.values()].sort(
-      (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "th"),
+      (a, b) => a.sortOrder - b.sortOrder || compareThaiText(a.name, b.name),
     );
   }, [regularItems]);
 
   const visibleItems = useMemo(() => {
-    if (categoryFilter === "ALL") return regularItems;
-    return regularItems.filter(
-      (item) => (item.category?.id ?? "__other__") === categoryFilter,
-    );
+    const list =
+      categoryFilter === "ALL"
+        ? regularItems
+        : regularItems.filter(
+            (item) => (item.category?.id ?? "__other__") === categoryFilter,
+          );
+    return sortByThaiName(list);
   }, [regularItems, categoryFilter]);
 
   const sharedGroups = useMemo(
@@ -131,7 +145,66 @@ export default function StaffRegularKeyOrderPage() {
     [qtyByItemId],
   );
 
+  const deliveryFee = useMemo(() => {
+    if (fulfillment.fulfillmentType !== "DELIVERY") return 0;
+    const loc = deliveryLocations.find(
+      (l) => l.id === fulfillment.deliveryLocationId,
+    );
+    return loc ? Number(loc.deliveryFee) : 0;
+  }, [
+    fulfillment.fulfillmentType,
+    fulfillment.deliveryLocationId,
+    deliveryLocations,
+  ]);
+
+  const summaryLines: StaffOrderSummaryLine[] = useMemo(() => {
+    return regularItems
+      .filter((item) => (qtyByItemId[item.id] ?? 0) > 0)
+      .map((item) => {
+        const groups = (item.optionGroups ?? []).filter(
+          (g) => g.mode !== "FROM_MENU",
+        );
+        const opts = computeSelectedOptions(groups, selectedByGroup);
+        return {
+          id: item.id,
+          name: item.name,
+          quantity: qtyByItemId[item.id]!,
+          unitPrice: resolveSellPrice(item, channel).final,
+          optionsPrice: opts.optionsPrice,
+          optionNote:
+            opts.optionNames.length > 0
+              ? opts.optionNames.join(" · ")
+              : undefined,
+        };
+      });
+  }, [regularItems, qtyByItemId, selectedByGroup, channel]);
+
+  const orderTotal = useMemo(() => {
+    const items = summaryLines.reduce(
+      (sum, line) =>
+        sum + (line.unitPrice + line.optionsPrice) * line.quantity,
+      0,
+    );
+    return items + deliveryFee;
+  }, [summaryLines, deliveryFee]);
+
+  function clearValidation() {
+    setError("");
+    setAlertMessage(null);
+    setOptionErrorGroupId(null);
+  }
+
+  function fail(message: string, anchorId?: string, groupId?: string | null) {
+    setError(message);
+    setAlertMessage(message);
+    setOptionErrorGroupId(groupId ?? null);
+    if (anchorId) {
+      window.setTimeout(() => scrollToStaffAnchor(anchorId), 50);
+    }
+  }
+
   function setQty(itemId: string, next: number) {
+    clearValidation();
     setQtyByItemId((prev) => {
       const q = Math.max(0, Math.min(99, Math.floor(next)));
       if (q <= 0) {
@@ -144,14 +217,13 @@ export default function StaffRegularKeyOrderPage() {
   }
 
   async function submit() {
-    setError("");
-    setOptionErrorGroupId(null);
+    clearValidation();
 
     const lines = regularItems.filter(
       (item) => (qtyByItemId[item.id] ?? 0) > 0 && !item.isOutOfStock,
     );
     if (lines.length === 0) {
-      setError("กรุณาเลือกอย่างน้อย 1 เมนู");
+      fail("กรุณาเลือกอย่างน้อย 1 เมนู", "staff-menu-section");
       return;
     }
 
@@ -161,15 +233,14 @@ export default function StaffRegularKeyOrderPage() {
       );
       const result = validateOptionGroupSelections(groups, selectedByGroup);
       if (result) {
-        setError(result.error);
-        setOptionErrorGroupId(result.groupId);
+        fail(result.error, `staff-opt-group-${result.groupId}`, result.groupId);
         return;
       }
     }
 
     const fulfillErr = validateStaffFulfillment(fulfillment, deliveryLocations);
     if (fulfillErr) {
-      setError(fulfillErr);
+      fail(fulfillErr, "staff-fulfillment");
       return;
     }
 
@@ -206,12 +277,12 @@ export default function StaffRegularKeyOrderPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "บันทึกไม่สำเร็จ");
+        fail(data.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
       router.replace("/staff");
     } catch {
-      setError("บันทึกไม่สำเร็จ กรุณาลองใหม่");
+      fail("บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setSubmitting(false);
     }
@@ -234,18 +305,22 @@ export default function StaffRegularKeyOrderPage() {
         >
           {submitting
             ? "กำลังบันทึก…"
-            : `บันทึกออเดอร์ · ${selectedCount} ชิ้น`}
+            : `บันทึกออเดอร์ · ${formatPrice(orderTotal)}฿`}
         </button>
       }
     >
       <StaffRoundStatusStrip state={roundState} />
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4">
+      <section
+        id="staff-menu-section"
+        tabIndex={-1}
+        className="rounded-2xl border border-gray-200 bg-white p-4 outline-none"
+      >
         <div className="mb-3 flex items-end justify-between gap-2">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">เลือกเมนู</h2>
             <p className="text-xs text-gray-500">
-              กด + เพิ่มหลายเมนูในหน้าเดียว · ไม่มีตะกร้าแยก
+              เรียงตามพยัญชนะไทย · กด + เพิ่มหลายเมนูในหน้าเดียว
             </p>
           </div>
           <Link
@@ -390,12 +465,13 @@ export default function StaffRegularKeyOrderPage() {
                 compact
                 selectedIds={selectedByGroup[group.id] ?? []}
                 highlightError={optionErrorGroupId === group.id}
-                onChange={(ids) =>
+                onChange={(ids) => {
+                  clearValidation();
                   setSelectedByGroup((prev) => ({
                     ...prev,
                     [group.id]: ids,
-                  }))
-                }
+                  }));
+                }}
               />
             </div>
           ))}
@@ -404,15 +480,26 @@ export default function StaffRegularKeyOrderPage() {
 
       <StaffQuickFulfillment
         value={fulfillment}
-        onChange={setFulfillment}
+        onChange={(next) => {
+          clearValidation();
+          setFulfillment(next);
+        }}
         deliveryLocations={deliveryLocations}
       />
+
+      <StaffOrderSummary lines={summaryLines} deliveryFee={deliveryFee} />
 
       {error ? (
         <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       ) : null}
+
+      <StaffKeyOrderAlertModal
+        open={Boolean(alertMessage)}
+        message={alertMessage ?? ""}
+        onClose={() => setAlertMessage(null)}
+      />
     </StaffKeyOrderLayout>
   );
 }

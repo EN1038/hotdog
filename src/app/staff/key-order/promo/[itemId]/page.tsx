@@ -15,6 +15,11 @@ import {
   validateStaffFulfillment,
   type StaffFulfillmentState,
 } from "@/components/staff/StaffQuickFulfillment";
+import {
+  StaffKeyOrderAlertModal,
+  StaffOrderSummary,
+  scrollToStaffAnchor,
+} from "@/components/staff/StaffOrderSummary";
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
 import { formatPrice } from "@/lib/constants";
 import type { MenuItemData } from "@/lib/customer-types";
@@ -29,9 +34,11 @@ import {
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
 import {
+  computeSelectedOptions,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
+import { sortByThaiName } from "@/lib/thai-sort";
 
 export default function StaffPromoKeyOrderDetailPage() {
   const { itemId } = useParams<{ itemId: string }>();
@@ -44,6 +51,7 @@ export default function StaffPromoKeyOrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [branchName, setBranchName] = useState("");
   const [item, setItem] = useState<MenuItemData | null>(null);
   const [promoCount, setPromoCount] = useState(0);
@@ -73,8 +81,8 @@ export default function StaffPromoKeyOrderDetailPage() {
       const items = Array.isArray(data.menuItems)
         ? (data.menuItems as MenuItemData[])
         : [];
-      const promos = items.filter(
-        (m) => isPromoMenuItem(m) && !m.isOutOfStock,
+      const promos = sortByThaiName(
+        items.filter((m) => isPromoMenuItem(m) && !m.isOutOfStock),
       );
       const found = promos.find((m) => m.id === itemId) ?? null;
       setBranchName(data.branchName ?? "");
@@ -104,13 +112,71 @@ export default function StaffPromoKeyOrderDetailPage() {
 
   const unitPrice = item ? resolveSellPrice(item, channel).final : 0;
 
+  const selectedOpts = useMemo(
+    () =>
+      computeSelectedOptions(item?.optionGroups ?? [], selectedByGroup),
+    [item, selectedByGroup],
+  );
+
+  const deliveryFee = useMemo(() => {
+    if (fulfillment.fulfillmentType !== "DELIVERY") return 0;
+    const loc = deliveryLocations.find(
+      (l) => l.id === fulfillment.deliveryLocationId,
+    );
+    return loc ? Number(loc.deliveryFee) : 0;
+  }, [
+    fulfillment.fulfillmentType,
+    fulfillment.deliveryLocationId,
+    deliveryLocations,
+  ]);
+
+  const summaryLines = useMemo(() => {
+    if (!item) return [];
+    return [
+      {
+        id: item.id,
+        name: item.name,
+        quantity,
+        unitPrice,
+        optionsPrice: selectedOpts.optionsPrice,
+        optionNote:
+          selectedOpts.optionNames.length > 0
+            ? selectedOpts.optionNames.join(" · ")
+            : undefined,
+      },
+    ];
+  }, [item, quantity, unitPrice, selectedOpts]);
+
+  const orderTotal = useMemo(() => {
+    const items = summaryLines.reduce(
+      (sum, line) =>
+        sum + (line.unitPrice + line.optionsPrice) * line.quantity,
+      0,
+    );
+    return items + deliveryFee;
+  }, [summaryLines, deliveryFee]);
+
+  function clearValidation() {
+    setError("");
+    setAlertMessage(null);
+    setOptionErrorGroupId(null);
+  }
+
+  function fail(message: string, anchorId?: string, groupId?: string | null) {
+    setError(message);
+    setAlertMessage(message);
+    setOptionErrorGroupId(groupId ?? null);
+    if (anchorId) {
+      window.setTimeout(() => scrollToStaffAnchor(anchorId), 50);
+    }
+  }
+
   async function submit() {
     if (!item) return;
-    setError("");
-    setOptionErrorGroupId(null);
+    clearValidation();
 
     if (!canSell) {
-      setError("เมนูนี้ไม่พร้อมขายในช่องทางที่เลือก");
+      fail("เมนูนี้ไม่พร้อมขายในช่องทางที่เลือก", "staff-promo-item");
       return;
     }
 
@@ -119,14 +185,13 @@ export default function StaffPromoKeyOrderDetailPage() {
       selectedByGroup,
     );
     if (result) {
-      setError(result.error);
-      setOptionErrorGroupId(result.groupId);
+      fail(result.error, `staff-opt-group-${result.groupId}`, result.groupId);
       return;
     }
 
     const fulfillErr = validateStaffFulfillment(fulfillment, deliveryLocations);
     if (fulfillErr) {
-      setError(fulfillErr);
+      fail(fulfillErr, "staff-fulfillment");
       return;
     }
 
@@ -166,12 +231,12 @@ export default function StaffPromoKeyOrderDetailPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "บันทึกไม่สำเร็จ");
+        fail(data.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
       router.replace("/staff");
     } catch {
-      setError("บันทึกไม่สำเร็จ กรุณาลองใหม่");
+      fail("บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setSubmitting(false);
     }
@@ -213,7 +278,7 @@ export default function StaffPromoKeyOrderDetailPage() {
         >
           {submitting
             ? "กำลังบันทึก…"
-            : `บันทึกออเดอร์ · ${formatPrice(unitPrice * quantity)}฿`}
+            : `บันทึกออเดอร์ · ${formatPrice(orderTotal)}฿`}
         </button>
       }
     >
@@ -228,7 +293,11 @@ export default function StaffPromoKeyOrderDetailPage() {
         </Link>
       ) : null}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4">
+      <section
+        id="staff-promo-item"
+        tabIndex={-1}
+        className="rounded-2xl border border-gray-200 bg-white p-4 outline-none"
+      >
         <div className="flex items-start gap-3">
           <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
             {item.imageUrl ? (
@@ -251,7 +320,10 @@ export default function StaffPromoKeyOrderDetailPage() {
               <button
                 type="button"
                 disabled={quantity <= 1}
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                onClick={() => {
+                  clearValidation();
+                  setQuantity((q) => Math.max(1, q - 1));
+                }}
                 className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-lg font-bold disabled:opacity-40"
               >
                 −
@@ -261,7 +333,10 @@ export default function StaffPromoKeyOrderDetailPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setQuantity((q) => Math.min(20, q + 1))}
+                onClick={() => {
+                  clearValidation();
+                  setQuantity((q) => Math.min(20, q + 1));
+                }}
                 className="flex h-8 w-8 items-center justify-center rounded-lg bg-site-primary text-lg font-bold text-white"
               >
                 +
@@ -274,7 +349,7 @@ export default function StaffPromoKeyOrderDetailPage() {
 
       <div className="w-full min-w-0 space-y-3">
         <p className="text-xs text-gray-500">
-          กรอกตามลำดับด้านล่าง แล้วบันทึกได้ในหน้านี้
+          รายการในตัวเลือกเรียงตามพยัญชนะไทย · กรอกแล้วบันทึกในหน้านี้
         </p>
         {orderedGroups.map((group) => {
           const isPack = group.mode === "FROM_MENU";
@@ -300,12 +375,13 @@ export default function StaffPromoKeyOrderDetailPage() {
                 compact
                 selectedIds={selectedByGroup[group.id] ?? []}
                 highlightError={optionErrorGroupId === group.id}
-                onChange={(ids) =>
+                onChange={(ids) => {
+                  clearValidation();
                   setSelectedByGroup((prev) => ({
                     ...prev,
                     [group.id]: ids,
-                  }))
-                }
+                  }));
+                }}
               />
             </section>
           );
@@ -314,15 +390,26 @@ export default function StaffPromoKeyOrderDetailPage() {
 
       <StaffQuickFulfillment
         value={fulfillment}
-        onChange={setFulfillment}
+        onChange={(next) => {
+          clearValidation();
+          setFulfillment(next);
+        }}
         deliveryLocations={deliveryLocations}
       />
+
+      <StaffOrderSummary lines={summaryLines} deliveryFee={deliveryFee} />
 
       {error ? (
         <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       ) : null}
+
+      <StaffKeyOrderAlertModal
+        open={Boolean(alertMessage)}
+        message={alertMessage ?? ""}
+        onClose={() => setAlertMessage(null)}
+      />
     </StaffKeyOrderLayout>
   );
 }

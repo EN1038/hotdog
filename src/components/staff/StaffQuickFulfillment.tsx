@@ -50,8 +50,26 @@ export function StaffQuickFulfillment({
     onChange({ ...value, ...partial });
   }
 
+  function handleMapPinChange(mapPin: MapLocationValue) {
+    const fromMap = mapPin.address.trim();
+    const current = value.addressDetail.trim();
+    // Fill address when empty, or replace if it still matches the previous map address
+    const prevMapAddr = value.mapPin.address.trim();
+    const shouldFill =
+      Boolean(fromMap) &&
+      (!current || (prevMapAddr.length > 0 && current === prevMapAddr));
+    patch({
+      mapPin,
+      addressDetail: shouldFill ? fromMap : value.addressDetail,
+    });
+  }
+
   return (
-    <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
+    <section
+      id="staff-fulfillment"
+      tabIndex={-1}
+      className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 outline-none"
+    >
       <h2 className="text-sm font-semibold text-gray-900">รับออเดอร์ / ชำระเงิน</h2>
 
       <div className="grid grid-cols-2 gap-2">
@@ -105,6 +123,27 @@ export function StaffQuickFulfillment({
               ))}
             </select>
           </div>
+
+          {needsCustomPin ? (
+            <div>
+              <p className="mb-1 text-xs font-medium text-gray-500">
+                ปักหมุดจัดส่ง
+              </p>
+              <p className="mb-2 text-[11px] leading-relaxed text-gray-500">
+                คลิกหรือลากหมุด — ระบบจะดึงที่อยู่ใกล้เคียงมาใส่ช่องด้านล่างให้
+                (แก้เองได้)
+              </p>
+              <AdminMapLocationPicker
+                value={value.mapPin}
+                onChange={handleMapPinChange}
+                geocodePath="/api/customer/geocode"
+                hideAddressField
+                enableMyLocation
+                mapHeightClassName="h-56"
+              />
+            </div>
+          ) : null}
+
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">
               ที่อยู่ / จุดสังเกต
@@ -113,31 +152,24 @@ export function StaffQuickFulfillment({
                 : ""}
             </label>
             <textarea
-              rows={2}
+              rows={needsCustomPin ? 3 : 2}
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
               value={value.addressDetail}
               onChange={(e) => patch({ addressDetail: e.target.value })}
-              placeholder="เช่น ห้อง / ตึก / จุดสังเกต"
+              placeholder={
+                needsCustomPin
+                  ? value.addressDetail.trim()
+                    ? "เพิ่มจุดสังเกตต่อท้ายได้ เช่น ห้อง / ตึก / สีบ้าน"
+                    : "รอระบบเติมจากแผนที่ หรือพิมพ์ที่อยู่เอง…"
+                  : "เช่น ห้อง / ตึก / จุดสังเกต"
+              }
             />
-          </div>
-          {needsCustomPin ? (
-            <div>
-              <p className="mb-1 text-xs font-medium text-gray-500">
-                ปักหมุดจัดส่ง
+            {needsCustomPin && value.mapPin.address.trim() ? (
+              <p className="mt-1 text-[11px] text-gray-500">
+                ที่อยู่จากแผนที่ถูกเติมแล้ว — ตรวจให้ถูกและเพิ่มจุดสังเกตได้
               </p>
-              <AdminMapLocationPicker
-                value={value.mapPin}
-                onChange={(mapPin) =>
-                  patch({
-                    mapPin,
-                    addressDetail: value.addressDetail.trim()
-                      ? value.addressDetail
-                      : mapPin.address || value.addressDetail,
-                  })
-                }
-              />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       ) : null}
 

@@ -136,7 +136,7 @@ export function DateInput({
   }
 
   return (
-    <div className={showCalendar ? "flex w-full items-center gap-1" : "w-full"}>
+    <div className="relative w-full">
       <input
         id={inputId}
         name={name}
@@ -150,7 +150,13 @@ export function DateInput({
         value={text}
         onChange={(e) => handleTextChange(e.target.value)}
         onBlur={handleBlur}
-        className={className}
+        className={
+          showCalendar
+            ? className
+              ? `${className} pr-8`
+              : "pr-8"
+            : className
+        }
       />
       {showCalendar ? (
         <>
@@ -174,11 +180,11 @@ export function DateInput({
             disabled={disabled}
             aria-label="เปิดปฏิทิน"
             onClick={openNativePicker}
-            className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="absolute top-1/2 right-1 -translate-y-1/2 cursor-pointer rounded p-0.5 text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg
-              width="16"
-              height="16"
+              width="15"
+              height="15"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"

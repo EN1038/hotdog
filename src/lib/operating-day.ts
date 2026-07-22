@@ -249,7 +249,7 @@ export function formatOperatingDayShort(dateYmd: string): string {
 /**
  * Human window for an operating round that may span midnight.
  * cutoff 00:00 → null (calendar day, no overnight window).
- * else e.g. "04:00 น. (22 ก.ค.) – 04:00 น. (23 ก.ค.)"
+ * Compact one-line form, e.g. "11:00 น. (22–23 ก.ค.)"
  */
 export function formatOperatingRoundWindow(
   operatingDayKey: string,
@@ -259,5 +259,20 @@ export function formatOperatingRoundWindow(
   if (cutoff === DEFAULT_BUSINESS_DAY_CUTOFF) return null;
   if (!isBangkokDateKey(operatingDayKey)) return null;
   const nextKey = addDaysToDateKey(operatingDayKey, 1);
-  return `${cutoff} น. (${formatOperatingDayShort(operatingDayKey)}) – ${cutoff} น. (${formatOperatingDayShort(nextKey)})`;
+
+  try {
+    const start = new Date(`${operatingDayKey}T12:00:00+07:00`);
+    const end = new Date(`${nextKey}T12:00:00+07:00`);
+    const startDay = start.toLocaleDateString("th-TH", { day: "numeric" });
+    const endDay = end.toLocaleDateString("th-TH", { day: "numeric" });
+    const startMonth = start.toLocaleDateString("th-TH", { month: "short" });
+    const endMonth = end.toLocaleDateString("th-TH", { month: "short" });
+    const range =
+      startMonth === endMonth
+        ? `${startDay}–${endDay} ${startMonth}`
+        : `${startDay} ${startMonth}–${endDay} ${endMonth}`;
+    return `${cutoff} น. (${range})`;
+  } catch {
+    return `${cutoff} น. (${formatOperatingDayShort(operatingDayKey)}–${formatOperatingDayShort(nextKey)})`;
+  }
 }

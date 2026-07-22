@@ -10,6 +10,7 @@ import {
   qtyMapToOptionIds,
   selectionCount,
 } from "@/lib/option-selection";
+import { compareThaiText } from "@/lib/thai-sort";
 import { IconPlus, IconSkewerPlaceholder } from "@/components/icons";
 
 type Props = {
@@ -104,7 +105,7 @@ function useMenuOptionCategories(options: MenuOptionData[]) {
       if (!map.has(id)) map.set(id, { id, name, sortOrder });
     }
     return [...map.values()].sort(
-      (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "th"),
+      (a, b) => a.sortOrder - b.sortOrder || compareThaiText(a.name, b.name),
     );
   }, [options]);
 }
@@ -167,10 +168,13 @@ export function MenuOptionGroupPicker({
   const btnSize = compact ? "h-8 w-8" : "h-9 w-9";
 
   const visibleOptions = useMemo(() => {
-    if (!showCategoryFilter || categoryFilter === "ALL") return group.options;
-    return group.options.filter(
-      (o) => (o.categoryId ?? "__other__") === categoryFilter,
-    );
+    const filtered =
+      !showCategoryFilter || categoryFilter === "ALL"
+        ? group.options
+        : group.options.filter(
+            (o) => (o.categoryId ?? "__other__") === categoryFilter,
+          );
+    return [...filtered].sort((a, b) => compareThaiText(a.name, b.name));
   }, [group.options, showCategoryFilter, categoryFilter]);
 
   const min =
@@ -188,7 +192,13 @@ export function MenuOptionGroupPicker({
   if (useQty) {
     const qtyMap = optionIdsToQtyMap(selectedIds);
     return (
-      <div className="w-full min-w-0 max-w-full">
+      <div
+        id={`staff-opt-group-${group.id}`}
+        tabIndex={-1}
+        className={`w-full min-w-0 max-w-full rounded-xl outline-none ${
+          highlightError ? "ring-2 ring-red-400 ring-offset-2" : ""
+        }`}
+      >
         {subtitle && (
           <p
             className={`mt-0.5 text-[13px] ${
@@ -302,7 +312,13 @@ export function MenuOptionGroupPicker({
   }
 
   return (
-    <div className="w-full min-w-0 max-w-full">
+    <div
+      id={`staff-opt-group-${group.id}`}
+      tabIndex={-1}
+      className={`w-full min-w-0 max-w-full rounded-xl outline-none ${
+        highlightError ? "ring-2 ring-red-400 ring-offset-2" : ""
+      }`}
+    >
       {subtitle && (
         <p
           className={`mt-0.5 text-[13px] ${

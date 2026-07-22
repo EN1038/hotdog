@@ -44,7 +44,11 @@ import {
   readMenuItemScroll,
   scrollToMenuItem,
 } from "@/lib/menu-scroll-restore";
-import { isStaffKeyedOrderActive } from "@/lib/staff-keyed-order";
+import {
+  clearStaffKeyedOrder,
+  isStaffKeyedOrderActive,
+} from "@/lib/staff-keyed-order";
+import { StaffOperatingRoundBanner } from "@/components/staff/StaffOperatingRoundBanner";
 
 type MainTab = "menu" | "history";
 
@@ -283,10 +287,48 @@ export default function StorePage() {
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [mainTab, setMainTab] = useState<MainTab>("menu");
   const [staffKeyedOrder, setStaffKeyedOrder] = useState(false);
+  const [staffRound, setStaffRound] = useState<{
+    operatingDay: string;
+    businessDayCutoffTime: string;
+    lateEntryUntilTime: string | null;
+  } | null>(null);
 
   useEffect(() => {
-    setStaffKeyedOrder(isStaffKeyedOrderActive());
-  }, []);
+    const keyed = isStaffKeyedOrderActive();
+    setStaffKeyedOrder(keyed);
+    if (!keyed) return;
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/staff/branding");
+      if (cancelled) return;
+      if (res.status === 401) {
+        clearStaffKeyedOrder();
+        router.replace("/staff/login");
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (data.entryLocked || data.canEnter === false) {
+        clearStaffKeyedOrder();
+        router.replace("/staff");
+        return;
+      }
+      setStaffRound({
+        operatingDay:
+          typeof data.operatingDay === "string" ? data.operatingDay : "",
+        businessDayCutoffTime:
+          typeof data.businessDayCutoffTime === "string"
+            ? data.businessDayCutoffTime
+            : "00:00",
+        lateEntryUntilTime:
+          typeof data.lateEntryUntilTime === "string"
+            ? data.lateEntryUntilTime
+            : null,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
   const [isScrolled, setIsScrolled] = useState(false);
   
   const isManualScrolling = useRef(false);
@@ -553,6 +595,16 @@ export default function StorePage() {
 
   return (
     <main className={`min-h-screen bg-[#f5f5f6] relative ${cartCount > 0 && mainTab === "menu" ? "pb-[92px]" : "pb-0"}`}>
+      {staffKeyedOrder && staffRound ? (
+        <div className="sticky top-0 z-[60] border-b border-gray-200 bg-[#f5f5f6] px-4 py-2">
+          <StaffOperatingRoundBanner
+            compact
+            operatingDay={staffRound.operatingDay}
+            businessDayCutoffTime={staffRound.businessDayCutoffTime}
+            lateEntryUntilTime={staffRound.lateEntryUntilTime}
+          />
+        </div>
+      ) : null}
       {/* Sticky Header (appears on scroll) */}
       <div
         className={`fixed inset-x-0 top-0 z-50 bg-white shadow-sm transition-opacity duration-200 ${

@@ -8,13 +8,15 @@ import { z } from "zod";
 import { requireStaff } from "@/lib/auth";
 import {
   CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH,
-  bangkokDateKey,
   generateOrderNumber,
   isBangkokDateKey,
   queueBusinessDateFromKey,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import {
+  getOperatingRoundStatus,
+} from "@/lib/operating-day";
 import {
   optionGroupDetailInclude,
   resolveOrderItemOptionsFromPrisma,
@@ -120,10 +122,30 @@ export async function GET(request: Request) {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get("date");
-    const todayKey = bangkokDateKey();
+
+    const branchForDay = await prisma.branch.findUnique({
+      where: { id: session.branchId },
+      select: {
+        latitude: true,
+        longitude: true,
+        isOpen: true,
+        allowAdvanceOrder: true,
+        storefrontHours: true,
+        deliveryHours: true,
+        opensAt: true,
+        closesAt: true,
+        businessDayCutoffTime: true,
+        lateEntryUntilTime: true,
+      },
+    });
+    if (!branchForDay) return jsonError("ไม่พบสาขา", 404);
+
+    const dayState = getOperatingRoundStatus(branchForDay);
     const viewDateKey =
-      dateParam && isBangkokDateKey(dateParam) ? dateParam : todayKey;
-    const isToday = viewDateKey === todayKey;
+      dateParam && isBangkokDateKey(dateParam)
+        ? dateParam
+        : dayState.operatingDay;
+    const isToday = viewDateKey === dayState.operatingDay;
     const businessDate = queueBusinessDateFromKey(viewDateKey);
 
     const statsOrders = await prisma.order.findMany({
@@ -151,30 +173,15 @@ export async function GET(request: Request) {
       queueBusinessDate: businessDate,
     };
 
-    const [branch, orders] = await Promise.all([
-      prisma.branch.findUnique({
-        where: { id: session.branchId },
-        select: {
-          latitude: true,
-          longitude: true,
-          isOpen: true,
-          allowAdvanceOrder: true,
-          storefrontHours: true,
-          deliveryHours: true,
-          opensAt: true,
-          closesAt: true,
-        },
-      }),
-      prisma.order.findMany({
-        where,
-        include: {
-          customer: true,
-          deliveryLocation: true,
-          items: { include: { branchMenuItem: true } },
-        },
-        orderBy: [{ status: "asc" }, { createdAt: "asc" }],
-      }),
-    ]);
+    const orders = await prisma.order.findMany({
+      where,
+      include: {
+        customer: true,
+        deliveryLocation: true,
+        items: { include: { branchMenuItem: true } },
+      },
+      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+    });
 
     const canToggleStore =
       session.staffRoles.includes("SELLER") ||
@@ -184,19 +191,30 @@ export async function GET(request: Request) {
       orders,
       viewDate: viewDateKey,
       isToday,
+      operatingDay: dayState.operatingDay,
+      entryLocked: dayState.entryLocked,
+      canEnter: dayState.canEnter && isToday,
+      businessDayCutoffTime: dayState.cutoffTime,
+      lateEntryUntilTime: dayState.lateEntryUntilTime,
+      entryDeadlineHm: dayState.entryDeadlineHm,
+      minutesRemaining: dayState.minutesRemaining,
+      tone: dayState.tone,
       dayStats,
       roles: session.staffRoles,
       branchName: session.branchName,
       brand: session.brand,
       autoAcceptOrders: session.autoAcceptOrders ?? false,
-      branchStatus: branch ? branchStatusSummary(branch) : null,
+      branchStatus: branchStatusSummary(branchForDay),
       canToggleStore,
       branchPin:
-        branch?.latitude != null &&
-        branch?.longitude != null &&
-        Number.isFinite(branch.latitude) &&
-        Number.isFinite(branch.longitude)
-          ? { latitude: branch.latitude, longitude: branch.longitude }
+        branchForDay.latitude != null &&
+        branchForDay.longitude != null &&
+        Number.isFinite(branchForDay.latitude) &&
+        Number.isFinite(branchForDay.longitude)
+          ? {
+              latitude: branchForDay.latitude,
+              longitude: branchForDay.longitude,
+            }
           : null,
     });
   } catch (error) {
@@ -223,6 +241,15 @@ export async function POST(request: Request) {
       where: { id: session.branchId },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
+
+    const dayState = getOperatingRoundStatus(branch);
+    if (dayState.entryLocked) {
+      return jsonError(
+        dayState.lateEntryUntilTime
+          ? `ปิดรอบคีย์ออเดอร์แล้ว (คีย์ได้ถึง ${dayState.lateEntryUntilTime} น.) — รอบใหม่เริ่ม ${dayState.cutoffTime} น.`
+          : `ปิดรอบคีย์ออเดอร์แล้ว — รอบใหม่เริ่ม ${dayState.cutoffTime} น.`,
+      );
+    }
 
     const requestedIds = body.items.map((i) => i.branchMenuItemId);
     const [orderableMenus, anyMenus] = await Promise.all([
@@ -411,56 +438,62 @@ export async function POST(request: Request) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const orderNumber = generateOrderNumber();
       try {
-        order = await createOrderWithDailyQueue(session.branchId, (queue) => ({
-          data: {
-            orderNumber,
-            queueNumber: queue.queueNumber,
-            queueBusinessDate: queue.queueBusinessDate,
-            customerId: staffCustomer.id,
-            branchId: session.branchId,
-            fulfillmentType: body.fulfillmentType,
-            deliveryLocationId:
-              body.fulfillmentType === "DELIVERY"
-                ? body.deliveryLocationId
+        order = await createOrderWithDailyQueue(
+          session.branchId,
+          (queue) => ({
+            data: {
+              orderNumber,
+              queueNumber: queue.queueNumber,
+              queueBusinessDate: queue.queueBusinessDate,
+              customerId: staffCustomer.id,
+              branchId: session.branchId,
+              fulfillmentType: body.fulfillmentType,
+              deliveryLocationId:
+                body.fulfillmentType === "DELIVERY"
+                  ? body.deliveryLocationId
+                  : null,
+              addressDetail:
+                body.fulfillmentType === "DELIVERY"
+                  ? body.addressDetail?.trim()
+                  : null,
+              deliveryLatitude:
+                body.fulfillmentType === "DELIVERY" &&
+                body.deliveryLatitude != null
+                  ? body.deliveryLatitude
+                  : null,
+              deliveryLongitude:
+                body.fulfillmentType === "DELIVERY" &&
+                body.deliveryLongitude != null
+                  ? body.deliveryLongitude
+                  : null,
+              customerName,
+              customerPhone,
+              isNewCustomer,
+              scheduledAt: body.scheduledAt
+                ? new Date(body.scheduledAt)
                 : null,
-            addressDetail:
-              body.fulfillmentType === "DELIVERY"
-                ? body.addressDetail?.trim()
-                : null,
-            deliveryLatitude:
-              body.fulfillmentType === "DELIVERY" &&
-              body.deliveryLatitude != null
-                ? body.deliveryLatitude
-                : null,
-            deliveryLongitude:
-              body.fulfillmentType === "DELIVERY" &&
-              body.deliveryLongitude != null
-                ? body.deliveryLongitude
-                : null,
-            customerName,
-            customerPhone,
-            isNewCustomer,
-            scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-            note: body.note?.trim() || null,
-            paymentMethod: body.paymentMethod,
-            deliveryFee: new Prisma.Decimal(deliveryFee),
-            discountAmount: new Prisma.Decimal(0),
-            promoSummary: null,
-            createdByStaffId: session.staffId,
-            status: branch.autoAcceptOrders
-              ? OrderStatus.PREPARING
-              : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
-            items: {
-              create: orderItems,
+              note: body.note?.trim() || null,
+              paymentMethod: body.paymentMethod,
+              deliveryFee: new Prisma.Decimal(deliveryFee),
+              discountAmount: new Prisma.Decimal(0),
+              promoSummary: null,
+              createdByStaffId: session.staffId,
+              status: branch.autoAcceptOrders
+                ? OrderStatus.PREPARING
+                : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+              items: {
+                create: orderItems,
+              },
             },
-          },
-          include: {
-            branch: true,
-            deliveryLocation: true,
-            items: true,
-            customer: true,
-          },
-        }));
+            include: {
+              branch: true,
+              deliveryLocation: true,
+              items: true,
+              customer: true,
+            },
+          }),
+          { cutoffTime: branch.businessDayCutoffTime },
+        );
         break;
       } catch (e) {
         if (

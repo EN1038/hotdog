@@ -51,6 +51,7 @@ type GroupWithSources = {
   minSelect: number;
   maxSelect: number;
   allowDuplicateSelections: boolean;
+  sortOrder?: number;
   createdAt?: Date | string;
   options: Array<{
     id: string;
@@ -135,6 +136,7 @@ export function serializeOptionGroup(group: GroupWithSources) {
     minSelect: group.minSelect,
     maxSelect: group.maxSelect,
     allowDuplicateSelections: group.allowDuplicateSelections,
+    sortOrder: group.sortOrder ?? 0,
     createdAt: group.createdAt,
     options: expandGroupOptions(group).map((o) => {
       const base = {
@@ -167,15 +169,29 @@ type LinkedGroup = {
   group: GroupWithSources;
 };
 
+function linkSortKey(link: LinkedGroup) {
+  const sortOrder = link.group.sortOrder ?? 0;
+  const created =
+    link.group.createdAt != null
+      ? new Date(link.group.createdAt).getTime()
+      : new Date(link.createdAt).getTime();
+  return { sortOrder, created };
+}
+
 /** Flatten junction → optionGroups for admin/customer APIs */
 export function flattenMenuItemOptionGroups<T extends { optionGroupLinks: LinkedGroup[] }>(
   item: T,
 ) {
   const { optionGroupLinks, ...rest } = item;
+  const links = [...optionGroupLinks].sort((a, b) => {
+    const ka = linkSortKey(a);
+    const kb = linkSortKey(b);
+    return ka.sortOrder - kb.sortOrder || ka.created - kb.created;
+  });
   return {
     ...rest,
-    optionGroups: optionGroupLinks.map((link) => serializeOptionGroup(link.group)),
-    optionGroupIds: optionGroupLinks.map((link) => link.group.id),
+    optionGroups: links.map((link) => serializeOptionGroup(link.group)),
+    optionGroupIds: links.map((link) => link.group.id),
   };
 }
 

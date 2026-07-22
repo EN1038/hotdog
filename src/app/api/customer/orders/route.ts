@@ -291,54 +291,60 @@ export async function POST(request: Request) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const orderNumber = generateOrderNumber();
       try {
-        order = await createOrderWithDailyQueue(body.branchId, (queue) => ({
-          data: {
-            orderNumber,
-            queueNumber: queue.queueNumber,
-            queueBusinessDate: queue.queueBusinessDate,
-            customerId: session.customerId!,
-            branchId: body.branchId,
-            fulfillmentType: body.fulfillmentType,
-            deliveryLocationId:
-              body.fulfillmentType === "DELIVERY"
-                ? body.deliveryLocationId
+        order = await createOrderWithDailyQueue(
+          body.branchId,
+          (queue) => ({
+            data: {
+              orderNumber,
+              queueNumber: queue.queueNumber,
+              queueBusinessDate: queue.queueBusinessDate,
+              customerId: session.customerId!,
+              branchId: body.branchId,
+              fulfillmentType: body.fulfillmentType,
+              deliveryLocationId:
+                body.fulfillmentType === "DELIVERY"
+                  ? body.deliveryLocationId
+                  : null,
+              addressDetail:
+                body.fulfillmentType === "DELIVERY"
+                  ? body.addressDetail?.trim()
+                  : null,
+              deliveryLatitude:
+                body.fulfillmentType === "DELIVERY" &&
+                body.deliveryLatitude != null
+                  ? body.deliveryLatitude
+                  : null,
+              deliveryLongitude:
+                body.fulfillmentType === "DELIVERY" &&
+                body.deliveryLongitude != null
+                  ? body.deliveryLongitude
+                  : null,
+              customerName: body.customerName,
+              customerPhone: session.customerPhone ?? "",
+              isNewCustomer,
+              scheduledAt: body.scheduledAt
+                ? new Date(body.scheduledAt)
                 : null,
-            addressDetail:
-              body.fulfillmentType === "DELIVERY"
-                ? body.addressDetail?.trim()
-                : null,
-            deliveryLatitude:
-              body.fulfillmentType === "DELIVERY" &&
-              body.deliveryLatitude != null
-                ? body.deliveryLatitude
-                : null,
-            deliveryLongitude:
-              body.fulfillmentType === "DELIVERY" &&
-              body.deliveryLongitude != null
-                ? body.deliveryLongitude
-                : null,
-            customerName: body.customerName,
-            customerPhone: session.customerPhone ?? "",
-            isNewCustomer,
-            scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-            note: body.note?.trim() || null,
-            paymentMethod: body.paymentMethod,
-            deliveryFee: new Prisma.Decimal(deliveryFee),
-            discountAmount: new Prisma.Decimal(0),
-            promoSummary: null,
-            status: branch.autoAcceptOrders
-              ? OrderStatus.PREPARING
-              : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
-            items: {
-              create: orderItems,
+              note: body.note?.trim() || null,
+              paymentMethod: body.paymentMethod,
+              deliveryFee: new Prisma.Decimal(deliveryFee),
+              discountAmount: new Prisma.Decimal(0),
+              promoSummary: null,
+              status: branch.autoAcceptOrders
+                ? OrderStatus.PREPARING
+                : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+              items: {
+                create: orderItems,
+              },
             },
-          },
-          include: {
-            branch: true,
-            deliveryLocation: true,
-            items: true,
-          },
-        }));
+            include: {
+              branch: true,
+              deliveryLocation: true,
+              items: true,
+            },
+          }),
+          { cutoffTime: branch.businessDayCutoffTime },
+        );
         break;
       } catch (e) {
         if (

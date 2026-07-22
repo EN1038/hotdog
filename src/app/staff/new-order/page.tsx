@@ -19,6 +19,10 @@ export default function StaffNewOrderPage() {
         return;
       }
       const data = await res.json().catch(() => ({}));
+      if (data.entryLocked || data.canEnter === false) {
+        router.replace("/staff");
+        return;
+      }
       const branchId = data.branchId as string | undefined;
       if (!branchId) {
         router.replace("/staff");

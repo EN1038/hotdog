@@ -53,7 +53,7 @@ export function StaffRoundSelector({
   const remaining = formatMinutesRemainingTh(live.minutesRemaining);
 
   return (
-    <div className="w-[9.75rem] text-right" role="group" aria-label="เลือกรอบทำงาน">
+    <div className="w-[11rem] text-right" role="group" aria-label="เลือกรอบทำงาน">
       <label
         htmlFor="staff-round-picker"
         className="text-[10px] font-medium uppercase tracking-wide text-gray-400"
@@ -75,7 +75,7 @@ export function StaffRoundSelector({
         รอบ {dayLabel}
       </p>
       {windowLabel ? (
-        <p className="mt-0.5 text-[10px] leading-snug text-gray-600">
+        <p className="mt-0.5 whitespace-nowrap text-[10px] leading-snug text-gray-600">
           {windowLabel}
         </p>
       ) : null}

@@ -18,6 +18,7 @@ import {
 import {
   StaffKeyOrderAlertModal,
   StaffOrderSummary,
+  StaffOrderStickySummary,
   scrollToStaffAnchor,
   type StaffOrderSummaryLine,
 } from "@/components/staff/StaffOrderSummary";
@@ -42,6 +43,7 @@ import {
   type SelectedByGroup,
 } from "@/lib/option-selection";
 import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
+import { saveStaffOrderFeedback } from "@/lib/staff-order-feedback";
 
 type MenuPayload = {
   branchName?: string;
@@ -74,6 +76,7 @@ export default function StaffRegularKeyOrderPage() {
   const [fulfillment, setFulfillment] = useState<StaffFulfillmentState>(
     emptyStaffFulfillment,
   );
+  const [showStickySummary, setShowStickySummary] = useState(true);
 
   useEffect(() => {
     if (blocked || roundLoading || !roundState) return;
@@ -187,6 +190,21 @@ export default function StaffRegularKeyOrderPage() {
     );
     return items + deliveryFee;
   }, [summaryLines, deliveryFee]);
+  const selectedLineCount = summaryLines.length;
+  const selectedPieceCount = selectedCount;
+
+  useEffect(() => {
+    const summary = document.getElementById("staff-order-summary");
+    if (!summary) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowStickySummary(!entry.isIntersecting);
+      },
+      { rootMargin: "0px 0px -96px 0px", threshold: 0.05 },
+    );
+    observer.observe(summary);
+    return () => observer.disconnect();
+  }, [selectedLineCount, deliveryFee]);
 
   function clearValidation() {
     setError("");
@@ -277,11 +295,28 @@ export default function StaffRegularKeyOrderPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        saveStaffOrderFeedback({
+          kind: "error",
+          message: data.error ?? "บันทึกไม่สำเร็จ",
+        });
         fail(data.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
+      saveStaffOrderFeedback({
+        kind: "success",
+        message: "บันทึกออเดอร์แล้ว",
+        orderId: typeof data.id === "string" ? data.id : undefined,
+        queueNumber:
+          typeof data.queueNumber === "number" ? data.queueNumber : null,
+        totalAmount:
+          typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
+      });
       router.replace("/staff");
     } catch {
+      saveStaffOrderFeedback({
+        kind: "error",
+        message: "บันทึกไม่สำเร็จ กรุณาลองใหม่",
+      });
       fail("บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setSubmitting(false);
@@ -309,6 +344,19 @@ export default function StaffRegularKeyOrderPage() {
         </button>
       }
     >
+      {selectedLineCount > 0 && showStickySummary ? (
+        <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
+          <div className="mx-auto max-w-lg">
+            <StaffOrderStickySummary
+              lineCount={selectedLineCount}
+              pieceCount={selectedPieceCount}
+              totalAmount={orderTotal}
+              onClick={() => scrollToStaffAnchor("staff-order-summary")}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <StaffRoundStatusStrip state={roundState} />
 
       <section

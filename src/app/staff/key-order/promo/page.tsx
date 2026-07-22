@@ -13,6 +13,7 @@ import { formatPrice } from "@/lib/constants";
 import type { MenuItemData } from "@/lib/customer-types";
 import { resolveSellPrice } from "@/lib/menu-pricing";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
+import { sortByThaiName } from "@/lib/thai-sort";
 
 export default function StaffPromoKeyOrderIndexPage() {
   const router = useRouter();
@@ -43,8 +44,8 @@ export default function StaffPromoKeyOrderIndexPage() {
       setMenuItems(items);
       setLoading(false);
 
-      const promos = items.filter(
-        (item) => isPromoMenuItem(item) && !item.isOutOfStock,
+      const promos = sortByThaiName(
+        items.filter((item) => isPromoMenuItem(item) && !item.isOutOfStock),
       );
       if (promos.length === 1) {
         router.replace(`/staff/key-order/promo/${promos[0]!.id}`);
@@ -57,7 +58,9 @@ export default function StaffPromoKeyOrderIndexPage() {
 
   const promoItems = useMemo(
     () =>
-      menuItems.filter((item) => isPromoMenuItem(item) && !item.isOutOfStock),
+      sortByThaiName(
+        menuItems.filter((item) => isPromoMenuItem(item) && !item.isOutOfStock),
+      ),
     [menuItems],
   );
 
@@ -97,7 +100,7 @@ export default function StaffPromoKeyOrderIndexPage() {
             เลือกโปรโมชั่น
           </h2>
           <p className="mb-3 text-xs text-gray-500">
-            มี {promoItems.length} รายการ — กดเพื่อกรอกในหน้าเดียว
+            เรียงตามพยัญชนะไทย · มี {promoItems.length} รายการ
           </p>
           <ul className="divide-y divide-gray-100">
             {promoItems.map((item) => {

@@ -9,6 +9,7 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import { canStaffMutateOperatingDay } from "@/lib/operating-day";
 
 const statusSchema = z.object({
   status: z.nativeEnum(OrderStatus),
@@ -39,9 +40,26 @@ export async function PATCH(request: Request, { params }: Params) {
     });
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
 
-    if (bangkokDateKey(order.queueBusinessDate) !== bangkokDateKey()) {
+    const branch = await prisma.branch.findUnique({
+      where: { id: session.branchId },
+      select: {
+        businessDayCutoffTime: true,
+        lateEntryUntilTime: true,
+      },
+    });
+    if (!branch) return jsonError("ไม่พบสาขา", 404);
+
+    const orderDayKey = bangkokDateKey(order.queueBusinessDate);
+    if (
+      !canStaffMutateOperatingDay(
+        orderDayKey,
+        new Date(),
+        branch.businessDayCutoffTime,
+        branch.lateEntryUntilTime,
+      )
+    ) {
       return jsonError(
-        "แก้ไขได้เฉพาะออเดอร์ของวันนี้ — กลับไปที่วันปัจจุบันก่อน",
+        "แก้ไขได้เฉพาะออเดอร์ของรอบเปิดร้านปัจจุบัน และต้องอยู่ในเวลาที่ยังคีย์ได้",
         403,
       );
     }

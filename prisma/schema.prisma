@@ -194,6 +194,10 @@ model Branch {
   deliveryHours      Json?
   allowAdvanceOrder  Boolean            @default(true)
   autoAcceptOrders   Boolean            @default(false)
+  /// HH:mm Asia/Bangkok — operating day rolls at this clock time (00:00 = calendar midnight)
+  businessDayCutoffTime String          @default("00:00")
+  /// HH:mm Asia/Bangkok — staff late entry closes at this time (null = until cutoff)
+  lateEntryUntilTime String?
   createdAt          DateTime           @default(now())
   brand              Brand?               @relation(fields: [brandId], references: [id])
   staff              Staff[]
@@ -387,9 +391,9 @@ model CustomerOtpChallenge {
 model Order {
   id                 String            @id @default(cuid())
   orderNumber        String            @unique
-  /// Per-branch daily queue (1, 2, 3…) reset each Bangkok calendar day
+  /// Per-branch daily queue (1, 2, 3…) reset each operating day
   queueNumber        Int
-  /// Bangkok business date for queue reset (paired with queueNumber)
+  /// Operating / queue day for this branch (paired with queueNumber; not migrated for old rows)
   queueBusinessDate  DateTime          @db.Date
   customerId         String
   branchId           String

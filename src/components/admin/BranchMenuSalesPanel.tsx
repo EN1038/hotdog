@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { adminInputClass, adminLabelClass } from "@/components/admin/AdminShell";
+import { DateInput } from "@/components/DateInput";
 import { MenuSalesLineChart } from "@/components/admin/MenuSalesLineChart";
-import { bangkokDateKey } from "@/lib/branch-hours";
 
 type SalesItem = {
   id: string;
@@ -40,6 +40,7 @@ type TrendPayload = {
 
 type SalesPayload = {
   date: string;
+  operatingDay?: string;
   summary: SalesSummary;
   items: SalesItem[];
   trend: TrendPayload | null;
@@ -52,12 +53,9 @@ function money(n: number) {
   });
 }
 
-function todayYmd() {
-  return bangkokDateKey(new Date());
-}
-
 export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
-  const [date, setDate] = useState(todayYmd);
+  const [date, setDate] = useState("");
+  const [operatingDay, setOperatingDay] = useState("");
   const [metric, setMetric] = useState<"quantity" | "revenue">("quantity");
   const [data, setData] = useState<SalesPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,9 +65,10 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(
-      `/api/admin/branches/${branchId}/menu-sales?date=${encodeURIComponent(date)}&trend=1`,
-    )
+    const qs = date
+      ? `?date=${encodeURIComponent(date)}&trend=1`
+      : "?trend=1";
+    fetch(`/api/admin/branches/${branchId}/menu-sales${qs}`)
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -78,7 +77,11 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
         return body as SalesPayload;
       })
       .then((payload) => {
-        if (!cancelled) setData(payload);
+        if (!cancelled) {
+          setData(payload);
+          setOperatingDay(payload.operatingDay ?? payload.date);
+          if (!date) setDate(payload.date);
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -97,6 +100,7 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
   const summary = data?.summary;
   const soldItems = data?.items.filter((i) => i.quantity > 0) ?? [];
   const unsoldItems = data?.items.filter((i) => i.quantity === 0) ?? [];
+  const maxDate = operatingDay || date;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -104,20 +108,21 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
         <div>
           <h3 className="text-base font-semibold text-slate-900">ยอดขายเมนู</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            ตัวเลขรายวัน + กราฟแนวโน้ม 7 วัน (Top เมนู) — ออเดอร์สำเร็จ เวลาไทย
+            ตัวเลขรายวันตามรอบวันธุรกิจ + กราฟแนวโน้ม 7 วัน (Top เมนู) — ออเดอร์สำเร็จ
           </p>
         </div>
         <div className="min-w-[10rem]">
           <label className={adminLabelClass} htmlFor="menu-sales-date">
             วันที่
           </label>
-          <input
+          <DateInput
             id="menu-sales-date"
-            type="date"
             className={adminInputClass}
             value={date}
-            max={todayYmd()}
-            onChange={(e) => setDate(e.target.value || todayYmd())}
+            max={maxDate || undefined}
+            onChange={(next) => {
+              if (next) setDate(next);
+            }}
           />
         </div>
       </div>
@@ -203,7 +208,7 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
 
           <div className="mt-4 space-y-2">
             <p className="text-xs font-medium text-slate-600">
-              อันดับยอดขายวัน{date === todayYmd() ? "นี้" : "ที่เลือก"}
+              อันดับยอดขายวัน{date === operatingDay ? "นี้" : "ที่เลือก"}
               {soldItems.length === 0 ? " — ยังไม่มียอด" : ""}
             </p>
             {soldItems.length > 0 && (

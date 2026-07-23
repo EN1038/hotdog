@@ -42,7 +42,23 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "$userAgentString SkillSalePrint/1.0"
         }
 
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient =
+            object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    view?.evaluateJavascript(
+                        """
+                        (function(){
+                          window.__SKILLSALE_PRINT__ = true;
+                          try {
+                            window.dispatchEvent(new Event('skillsale-print-ready'));
+                          } catch (e) {}
+                        })();
+                        """.trimIndent(),
+                        null,
+                    )
+                }
+            }
         webView.webChromeClient =
             object : WebChromeClient() {
                 override fun onPermissionRequest(request: PermissionRequest?) {

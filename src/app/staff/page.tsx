@@ -23,7 +23,12 @@ import {
   unlockOrderAlertSound,
   vibrateForNewOrder,
 } from "@/lib/staff-order-alert";
-import { IconLogout, IconVolume, IconVolumeOff } from "@/components/icons";
+import {
+  IconCamera,
+  IconLogout,
+  IconVolume,
+  IconVolumeOff,
+} from "@/components/icons";
 import { StaffRoundSelector } from "@/components/staff/StaffRoundSelector";
 import type { MenuItemData } from "@/lib/customer-types";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
@@ -629,15 +634,6 @@ export default function StaffPage() {
                 void onPhotoSelected(e.target.files?.[0] ?? null)
               }
             />
-            <button
-              type="button"
-              disabled={creatingPhoto}
-              onClick={() => setPhotoPickerOpen(true)}
-              className="flex w-full items-center justify-center rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:opacity-60"
-            >
-              {creatingPhoto ? "กำลังเปิดคิว..." : "ถ่ายรูปเปิดคิว (คีย์ทีหลัง)"}
-            </button>
-
             {photoPickerOpen ? (
               <div
                 className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
@@ -684,7 +680,25 @@ export default function StaffPage() {
                 </div>
               </div>
             ) : null}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-[3.25rem_1fr_1fr] gap-2">
+              <button
+                type="button"
+                disabled={creatingPhoto}
+                onClick={() => setPhotoPickerOpen(true)}
+                aria-label={
+                  creatingPhoto
+                    ? "กำลังเปิดคิว..."
+                    : "ถ่ายรูปเปิดคิว (คีย์ทีหลัง)"
+                }
+                title={
+                  creatingPhoto
+                    ? "กำลังเปิดคิว..."
+                    : "ถ่ายรูปเปิดคิว (คีย์ทีหลัง)"
+                }
+                className="flex items-center justify-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 disabled:opacity-60"
+              >
+                <IconCamera size={22} aria-hidden />
+              </button>
               <Link
                 href="/staff/key-order/regular"
                 className="flex items-center justify-center rounded-xl bg-site-primary px-3 py-3.5 text-sm font-bold text-white shadow-sm hover:opacity-95"

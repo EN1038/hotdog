@@ -504,6 +504,21 @@ export function IconImage(props: IconProps) {
   );
 }
 
+export function IconCamera(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M4 8.5A2.5 2.5 0 016.5 6h1.2l1.1-1.6A1.5 1.5 0 0110 3.5h4a1.5 1.5 0 011.2.9L16.3 6h1.2A2.5 2.5 0 0120 8.5v8A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-8z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12.5" r="3.25" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
 export function IconUpload(props: IconProps) {
   const p = baseProps(props);
   return (

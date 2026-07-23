@@ -311,8 +311,9 @@ export default function AdminLinePage() {
             <code>0812345678</code>
           </li>
           <li>
-            เจ้าของแบรนด์: แอดเพื่อน OA แล้วส่งชื่อผู้ใช้แอดมิน เช่น{" "}
-            <code>mybrand</code>
+            เจ้าของแบรนด์: เข้าแอดมิน →{" "}
+            <strong>เชื่อม LINE</strong> → สร้างรหัส 6 หลัก → ส่งรหัสในแชท OA
+            (ไม่ใช้ username แล้ว)
           </li>
           <li>เปิดสวิตช์แจ้งเตือนด้านล่าง แล้วทดสอบส่งข้อความ</li>
         </ol>
@@ -497,7 +498,8 @@ export default function AdminLinePage() {
         </h2>
         {linkedAdmins.length === 0 ? (
           <p className="text-sm text-slate-600">
-            ยังไม่มีแอดมินเชื่อม LINE — ให้เพิ่มเพื่อน OA แล้วส่งชื่อผู้ใช้แอดมินในแชท
+            ยังไม่มีแอดมินเชื่อม LINE — ให้เจ้าของเข้าเมนู{" "}
+            <strong>เชื่อม LINE</strong> สร้างรหัสแล้วส่งในแชท OA
           </p>
         ) : (
           <>

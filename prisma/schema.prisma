@@ -62,14 +62,19 @@ model Admin {
   /// AES-GCM encrypted plaintext for platform recovery/view only (never sent to brand admins)
   passwordEnc     String?
   isPlatformAdmin Boolean            @default(false)
-  /// LINE user id after admin adds the Official Account and links by username
+  /// LINE user id after admin adds the Official Account and links by one-time code
   lineUserId      String?            @unique
   lineNotifyEnabled Boolean          @default(true)
   /// Receive per-branch operating-day summary at cutoff
   lineNotifyDailySummary Boolean     @default(true)
+  /// One-time LINE link code (shown only while logged into admin)
+  lineLinkCode           String?
+  lineLinkCodeExpiresAt  DateTime?
   createdAt       DateTime           @default(now())
   brandMembers    BrandMember[]
   activityLogs    AdminActivityLog[]
+
+  @@index([lineLinkCode])
 }
 
 model Brand {

@@ -228,26 +228,26 @@ export async function tryLinkStaffByPhoneMessage(
   };
 }
 
-/** Link brand admin by username typed in LINE chat. */
-export async function tryLinkAdminByUsernameMessage(
+/** Link brand admin by one-time code from the logged-in admin UI. */
+export async function tryLinkAdminByLinkCodeMessage(
   lineUserId: string,
   rawText: string,
 ): Promise<{ linked: boolean; reply: string }> {
-  const username = rawText
-    .trim()
-    .replace(/^(admin:|เจ้าของ:|brand:)\s*/i, "")
-    .trim();
-  if (username.length < 2 || username.length > 64) {
+  const codeMatch = rawText.trim().match(/\b(\d{6})\b/);
+  const code = codeMatch?.[1] ?? "";
+  if (!code) {
     return {
       linked: false,
       reply:
-        "ส่งชื่อผู้ใช้แอดมินแบรนด์ในระบบมาเพื่อผูกบัญชี เช่น mybrand",
+        "เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักในแชทนี้\nพนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678",
     };
   }
 
+  const now = new Date();
   const admin = await prisma.admin.findFirst({
     where: {
-      username: { equals: username, mode: "insensitive" },
+      lineLinkCode: code,
+      lineLinkCodeExpiresAt: { gt: now },
     },
     include: {
       brandMembers: {
@@ -262,17 +262,23 @@ export async function tryLinkAdminByUsernameMessage(
   if (!admin) {
     return {
       linked: false,
-      reply: `ไม่พบแอดมินชื่อผู้ใช้ "${username}" ในระบบ`,
+      reply:
+        "รหัสไม่ถูกต้องหรือหมดอายุแล้ว\nเข้าแอดมิน → เชื่อม LINE เพื่อขอรหัสใหม่",
     };
   }
 
   const brandRoles = admin.brandMembers.filter(
     (m) => m.role === "OWNER" || m.role === "MANAGER",
   );
-  if (!admin.isPlatformAdmin && brandRoles.length === 0) {
+  if (brandRoles.length === 0) {
+    await prisma.admin.update({
+      where: { id: admin.id },
+      data: { lineLinkCode: null, lineLinkCodeExpiresAt: null },
+    });
     return {
       linked: false,
-      reply: "บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงผูกเพื่อรับสรุปตัดรอบไม่ได้",
+      reply:
+        "บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงผูกเพื่อรับสรุปตัดรอบไม่ได้",
     };
   }
 
@@ -283,30 +289,30 @@ export async function tryLinkAdminByUsernameMessage(
 
   await prisma.admin.update({
     where: { id: admin.id },
-    data: { lineUserId },
+    data: {
+      lineUserId,
+      lineLinkCode: null,
+      lineLinkCodeExpiresAt: null,
+    },
   });
 
   const brandNames = brandRoles.map((m) => m.brand.name).filter(Boolean);
   const brandLine =
-    brandNames.length > 0
-      ? brandNames.slice(0, 3).join(", ") +
-        (brandNames.length > 3 ? ` และอีก ${brandNames.length - 3}` : "")
-      : admin.isPlatformAdmin
-        ? "แพลตฟอร์ม"
-        : "";
+    brandNames.slice(0, 3).join(", ") +
+    (brandNames.length > 3 ? ` และอีก ${brandNames.length - 3}` : "");
 
   return {
     linked: true,
     reply: [
       "เชื่อมต่อแอดมินสำเร็จ",
-      `${admin.username}${brandLine ? ` · ${brandLine}` : ""}`,
+      `${admin.username} · ${brandLine}`,
       "จะได้รับสรุปตัดรอบของสาขาทาง LINE",
     ].join("\n"),
   };
 }
 
 /**
- * Staff: phone digits. Brand admin: username (non-phone text).
+ * Staff: phone (9–12 digits). Brand admin: 6-digit one-time code from admin UI.
  */
 export async function tryLinkLineAccountFromMessage(
   lineUserId: string,
@@ -316,11 +322,13 @@ export async function tryLinkLineAccountFromMessage(
   if (digits.length >= 9 && digits.length <= 12) {
     return tryLinkStaffByPhoneMessage(lineUserId, rawText);
   }
-  return tryLinkAdminByUsernameMessage(lineUserId, rawText);
+  return tryLinkAdminByLinkCodeMessage(lineUserId, rawText);
 }
 
 export const LINE_FOLLOW_REPLY =
-  "ยินดีต้อนรับ\n• พนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678\n• เจ้าของแบรนด์: ส่งชื่อผู้ใช้แอดมิน เช่น mybrand";
+  "ยินดีต้อนรับ\n• พนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678\n• เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักมาที่นี่";
+
+export const ADMIN_LINE_LINK_CODE_TTL_MS = 10 * 60 * 1000;
 
 export type NewOrderNotifyInput = {
   id: string;

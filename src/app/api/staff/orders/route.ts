@@ -531,6 +531,8 @@ export async function POST(request: Request) {
       {
         ...order,
         totalAmount,
+        queueTicketCopies: session.brand.queueTicketCopies,
+        operatingDay: dayState.operatingDay,
       },
       201,
     );

@@ -14,36 +14,34 @@ class QueuePrintService(private val context: Context) {
         tscPrinter.close()
     }
 
-    fun printQueueNumber(queueNumber: String): PrintResult {
+    fun printQueueTickets(ticket: QueueTicket): PrintResult {
         val device = PrinterDevice.load(context)
             ?: return PrintResult.fail("ยังไม่ได้เลือกเครื่องพิมพ์")
-        val q = queueNumber.trim()
-        if (q.isEmpty()) {
-            return PrintResult.fail("ไม่มีเลขคิว")
-        }
-
+        // Migrate away from legacy network saves
         if (device.transport == AppPrefs.TRANSPORT_NETWORK) {
-            tscPrinter.close()
-            return onePrinter.printQueueNumber(
-                q,
-                AppPrefs.TRANSPORT_NETWORK,
-                device.address,
-            )
+            return PrintResult.fail("กรุณาเลือกเครื่องพิมพ์ Bluetooth ใหม่")
         }
+        val q = ticket.queueNumber.trim()
+        if (q.isEmpty()) return PrintResult.fail("ไม่มีเลขคิว")
+
+        val normalized =
+            ticket.copy(
+                queueNumber = q,
+                copies = ticket.copies.coerceIn(1, 5),
+            )
 
         return when (PrinterRouter.resolveType(device.name)) {
             AppPrefs.DEVICE_TSC -> {
                 onePrinter.close()
-                tscPrinter.printQueueNumber(q, device.address)
+                tscPrinter.printTickets(normalized, device.address)
             }
             else -> {
                 tscPrinter.close()
-                onePrinter.printQueueNumber(
-                    q,
-                    AppPrefs.TRANSPORT_BLUETOOTH,
-                    device.address,
-                )
+                onePrinter.printTickets(normalized, device.address)
             }
         }
     }
+
+    fun printQueueNumber(queueNumber: String): PrintResult =
+        printQueueTickets(QueueTicket(queueNumber = queueNumber, copies = 1))
 }

@@ -3,13 +3,13 @@ package co.skillsale.print
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import android.util.Patterns
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import co.skillsale.print.printer.QueuePrintService
+import co.skillsale.print.printer.QueueTicket
 import co.skillsale.print.ui.SelectPrinterActivity
 import org.json.JSONObject
 
@@ -30,13 +30,8 @@ class WebAppInterface(
                 if (device != null) {
                     PrinterDevice.save(activity, device)
                     printService.closeAll()
-                    val label =
-                        if (device.transport == AppPrefs.TRANSPORT_NETWORK) {
-                            "${device.name} @ ${device.address}"
-                        } else {
-                            device.name
-                        }
-                    Toast.makeText(activity, "เลือกเครื่อง: $label", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(activity, "เลือกเครื่อง: ${device.name}", Toast.LENGTH_SHORT)
+                        .show()
                     notifyWebPrinterChanged()
                 }
             }
@@ -62,6 +57,7 @@ class WebAppInterface(
     @JavascriptInterface
     fun getSelectedPrinter(): String {
         val device = PrinterDevice.load(activity) ?: return "null"
+        if (device.transport == AppPrefs.TRANSPORT_NETWORK) return "null"
         return device.toJson()
     }
 
@@ -73,34 +69,32 @@ class WebAppInterface(
         }
     }
 
-    /** Quick-save One network printer, e.g. setNetworkPrinter("192.168.8.20") */
-    @JavascriptInterface
-    fun setNetworkPrinter(ip: String): String {
-        val normalized = ip.trim()
-        if (!Patterns.IP_ADDRESS.matcher(normalized).matches()) {
-            return JSONObject()
-                .put("code", "-1")
-                .put("message", "รูปแบบ IP ไม่ถูกต้อง")
-                .toString()
-        }
-        val device = PrinterDevice.network(normalized)
-        PrinterDevice.save(activity, device)
-        printService.closeAll()
-        mainHandler.post {
-            Toast.makeText(activity, "ตั้งค่า IP: $normalized", Toast.LENGTH_SHORT).show()
-            notifyWebPrinterChanged()
-        }
-        return JSONObject()
-            .put("code", "1")
-            .put("message", "OK")
-            .put("printer", JSONObject(device.toJson()))
-            .toString()
-    }
-
     @JavascriptInterface
     fun printQueueNumber(queueNumber: String): String {
+        return printQueueTickets(
+            JSONObject()
+                .put("queueNumber", queueNumber)
+                .put("copies", 1)
+                .toString(),
+        )
+    }
+
+    /**
+     * JSON: { queueNumber, orderNumber?, dateLabel?, copies? }
+     * Prints N slips with roles ร้าน / ลูกค้า / สำเนา N.
+     */
+    @JavascriptInterface
+    fun printQueueTickets(json: String): String {
         return try {
-            val result = printService.printQueueNumber(queueNumber)
+            val obj = JSONObject(json)
+            val ticket =
+                QueueTicket(
+                    queueNumber = obj.optString("queueNumber", ""),
+                    orderNumber = obj.optString("orderNumber", ""),
+                    dateLabel = obj.optString("dateLabel", ""),
+                    copies = obj.optInt("copies", 1).coerceIn(1, 5),
+                )
+            val result = printService.printQueueTickets(ticket)
             if (result.code != "1") {
                 mainHandler.post {
                     Toast.makeText(activity, result.message, Toast.LENGTH_SHORT).show()
@@ -108,10 +102,11 @@ class WebAppInterface(
             }
             result.toJson()
         } catch (e: Exception) {
-            val fail = JSONObject()
-                .put("code", "-1")
-                .put("message", e.message ?: "print error")
-                .toString()
+            val fail =
+                JSONObject()
+                    .put("code", "-1")
+                    .put("message", e.message ?: "print error")
+                    .toString()
             mainHandler.post {
                 Toast.makeText(activity, e.message ?: "พิมพ์ไม่สำเร็จ", Toast.LENGTH_SHORT).show()
             }

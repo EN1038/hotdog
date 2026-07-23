@@ -1,96 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg"
-    android:fillViewport="true">
+    android:orientation="vertical"
+    android:padding="16dp">
 
-    <LinearLayout
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:text="@string/select_printer"
+        android:textColor="@color/text"
+        android:textSize="20sp"
+        android:textStyle="bold" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/select_printer"
-            android:textColor="@color/text"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+    <TextView
+        android:id="@+id/currentTv"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="@color/muted"
+        android:textSize="13sp" />
 
-        <TextView
-            android:id="@+id/currentTv"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="@color/muted"
-            android:textSize="13sp" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="@string/option_bluetooth_hint"
+        android:textColor="@color/muted"
+        android:textSize="12sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/option_bluetooth"
-            android:textColor="@color/text"
-            android:textSize="15sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/option_bluetooth_hint"
-            android:textColor="@color/muted"
-            android:textSize="12sp" />
-
-        <Button
-            android:id="@+id/bluetoothBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:backgroundTint="@color/orange"
-            android:text="@string/pick_bluetooth"
-            android:textAllCaps="false"
-            android:textColor="@color/white" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="@string/option_network"
-            android:textColor="@color/text"
-            android:textSize="15sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/option_network_hint"
-            android:textColor="@color/muted"
-            android:textSize="12sp" />
-
-        <EditText
-            android:id="@+id/ipInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:hint="@string/ip_hint"
-            android:inputType="textUri"
-            android:padding="14dp"
-            android:background="@drawable/shape_round_white"
-            android:textColor="@color/text"
-            android:textSize="16sp" />
-
-        <Button
-            android:id="@+id/saveIpBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:backgroundTint="@color/orange"
-            android:text="@string/save_network_printer"
-            android:textAllCaps="false"
-            android:textColor="@color/white" />
-    </LinearLayout>
-</ScrollView>
+    <Button
+        android:id="@+id/bluetoothBtn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:backgroundTint="@color/orange"
+        android:text="@string/pick_bluetooth"
+        android:textAllCaps="false"
+        android:textColor="@color/white" />
+</LinearLayout>

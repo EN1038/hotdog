@@ -5,4 +5,6 @@
     <color name="white">#FFFFFF</color>
     <color name="text">#111827</color>
     <color name="muted">#6B7280</color>
+    <color name="splash_bg">#151918</color>
+    <color name="splash_accent">#F5F5F4</color>
 </resources>

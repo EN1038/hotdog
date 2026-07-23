@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "395453667107",
+    "project_id": "lotterly",
+    "storage_bucket": "lotterly.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:395453667107:android:92e70ac0db4b30d0719e96",
+        "android_client_info": {
+          "package_name": "co.skillsale.print"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBvytOy_b5vJOEhyt544-0hsxrb-140hrM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

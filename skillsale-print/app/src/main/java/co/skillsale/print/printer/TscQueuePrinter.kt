@@ -8,23 +8,17 @@ import android.graphics.Typeface
 import android.util.Log
 import com.example.tscdll.TSCActivity
 
-/**
- * Zenpert / TSC label printers (e.g. 3R20) via tscsdk.
- * Prints a simple bitmap label with a large queue number.
- */
+/** Zenpert / TSC label printers (e.g. 3R20) via Bluetooth. */
 class TscQueuePrinter {
     private val tsc = TSCActivity()
     private var mac: String = ""
 
     fun connect(btlAddress: String): Boolean {
-        if (mac != btlAddress && tsc.IsConnected) {
-            close()
-        }
+        if (mac != btlAddress && tsc.IsConnected) close()
         mac = btlAddress
         return try {
             if (!tsc.IsConnected) {
-                val result = tsc.openport(btlAddress)
-                if (result == "-1") {
+                if (tsc.openport(btlAddress) == "-1") {
                     Log.e(TAG, "openport failed")
                     return false
                 }
@@ -38,32 +32,34 @@ class TscQueuePrinter {
 
     fun close() {
         try {
-            if (tsc.IsConnected) {
-                tsc.closeport()
-            }
+            if (tsc.IsConnected) tsc.closeport()
         } catch (_: Exception) {
         }
         mac = ""
     }
 
-    fun printQueueNumber(queueNumber: String, btlAddress: String): PrintResult {
+    fun printTickets(ticket: QueueTicket, btlAddress: String): PrintResult {
         if (!tsc.IsConnected || mac != btlAddress) {
             if (!connect(btlAddress)) {
                 return PrintResult.fail("เชื่อมต่อเครื่องพิมพ์ 3R20 ไม่สำเร็จ")
             }
         }
         return try {
-            // Width/height in mm (40x30 sticker)
-            val setup = tsc.setup(40, 30, 4, 8, 0, 0, 0)
-            if (setup != "1") {
-                return PrintResult.fail("ตั้งค่าป้ายไม่สำเร็จ")
+            val total = ticket.copies.coerceIn(1, 5)
+            for (i in 0 until total) {
+                val role = QueueTicket.roleForIndex(i, total)
+                val setup = tsc.setup(50, 40, 4, 8, 0, 0, 0)
+                if (setup != "1") {
+                    return PrintResult.fail("ตั้งค่าป้ายไม่สำเร็จ")
+                }
+                val bitmap = renderTicketBitmap(ticket, role, total > 1)
+                tsc.sendcommand("CLS\r\n")
+                tsc.sendbitmap(10, 8, bitmap)
+                Thread.sleep(300)
+                tsc.sendcommand("PRINT 1\r\n")
+                bitmap.recycle()
+                if (i < total - 1) Thread.sleep(400)
             }
-            val bitmap = renderQueueBitmap(queueNumber)
-            tsc.sendcommand("CLS\r\n")
-            tsc.sendbitmap(20, 10, bitmap)
-            Thread.sleep(300)
-            tsc.sendcommand("PRINT 1\r\n")
-            bitmap.recycle()
             PrintResult.ok()
         } catch (e: Exception) {
             Log.e(TAG, "print failed", e)
@@ -71,20 +67,52 @@ class TscQueuePrinter {
         }
     }
 
-    private fun renderQueueBitmap(queueNumber: String): Bitmap {
-        val width = 320
-        val height = 200
+    private fun renderTicketBitmap(
+        ticket: QueueTicket,
+        role: String,
+        showRole: Boolean,
+    ): Bitmap {
+        val width = 360
+        val height = 280
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
-        val paint =
+        val center = width / 2f
+        val small =
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.BLACK
                 textAlign = Paint.Align.CENTER
-                textSize = 96f
+                textSize = 22f
+            }
+        val medium =
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.BLACK
+                textAlign = Paint.Align.CENTER
+                textSize = 26f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-        canvas.drawText(queueNumber.trim(), width / 2f, height / 2f + 32f, paint)
+        val huge =
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.BLACK
+                textAlign = Paint.Align.CENTER
+                textSize = 72f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+
+        var y = 36f
+        if (showRole && role.isNotBlank()) {
+            canvas.drawText(role, center, y, medium)
+            y += 36f
+        }
+        canvas.drawText("คิว ${ticket.queueNumber.trim()}", center, y + 50f, huge)
+        y += 110f
+        if (ticket.orderNumber.isNotBlank()) {
+            canvas.drawText("บิล ${ticket.orderNumber.trim()}", center, y, medium)
+            y += 32f
+        }
+        if (ticket.dateLabel.isNotBlank()) {
+            canvas.drawText(ticket.dateLabel.trim(), center, y, small)
+        }
         return bitmap
     }
 

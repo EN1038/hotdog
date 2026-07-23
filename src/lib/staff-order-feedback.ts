@@ -7,6 +7,11 @@ export type StaffOrderFeedback = {
   message: string;
   orderId?: string;
   queueNumber?: number | null;
+  orderNumber?: string | null;
+  dateLabel?: string | null;
+  queueTicketCopies?: number | null;
+  /** When true (default for new queues), auto-print in SkillSale Print APK */
+  printTickets?: boolean;
   totalAmount?: number;
 };
 

@@ -38,8 +38,7 @@ import { formatQueueNumber } from "@/lib/order-queue-format";
 import {
   autoPrintQueueNumber,
   formatPrinterLabel,
-  getSelectedPrinter,
-  hasPrintBridge,
+  getPrintBridgeStatus,
   selectPrinter,
 } from "@/lib/print-bridge";
 
@@ -95,7 +94,8 @@ export default function StaffPage() {
   const [creatingPhoto, setCreatingPhoto] = useState(false);
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
   const [printBridgeReady, setPrintBridgeReady] = useState(false);
-  const [printerLabel, setPrinterLabel] = useState("เลือกเครื่องพิมพ์");
+  const [printerConfigured, setPrinterConfigured] = useState(false);
+  const [printerLabel, setPrinterLabel] = useState("ยังไม่เชื่อมเครื่องพิมพ์");
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
@@ -130,28 +130,21 @@ export default function StaffPage() {
 
   useEffect(() => {
     const refresh = () => {
-      const ready = hasPrintBridge();
-      setPrintBridgeReady(ready);
-      if (ready) {
-        setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
+      const status = getPrintBridgeStatus();
+      setPrintBridgeReady(status.inApp);
+      setPrinterConfigured(status.configured);
+      if (status.inApp) {
+        setPrinterLabel(formatPrinterLabel(status.printer));
       }
     };
     refresh();
     window.addEventListener("skillsale-print-ready", refresh);
-    const id = window.setInterval(refresh, 1000);
+    const id = window.setInterval(refresh, 1200);
     return () => {
       window.removeEventListener("skillsale-print-ready", refresh);
       window.clearInterval(id);
     };
   }, []);
-
-  useEffect(() => {
-    if (!printBridgeReady) return;
-    const id = window.setInterval(() => {
-      setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
-    }, 1500);
-    return () => window.clearInterval(id);
-  }, [printBridgeReady]);
 
   useEffect(() => {
     const feedback = takeStaffOrderFeedback();
@@ -165,6 +158,7 @@ export default function StaffPage() {
             : ""
         }`,
       );
+      // Only prints when APK has a configured printer; otherwise no-op
       autoPrintQueueNumber(feedback.queueNumber);
     } else {
       pushErrorToast("บันทึกไม่สำเร็จ", feedback.message);
@@ -557,15 +551,25 @@ export default function StaffPage() {
                 type="button"
                 onClick={() => {
                   selectPrinter();
-                  window.setTimeout(() => {
-                    setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
-                  }, 800);
                 }}
                 aria-label={printerLabel}
                 title={printerLabel}
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100"
+                className={`flex h-10 items-center gap-1.5 rounded-xl border px-2.5 text-orange-900 ${
+                  printerConfigured
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                    : "border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100"
+                }`}
               >
-                <IconPrinter size={22} aria-hidden />
+                <IconPrinter size={20} aria-hidden />
+                <span className="hidden max-w-[7.5rem] truncate text-[11px] font-semibold sm:inline">
+                  {printerConfigured ? "เชื่อมแล้ว" : "ยังไม่เชื่อม"}
+                </span>
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    printerConfigured ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                  aria-hidden
+                />
               </button>
             ) : null}
             <button

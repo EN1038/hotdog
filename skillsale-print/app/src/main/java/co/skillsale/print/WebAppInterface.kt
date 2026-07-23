@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Patterns
 import android.webkit.JavascriptInterface
+import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -15,6 +16,7 @@ import org.json.JSONObject
 class WebAppInterface(
     private val activity: AppCompatActivity,
     private val printService: QueuePrintService,
+    private val webViewProvider: () -> WebView,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -35,9 +37,24 @@ class WebAppInterface(
                             device.name
                         }
                     Toast.makeText(activity, "เลือกเครื่อง: $label", Toast.LENGTH_SHORT).show()
+                    notifyWebPrinterChanged()
                 }
             }
         }
+
+    private fun notifyWebPrinterChanged() {
+        mainHandler.post {
+            webViewProvider().evaluateJavascript(
+                """
+                (function(){
+                  window.__SKILLSALE_PRINT__ = true;
+                  try { window.dispatchEvent(new Event('skillsale-print-ready')); } catch (e) {}
+                })();
+                """.trimIndent(),
+                null,
+            )
+        }
+    }
 
     @JavascriptInterface
     fun isPrintBridge(): Boolean = true
@@ -71,6 +88,7 @@ class WebAppInterface(
         printService.closeAll()
         mainHandler.post {
             Toast.makeText(activity, "ตั้งค่า IP: $normalized", Toast.LENGTH_SHORT).show()
+            notifyWebPrinterChanged()
         }
         return JSONObject()
             .put("code", "1")
@@ -98,12 +116,6 @@ class WebAppInterface(
                 Toast.makeText(activity, e.message ?: "พิมพ์ไม่สำเร็จ", Toast.LENGTH_SHORT).show()
             }
             fail
-        }
-    }
-
-    fun openSelectIfNeeded() {
-        if (PrinterDevice.load(activity) == null) {
-            selectPrinter()
         }
     }
 }

@@ -26,9 +26,10 @@ class MainActivity : AppCompatActivity() {
 
         printService = QueuePrintService(this)
         webView = WebView(this)
+        webView.tag = "skillsale_webview"
         setContentView(webView)
 
-        bridge = WebAppInterface(this, printService)
+        bridge = WebAppInterface(this, printService) { webView }
         webView.addJavascriptInterface(bridge, "Android")
 
         with(webView.settings) {
@@ -73,8 +74,7 @@ class MainActivity : AppCompatActivity() {
                 .getString(AppPrefs.KEY_STAFF_URL, AppPrefs.DEFAULT_STAFF_URL)
                 ?: AppPrefs.DEFAULT_STAFF_URL
         webView.loadUrl(url)
-
-        bridge.openSelectIfNeeded()
+        // Do not force printer picker — staff can work normally without a printer
     }
 
     private fun requestRuntimePermissions() {

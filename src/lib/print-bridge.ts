@@ -13,12 +13,21 @@ export type PrintBridgeResult = {
   message: string;
 };
 
+export type PrintBridgeStatus = {
+  /** Running inside SkillSale Print APK */
+  inApp: boolean;
+  /** A printer target is saved (IP or Bluetooth) */
+  configured: boolean;
+  printer: PrintBridgePrinter | null;
+};
+
 type AndroidPrintBridge = {
   isPrintBridge?: () => boolean;
   getSelectedPrinter?: () => string;
   selectPrinter?: () => void;
   setNetworkPrinter?: (ip: string) => string;
   printQueueNumber?: (queueNumber: string) => string;
+  clearPrinter?: () => void;
 };
 
 declare global {
@@ -46,16 +55,13 @@ function getBridge(): AndroidPrintBridge | null {
   return null;
 }
 
+/** True only inside the SkillSale Print APK (not normal browser). */
 export function hasPrintBridge(): boolean {
   if (getBridge() != null) return true;
-  // Native APK sets this UA / marker even before JS probes Java methods
   if (typeof navigator !== "undefined") {
     if (/SkillSalePrint/i.test(navigator.userAgent)) return true;
   }
-  if (typeof window !== "undefined") {
-    const w = window as Window & { __SKILLSALE_PRINT__?: boolean };
-    if (w.__SKILLSALE_PRINT__) return true;
-  }
+  if (typeof window !== "undefined" && window.__SKILLSALE_PRINT__) return true;
   return false;
 }
 
@@ -65,10 +71,32 @@ export function getSelectedPrinter(): PrintBridgePrinter | null {
   try {
     const raw = bridge.getSelectedPrinter();
     if (!raw || raw === "null") return null;
-    return JSON.parse(raw) as PrintBridgePrinter;
+    const parsed = JSON.parse(raw) as PrintBridgePrinter;
+    if (!parsed?.name && !parsed?.address && !parsed?.mac) return null;
+    return parsed;
   } catch {
     return null;
   }
+}
+
+/** Printer target saved → print UI / auto-print allowed. */
+export function isPrinterConfigured(): boolean {
+  return getSelectedPrinter() != null;
+}
+
+export function getPrintBridgeStatus(): PrintBridgeStatus {
+  const inApp = hasPrintBridge();
+  const printer = inApp ? getSelectedPrinter() : null;
+  return {
+    inApp,
+    configured: printer != null,
+    printer,
+  };
+}
+
+/** Show reprint / auto-print only in APK with a configured printer. */
+export function canUsePrintActions(): boolean {
+  return hasPrintBridge() && isPrinterConfigured();
 }
 
 export function selectPrinter(): boolean {
@@ -100,6 +128,9 @@ export function setNetworkPrinter(ip: string): PrintBridgeResult | null {
 export function printQueueNumber(
   queueNumber: number | string | null | undefined,
 ): PrintBridgeResult | null {
+  if (!canUsePrintActions()) {
+    return { code: "-1", message: "ยังไม่ได้เชื่อมเครื่องพิมพ์" };
+  }
   const bridge = getBridge();
   if (!bridge?.printQueueNumber) return null;
   if (queueNumber == null || queueNumber === "") {
@@ -116,11 +147,11 @@ export function printQueueNumber(
   }
 }
 
-/** Fire-and-forget when a new queue is created inside the print APK. */
+/** Auto-print only when a printer is configured; otherwise no-op (normal flow). */
 export function autoPrintQueueNumber(
   queueNumber: number | string | null | undefined,
 ): void {
-  if (!hasPrintBridge()) return;
+  if (!canUsePrintActions()) return;
   if (queueNumber == null || queueNumber === "") return;
   try {
     printQueueNumber(queueNumber);
@@ -130,9 +161,9 @@ export function autoPrintQueueNumber(
 }
 
 export function formatPrinterLabel(printer: PrintBridgePrinter | null): string {
-  if (!printer) return "เลือกเครื่องพิมพ์";
+  if (!printer) return "ยังไม่เชื่อมเครื่องพิมพ์ — แตะเพื่อเลือก";
   if (printer.transport === "network") {
-    return `พิมพ์ IP ${printer.address || printer.mac}`;
+    return `เชื่อมแล้ว · IP ${printer.address || printer.mac}`;
   }
-  return `พิมพ์ ${printer.name}`;
+  return `เชื่อมแล้ว · ${printer.name}`;
 }

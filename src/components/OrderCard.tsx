@@ -21,7 +21,7 @@ import {
   countOptionsInText,
   isPackLikeOptions,
 } from "@/lib/order-item-display";
-import { canUsePrintActions, printQueueNumber } from "@/lib/print-bridge";
+import { canUsePrintActions, printQueueTickets } from "@/lib/print-bridge";
 
 type OrderItem = {
   id: string;
@@ -69,6 +69,10 @@ type OrderCardProps = {
   /** Branch pin — used to show delivery distance */
   branchPin?: { latitude: number; longitude: number } | null;
   highlight?: boolean;
+  /** How many queue slips to print (from brand setting) */
+  queueTicketCopies?: number;
+  /** Operating-day / Bangkok date label for the ticket */
+  ticketDateLabel?: string;
 };
 
 /** Workflow order — used to pick the main “next step” button on touch UIs. */
@@ -109,6 +113,8 @@ export function OrderCard({
   collapsibleItems = false,
   branchPin = null,
   highlight = false,
+  queueTicketCopies = 1,
+  ticketDateLabel = "",
 }: OrderCardProps) {
   const [itemsExpanded, setItemsExpanded] = useState(false);
   const [canPrint, setCanPrint] = useState(false);
@@ -194,7 +200,19 @@ export function OrderCard({
                   onClick={() => {
                     setPrinting(true);
                     try {
-                      printQueueNumber(order.queueNumber);
+                      printQueueTickets({
+                        queueNumber: order.queueNumber,
+                        orderNumber: order.orderNumber,
+                        dateLabel:
+                          ticketDateLabel ||
+                          (order.createdAt
+                            ? new Date(order.createdAt).toLocaleDateString(
+                                "sv-SE",
+                                { timeZone: "Asia/Bangkok" },
+                              )
+                            : ""),
+                        copies: queueTicketCopies,
+                      });
                     } finally {
                       setPrinting(false);
                     }

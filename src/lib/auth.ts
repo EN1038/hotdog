@@ -131,6 +131,7 @@ export async function requireStaff() {
               color: true,
               siteTitle: true,
               siteDescription: true,
+              queueTicketCopies: true,
             },
           },
         },
@@ -169,6 +170,7 @@ export async function requireStaff() {
       color: brand.color,
       siteTitle: brand.siteTitle,
       siteDescription: brand.siteDescription,
+      queueTicketCopies: Math.min(5, Math.max(1, brand.queueTicketCopies ?? 1)),
     },
   };
 }

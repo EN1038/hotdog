@@ -25,6 +25,7 @@ const patchSchema = z.object({
   coverImageUrl: z.string().nullable().optional(),
   contactPhone: z.string().nullable().optional(),
   color: z.string().optional(),
+  queueTicketCopies: z.number().int().min(1).max(5).optional(),
 });
 
 function normalizeColor(input: string) {
@@ -88,6 +89,9 @@ export async function PATCH(request: Request, { params }: Params) {
           contactPhone: body.contactPhone?.replace(/\D/g, "").trim() || null,
         }),
         ...(body.color !== undefined && { color: normalizeColor(body.color) }),
+        ...(body.queueTicketCopies !== undefined && {
+          queueTicketCopies: body.queueTicketCopies,
+        }),
       },
     });
 

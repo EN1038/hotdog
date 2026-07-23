@@ -38,6 +38,7 @@ type Brand = {
   coverImageUrl: string | null;
   contactPhone: string | null;
   color: string;
+  queueTicketCopies?: number;
   _count: { branches: number; members: number };
 };
 
@@ -127,6 +128,7 @@ export default function BrandsPage() {
           coverImageUrl: brand.coverImageUrl,
           contactPhone: brand.contactPhone,
           color: brand.color,
+          queueTicketCopies: brand.queueTicketCopies ?? 1,
         }),
       });
       if (!res.ok) {
@@ -407,6 +409,36 @@ export default function BrandsPage() {
                       />
                       <p className="mt-1 text-xs text-slate-500">
                         ใช้เมื่อลูกค้ากด “แจ้งให้เราทราบ” ในหน้ารายการสาขา
+                      </p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={adminLabelClass}>
+                        จำนวนบัตรคิวที่พิมพ์
+                      </label>
+                      <select
+                        className={adminInputClass}
+                        value={brand.queueTicketCopies ?? 1}
+                        onChange={(e) =>
+                          patchBrand(brand.id, {
+                            queueTicketCopies: Number(e.target.value),
+                          })
+                        }
+                      >
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={n}>
+                            {n} ใบ
+                            {n === 1
+                              ? " (ใบเดียว)"
+                              : n === 2
+                                ? " (ร้าน + ลูกค้า)"
+                                : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-slate-500">
+                        ใช้กับแอป SkillSale Print — 1 = ใบเดียว · 2 =
+                        ใบร้าน (ติดตะกร้า) + ใบลูกค้า · มากกว่า 2 =
+                        สำเนาเพิ่ม
                       </p>
                     </div>
                   </div>

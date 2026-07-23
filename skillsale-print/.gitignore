@@ -9,3 +9,4 @@
 captures
 .externalNativeBuild
 .cxx
+# Keep google-services.json in repo for this sideload APK project (package-scoped keys only)

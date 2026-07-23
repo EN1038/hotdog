@@ -85,6 +85,7 @@ export async function PATCH(request: Request, { params }: Params) {
           status: OrderStatus.CANCELLED,
           cancelledAt: new Date(),
           cancelReason: reason,
+          awaitingPhotoKey: false,
         },
       });
       if (moved.count === 0) {
@@ -99,6 +100,12 @@ export async function PATCH(request: Request, { params }: Params) {
         });
       }
     } else {
+      if (order.awaitingPhotoKey) {
+        return jsonError(
+          "ออเดอร์นี้ยังรอคีย์รายการจากรูป — คีย์เมนูให้ครบก่อนเปลี่ยนสถานะ",
+          403,
+        );
+      }
       if (
         !canStaffUpdateStatus(
           roles,

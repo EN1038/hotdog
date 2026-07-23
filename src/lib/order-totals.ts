@@ -31,6 +31,15 @@ export function isRevenueStatus(status: OrderStatus): boolean {
   return status === "COMPLETED";
 }
 
+/** Photo drafts / incomplete keyed orders must not count as sales. */
+export function isOrderCountableRevenue(order: {
+  status: OrderStatus;
+  awaitingPhotoKey?: boolean | null;
+}): boolean {
+  if (order.awaitingPhotoKey) return false;
+  return isRevenueStatus(order.status);
+}
+
 export function isCancelledStatus(status: OrderStatus): boolean {
   return status === "CANCELLED";
 }

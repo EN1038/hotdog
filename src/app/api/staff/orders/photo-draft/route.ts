@@ -99,7 +99,14 @@ export async function POST(request: Request) {
     }
     if (!order) return jsonError("ไม่สามารถสร้างเลขออเดอร์ได้ กรุณาลองใหม่");
 
-    return jsonOk(order, 201);
+    return jsonOk(
+      {
+        ...order,
+        queueTicketCopies: session.brand.queueTicketCopies,
+        operatingDay: dayState.operatingDay,
+      },
+      201,
+    );
   } catch (error) {
     return handleApiError(error);
   }

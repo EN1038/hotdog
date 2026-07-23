@@ -91,6 +91,8 @@ model Brand {
   /** เบอร์ติดต่อแบรนด์ (ลูกค้ากด “แจ้งให้เราทราบ” ฯลฯ) */
   contactPhone    String?
   color           String             @default("#dc2626")
+  /// How many queue tickets to print when opening a queue (1–5). 2 = shop + customer.
+  queueTicketCopies Int              @default(1)
   createdAt       DateTime           @default(now())
   branches        Branch[]
   members         BrandMember[]

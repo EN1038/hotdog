@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /** Bump when Prisma schema/models change so Next.js HMR drops a stale client. */
-const PRISMA_CLIENT_VERSION = 16;
+const PRISMA_CLIENT_VERSION = 17;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -28,7 +28,8 @@ function clientHasExpectedModels(client: PrismaClient): boolean {
   return (
     "restaurantType" in client &&
     "deliveryLocation" in client &&
-    "adminActivityLog" in client
+    "adminActivityLog" in client &&
+    "lineDailySummaryLog" in client
   );
 }
 

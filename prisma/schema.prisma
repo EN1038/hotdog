@@ -62,6 +62,11 @@ model Admin {
   /// AES-GCM encrypted plaintext for platform recovery/view only (never sent to brand admins)
   passwordEnc     String?
   isPlatformAdmin Boolean            @default(false)
+  /// LINE user id after admin adds the Official Account and links by username
+  lineUserId      String?            @unique
+  lineNotifyEnabled Boolean          @default(true)
+  /// Receive per-branch operating-day summary at cutoff
+  lineNotifyDailySummary Boolean     @default(true)
   createdAt       DateTime           @default(now())
   brandMembers    BrandMember[]
   activityLogs    AdminActivityLog[]
@@ -126,6 +131,19 @@ model BrandMember {
   @@unique([adminId, brandId])
 }
 
+/// Idempotency log: one LINE daily summary push per branch operating day
+model LineDailySummaryLog {
+  id             String   @id @default(cuid())
+  branchId       String
+  operatingDay   DateTime @db.Date
+  sentAt         DateTime @default(now())
+  recipientCount Int      @default(0)
+  branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, operatingDay])
+  @@index([sentAt])
+}
+
   /** Platform-level settings (marketplace shell). Brand identity lives on Brand. */
   model SiteSettings {
   id              String   @id @default("default")
@@ -152,6 +170,8 @@ model BrandMember {
   lineMessagingEnabled   Boolean  @default(false)
   /// Notify linked branch staff when a new order arrives
   lineNotifyStaffOnNewOrder Boolean @default(true)
+  /// Notify linked brand owners/managers with daily cutoff summary
+  lineNotifyBrandDailySummary Boolean @default(true)
   updatedAt       DateTime @updatedAt
 }
 
@@ -207,6 +227,7 @@ model Branch {
   deliveryLocations  DeliveryLocation[]
   orders             Order[]
   shareCodes         BranchShareCode[]
+  lineDailySummaries LineDailySummaryLog[]
   activityLogs       AdminActivityLog[]
 
   @@unique([brandId, code])

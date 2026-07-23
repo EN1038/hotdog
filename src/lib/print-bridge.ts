@@ -24,18 +24,39 @@ type AndroidPrintBridge = {
 declare global {
   interface Window {
     Android?: AndroidPrintBridge;
+    __SKILLSALE_PRINT__?: boolean;
   }
 }
 
 function getBridge(): AndroidPrintBridge | null {
   if (typeof window === "undefined") return null;
   const bridge = window.Android;
-  if (!bridge || typeof bridge.printQueueNumber !== "function") return null;
-  return bridge;
+  if (!bridge) return null;
+  // Android WebView sometimes exposes Java methods with typeof !== "function"
+  const printable = bridge.printQueueNumber as unknown;
+  if (typeof printable === "function") return bridge;
+  if (typeof printable !== "undefined") return bridge;
+  if (typeof bridge.isPrintBridge === "function") {
+    try {
+      if (bridge.isPrintBridge()) return bridge;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
 }
 
 export function hasPrintBridge(): boolean {
-  return getBridge() != null;
+  if (getBridge() != null) return true;
+  // Native APK sets this UA / marker even before JS probes Java methods
+  if (typeof navigator !== "undefined") {
+    if (/SkillSalePrint/i.test(navigator.userAgent)) return true;
+  }
+  if (typeof window !== "undefined") {
+    const w = window as Window & { __SKILLSALE_PRINT__?: boolean };
+    if (w.__SKILLSALE_PRINT__) return true;
+  }
+  return false;
 }
 
 export function getSelectedPrinter(): PrintBridgePrinter | null {

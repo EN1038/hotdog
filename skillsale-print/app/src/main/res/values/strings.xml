@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SkillSale Print</string>
+    <string name="select_printer">เลือกเครื่องพิมพ์</string>
+    <string name="all_devices">อุปกรณ์ใกล้เคียง / ที่จับคู่แล้ว</string>
+    <string name="refresh">รีเฟรช</string>
+    <string name="paired">จับคู่แล้ว</string>
+    <string name="permission_denied">ไม่ได้รับสิทธิ์ Bluetooth</string>
+    <string name="default_staff_url">https://order.skillsale.co/staff</string>
+    <string name="option_bluetooth">Bluetooth</string>
+    <string name="option_bluetooth_hint">ใช้กับ Zenpert 3R20 หรือ One ที่จับคู่ Bluetooth</string>
+    <string name="pick_bluetooth">เลือกจาก Bluetooth</string>
+    <string name="option_network">Network / IP (One)</string>
+    <string name="option_network_hint">พิมพ์ใบเสร็จ One ผ่าน Wi‑Fi/LAN เช่น 192.168.8.20</string>
+    <string name="ip_hint">เช่น 192.168.8.20</string>
+    <string name="save_network_printer">บันทึกเครื่องพิมพ์ IP</string>
+    <string name="invalid_ip">รูปแบบ IP ไม่ถูกต้อง</string>
+    <string name="no_printer_selected">ยังไม่ได้เลือกเครื่องพิมพ์</string>
+    <string name="current_printer">ตอนนี้: %1$s · %2$s · %3$s</string>
+</resources>

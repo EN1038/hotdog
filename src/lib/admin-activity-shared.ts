@@ -34,6 +34,9 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "restaurant_type.create": "เพิ่มประเภทร้าน",
   "restaurant_type.update": "แก้ไขประเภทร้าน",
   "restaurant_type.delete": "ลบประเภทร้าน",
+  "alert_sound.create": "เพิ่มเสียงแจ้งเตือน",
+  "alert_sound.update": "แก้ไขเสียงแจ้งเตือน",
+  "alert_sound.delete": "ลบเสียงแจ้งเตือน",
 } as const;
 
 export type AdminActivityAction = keyof typeof ADMIN_ACTIVITY_ACTIONS;

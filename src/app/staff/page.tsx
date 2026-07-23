@@ -129,11 +129,20 @@ export default function StaffPage() {
   }, []);
 
   useEffect(() => {
-    const ready = hasPrintBridge();
-    setPrintBridgeReady(ready);
-    if (ready) {
-      setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
-    }
+    const refresh = () => {
+      const ready = hasPrintBridge();
+      setPrintBridgeReady(ready);
+      if (ready) {
+        setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
+      }
+    };
+    refresh();
+    window.addEventListener("skillsale-print-ready", refresh);
+    const id = window.setInterval(refresh, 1000);
+    return () => {
+      window.removeEventListener("skillsale-print-ready", refresh);
+      window.clearInterval(id);
+    };
   }, []);
 
   useEffect(() => {

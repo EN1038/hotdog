@@ -5,7 +5,8 @@ export type UploadFolder =
   | "Branch"
   | "Staff"
   | "Brand"
-  | "Site";
+  | "Site"
+  | "Alerts";
 
 const FOLDER_ALIASES: Record<string, UploadFolder> = {
   products: "Products",
@@ -17,6 +18,9 @@ const FOLDER_ALIASES: Record<string, UploadFolder> = {
   brand: "Brand",
   logo: "Brand",
   site: "Site",
+  alerts: "Alerts",
+  alert: "Alerts",
+  sounds: "Alerts",
 };
 
 function requiredEnv(name: string): string {

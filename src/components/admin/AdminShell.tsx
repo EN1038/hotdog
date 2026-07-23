@@ -119,6 +119,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: IconTag,
       },
       {
+        href: "/admin/alert-sounds",
+        label: "เสียงแจ้งเตือน",
+        platformOnly: true,
+        icon: IconVolume,
+      },
+      {
         href: "/admin/site",
         label: "ตั้งค่าแพลตฟอร์ม",
         platformOnly: true,
@@ -162,6 +168,38 @@ function IconTag({
         strokeLinejoin="round"
       />
       <circle cx="7.5" cy="8.5" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconVolume({
+  size = 20,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className ? `block shrink-0 ${className}` : "block shrink-0"}
+      aria-hidden
+    >
+      <path
+        d="M11 5L6 9H3v6h3l5 4V5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15.5 8.5a5 5 0 010 7M18 6a8 8 0 010 12"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

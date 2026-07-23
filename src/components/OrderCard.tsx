@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { OrderStatus, type FulfillmentType } from "@prisma/client";
 import {
@@ -12,7 +12,7 @@ import {
   getStaffStatusLabel,
   type StaffRole,
 } from "@/lib/constants";
-import { IconArrowRight, IconLabel, IconNote } from "@/components/icons";
+import { IconArrowRight, IconLabel, IconNote, IconPrinter } from "@/components/icons";
 import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
@@ -21,6 +21,7 @@ import {
   countOptionsInText,
   isPackLikeOptions,
 } from "@/lib/order-item-display";
+import { hasPrintBridge, printQueueNumber } from "@/lib/print-bridge";
 
 type OrderItem = {
   id: string;
@@ -110,6 +111,13 @@ export function OrderCard({
   highlight = false,
 }: OrderCardProps) {
   const [itemsExpanded, setItemsExpanded] = useState(false);
+  const [canPrint, setCanPrint] = useState(false);
+  const [printing, setPrinting] = useState(false);
+
+  useEffect(() => {
+    setCanPrint(hasPrintBridge());
+  }, []);
+
   const colorClass = ORDER_STATUS_COLORS[order.status];
   const fulfillment = order.fulfillmentType ?? "DELIVERY";
   const allowed =
@@ -168,9 +176,31 @@ export function OrderCard({
       <div className="flex-1 p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-lg font-extrabold tracking-tight text-gray-900">
-              คิว {formatQueueNumber(order.queueNumber)}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-lg font-extrabold tracking-tight text-gray-900">
+                คิว {formatQueueNumber(order.queueNumber)}
+              </p>
+              {canPrint && order.queueNumber != null ? (
+                <button
+                  type="button"
+                  disabled={printing}
+                  onClick={() => {
+                    setPrinting(true);
+                    try {
+                      printQueueNumber(order.queueNumber);
+                    } finally {
+                      setPrinting(false);
+                    }
+                  }}
+                  aria-label="พิมพ์เลขคิว"
+                  title="พิมพ์เลขคิว"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2 text-xs font-semibold text-orange-800 hover:bg-orange-100 disabled:opacity-60"
+                >
+                  <IconPrinter size={14} aria-hidden />
+                  {printing ? "พิมพ์…" : "พิมพ์คิว"}
+                </button>
+              ) : null}
+            </div>
             {order.orderNumber ? (
               <p className="mt-0 text-xs font-medium text-gray-500">
                 บิล #{order.orderNumber}

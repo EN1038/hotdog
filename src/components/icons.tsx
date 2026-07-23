@@ -356,6 +356,33 @@ export function IconVolumeOff(props: IconProps) {
   );
 }
 
+export function IconPrinter(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M6 9V4h12v5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6 14H4a2 2 0 01-2-2v-1a2 2 0 012-2h16a2 2 0 012 2v1a2 2 0 01-2 2h-2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6 14h12v6H6v-6z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconLogout(props: IconProps) {
   const p = baseProps(props);
   return (

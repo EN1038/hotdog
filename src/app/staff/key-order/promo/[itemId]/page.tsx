@@ -260,6 +260,19 @@ export default function StaffPromoKeyOrderDetailPage() {
         orderId: typeof data.id === "string" ? data.id : undefined,
         queueNumber:
           typeof data.queueNumber === "number" ? data.queueNumber : null,
+        orderNumber:
+          typeof data.orderNumber === "string" ? data.orderNumber : null,
+        dateLabel:
+          typeof data.operatingDay === "string"
+            ? data.operatingDay
+            : typeof data.queueBusinessDate === "string"
+              ? data.queueBusinessDate
+              : null,
+        queueTicketCopies:
+          typeof data.queueTicketCopies === "number"
+            ? data.queueTicketCopies
+            : null,
+        printTickets: true,
         totalAmount:
           typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
       });

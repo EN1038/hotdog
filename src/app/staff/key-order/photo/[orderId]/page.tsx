@@ -337,6 +337,9 @@ export default function StaffPhotoKeyOrderPage() {
         orderId,
         queueNumber:
           typeof data.queueNumber === "number" ? data.queueNumber : queueNumber,
+        orderNumber:
+          typeof data.orderNumber === "string" ? data.orderNumber : null,
+        printTickets: false,
         totalAmount:
           typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
       });

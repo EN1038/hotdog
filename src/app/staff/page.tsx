@@ -36,7 +36,9 @@ import { isPromoMenuItem } from "@/lib/staff-key-order";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import {
-  autoPrintQueueNumber,
+  autoPrintQueueTickets,
+  clampTicketCopies,
+  formatTicketDateLabel,
   formatPrinterLabel,
   getPrintBridgeStatus,
   selectPrinter,
@@ -96,6 +98,7 @@ export default function StaffPage() {
   const [printBridgeReady, setPrintBridgeReady] = useState(false);
   const [printerConfigured, setPrinterConfigured] = useState(false);
   const [printerLabel, setPrinterLabel] = useState("ยังไม่เชื่อมเครื่องพิมพ์");
+  const [queueTicketCopies, setQueueTicketCopies] = useState(1);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
@@ -158,8 +161,20 @@ export default function StaffPage() {
             : ""
         }`,
       );
-      // Only prints when APK has a configured printer; otherwise no-op
-      autoPrintQueueNumber(feedback.queueNumber);
+      if (feedback.printTickets !== false) {
+        // Only prints when APK has a configured printer; otherwise no-op
+        autoPrintQueueTickets({
+          queueNumber: feedback.queueNumber,
+          orderNumber: feedback.orderNumber,
+          dateLabel:
+            formatTicketDateLabel(feedback.dateLabel) ||
+            formatTicketDateLabel(operatingDay) ||
+            formatTicketDateLabel(new Date().toISOString()),
+          copies: clampTicketCopies(
+            feedback.queueTicketCopies ?? queueTicketCopies,
+          ),
+        });
+      }
     } else {
       pushErrorToast("บันทึกไม่สำเร็จ", feedback.message);
     }
@@ -251,6 +266,9 @@ export default function StaffPage() {
     setBranchPin(data.branchPin ?? null);
     setAutoAcceptOrders(Boolean(data.autoAcceptOrders));
     if (data.branchStatus) setBranchStatus(data.branchStatus);
+    if (data.brand?.queueTicketCopies != null) {
+      setQueueTicketCopies(clampTicketCopies(data.brand.queueTicketCopies));
+    }
     setLoading(false);
   }, [router, flashNewOrders, viewDate]);
 
@@ -299,7 +317,24 @@ export default function StaffPage() {
           ? `คิว ${formatQueueNumber(data.queueNumber)} · คีย์รายการทีหลังได้`
           : "คีย์รายการทีหลังได้",
       );
-      autoPrintQueueNumber(data.queueNumber);
+      autoPrintQueueTickets({
+        queueNumber: data.queueNumber,
+        orderNumber:
+          typeof data.orderNumber === "string" ? data.orderNumber : null,
+        dateLabel:
+          formatTicketDateLabel(
+            typeof data.operatingDay === "string"
+              ? data.operatingDay
+              : typeof data.queueBusinessDate === "string"
+                ? data.queueBusinessDate
+                : operatingDay,
+          ) || formatTicketDateLabel(new Date().toISOString()),
+        copies: clampTicketCopies(
+          typeof data.queueTicketCopies === "number"
+            ? data.queueTicketCopies
+            : queueTicketCopies,
+        ),
+      });
       if (typeof data.id === "string") {
         setHighlightedOrderId(data.id);
         setStatusFilter(null);
@@ -831,6 +866,11 @@ export default function StaffPage() {
               collapsibleItems
               branchPin={branchPin}
               highlight={order.id === highlightedOrderId}
+              queueTicketCopies={queueTicketCopies}
+              ticketDateLabel={
+                formatTicketDateLabel(viewDate ?? operatingDay) ||
+                formatTicketDateLabel(order.createdAt)
+              }
               onStatusChange={handleStatusChange}
               onRequestCancel={(id) => setCancelOrderId(id)}
             />

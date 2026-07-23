@@ -14,6 +14,20 @@ import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useToast } from "@/components/admin/Toast";
 import type { LineSettingsPublic } from "@/lib/line-settings-types";
 
+type LinkedStaff = {
+  id: string;
+  name: string | null;
+  phone: string;
+  branchName: string;
+};
+
+type LinkedAdmin = {
+  id: string;
+  username: string;
+  lineNotifyDailySummary: boolean;
+  brands: string[];
+};
+
 export default function AdminLinePage() {
   const { session, loaded: sessionLoaded } = useAdminSession();
   const router = useRouter();
@@ -22,20 +36,22 @@ export default function AdminLinePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [summaryTesting, setSummaryTesting] = useState(false);
   const [settings, setSettings] = useState<LineSettingsPublic | null>(null);
   const [token, setToken] = useState("");
   const [secret, setSecret] = useState("");
   const [testStaffId, setTestStaffId] = useState("");
-  const [linkedStaff, setLinkedStaff] = useState<
-    { id: string; name: string | null; phone: string; branchName: string }[]
-  >([]);
+  const [testAdminId, setTestAdminId] = useState("");
+  const [linkedStaff, setLinkedStaff] = useState<LinkedStaff[]>([]);
+  const [linkedAdmins, setLinkedAdmins] = useState<LinkedAdmin[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsRes, staffRes] = await Promise.all([
+      const [settingsRes, staffRes, adminRes] = await Promise.all([
         fetch("/api/admin/line-settings"),
         fetch("/api/admin/line-settings/linked-staff"),
+        fetch("/api/admin/line-settings/linked-admins"),
       ]);
       if (settingsRes.status === 403) {
         router.replace("/admin");
@@ -45,10 +61,12 @@ export default function AdminLinePage() {
       const data = (await settingsRes.json()) as LineSettingsPublic;
       setSettings(data);
       if (staffRes.ok) {
-        const staffData = (await staffRes.json()) as {
-          items: typeof linkedStaff;
-        };
+        const staffData = (await staffRes.json()) as { items: LinkedStaff[] };
         setLinkedStaff(staffData.items ?? []);
+      }
+      if (adminRes.ok) {
+        const adminData = (await adminRes.json()) as { items: LinkedAdmin[] };
+        setLinkedAdmins(adminData.items ?? []);
       }
     } catch {
       toast.error("โหลดตั้งค่า LINE ไม่สำเร็จ");
@@ -156,7 +174,7 @@ export default function AdminLinePage() {
     }
   }
 
-  async function sendTest() {
+  async function sendTestStaff() {
     if (!testStaffId) {
       toast.error("เลือกพนักงานที่เชื่อม LINE แล้ว");
       return;
@@ -178,6 +196,57 @@ export default function AdminLinePage() {
     }
   }
 
+  async function sendTestAdmin() {
+    if (!testAdminId) {
+      toast.error("เลือกแอดมินที่เชื่อม LINE แล้ว");
+      return;
+    }
+    setTesting(true);
+    try {
+      const res = await fetch("/api/admin/line-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminId: testAdminId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "ส่งไม่สำเร็จ");
+      toast.success("ส่งข้อความทดสอบแล้ว");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "ส่งไม่สำเร็จ");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function sendDailySummaryTest() {
+    setSummaryTesting(true);
+    try {
+      const res = await fetch("/api/admin/line-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dailySummary: true, force: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "ส่งไม่สำเร็จ");
+      const summary = data.dailySummary as
+        | { sent?: number; skipped?: number; errors?: string[] }
+        | undefined;
+      const sent = summary?.sent ?? 0;
+      const skipped = summary?.skipped ?? 0;
+      if (sent > 0) {
+        toast.success(`ส่งสรุปตัดรอบแล้ว ${sent} สาขา`);
+      } else if (summary?.errors?.length) {
+        toast.error(summary.errors[0] ?? "ส่งไม่สำเร็จ");
+      } else {
+        toast.success(`ไม่มีสาขาที่ส่งได้ (ข้าม ${skipped})`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "ส่งไม่สำเร็จ");
+    } finally {
+      setSummaryTesting(false);
+    }
+  }
+
   if (!sessionLoaded || loading || !settings) {
     return <AdminLoadingState />;
   }
@@ -186,7 +255,7 @@ export default function AdminLinePage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="LINE Official Account"
-        description="เชื่อม Messaging API เพื่อแจ้งเตือนพนักงานเมื่อมีออเดอร์ใหม่"
+        description="แจ้งออเดอร์ใหม่ให้พนักงาน และสรุปตัดรอบให้เจ้าของแบรนด์"
       />
 
       <section className={`${adminCardClass} space-y-3`}>
@@ -208,8 +277,9 @@ export default function AdminLinePage() {
             </strong>
           </li>
           <li>
-            พนักงานที่เชื่อม LINE แล้ว:{" "}
-            <strong>{settings.linkedStaffCount}</strong> คน
+            พนักงานที่เชื่อม LINE:{" "}
+            <strong>{settings.linkedStaffCount}</strong> คน · แอดมินแบรนด์:{" "}
+            <strong>{settings.linkedAdminCount}</strong> คน
           </li>
         </ul>
       </section>
@@ -231,18 +301,18 @@ export default function AdminLinePage() {
             </a>
           </li>
           <li>
-            เปิด Messaging API ใน OA → ตั้งค่า → Messaging API แล้วออก{" "}
-            <strong>Channel access token</strong> และคัดลอก{" "}
+            เปิด Messaging API แล้วออก{" "}
+            <strong>Channel access token</strong> + คัดลอก{" "}
             <strong>Channel secret</strong>
           </li>
-          <li>วางค่าด้านล่าง (หรือใส่ในไฟล์ env ของเซิร์ฟเวอร์)</li>
+          <li>วางค่าด้านล่าง ตั้ง Webhook URL แล้วเปิดใช้ Webhook</li>
           <li>
-            ตั้ง Webhook URL ใน LINE Developers เป็น URL ด้านล่าง แล้วเปิดใช้
-            Webhook
+            พนักงาน: แอดเพื่อน OA แล้วส่งเบอร์ในระบบ เช่น{" "}
+            <code>0812345678</code>
           </li>
           <li>
-            ให้พนักงานเพิ่มเพื่อน OA แล้วส่งเบอร์โทรในระบบมาในแชท เช่น
-            0812345678
+            เจ้าของแบรนด์: แอดเพื่อน OA แล้วส่งชื่อผู้ใช้แอดมิน เช่น{" "}
+            <code>mybrand</code>
           </li>
           <li>เปิดสวิตช์แจ้งเตือนด้านล่าง แล้วทดสอบส่งข้อความ</li>
         </ol>
@@ -262,10 +332,6 @@ export default function AdminLinePage() {
             คัดลอก
           </button>
         </div>
-        <p className="text-xs text-slate-500">
-          วางใน LINE Developers → Messaging API → Webhook URL แล้วกด Verify /
-          Enable
-        </p>
       </section>
 
       <form
@@ -363,10 +429,32 @@ export default function AdminLinePage() {
             }
           />
         </label>
+        <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
+          <span>สรุปตัดรอบให้เจ้าของ/ผู้จัดการแบรนด์</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={settings.notifyBrandDailySummary}
+            disabled={saving}
+            onChange={(e) =>
+              void patchFlags({ notifyBrandDailySummary: e.target.checked })
+            }
+          />
+        </label>
+        <p className="text-xs text-slate-500">
+          ระบบจะส่งสรุปรอบที่เพิ่งปิดของแต่ละสาขาอัตโนมัติหลังถึงเวลาตัดรอบ
+          (ต้องตั้ง CRON เรียก{" "}
+          <code className="rounded bg-slate-100 px-1">
+            /api/cron/line-daily-summary
+          </code>
+          )
+        </p>
       </section>
 
       <section className={`${adminCardClass} space-y-4`}>
-        <h2 className="text-base font-semibold text-slate-900">ทดสอบส่ง</h2>
+        <h2 className="text-base font-semibold text-slate-900">
+          ทดสอบ · พนักงาน
+        </h2>
         {linkedStaff.length === 0 ? (
           <p className="text-sm text-slate-600">
             ยังไม่มีพนักงานเชื่อม LINE — ให้เพิ่มเพื่อน OA แล้วส่งเบอร์โทรในแชท
@@ -394,13 +482,75 @@ export default function AdminLinePage() {
             <button
               type="button"
               disabled={testing}
-              onClick={() => void sendTest()}
+              onClick={() => void sendTestStaff()}
               className={btnPrimary}
             >
               {testing ? "กำลังส่ง..." : "ส่งข้อความทดสอบ"}
             </button>
           </>
         )}
+      </section>
+
+      <section className={`${adminCardClass} space-y-4`}>
+        <h2 className="text-base font-semibold text-slate-900">
+          ทดสอบ · เจ้าของแบรนด์ / สรุปตัดรอบ
+        </h2>
+        {linkedAdmins.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            ยังไม่มีแอดมินเชื่อม LINE — ให้เพิ่มเพื่อน OA แล้วส่งชื่อผู้ใช้แอดมินในแชท
+          </p>
+        ) : (
+          <>
+            <ul className="space-y-1 text-sm text-slate-700">
+              {linkedAdmins.map((a) => (
+                <li key={a.id}>
+                  <strong>{a.username}</strong>
+                  {a.brands.length > 0 ? ` · ${a.brands.join(", ")}` : ""}
+                </li>
+              ))}
+            </ul>
+            <div>
+              <label className={adminLabelClass} htmlFor="test-admin">
+                แอดมิน
+              </label>
+              <select
+                id="test-admin"
+                className={adminInputClass}
+                value={testAdminId}
+                onChange={(e) => setTestAdminId(e.target.value)}
+              >
+                <option value="">เลือก...</option>
+                {linkedAdmins.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={testing}
+              onClick={() => void sendTestAdmin()}
+              className={btnPrimary}
+            >
+              {testing ? "กำลังส่ง..." : "ส่งข้อความทดสอบแอดมิน"}
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          disabled={summaryTesting || !settings.messagingEnabled}
+          onClick={() => void sendDailySummaryTest()}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {summaryTesting
+            ? "กำลังส่งสรุป..."
+            : "ส่งสรุปตัดรอบรอบล่าสุด (ทดสอบ)"}
+        </button>
+        <p className="text-xs text-slate-500">
+          สรุปจะมียอดสำเร็จ/ยกเลิก รายการที่ขายออก เหตุผลยกเลิก
+          และลิงก์เปิดดูในแอดมิน
+        </p>
       </section>
     </div>
   );

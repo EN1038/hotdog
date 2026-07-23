@@ -33,12 +33,13 @@ import {
 } from "@/lib/branch-hours";
 import {
   isCancelledStatus,
-  isRevenueStatus,
+  isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
 
 type OrderWithItems = {
   status: OrderStatus;
+  awaitingPhotoKey?: boolean;
   deliveryFee: unknown;
   discountAmount: unknown;
   items: Array<{
@@ -51,16 +52,23 @@ type OrderWithItems = {
 function computeStaffDayStats(orders: OrderWithItems[]) {
   let cancelledOrders = 0;
   let acceptedOrders = 0;
+  let awaitingPhotoKeyOrders = 0;
   let revenueBaht = 0;
   for (const o of orders) {
+    if (o.awaitingPhotoKey && !isCancelledStatus(o.status)) {
+      awaitingPhotoKeyOrders += 1;
+    }
     if (isCancelledStatus(o.status)) {
       cancelledOrders += 1;
       continue;
     }
-    if (o.status !== OrderStatus.WAITING_FOR_STORE_ACCEPTANCE) {
+    if (
+      o.status !== OrderStatus.WAITING_FOR_STORE_ACCEPTANCE &&
+      !o.awaitingPhotoKey
+    ) {
       acceptedOrders += 1;
     }
-    if (isRevenueStatus(o.status)) {
+    if (isOrderCountableRevenue(o)) {
       revenueBaht += orderGrandTotal(
         o.items.map((i) => ({
           quantity: i.quantity,
@@ -76,6 +84,7 @@ function computeStaffDayStats(orders: OrderWithItems[]) {
     totalOrders: orders.length,
     cancelledOrders,
     acceptedOrders,
+    awaitingPhotoKeyOrders,
     revenueBaht,
   };
 }
@@ -155,6 +164,7 @@ export async function GET(request: Request) {
       },
       select: {
         status: true,
+        awaitingPhotoKey: true,
         deliveryFee: true,
         discountAmount: true,
         items: {

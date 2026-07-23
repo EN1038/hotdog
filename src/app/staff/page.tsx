@@ -48,6 +48,7 @@ type DayStats = {
   totalOrders: number;
   cancelledOrders: number;
   acceptedOrders: number;
+  awaitingPhotoKeyOrders?: number;
   revenueBaht: number;
 };
 
@@ -78,6 +79,8 @@ export default function StaffPage() {
     href: string;
     label: string;
   }>({ href: "/staff/key-order/promo", label: "แบบโปรโมชั่น" });
+  const [creatingPhoto, setCreatingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
@@ -225,6 +228,51 @@ export default function StaffPage() {
     knownIdsRef.current = null;
     setViewDate(next);
     setLoading(true);
+  }
+
+  async function onPhotoSelected(file: File | null) {
+    if (!file) return;
+    setCreatingPhoto(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const up = await fetch("/api/staff/uploads", {
+        method: "POST",
+        body: form,
+      });
+      const upData = await up.json().catch(() => ({}));
+      if (!up.ok) {
+        pushErrorToast("อัปโหลดรูปไม่สำเร็จ", upData.error ?? "ลองใหม่");
+        return;
+      }
+      const res = await fetch("/api/staff/orders/photo-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoUrl: upData.url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pushErrorToast("เปิดคิวไม่สำเร็จ", data.error ?? "ลองใหม่");
+        return;
+      }
+      pushSuccessToast(
+        "เปิดคิวจากรูปแล้ว",
+        data.queueNumber != null
+          ? `คิว ${formatQueueNumber(data.queueNumber)} · คีย์รายการทีหลังได้`
+          : "คีย์รายการทีหลังได้",
+      );
+      if (typeof data.id === "string") {
+        setHighlightedOrderId(data.id);
+        setStatusFilter(null);
+        scrolledToCreatedOrderRef.current = false;
+      }
+      await fetchOrders();
+    } catch {
+      pushErrorToast("เปิดคิวไม่สำเร็จ", "ลองใหม่อีกครั้ง");
+    } finally {
+      setCreatingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
   }
 
   useEffect(() => {
@@ -558,6 +606,24 @@ export default function StaffPage() {
       <div className="mb-4 space-y-2">
         {isViewingToday && canEnter ? (
           <>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) =>
+                void onPhotoSelected(e.target.files?.[0] ?? null)
+              }
+            />
+            <button
+              type="button"
+              disabled={creatingPhoto}
+              onClick={() => photoInputRef.current?.click()}
+              className="flex w-full items-center justify-center rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:opacity-60"
+            >
+              {creatingPhoto ? "กำลังเปิดคิว..." : "ถ่ายรูปเปิดคิว (คีย์ทีหลัง)"}
+            </button>
             <div className="grid grid-cols-2 gap-2">
               <Link
                 href="/staff/key-order/regular"

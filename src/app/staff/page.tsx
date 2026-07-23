@@ -26,6 +26,7 @@ import {
 import {
   IconCamera,
   IconLogout,
+  IconPrinter,
   IconVolume,
   IconVolumeOff,
 } from "@/components/icons";
@@ -34,6 +35,13 @@ import type { MenuItemData } from "@/lib/customer-types";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
+import {
+  autoPrintQueueNumber,
+  formatPrinterLabel,
+  getSelectedPrinter,
+  hasPrintBridge,
+  selectPrinter,
+} from "@/lib/print-bridge";
 
 const DEFAULT_DOC_TITLE = "Staff | SkillSale";
 
@@ -86,6 +94,8 @@ export default function StaffPage() {
   }>({ href: "/staff/key-order/promo", label: "แบบโปรโมชั่น" });
   const [creatingPhoto, setCreatingPhoto] = useState(false);
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+  const [printBridgeReady, setPrintBridgeReady] = useState(false);
+  const [printerLabel, setPrinterLabel] = useState("เลือกเครื่องพิมพ์");
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
@@ -119,6 +129,22 @@ export default function StaffPage() {
   }, []);
 
   useEffect(() => {
+    const ready = hasPrintBridge();
+    setPrintBridgeReady(ready);
+    if (ready) {
+      setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!printBridgeReady) return;
+    const id = window.setInterval(() => {
+      setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [printBridgeReady]);
+
+  useEffect(() => {
     const feedback = takeStaffOrderFeedback();
     if (!feedback) return;
     if (feedback.kind === "success") {
@@ -130,6 +156,7 @@ export default function StaffPage() {
             : ""
         }`,
       );
+      autoPrintQueueNumber(feedback.queueNumber);
     } else {
       pushErrorToast("บันทึกไม่สำเร็จ", feedback.message);
     }
@@ -269,6 +296,7 @@ export default function StaffPage() {
           ? `คิว ${formatQueueNumber(data.queueNumber)} · คีย์รายการทีหลังได้`
           : "คีย์รายการทีหลังได้",
       );
+      autoPrintQueueNumber(data.queueNumber);
       if (typeof data.id === "string") {
         setHighlightedOrderId(data.id);
         setStatusFilter(null);
@@ -515,6 +543,22 @@ export default function StaffPage() {
                 <IconVolume size={22} aria-hidden />
               </button>
             )}
+            {printBridgeReady ? (
+              <button
+                type="button"
+                onClick={() => {
+                  selectPrinter();
+                  window.setTimeout(() => {
+                    setPrinterLabel(formatPrinterLabel(getSelectedPrinter()));
+                  }, 800);
+                }}
+                aria-label={printerLabel}
+                title={printerLabel}
+                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100"
+              >
+                <IconPrinter size={22} aria-hidden />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => logout("/staff/login")}

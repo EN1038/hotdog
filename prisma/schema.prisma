@@ -193,6 +193,18 @@ model RestaurantType {
   updatedAt DateTime @updatedAt
 }
 
+/** Platform-managed staff new-order alert sounds. */
+model AlertSound {
+  id        String   @id @default(cuid())
+  name      String
+  fileUrl   String
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branches  Branch[]
+}
+
 model Branch {
   id                 String             @id @default(cuid())
   brandId            String?
@@ -225,8 +237,11 @@ model Branch {
   businessDayCutoffTime String          @default("00:00")
   /// HH:mm Asia/Bangkok — staff late entry closes at this time (null = until cutoff)
   lateEntryUntilTime String?
+  /// Staff new-order alert sound (from platform library)
+  alertSoundId       String?
   createdAt          DateTime           @default(now())
   brand              Brand?               @relation(fields: [brandId], references: [id])
+  alertSound         AlertSound?          @relation(fields: [alertSoundId], references: [id], onDelete: SetNull)
   staff              Staff[]
   menuItems          BranchMenuItem[]
   menuCategories     MenuCategory[]
@@ -238,6 +253,7 @@ model Branch {
   activityLogs       AdminActivityLog[]
 
   @@unique([brandId, code])
+  @@index([alertSoundId])
 }
 
 model Staff {

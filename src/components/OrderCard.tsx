@@ -21,7 +21,7 @@ import {
   countOptionsInText,
   isPackLikeOptions,
 } from "@/lib/order-item-display";
-import { hasPrintBridge, printQueueNumber } from "@/lib/print-bridge";
+import { canUsePrintActions, printQueueNumber } from "@/lib/print-bridge";
 
 type OrderItem = {
   id: string;
@@ -115,7 +115,14 @@ export function OrderCard({
   const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
-    setCanPrint(hasPrintBridge());
+    const refresh = () => setCanPrint(canUsePrintActions());
+    refresh();
+    window.addEventListener("skillsale-print-ready", refresh);
+    const id = window.setInterval(refresh, 1500);
+    return () => {
+      window.removeEventListener("skillsale-print-ready", refresh);
+      window.clearInterval(id);
+    };
   }, []);
 
   const colorClass = ORDER_STATUS_COLORS[order.status];

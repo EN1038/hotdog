@@ -130,6 +130,11 @@ const NAV_GROUPS: NavGroup[] = [
         platformOnly: true,
         icon: IconChat,
       },
+      {
+        href: "/admin/line-connect",
+        label: "เชื่อม LINE",
+        icon: IconChat,
+      },
     ],
   },
 ];

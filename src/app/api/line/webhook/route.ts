@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import {
   getLineCredentials,
+  LINE_FOLLOW_REPLY,
   lineReplyText,
-  tryLinkStaffByPhoneMessage,
+  tryLinkLineAccountFromMessage,
   verifyLineWebhookSignature,
 } from "@/lib/line";
 
@@ -21,7 +22,7 @@ type LineWebhookBody = {
 
 /**
  * LINE Messaging API webhook.
- * Staff can link by adding the OA friend then sending their staff phone number.
+ * Staff link by phone; brand admins link by username.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -48,10 +49,7 @@ export async function POST(request: Request) {
     if (!userId) continue;
 
     if (event.type === "follow" && event.replyToken) {
-      await lineReplyText(
-        event.replyToken,
-        "ยินดีต้อนรับ\nส่งเบอร์โทรพนักงานในระบบมาเพื่อผูกบัญชี เช่น 0812345678",
-      );
+      await lineReplyText(event.replyToken, LINE_FOLLOW_REPLY);
       continue;
     }
 
@@ -61,7 +59,7 @@ export async function POST(request: Request) {
       event.message.text &&
       event.replyToken
     ) {
-      const { reply } = await tryLinkStaffByPhoneMessage(
+      const { reply } = await tryLinkLineAccountFromMessage(
         userId,
         event.message.text,
       );
@@ -69,6 +67,5 @@ export async function POST(request: Request) {
     }
   }
 
-  // LINE expects 200 quickly
   return NextResponse.json({ ok: true });
 }

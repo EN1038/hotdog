@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { OrderStatus } from "@prisma/client";
 import {
   adminInputClass,
@@ -62,12 +63,22 @@ const STATUS_FILTERS: OrderStatus[] = [
 ];
 
 export function BranchOrdersPanel({ branchId }: { branchId: string }) {
-  const [date, setDate] = useState<string>("");
+  const searchParams = useSearchParams();
+  const dateFromUrl = searchParams.get("date")?.trim() ?? "";
+  const initialDate =
+    /^\d{4}-\d{2}-\d{2}$/.test(dateFromUrl) ? dateFromUrl : "";
+  const [date, setDate] = useState<string>(initialDate);
   const [operatingDay, setOperatingDay] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"" | OrderStatus>("");
   const [data, setData] = useState<OrdersPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateFromUrl)) {
+      setDate(dateFromUrl);
+    }
+  }, [dateFromUrl]);
 
   useEffect(() => {
     let cancelled = false;

@@ -80,7 +80,9 @@ export default function StaffPage() {
     label: string;
   }>({ href: "/staff/key-order/promo", label: "แบบโปรโมชั่น" });
   const [creatingPhoto, setCreatingPhoto] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
@@ -232,6 +234,7 @@ export default function StaffPage() {
 
   async function onPhotoSelected(file: File | null) {
     if (!file) return;
+    setPhotoPickerOpen(false);
     setCreatingPhoto(true);
     try {
       const form = new FormData();
@@ -271,7 +274,8 @@ export default function StaffPage() {
       pushErrorToast("เปิดคิวไม่สำเร็จ", "ลองใหม่อีกครั้ง");
     } finally {
       setCreatingPhoto(false);
-      if (photoInputRef.current) photoInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   }
 
@@ -607,7 +611,7 @@ export default function StaffPage() {
         {isViewingToday && canEnter ? (
           <>
             <input
-              ref={photoInputRef}
+              ref={cameraInputRef}
               type="file"
               accept="image/*"
               capture="environment"
@@ -616,14 +620,70 @@ export default function StaffPage() {
                 void onPhotoSelected(e.target.files?.[0] ?? null)
               }
             />
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) =>
+                void onPhotoSelected(e.target.files?.[0] ?? null)
+              }
+            />
             <button
               type="button"
               disabled={creatingPhoto}
-              onClick={() => photoInputRef.current?.click()}
+              onClick={() => setPhotoPickerOpen(true)}
               className="flex w-full items-center justify-center rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:opacity-60"
             >
               {creatingPhoto ? "กำลังเปิดคิว..." : "ถ่ายรูปเปิดคิว (คีย์ทีหลัง)"}
             </button>
+
+            {photoPickerOpen ? (
+              <div
+                className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+                role="dialog"
+                aria-modal="true"
+                aria-label="เลือกแหล่งรูป"
+                onClick={() => setPhotoPickerOpen(false)}
+              >
+                <div
+                  className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="text-center text-base font-bold text-gray-900">
+                    เปิดคิวด้วยรูป
+                  </p>
+                  <p className="mt-1 text-center text-xs text-gray-500">
+                    ถ่ายใหม่ตอนเร่งด่วน หรือเลือกจากคลังถ้ามีรูปอยู่แล้ว
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    <button
+                      type="button"
+                      disabled={creatingPhoto}
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex w-full items-center justify-center rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-60"
+                    >
+                      ถ่ายรูปด้วยกล้อง
+                    </button>
+                    <button
+                      type="button"
+                      disabled={creatingPhoto}
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      เลือกจากคลังภาพ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPhotoPickerOpen(false)}
+                      className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-50"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="grid grid-cols-2 gap-2">
               <Link
                 href="/staff/key-order/regular"

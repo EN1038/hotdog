@@ -19,6 +19,8 @@ import {
 } from "@/lib/constants";
 import {
   playOrderAlertSound,
+  previewAlertSound,
+  setOrderAlertSoundUrl,
   STAFF_SOUND_PREF_KEY,
   unlockOrderAlertSound,
   vibrateForNewOrder,
@@ -66,6 +68,12 @@ type DayStats = {
   revenueBaht: number;
 };
 
+type AlertSoundOption = {
+  id: string;
+  name: string;
+  fileUrl: string;
+};
+
 export default function StaffPage() {
   const router = useRouter();
   const branding = useSiteBranding();
@@ -107,6 +115,10 @@ export default function StaffPage() {
   const [soundError, setSoundError] = useState("");
   const [newOrderFlash, setNewOrderFlash] = useState(false);
   const [preferSound, setPreferSound] = useState(false);
+  const [alertSounds, setAlertSounds] = useState<AlertSoundOption[]>([]);
+  const [selectedAlertSoundId, setSelectedAlertSoundId] = useState<string>("");
+  const [savingAlertSound, setSavingAlertSound] = useState(false);
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(
@@ -129,6 +141,35 @@ export default function StaffPage() {
     } catch {
       /* ignore */
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/staff/alert-sound");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const list: AlertSoundOption[] = Array.isArray(data.alertSounds)
+          ? data.alertSounds
+          : [];
+        setAlertSounds(list);
+        const selectedId =
+          typeof data.alertSoundId === "string" ? data.alertSoundId : "";
+        setSelectedAlertSoundId(selectedId);
+        const url =
+          typeof data.alertSound?.fileUrl === "string"
+            ? data.alertSound.fileUrl
+            : (list.find((s) => s.id === selectedId)?.fileUrl ?? null);
+        setOrderAlertSoundUrl(url);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -473,6 +514,42 @@ export default function StaffPage() {
     }
   }
 
+  async function saveAlertSound(nextId: string) {
+    setSavingAlertSound(true);
+    try {
+      const res = await fetch("/api/staff/alert-sound", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alertSoundId: nextId || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pushErrorToast("บันทึกเสียงไม่สำเร็จ", data.error ?? "ลองใหม่");
+        return;
+      }
+      const id =
+        typeof data.alertSoundId === "string" ? data.alertSoundId : "";
+      setSelectedAlertSoundId(id);
+      const url =
+        typeof data.alertSound?.fileUrl === "string"
+          ? data.alertSound.fileUrl
+          : (alertSounds.find((s) => s.id === id)?.fileUrl ?? null);
+      setOrderAlertSoundUrl(url);
+      pushSuccessToast(
+        "บันทึกเสียงแจ้งเตือนแล้ว",
+        id
+          ? alertSounds.find((s) => s.id === id)?.name ?? "ใช้เสียงที่เลือก"
+          : "ใช้เสียงบี๊บเริ่มต้น",
+      );
+      if (url) previewAlertSound(url);
+      else playOrderAlertSound();
+    } finally {
+      setSavingAlertSound(false);
+    }
+  }
+
   async function handleStatusChange(orderId: string, status: OrderStatus) {
     if (!isViewingToday || !canEnter) return;
     const res = await fetch(`/api/staff/orders/${orderId}`, {
@@ -581,6 +658,15 @@ export default function StaffPage() {
                 <IconVolume size={22} aria-hidden />
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setSoundPickerOpen((v) => !v)}
+              aria-label="เลือกเสียงแจ้งเตือน"
+              title="เลือกเสียงแจ้งเตือน"
+              className="flex h-10 items-center gap-1 rounded-xl border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              เสียง
+            </button>
             {printBridgeReady ? (
               <button
                 type="button"
@@ -618,6 +704,48 @@ export default function StaffPage() {
             </button>
           </div>
         </div>
+        {soundPickerOpen ? (
+          <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+            <p className="text-xs font-semibold text-gray-800">
+              เสียงแจ้งเตือนของสาขา
+            </p>
+            <p className="mt-0.5 text-[11px] text-gray-500">
+              ทุกเครื่องในสาขานี้ใช้เสียงเดียวกัน
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <select
+                className="min-w-[12rem] flex-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-900"
+                value={selectedAlertSoundId}
+                disabled={savingAlertSound}
+                onChange={(e) => {
+                  void saveAlertSound(e.target.value);
+                }}
+              >
+                <option value="">บี๊บเริ่มต้น</option>
+                {alertSounds.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={savingAlertSound}
+                onClick={() => {
+                  const url = selectedAlertSoundId
+                    ? alertSounds.find((s) => s.id === selectedAlertSoundId)
+                        ?.fileUrl
+                    : null;
+                  if (url) previewAlertSound(url);
+                  else playOrderAlertSound();
+                }}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-100"
+              >
+                ลองฟัง
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm text-gray-600">

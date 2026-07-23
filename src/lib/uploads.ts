@@ -119,3 +119,76 @@ export async function saveUploadedImage(
   await writeFile(path.join(UPLOAD_DIR, name), buffer);
   return `${UPLOAD_PUBLIC_PREFIX}/${name}`;
 }
+
+export const ALLOWED_AUDIO_TYPES = new Set([
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/mpeg3",
+]);
+
+export const MAX_AUDIO_UPLOAD_BYTES = 2 * 1024 * 1024;
+
+function looksLikeMp3(buffer: Buffer): boolean {
+  if (buffer.length < 3) return false;
+  // ID3 tag
+  if (
+    buffer[0] === 0x49 &&
+    buffer[1] === 0x44 &&
+    buffer[2] === 0x33
+  ) {
+    return true;
+  }
+  // MPEG frame sync 0xFFEx
+  if (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) {
+    return true;
+  }
+  return false;
+}
+
+export function assertAllowedAudio(file: File) {
+  const type = (file.type || "").toLowerCase();
+  const nameOk = /\.mp3$/i.test(file.name || "");
+  if (!ALLOWED_AUDIO_TYPES.has(type) && !(type === "" && nameOk) && !nameOk) {
+    throw new Error("รองรับเฉพาะไฟล์ MP3");
+  }
+  if (file.size <= 0) {
+    throw new Error("ไม่พบไฟล์เสียง");
+  }
+  if (file.size > MAX_AUDIO_UPLOAD_BYTES) {
+    throw new Error("ไฟล์ใหญ่เกิน 2MB");
+  }
+}
+
+export type SaveUploadedAudioOptions = {
+  shopCode?: string | null;
+  folder?: string | null;
+};
+
+export async function saveUploadedAudio(
+  file: File,
+  options: SaveUploadedAudioOptions = {},
+): Promise<string> {
+  assertAllowedAudio(file);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (!looksLikeMp3(buffer)) {
+    throw new Error("ไฟล์ไม่ใช่ MP3 ที่รองรับ");
+  }
+
+  const name = `${Date.now()}-${randomBytes(6).toString("hex")}.mp3`;
+  const folder = normalizeUploadFolder(options.folder ?? "Alerts") as UploadFolder;
+
+  if (isS3Configured()) {
+    return uploadBufferToS3({
+      buffer,
+      contentType: "audio/mpeg",
+      shopCode: options.shopCode,
+      folder,
+      fileName: name,
+    });
+  }
+
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  await writeFile(path.join(UPLOAD_DIR, name), buffer);
+  return `${UPLOAD_PUBLIC_PREFIX}/${name}`;
+}

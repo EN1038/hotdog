@@ -446,6 +446,10 @@ model Order {
   cancelReason       String?
   /// Staff who keyed a walk-in order (null for customer online orders)
   createdByStaffId   String?
+  /// Reference photo for rush “key later” orders
+  photoUrl           String?
+  /// True until staff finishes keying items from the photo (not counted as sales yet)
+  awaitingPhotoKey   Boolean           @default(false)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   customer           Customer          @relation(fields: [customerId], references: [id])
@@ -456,6 +460,7 @@ model Order {
 
   @@unique([branchId, queueBusinessDate, queueNumber])
   @@index([branchId, queueBusinessDate])
+  @@index([branchId, awaitingPhotoKey])
 }
 
 model OrderItem {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { OrderStatus, type FulfillmentType } from "@prisma/client";
 import {
   FULFILLMENT_LABELS,
@@ -48,6 +49,8 @@ export type OrderCardData = {
   deliveryLongitude?: number | null;
   createdAt: string;
   createdByStaffId?: string | null;
+  photoUrl?: string | null;
+  awaitingPhotoKey?: boolean;
   promoSummary?: string | null;
   customer?: { phone: string; name?: string | null } | null;
   deliveryLocation: { name: string; isCustomAddress?: boolean } | null;
@@ -110,7 +113,7 @@ export function OrderCard({
   const colorClass = ORDER_STATUS_COLORS[order.status];
   const fulfillment = order.fulfillmentType ?? "DELIVERY";
   const allowed =
-    showActions && roles.length > 0
+    showActions && roles.length > 0 && !order.awaitingPhotoKey
       ? getAllowedNextStatuses(roles, order.status, fulfillment).filter(
           (s) => s !== order.status,
         )
@@ -179,6 +182,11 @@ export function OrderCard({
             {order.createdByStaffId ? (
               <span className="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
                 คีย์โดยพนักงาน
+              </span>
+            ) : null}
+            {order.awaitingPhotoKey ? (
+              <span className="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-800">
+                รอคีย์จากรูป
               </span>
             ) : null}
             {order.deliveryLocation?.isCustomAddress ? (
@@ -256,6 +264,26 @@ export function OrderCard({
               {order.note}
             </IconLabel>
           </p>
+        ) : null}
+
+        {order.photoUrl ? (
+          <div className="mt-2 overflow-hidden rounded-lg ring-1 ring-black/5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={order.photoUrl}
+              alt="รูปออเดอร์"
+              className="max-h-48 w-full object-cover"
+            />
+          </div>
+        ) : null}
+
+        {order.awaitingPhotoKey && showActions ? (
+          <Link
+            href={`/staff/key-order/photo/${order.id}`}
+            className="mt-2 flex w-full items-center justify-center rounded-lg bg-orange-500 px-3 py-2.5 text-sm font-bold text-white hover:bg-orange-600"
+          >
+            คีย์รายการจากรูป
+          </Link>
         ) : null}
 
         {order.status === OrderStatus.CANCELLED && order.cancelReason ? (

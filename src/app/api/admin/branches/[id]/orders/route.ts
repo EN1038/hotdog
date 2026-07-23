@@ -11,7 +11,7 @@ import {
 } from "@/lib/operating-day";
 import {
   isCancelledStatus,
-  isRevenueStatus,
+  isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
 
@@ -19,6 +19,7 @@ type Params = { params: Promise<{ id: string }> };
 
 type OrderForStats = {
   status: OrderStatus;
+  awaitingPhotoKey?: boolean;
   deliveryFee: unknown;
   discountAmount: unknown;
   items: Array<{
@@ -46,7 +47,7 @@ function computeDayStats(orders: OrderForStats[]) {
       Number(order.discountAmount),
     );
 
-    if (isRevenueStatus(order.status)) {
+    if (isOrderCountableRevenue(order)) {
       completedRevenue += total;
       completedCount += 1;
     } else if (isCancelledStatus(order.status)) {

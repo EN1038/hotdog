@@ -273,6 +273,7 @@ export default function StaffRegularKeyOrderPage() {
       const body: Record<string, unknown> = {
         fulfillmentType: fulfillment.fulfillmentType,
         paymentMethod: fulfillment.paymentMethod,
+        salesChannel: fulfillment.salesChannel,
         note: fulfillment.note.trim() || undefined,
         items,
       };
@@ -436,17 +437,20 @@ export default function StaffRegularKeyOrderPage() {
               </p>
             ) : (
               <ul className="divide-y divide-gray-100">
-                {visibleItems.map((item) => {
+                {visibleItems.map((item, index) => {
                   const qty = qtyByItemId[item.id] ?? 0;
                   const price = resolveSellPrice(item, channel).final;
                   const soldOut = item.isOutOfStock;
                   return (
                     <li
                       key={item.id}
-                      className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 ${
+                      className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 ${
                         soldOut ? "opacity-50" : ""
                       }`}
                     >
+                      <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                        {index + 1}
+                      </span>
                       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
                         {item.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element

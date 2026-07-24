@@ -345,6 +345,22 @@ export async function PATCH(request: Request, { params }: Params) {
       include: { brand: true },
     });
 
+    if (body.isOpen !== undefined) {
+      const { syncShiftWithAdminIsOpen } = await import("@/lib/branch-shift");
+      await syncShiftWithAdminIsOpen({
+        branchId: id,
+        isOpen: body.isOpen,
+      });
+      // Re-read so response matches shift sync
+      const refreshed = await prisma.branch.findUnique({
+        where: { id },
+        include: { brand: true },
+      });
+      if (refreshed) {
+        Object.assign(branch, refreshed);
+      }
+    }
+
     await logAdminActivity(session, {
       action: "branch.update",
       summary: summarizeBranchPatch(

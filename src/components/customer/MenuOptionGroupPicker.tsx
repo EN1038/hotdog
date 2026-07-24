@@ -216,7 +216,7 @@ export function MenuOptionGroupPicker({
           />
         ) : null}
         <ul className="w-full min-w-0 pb-1">
-          {visibleOptions.map((opt) => {
+          {visibleOptions.map((opt, index) => {
             const qty = qtyMap[opt.id] ?? 0;
             const disabled = opt.isOutOfStock;
             const atMax = selectedCount >= group.maxSelect;
@@ -224,10 +224,13 @@ export function MenuOptionGroupPicker({
             return (
               <li
                 key={opt.id}
-                className={`grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-gray-50 last:border-b-0 ${rowPad} ${
+                className={`grid w-full min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-gray-50 last:border-b-0 ${rowPad} ${
                   disabled ? "opacity-50" : ""
                 }`}
               >
+                <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                  {index + 1}
+                </span>
                 {showThumb ? (
                   <OptionThumb
                     name={opt.name}
@@ -336,7 +339,7 @@ export function MenuOptionGroupPicker({
         />
       ) : null}
       <ul className="w-full min-w-0 divide-y divide-gray-50 pb-1">
-        {visibleOptions.map((opt) => {
+        {visibleOptions.map((opt, index) => {
           const active = selectedIds.includes(opt.id);
           const atMax = !isSingle && !active && selectedCount >= group.maxSelect;
           const showThumb = fromMenu || Boolean(opt.imageUrl);
@@ -346,12 +349,15 @@ export function MenuOptionGroupPicker({
                 type="button"
                 disabled={atMax || opt.isOutOfStock}
                 onClick={() => toggle(opt.id)}
-                className={`grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left transition-colors ${rowPad} ${
+                className={`grid w-full min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 text-left transition-colors ${rowPad} ${
                   atMax || opt.isOutOfStock
                     ? "cursor-not-allowed opacity-40"
                     : "active:bg-gray-50"
                 } ${active ? "bg-site-primary-soft/40" : ""}`}
               >
+                <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                  {index + 1}
+                </span>
                 {showThumb ? (
                   <OptionThumb
                     name={opt.name}

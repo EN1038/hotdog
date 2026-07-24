@@ -19,7 +19,7 @@ export default function StaffNewOrderPage() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (data.entryLocked || data.canEnter === false) {
+      if (data.entryLocked || data.canEnter === false || data.canSell === false) {
         router.replace("/staff");
         return;
       }

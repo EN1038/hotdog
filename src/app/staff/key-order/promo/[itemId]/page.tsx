@@ -219,6 +219,7 @@ export default function StaffPromoKeyOrderDetailPage() {
       const body: Record<string, unknown> = {
         fulfillmentType: fulfillment.fulfillmentType,
         paymentMethod: fulfillment.paymentMethod,
+        salesChannel: fulfillment.salesChannel,
         note: fulfillment.note.trim() || undefined,
         items: [
           {

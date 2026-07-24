@@ -72,7 +72,7 @@ export async function POST() {
     if (!admin) return jsonError("ไม่พบผู้ใช้", 404);
     if (admin.brandMembers.length === 0) {
       return jsonError(
-        "ต้องเป็นเจ้าของหรือผู้จัดการแบรนด์จึงจะเชื่อม LINE สำหรับสรุปตัดรอบได้",
+        "ต้องเป็นเจ้าของหรือผู้จัดการแบรนด์จึงจะเชื่อม LINE สำหรับสรุปรอบขายได้",
         403,
       );
     }

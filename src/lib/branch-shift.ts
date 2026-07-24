@@ -9,10 +9,6 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
-import {
-  operatingDayDate,
-  resolveOperatingDayKey,
-} from "@/lib/operating-day";
 
 export type ActiveShift = Pick<
   BranchShift,
@@ -187,13 +183,13 @@ export async function openShift(params: {
 
   const branch = await prisma.branch.findUnique({
     where: { id: params.branchId },
-    select: { businessDayCutoffTime: true },
+    select: { id: true },
   });
   if (!branch) {
     throw new ShiftGateError("ไม่พบสาขา", 404);
   }
 
-  const calendarDate = operatingDayDate(at, branch.businessDayCutoffTime);
+  const calendarDate = queueBusinessDateFromKey(bangkokDateKey(at));
 
   return prisma.$transaction(async (tx) => {
     const existing = await tx.branchShift.findFirst({
@@ -266,6 +262,18 @@ export async function closeActiveShift(params: {
   });
 
   const summary = await buildShiftSummary(closed.id);
+  try {
+    const { sendShiftCloseLineSummary } = await import(
+      "@/lib/line-shift-summary"
+    );
+    await sendShiftCloseLineSummary(summary);
+  } catch (e) {
+    console.error(
+      "[branch-shift] LINE shift summary failed",
+      closed.id,
+      e instanceof Error ? e.message : e,
+    );
+  }
   return { shift: closed, summary };
 }
 
@@ -303,7 +311,7 @@ export async function syncShiftWithAdminIsOpen(params: {
   return shift;
 }
 
-export type CloseShiftsPastCutoffResult = {
+export type CloseShiftsPastMidnightResult = {
   checked: number;
   closed: number;
   branchIds: string[];
@@ -311,34 +319,29 @@ export type CloseShiftsPastCutoffResult = {
 };
 
 /**
- * Auto-close any open shift whose operating day has already rolled past cutoff.
- * Safe to call from the LINE daily-summary cron (every few minutes).
+ * Auto-close any open shift whose calendar date is not today's Bangkok date.
+ * Safe to call from cron every few minutes (fires after local midnight).
  */
-export async function closeShiftsPastCutoff(
+export async function closeShiftsPastMidnight(
   at: Date = new Date(),
-): Promise<CloseShiftsPastCutoffResult> {
-  const result: CloseShiftsPastCutoffResult = {
+): Promise<CloseShiftsPastMidnightResult> {
+  const result: CloseShiftsPastMidnightResult = {
     checked: 0,
     closed: 0,
     branchIds: [],
     errors: [],
   };
 
+  const today = bangkokDateKey(at);
   const openShifts = await prisma.branchShift.findMany({
     where: { closedAt: null },
-    select: {
-      ...activeShiftSelect,
-      branch: { select: { businessDayCutoffTime: true } },
-    },
+    select: activeShiftSelect,
   });
 
   for (const row of openShifts) {
     result.checked += 1;
-    const cutoff = row.branch.businessDayCutoffTime;
-    const currentDay = resolveOperatingDayKey(at, cutoff);
     const shiftDay = shiftCalendarDateKey(row);
-
-    if (shiftDay === currentDay) continue;
+    if (shiftDay === today) continue;
 
     try {
       await closeActiveShift({
@@ -356,6 +359,10 @@ export async function closeShiftsPastCutoff(
 
   return result;
 }
+
+/** @deprecated Use closeShiftsPastMidnight */
+export const closeShiftsPastCutoff = closeShiftsPastMidnight;
+
 
 type OrderForSummary = {
   status: string;

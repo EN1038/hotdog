@@ -278,7 +278,7 @@ export async function tryLinkAdminByLinkCodeMessage(
     return {
       linked: false,
       reply:
-        "บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงผูกเพื่อรับสรุปตัดรอบไม่ได้",
+        "บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงผูกเพื่อรับสรุปรอบขายไม่ได้",
     };
   }
 
@@ -306,7 +306,7 @@ export async function tryLinkAdminByLinkCodeMessage(
     reply: [
       "เชื่อมต่อแอดมินสำเร็จ",
       `${admin.username} · ${brandLine}`,
-      "จะได้รับสรุปตัดรอบของสาขาทาง LINE",
+      "จะได้รับสรุปรอบขายของสาขาทาง LINE",
     ].join("\n"),
   };
 }

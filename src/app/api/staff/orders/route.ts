@@ -14,9 +14,7 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import {
-  getOperatingRoundStatus,
-} from "@/lib/operating-day";
+import { getCalendarDayState } from "@/lib/operating-day";
 import {
   getActiveShift,
   requireActiveShift,
@@ -154,13 +152,11 @@ export async function GET(request: Request) {
         deliveryHours: true,
         opensAt: true,
         closesAt: true,
-        businessDayCutoffTime: true,
-        lateEntryUntilTime: true,
       },
     });
     if (!branchForDay) return jsonError("ไม่พบสาขา", 404);
 
-    const dayState = getOperatingRoundStatus(branchForDay);
+    const dayState = getCalendarDayState();
     const viewDateKey =
       dateParam && isBangkokDateKey(dateParam)
         ? dateParam
@@ -221,11 +217,7 @@ export async function GET(request: Request) {
       canEnter: canSell && isToday,
       canSell,
       activeShift: activeShift ? serializeShift(activeShift) : null,
-      businessDayCutoffTime: dayState.cutoffTime,
-      lateEntryUntilTime: dayState.lateEntryUntilTime,
-      entryDeadlineHm: dayState.entryDeadlineHm,
-      minutesRemaining: dayState.minutesRemaining,
-      tone: canSell ? dayState.tone : "locked",
+      tone: canSell ? "ok" : "locked",
       dayStats,
       roles: session.staffRoles,
       branchName: session.branchName,
@@ -279,7 +271,7 @@ export async function POST(request: Request) {
       throw e;
     }
 
-    const dayState = getOperatingRoundStatus(branch);
+    const dayState = getCalendarDayState();
     const shiftDateKey = shiftCalendarDateKey(activeShift);
 
     const requestedIds = body.items.map((i) => i.branchMenuItemId);

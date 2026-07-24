@@ -13,11 +13,6 @@ import {
   orderGrandTotal,
 } from "@/lib/order-totals";
 import { weeklyScheduleSchema } from "@/lib/branch-hours";
-import {
-  isHhmm,
-  normalizeCutoffTime,
-  normalizeLateEntryTime,
-} from "@/lib/operating-day";
 import { PRICE_RANGE_IDS } from "@/lib/localized";
 import { assertValidRestaurantCategories } from "@/lib/restaurant-type-access";
 import {
@@ -57,43 +52,8 @@ const updateSchema = z.object({
   isHidden: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
-  businessDayCutoffTime: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลาต้องเป็น HH:mm")
-    .optional(),
-  lateEntryUntilTime: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลาต้องเป็น HH:mm")
-    .nullable()
-    .optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
   deliveryHours: weeklyScheduleSchema.optional(),
-}).superRefine((body, ctx) => {
-  const cutoff =
-    body.businessDayCutoffTime !== undefined
-      ? normalizeCutoffTime(body.businessDayCutoffTime)
-      : null;
-  const late =
-    body.lateEntryUntilTime !== undefined
-      ? normalizeLateEntryTime(body.lateEntryUntilTime)
-      : undefined;
-  if (cutoff && late && late === cutoff) {
-    ctx.addIssue({
-      code: "custom",
-      message: "เวลาคีย์ออเดอร์ต้องไม่เท่ากับเวลาตัดรอบ",
-      path: ["lateEntryUntilTime"],
-    });
-  }
-  if (
-    body.businessDayCutoffTime !== undefined &&
-    !isHhmm(body.businessDayCutoffTime)
-  ) {
-    ctx.addIssue({
-      code: "custom",
-      message: "เวลาตัดรอบไม่ถูกต้อง",
-      path: ["businessDayCutoffTime"],
-    });
-  }
 });
 
 type Params = { params: Promise<{ id: string }> };
@@ -318,14 +278,6 @@ export async function PATCH(request: Request, { params }: Params) {
         }),
         ...(body.autoAcceptOrders !== undefined && {
           autoAcceptOrders: body.autoAcceptOrders,
-        }),
-        ...(body.businessDayCutoffTime !== undefined && {
-          businessDayCutoffTime: normalizeCutoffTime(
-            body.businessDayCutoffTime,
-          ),
-        }),
-        ...(body.lateEntryUntilTime !== undefined && {
-          lateEntryUntilTime: normalizeLateEntryTime(body.lateEntryUntilTime),
         }),
         ...(body.storefrontHours !== undefined && {
           storefrontHours:

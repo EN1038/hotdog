@@ -12,8 +12,6 @@ export type StaffKeyedOrderContext = {
   staffDisplayName: string;
   staffPhone: string;
   operatingDay: string;
-  businessDayCutoffTime: string;
-  lateEntryUntilTime: string | null;
   canSell: boolean;
   activeShift: {
     roundNumber: number;
@@ -73,14 +71,6 @@ export function useStaffKeyedOrder() {
         staffPhone: data.staffPhone ?? "",
         operatingDay:
           typeof data.operatingDay === "string" ? data.operatingDay : "",
-        businessDayCutoffTime:
-          typeof data.businessDayCutoffTime === "string"
-            ? data.businessDayCutoffTime
-            : "00:00",
-        lateEntryUntilTime:
-          typeof data.lateEntryUntilTime === "string"
-            ? data.lateEntryUntilTime
-            : null,
         canSell: true,
         activeShift,
       });

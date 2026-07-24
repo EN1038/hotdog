@@ -100,11 +100,6 @@ export default function StaffPage() {
   const [operatingDay, setOperatingDay] = useState("");
   const [isViewingToday, setIsViewingToday] = useState(true);
   const [canEnter, setCanEnter] = useState(true);
-  const [lateEntryUntilTime, setLateEntryUntilTime] = useState<string | null>(
-    null,
-  );
-  const [businessDayCutoffTime, setBusinessDayCutoffTime] =
-    useState("00:00");
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
   const [promoLink, setPromoLink] = useState<{
     href: string;
@@ -288,14 +283,6 @@ export default function StaffPage() {
       setActiveShift(data.activeShift as ActiveShiftInfo);
     } else {
       setActiveShift(null);
-    }
-    setLateEntryUntilTime(
-      typeof data.lateEntryUntilTime === "string"
-        ? data.lateEntryUntilTime
-        : null,
-    );
-    if (typeof data.businessDayCutoffTime === "string") {
-      setBusinessDayCutoffTime(data.businessDayCutoffTime);
     }
     if (data.dayStats) setDayStats(data.dayStats);
 
@@ -819,8 +806,6 @@ export default function StaffPage() {
             <StaffRoundSelector
               viewRound={viewDate}
               currentRound={operatingDay}
-              businessDayCutoffTime={businessDayCutoffTime}
-              lateEntryUntilTime={lateEntryUntilTime}
               isViewingCurrent={isViewingToday}
               onChangeRound={onViewRoundChange}
               onGoToCurrent={goToToday}
@@ -834,7 +819,6 @@ export default function StaffPage() {
           canToggleStore={canToggleStore}
           canSell={canSell}
           activeShift={activeShift}
-          viewingOtherRound={!isViewingToday}
           onBeforeOpen={goToTodayQuiet}
           onOpened={() => {
             pushSuccessToast("เปิดรอบแล้ว", "พร้อมรับออเดอร์");

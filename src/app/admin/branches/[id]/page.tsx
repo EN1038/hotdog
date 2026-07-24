@@ -32,6 +32,7 @@ import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
 import { BranchOrdersPanel } from "@/components/admin/BranchOrdersPanel";
 import { BranchShiftsPanel } from "@/components/admin/BranchShiftsPanel";
+import { AdminCloseStoreModal } from "@/components/admin/AdminCloseStoreModal";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { MenuBestSellerTag } from "@/components/customer/MenuChannelPrice";
@@ -126,8 +127,6 @@ type BranchDetail = {
   deliveryHours: unknown;
   allowAdvanceOrder: boolean;
   autoAcceptOrders: boolean;
-  businessDayCutoffTime?: string;
-  lateEntryUntilTime?: string | null;
   brand: Brand | null;
   staff: {
     id: string;
@@ -447,8 +446,6 @@ function BranchDetailContent() {
     isHidden: false,
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
-    businessDayCutoffTime: "00:00",
-    lateEntryUntilTime: "",
     storefrontHours: null as WeeklySchedule | null,
     deliveryHours: null as WeeklySchedule | null,
   });
@@ -492,6 +489,8 @@ function BranchDetailContent() {
   const [stockPasteOpen, setStockPasteOpen] = useState(false);
   const [stockPasteText, setStockPasteText] = useState("");
   const [stockPasteBusy, setStockPasteBusy] = useState(false);
+  const [closeStoreOpen, setCloseStoreOpen] = useState(false);
+  const [closeStoreBusy, setCloseStoreBusy] = useState(false);
   const [stockPasteResult, setStockPasteResult] = useState<{
     hiddenCount: number;
     toHide: { id: string; name: string; matchedFrom: string }[];
@@ -574,8 +573,6 @@ function BranchDetailContent() {
       isHidden: data.isHidden ?? false,
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
-      businessDayCutoffTime: data.businessDayCutoffTime ?? "00:00",
-      lateEntryUntilTime: data.lateEntryUntilTime ?? "",
       storefrontHours: ensureWeeklySchedule(
         data.storefrontHours,
         data.opensAt,
@@ -700,10 +697,6 @@ function BranchDetailContent() {
         isOpen: settings.isOpen,
         allowAdvanceOrder: settings.allowAdvanceOrder,
         autoAcceptOrders: settings.autoAcceptOrders,
-        businessDayCutoffTime: settings.businessDayCutoffTime || "00:00",
-        lateEntryUntilTime: settings.lateEntryUntilTime.trim()
-          ? settings.lateEntryUntilTime.trim()
-          : null,
         storefrontHours: settings.storefrontHours,
         deliveryHours: settings.deliveryHours,
       }),
@@ -2594,23 +2587,7 @@ function BranchDetailContent() {
                       <button
                         type="button"
                         className={`${btnDanger} shrink-0`}
-                        onClick={() =>
-                          patchBranchSetting(
-                            { isOpen: false },
-                            {
-                              successMessage: "ปิดร้านแล้ว",
-                              errorTitle: "ปิดร้านไม่สำเร็จ",
-                              confirm: {
-                                title: "ปิดร้าน?",
-                                message:
-                                  "ยืนยันปิดร้าน จะปิดรอบขายของพนักงานด้วย ลูกค้าและพนักงานจะขายต่อไม่ได้จนกว่าจะเปิดใหม่",
-                                confirmLabel: "ปิดร้าน",
-                              },
-                              onSuccessLocal: () =>
-                                setSettings((s) => ({ ...s, isOpen: false })),
-                            },
-                          )
-                        }
+                        onClick={() => setCloseStoreOpen(true)}
                       >
                         ปิดร้าน
                       </button>
@@ -2961,87 +2938,6 @@ function BranchDetailContent() {
                       />
                     </div>
                   )}
-                </div>
-              </div>
-
-              {/* 4b. Operating day / late entry */}
-              <div className="space-y-3 border-t border-slate-100 pt-8">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    รอบวันธุรกิจ (สรุปรายวัน / LINE)
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    ใช้ตัดสรุปรายวัน / LINE และเลขคิวต่อวัน — เมื่อถึงเวลาตัดรอบ
-                    ระบบจะปิดรอบพนักงานที่ยังเปิดอยู่ให้อัตโนมัติ และล็อกไม่ให้ขาย/แก้ต่อจนกว่าจะเปิดรอบใหม่
-                    (วันหนึ่งมีได้หลายรอบ)
-                  </p>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label
-                      className={adminLabelClass}
-                      htmlFor="business-day-cutoff"
-                    >
-                      ตัดรอบวันธุรกิจเวลา
-                    </label>
-                    <input
-                      id="business-day-cutoff"
-                      type="time"
-                      className={adminInputClass}
-                      value={settings.businessDayCutoffTime || "00:00"}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          businessDayCutoffTime: e.target.value || "00:00",
-                        }))
-                      }
-                    />
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      ค่าเริ่มต้น 00:00 = ตัดตามเที่ยงคืน · ร้านข้ามวันแนะนำ 04:00 ·
-                      ถึงเวลานี้ระบบปิดรอบ Staff อัตโนมัติ
-                    </p>
-                  </div>
-                  <div>
-                    <label
-                      className={adminLabelClass}
-                      htmlFor="late-entry-until"
-                    >
-                      พนักงานคีย์ออเดอร์ได้ถึง
-                      <span className="ml-1 font-normal text-slate-400">
-                        (เลิกใช้เป็นตัวบล็อกขาย — ใช้รอบ Staff แทน)
-                      </span>
-                    </label>
-                    <input
-                      id="late-entry-until"
-                      type="time"
-                      className={adminInputClass}
-                      value={settings.lateEntryUntilTime}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          lateEntryUntilTime: e.target.value,
-                        }))
-                      }
-                    />
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      ไม่ใช้บล็อกขาย/แก้แล้ว — หลังปิดรอบหรือถึงตัดรอบจะแก้ไม่ได้จนกว่าจะเปิดรอบใหม่
-                      (ค่านี้เก็บไว้เพื่ออ้างอิงรอบวันเดิม)
-                    </p>
-                    {settings.lateEntryUntilTime ? (
-                      <button
-                        type="button"
-                        className="mt-1 text-xs font-semibold text-site-primary underline"
-                        onClick={() =>
-                          setSettings((s) => ({
-                            ...s,
-                            lateEntryUntilTime: "",
-                          }))
-                        }
-                      >
-                        ล้างค่า (คีย์ได้จนตัดรอบ)
-                      </button>
-                    ) : null}
-                  </div>
                 </div>
               </div>
 
@@ -3616,6 +3512,36 @@ function BranchDetailContent() {
           </button>
         </div>
       </AdminModal>
+
+      <AdminCloseStoreModal
+        open={closeStoreOpen}
+        branchId={id}
+        busy={closeStoreBusy}
+        onClose={() => {
+          if (!closeStoreBusy) setCloseStoreOpen(false);
+        }}
+        onConfirm={async () => {
+          setCloseStoreBusy(true);
+          try {
+            const res = await fetch(`/api/admin/branches/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ isOpen: false }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              toast.error("ปิดร้านไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+              return;
+            }
+            toast.success("ปิดร้านแล้ว");
+            setSettings((s) => ({ ...s, isOpen: false }));
+            setCloseStoreOpen(false);
+            load();
+          } finally {
+            setCloseStoreBusy(false);
+          }
+        }}
+      />
     </div>
   );
 }

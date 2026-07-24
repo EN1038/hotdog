@@ -290,8 +290,6 @@ export default function StorePage() {
   const [staffKeyedOrder, setStaffKeyedOrder] = useState(false);
   const [staffRound, setStaffRound] = useState<{
     operatingDay: string;
-    businessDayCutoffTime: string;
-    lateEntryUntilTime: string | null;
     canSell: boolean;
     activeShift: {
       roundNumber: number;
@@ -334,14 +332,6 @@ export default function StorePage() {
       setStaffRound({
         operatingDay:
           typeof data.operatingDay === "string" ? data.operatingDay : "",
-        businessDayCutoffTime:
-          typeof data.businessDayCutoffTime === "string"
-            ? data.businessDayCutoffTime
-            : "00:00",
-        lateEntryUntilTime:
-          typeof data.lateEntryUntilTime === "string"
-            ? data.lateEntryUntilTime
-            : null,
         canSell: true,
         activeShift,
       });
@@ -623,8 +613,6 @@ export default function StorePage() {
           <StaffOperatingRoundBanner
             compact
             operatingDay={staffRound.operatingDay}
-            businessDayCutoffTime={staffRound.businessDayCutoffTime}
-            lateEntryUntilTime={staffRound.lateEntryUntilTime}
             canSell={staffRound.canSell}
             activeShift={staffRound.activeShift}
           />

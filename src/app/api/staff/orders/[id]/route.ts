@@ -4,12 +4,14 @@ import { requireStaff } from "@/lib/auth";
 import {
   canStaffCancel,
   canStaffUpdateStatus,
-  bangkokDateKey,
   ORDER_STATUS_LABELS,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { canStaffMutateOperatingDay } from "@/lib/operating-day";
+import {
+  assertOrderMutableInActiveShift,
+  ShiftGateError,
+} from "@/lib/branch-shift";
 
 const statusSchema = z.object({
   status: z.nativeEnum(OrderStatus),
@@ -40,28 +42,17 @@ export async function PATCH(request: Request, { params }: Params) {
     });
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
 
-    const branch = await prisma.branch.findUnique({
-      where: { id: session.branchId },
-      select: {
-        businessDayCutoffTime: true,
-        lateEntryUntilTime: true,
-      },
-    });
-    if (!branch) return jsonError("ไม่พบสาขา", 404);
-
-    const orderDayKey = bangkokDateKey(order.queueBusinessDate);
-    if (
-      !canStaffMutateOperatingDay(
-        orderDayKey,
-        new Date(),
-        branch.businessDayCutoffTime,
-        branch.lateEntryUntilTime,
-      )
-    ) {
-      return jsonError(
-        "แก้ไขได้เฉพาะออเดอร์ของรอบเปิดร้านปัจจุบัน และต้องอยู่ในเวลาที่ยังคีย์ได้",
-        403,
-      );
+    try {
+      await assertOrderMutableInActiveShift({
+        branchId: session.branchId,
+        orderShiftId: order.shiftId,
+        orderQueueBusinessDate: order.queueBusinessDate,
+      });
+    } catch (e) {
+      if (e instanceof ShiftGateError) {
+        return jsonError(e.message, e.status);
+      }
+      throw e;
     }
 
     const roles = session.staffRoles ?? [];

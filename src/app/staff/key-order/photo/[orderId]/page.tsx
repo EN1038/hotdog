@@ -302,6 +302,7 @@ export default function StaffPhotoKeyOrderPage() {
       const body: Record<string, unknown> = {
         fulfillmentType: fulfillment.fulfillmentType,
         paymentMethod: fulfillment.paymentMethod,
+        salesChannel: fulfillment.salesChannel,
         note: fulfillment.note.trim() || undefined,
         items,
       };
@@ -483,7 +484,7 @@ export default function StaffPhotoKeyOrderPage() {
         </div>
 
         <ul className="space-y-2">
-          {visibleItems.map((item) => {
+          {visibleItems.map((item, index) => {
             const qty = qtyByItemId[item.id] ?? 0;
             const price = resolveSellPrice(item, channel).final;
             return (
@@ -491,6 +492,9 @@ export default function StaffPhotoKeyOrderPage() {
                 key={item.id}
                 className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-2"
               >
+                <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                  {index + 1}
+                </span>
                 <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                   {item.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element

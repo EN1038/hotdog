@@ -8,12 +8,15 @@ import { z } from "zod";
 import { requireStaff } from "@/lib/auth";
 import {
   CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH,
-  bangkokDateKey,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { canStaffMutateOperatingDay } from "@/lib/operating-day";
 import {
+  assertOrderMutableInActiveShift,
+  ShiftGateError,
+} from "@/lib/branch-shift";
+import {
+  computeLineGiftQuantity,
   optionGroupDetailInclude,
   resolveOrderItemOptionsFromPrisma,
 } from "@/lib/menu-option-groups";
@@ -41,6 +44,9 @@ const fillSchema = z.object({
   deliveryLongitude: z.number().finite().optional(),
   note: z.string().max(300).optional(),
   paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
+  salesChannel: z
+    .enum(["STOREFRONT", "FACEBOOK", "APP_DELIVERY", "OTHER"])
+    .default("STOREFRONT"),
   items: z.array(orderItemSchema).min(1),
 });
 
@@ -66,25 +72,23 @@ export async function PUT(request: Request, { params }: Params) {
       return jsonError("ออเดอร์ถูกยกเลิกแล้ว");
     }
 
+    try {
+      await assertOrderMutableInActiveShift({
+        branchId: session.branchId,
+        orderShiftId: order.shiftId,
+        orderQueueBusinessDate: order.queueBusinessDate,
+      });
+    } catch (e) {
+      if (e instanceof ShiftGateError) {
+        return jsonError(e.message, e.status);
+      }
+      throw e;
+    }
+
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
-
-    const orderDayKey = bangkokDateKey(order.queueBusinessDate);
-    if (
-      !canStaffMutateOperatingDay(
-        orderDayKey,
-        new Date(),
-        branch.businessDayCutoffTime,
-        branch.lateEntryUntilTime,
-      )
-    ) {
-      return jsonError(
-        "แก้ไขได้เฉพาะออเดอร์ของรอบเปิดร้านปัจจุบัน และต้องอยู่ในเวลาที่ยังคีย์ได้",
-        403,
-      );
-    }
 
     if (body.fulfillmentType === "DELIVERY") {
       if (!body.deliveryLocationId || !body.addressDetail?.trim()) {
@@ -161,6 +165,7 @@ export async function PUT(request: Request, { params }: Params) {
       unitPrice: Prisma.Decimal;
       optionsText: string | null;
       optionsPrice: Prisma.Decimal;
+      giftQuantity: number;
       note: string | null;
     }> = [];
 
@@ -187,6 +192,11 @@ export async function PUT(request: Request, { params }: Params) {
         unitPrice: new Prisma.Decimal(priced.final),
         optionsText: chosen.map((o) => o.name).join(", ") || null,
         optionsPrice,
+        giftQuantity: computeLineGiftQuantity(
+          groups,
+          item.optionIds,
+          item.quantity,
+        ),
         note: item.note?.trim() || null,
       });
     }
@@ -222,6 +232,7 @@ export async function PUT(request: Request, { params }: Params) {
               : null,
           note: body.note?.trim() || null,
           paymentMethod: body.paymentMethod,
+          salesChannel: body.salesChannel,
           deliveryFee,
           status: nextStatus,
           items: { create: orderItems },

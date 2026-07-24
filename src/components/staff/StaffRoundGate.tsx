@@ -11,11 +11,18 @@ export type StaffRoundGateState = {
   lateEntryUntilTime: string | null;
   canEnter: boolean;
   entryLocked: boolean;
+  canSell: boolean;
+  activeShift: {
+    id: string;
+    roundNumber: number;
+    openedAt: string;
+    openingCash: number;
+  } | null;
 };
 
 /**
- * Loads round status from /api/staff/branding.
- * Redirects to /staff when entry is locked.
+ * Loads round/shift status from /api/staff/branding.
+ * Redirects to /staff when there is no open sales shift.
  */
 export function useStaffRoundGate() {
   const router = useRouter();
@@ -33,6 +40,16 @@ export function useStaffRoundGate() {
         return;
       }
       const data = await res.json().catch(() => ({}));
+      const canSell = data.canSell !== false && data.canEnter !== false;
+      const active =
+        data.activeShift && typeof data.activeShift === "object"
+          ? {
+              id: String(data.activeShift.id ?? ""),
+              roundNumber: Number(data.activeShift.roundNumber ?? 0),
+              openedAt: String(data.activeShift.openedAt ?? ""),
+              openingCash: Number(data.activeShift.openingCash ?? 0),
+            }
+          : null;
       const next: StaffRoundGateState = {
         operatingDay:
           typeof data.operatingDay === "string" ? data.operatingDay : "",
@@ -44,10 +61,12 @@ export function useStaffRoundGate() {
           typeof data.lateEntryUntilTime === "string"
             ? data.lateEntryUntilTime
             : null,
-        canEnter: data.canEnter !== false,
-        entryLocked: Boolean(data.entryLocked),
+        canEnter: canSell,
+        entryLocked: !canSell,
+        canSell,
+        activeShift: active?.id ? active : null,
       };
-      if (next.entryLocked || !next.canEnter) {
+      if (!next.canSell) {
         setBlocked(true);
         router.replace("/staff");
         return;
@@ -82,6 +101,8 @@ export function StaffRoundStatusStrip({
       operatingDay={state.operatingDay}
       businessDayCutoffTime={state.businessDayCutoffTime}
       lateEntryUntilTime={state.lateEntryUntilTime}
+      canSell={state.canSell}
+      activeShift={state.activeShift}
     />
   );
 }

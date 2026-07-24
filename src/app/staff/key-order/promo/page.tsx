@@ -103,7 +103,7 @@ export default function StaffPromoKeyOrderIndexPage() {
             เรียงตามพยัญชนะไทย · มี {promoItems.length} รายการ
           </p>
           <ul className="divide-y divide-gray-100">
-            {promoItems.map((item) => {
+            {promoItems.map((item, index) => {
               const price = resolveSellPrice(item, "pickup").final;
               return (
                 <li key={item.id}>
@@ -111,6 +111,9 @@ export default function StaffPromoKeyOrderIndexPage() {
                     href={`/staff/key-order/promo/${item.id}`}
                     className="flex items-center gap-3 py-3"
                   >
+                    <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                      {index + 1}
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-gray-900">{item.name}</p>
                       <p className="text-xs text-gray-500">

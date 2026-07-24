@@ -18,6 +18,14 @@ import {
   getOperatingRoundStatus,
 } from "@/lib/operating-day";
 import {
+  getActiveShift,
+  requireActiveShift,
+  serializeShift,
+  shiftCalendarDateKey,
+  ShiftGateError,
+} from "@/lib/branch-shift";
+import {
+  computeLineGiftQuantity,
   optionGroupDetailInclude,
   resolveOrderItemOptionsFromPrisma,
 } from "@/lib/menu-option-groups";
@@ -123,6 +131,9 @@ const createStaffOrderSchema = z.object({
   scheduledAt: z.string().datetime().optional(),
   note: z.string().max(300).optional(),
   paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
+  salesChannel: z
+    .enum(["STOREFRONT", "FACEBOOK", "APP_DELIVERY", "OTHER"])
+    .default("STOREFRONT"),
   items: z.array(orderItemSchema).min(1),
 });
 
@@ -157,25 +168,28 @@ export async function GET(request: Request) {
     const isToday = viewDateKey === dayState.operatingDay;
     const businessDate = queueBusinessDateFromKey(viewDateKey);
 
-    const statsOrders = await prisma.order.findMany({
-      where: {
-        branchId: session.branchId,
-        queueBusinessDate: businessDate,
-      },
-      select: {
-        status: true,
-        awaitingPhotoKey: true,
-        deliveryFee: true,
-        discountAmount: true,
-        items: {
-          select: {
-            quantity: true,
-            unitPrice: true,
-            optionsPrice: true,
+    const [statsOrders, activeShift] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          branchId: session.branchId,
+          queueBusinessDate: businessDate,
+        },
+        select: {
+          status: true,
+          awaitingPhotoKey: true,
+          deliveryFee: true,
+          discountAmount: true,
+          items: {
+            select: {
+              quantity: true,
+              unitPrice: true,
+              optionsPrice: true,
+            },
           },
         },
-      },
-    });
+      }),
+      getActiveShift(session.branchId),
+    ]);
     const dayStats = computeStaffDayStats(statsOrders);
 
     const where: Prisma.OrderWhereInput = {
@@ -196,19 +210,22 @@ export async function GET(request: Request) {
     const canToggleStore =
       session.staffRoles.includes("SELLER") ||
       session.staffRoles.includes("BOTH");
+    const canSell = Boolean(activeShift);
 
     return jsonOk({
       orders,
       viewDate: viewDateKey,
       isToday,
       operatingDay: dayState.operatingDay,
-      entryLocked: dayState.entryLocked,
-      canEnter: dayState.canEnter && isToday,
+      entryLocked: !canSell,
+      canEnter: canSell && isToday,
+      canSell,
+      activeShift: activeShift ? serializeShift(activeShift) : null,
       businessDayCutoffTime: dayState.cutoffTime,
       lateEntryUntilTime: dayState.lateEntryUntilTime,
       entryDeadlineHm: dayState.entryDeadlineHm,
       minutesRemaining: dayState.minutesRemaining,
-      tone: dayState.tone,
+      tone: canSell ? dayState.tone : "locked",
       dayStats,
       roles: session.staffRoles,
       branchName: session.branchName,
@@ -252,14 +269,18 @@ export async function POST(request: Request) {
     });
     if (!branch) return jsonError("ไม่พบสาขา");
 
-    const dayState = getOperatingRoundStatus(branch);
-    if (dayState.entryLocked) {
-      return jsonError(
-        dayState.lateEntryUntilTime
-          ? `ปิดรอบคีย์ออเดอร์แล้ว (คีย์ได้ถึง ${dayState.lateEntryUntilTime} น.) — รอบใหม่เริ่ม ${dayState.cutoffTime} น.`
-          : `ปิดรอบคีย์ออเดอร์แล้ว — รอบใหม่เริ่ม ${dayState.cutoffTime} น.`,
-      );
+    let activeShift;
+    try {
+      activeShift = await requireActiveShift(session.branchId);
+    } catch (e) {
+      if (e instanceof ShiftGateError) {
+        return jsonError(e.message, e.status);
+      }
+      throw e;
     }
+
+    const dayState = getOperatingRoundStatus(branch);
+    const shiftDateKey = shiftCalendarDateKey(activeShift);
 
     const requestedIds = body.items.map((i) => i.branchMenuItemId);
     const [orderableMenus, anyMenus] = await Promise.all([
@@ -390,6 +411,7 @@ export async function POST(request: Request) {
       unitPrice: Prisma.Decimal;
       optionsText: string | null;
       optionsPrice: Prisma.Decimal;
+      giftQuantity: number;
       note: string | null;
     }> = [];
 
@@ -417,6 +439,11 @@ export async function POST(request: Request) {
         unitPrice: new Prisma.Decimal(priced.final),
         optionsText: chosen.map((o) => o.name).join(", ") || null,
         optionsPrice,
+        giftQuantity: computeLineGiftQuantity(
+          groups,
+          item.optionIds,
+          item.quantity,
+        ),
         note: item.note?.trim() || null,
       });
     }
@@ -457,6 +484,7 @@ export async function POST(request: Request) {
               queueBusinessDate: queue.queueBusinessDate,
               customerId: staffCustomer.id,
               branchId: session.branchId,
+              shiftId: activeShift.id,
               fulfillmentType: body.fulfillmentType,
               deliveryLocationId:
                 body.fulfillmentType === "DELIVERY"
@@ -484,6 +512,7 @@ export async function POST(request: Request) {
                 : null,
               note: body.note?.trim() || null,
               paymentMethod: body.paymentMethod,
+              salesChannel: body.salesChannel,
               deliveryFee: new Prisma.Decimal(deliveryFee),
               discountAmount: new Prisma.Decimal(0),
               promoSummary: null,
@@ -502,7 +531,7 @@ export async function POST(request: Request) {
               customer: true,
             },
           }),
-          { cutoffTime: branch.businessDayCutoffTime },
+          { queueBusinessDate: queueBusinessDateFromKey(shiftDateKey) },
         );
         break;
       } catch (e) {

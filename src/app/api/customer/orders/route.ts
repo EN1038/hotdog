@@ -3,16 +3,22 @@ import {
   OrderStatus,
   PaymentMethod,
   Prisma,
+  SalesChannel,
 } from "@prisma/client";
 import { z } from "zod";
 import { requireCustomer } from "@/lib/auth";
 import {
   CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH,
   generateOrderNumber,
+  queueBusinessDateFromKey,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { getBranchServiceStatus, isSameBangkokDay } from "@/lib/branch-hours";
+import {
+  getActiveShift,
+  shiftCalendarDateKey,
+} from "@/lib/branch-shift";
 import {
   fulfillmentToChannel,
   isChannelSellEnabled,
@@ -21,6 +27,7 @@ import {
 import { notifyStaffNewOrder } from "@/lib/line";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
 import {
+  computeLineGiftQuantity,
   optionGroupDetailInclude,
   resolveOrderItemOptionsFromPrisma,
 } from "@/lib/menu-option-groups";
@@ -114,6 +121,12 @@ export async function POST(request: Request) {
         return jsonError("เวลานัดรับต้องเป็นเวลาหลังจากนี้");
       }
     }
+
+    const activeShift = await getActiveShift(body.branchId);
+    if (!activeShift) {
+      return jsonError("ร้านยังไม่เปิดรับออเดอร์ในขณะนี้");
+    }
+    const shiftDateKey = shiftCalendarDateKey(activeShift);
 
     const requestedIds = body.items.map((i) => i.branchMenuItemId);
     const [orderableMenus, anyMenus] = await Promise.all([
@@ -247,6 +260,7 @@ export async function POST(request: Request) {
       unitPrice: Prisma.Decimal;
       optionsText: string | null;
       optionsPrice: Prisma.Decimal;
+      giftQuantity: number;
       note: string | null;
     }> = [];
 
@@ -274,6 +288,11 @@ export async function POST(request: Request) {
         unitPrice: new Prisma.Decimal(priced.final),
         optionsText: chosen.map((o) => o.name).join(", ") || null,
         optionsPrice,
+        giftQuantity: computeLineGiftQuantity(
+          groups,
+          item.optionIds,
+          item.quantity,
+        ),
         note: item.note?.trim() || null,
       });
     }
@@ -300,6 +319,7 @@ export async function POST(request: Request) {
               queueBusinessDate: queue.queueBusinessDate,
               customerId: session.customerId!,
               branchId: body.branchId,
+              shiftId: activeShift.id,
               fulfillmentType: body.fulfillmentType,
               deliveryLocationId:
                 body.fulfillmentType === "DELIVERY"
@@ -327,6 +347,7 @@ export async function POST(request: Request) {
                 : null,
               note: body.note?.trim() || null,
               paymentMethod: body.paymentMethod,
+              salesChannel: SalesChannel.ORDER_CUSTOMER,
               deliveryFee: new Prisma.Decimal(deliveryFee),
               discountAmount: new Prisma.Decimal(0),
               promoSummary: null,
@@ -343,7 +364,7 @@ export async function POST(request: Request) {
               items: true,
             },
           }),
-          { cutoffTime: branch.businessDayCutoffTime },
+          { queueBusinessDate: queueBusinessDateFromKey(shiftDateKey) },
         );
         break;
       } catch (e) {

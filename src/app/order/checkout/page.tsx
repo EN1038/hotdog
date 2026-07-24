@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FulfillmentType, PaymentMethod } from "@prisma/client";
-import { PAYMENT_METHOD_LABELS, CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH, formatPrice } from "@/lib/constants";
+import { ACTIVE_PAYMENT_METHODS, PAYMENT_METHOD_LABELS, CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH, formatPrice } from "@/lib/constants";
 import type { BranchData } from "@/lib/customer-types";
 import { lineTotal } from "@/lib/customer-types";
 import {
@@ -48,7 +48,7 @@ import {
   IconUser,
 } from "@/components/icons";
 
-const ALLOWED_PAYMENT_METHODS: PaymentMethod[] = ["CASH", "TRANSFER"];
+const ALLOWED_PAYMENT_METHODS = ACTIVE_PAYMENT_METHODS;
 const CHECKOUT_PATH = "/order/checkout";
 const PENDING_SUBMIT_KEY = "skillsale_checkout_pending_submit";
 
@@ -758,6 +758,7 @@ export default function CheckoutPage() {
                 scheduledAt,
                 note: note.trim() || undefined,
                 paymentMethod: payment,
+                salesChannel: "STOREFRONT",
                 items: cart.map((l) => ({
                   branchMenuItemId: l.branchMenuItemId,
                   quantity: l.quantity,
@@ -889,6 +890,8 @@ export default function CheckoutPage() {
             operatingDay={staffOrderContext.operatingDay}
             businessDayCutoffTime={staffOrderContext.businessDayCutoffTime}
             lateEntryUntilTime={staffOrderContext.lateEntryUntilTime}
+            canSell={staffOrderContext.canSell}
+            activeShift={staffOrderContext.activeShift}
           />
         </div>
       ) : null}

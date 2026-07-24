@@ -14,6 +14,12 @@ export type StaffKeyedOrderContext = {
   operatingDay: string;
   businessDayCutoffTime: string;
   lateEntryUntilTime: string | null;
+  canSell: boolean;
+  activeShift: {
+    roundNumber: number;
+    openedAt: string;
+    openingCash: number;
+  } | null;
 };
 
 export function useStaffKeyedOrder() {
@@ -45,13 +51,22 @@ export function useStaffKeyedOrder() {
         setReady(true);
         return;
       }
-      if (data.entryLocked || data.canEnter === false) {
+      const canSell = data.canSell !== false && data.canEnter !== false;
+      if (!canSell || data.entryLocked) {
         clearStaffKeyedOrder();
         setActive(false);
         setReady(true);
         router.replace("/staff");
         return;
       }
+      const activeShift =
+        data.activeShift && typeof data.activeShift === "object"
+          ? {
+              roundNumber: Number(data.activeShift.roundNumber ?? 0),
+              openedAt: String(data.activeShift.openedAt ?? ""),
+              openingCash: Number(data.activeShift.openingCash ?? 0),
+            }
+          : null;
       setContext({
         branchId: data.branchId,
         staffDisplayName: data.staffDisplayName ?? data.staffPhone ?? "",
@@ -66,6 +81,8 @@ export function useStaffKeyedOrder() {
           typeof data.lateEntryUntilTime === "string"
             ? data.lateEntryUntilTime
             : null,
+        canSell: true,
+        activeShift,
       });
       setReady(true);
     })();

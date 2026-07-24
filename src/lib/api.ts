@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { ForbiddenError } from "@/lib/admin-access";
+import { ShiftGateError } from "@/lib/branch-shift";
 
 export function jsonOk<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
@@ -43,6 +44,10 @@ function formatZodError(error: ZodError): string {
 export function handleApiError(error: unknown) {
   if (error instanceof ForbiddenError) {
     return jsonError(error.message || "ไม่มีสิทธิ์เข้าถึง", 403);
+  }
+
+  if (error instanceof ShiftGateError) {
+    return jsonError(error.message, error.status);
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {

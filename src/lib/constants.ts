@@ -1,4 +1,4 @@
-import { FulfillmentType, OrderStatus, PaymentMethod } from "@prisma/client";
+import { FulfillmentType, OrderStatus, PaymentMethod, SalesChannel } from "@prisma/client";
 
 export type StaffRole = "SELLER" | "DELIVERY" | "BOTH";
 
@@ -61,8 +61,33 @@ export const FULFILLMENT_LABELS: Record<FulfillmentType, string> = {
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "เงินสด",
   TRANSFER: "โอน",
-  CARD: "บัตรเครดิต",
+  /** Kept for legacy orders only — not offered on new sales */
+  CARD: "บัตร (เลิกใช้)",
 };
+
+/** Payment methods staff/customers can choose (no card). */
+export const ACTIVE_PAYMENT_METHODS: PaymentMethod[] = [
+  PaymentMethod.CASH,
+  PaymentMethod.TRANSFER,
+];
+
+export const SALES_CHANNEL_LABELS: Record<SalesChannel, string> = {
+  STOREFRONT: "หน้าร้าน",
+  FACEBOOK: "Facebook",
+  APP_DELIVERY: "App Delivery",
+  OTHER: "อื่นๆ",
+  ORDER_CUSTOMER: "Order Customer",
+};
+
+export type StaffSalesChannel = Exclude<SalesChannel, "ORDER_CUSTOMER">;
+
+/** Channels staff can pick when keying an order (excludes online customer). */
+export const STAFF_SALES_CHANNELS: StaffSalesChannel[] = [
+  SalesChannel.STOREFRONT,
+  SalesChannel.FACEBOOK,
+  SalesChannel.APP_DELIVERY,
+  SalesChannel.OTHER,
+];
 
 /** Min length for address when delivery zone is “customer defines address”. */
 export const CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH = 8;

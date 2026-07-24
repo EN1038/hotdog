@@ -31,6 +31,7 @@ import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
 import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
 import { BranchOrdersPanel } from "@/components/admin/BranchOrdersPanel";
+import { BranchShiftsPanel } from "@/components/admin/BranchShiftsPanel";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { MenuBestSellerTag } from "@/components/customer/MenuChannelPrice";
@@ -179,6 +180,7 @@ type TabId =
   | "options"
   | "copy"
   | "orders"
+  | "shifts"
   | "staff"
   | "locations"
   | "settings";
@@ -186,6 +188,7 @@ type TabId =
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "ภาพรวม" },
   { id: "orders", label: "ออเดอร์" },
+  { id: "shifts", label: "รอบขาย" },
   { id: "menu", label: "เมนู" },
   { id: "categories", label: "หมวดหมู่" },
   { id: "options", label: "ตัวเลือก" },
@@ -1880,6 +1883,8 @@ function BranchDetailContent() {
 
         {activeTab === "orders" && <BranchOrdersPanel branchId={id} />}
 
+        {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
+
         {activeTab === "staff" && (
           <div className={panelClass}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -2581,8 +2586,8 @@ function BranchDetailContent() {
                       </p>
                       <p className="mt-0.5 text-xs text-gray-500">
                         {settings.isOpen
-                          ? "สวิตช์เปิดอยู่ — ลูกค้าสั่งได้เฉพาะตอนที่อยู่ในเวลาทำการตามตารางด้วย"
-                          : "ปิดร้านชั่วคราวทั้งสาขา — ลูกค้าสั่งไม่ได้จนกว่าจะเปิดใหม่ (แม้ตารางจะเปิด)"}
+                          ? "เปิดอยู่ — ซิงก์กับรอบขายของพนักงาน (ลูกค้าสั่งได้เฉพาะตอนอยู่ในตารางเวลาด้วย)"
+                          : "ปิดแล้ว — ปิดรอบขายของพนักงานด้วย ลูกค้าและพนักงานขายต่อไม่ได้จนกว่าจะเปิดใหม่"}
                       </p>
                     </div>
                     {settings.isOpen ? (
@@ -2598,7 +2603,7 @@ function BranchDetailContent() {
                               confirm: {
                                 title: "ปิดร้าน?",
                                 message:
-                                  "ยืนยันปิดร้านชั่วคราว ลูกค้าจะไม่สามารถสั่งได้จนกว่าคุณจะเปิดร้านอีกครั้ง",
+                                  "ยืนยันปิดร้าน จะปิดรอบขายของพนักงานด้วย ลูกค้าและพนักงานจะขายต่อไม่ได้จนกว่าจะเปิดใหม่",
                                 confirmLabel: "ปิดร้าน",
                               },
                               onSuccessLocal: () =>
@@ -2619,6 +2624,13 @@ function BranchDetailContent() {
                             {
                               successMessage: "เปิดร้านแล้ว",
                               errorTitle: "เปิดร้านไม่สำเร็จ",
+                              confirm: {
+                                title: "เปิดร้าน?",
+                                message:
+                                  "จะเปิดรอบขายใหม่ให้พนักงาน (ตังทอนเริ่มต้น 0) — พนักงานควรกรอกตังทอนเองจากหน้า Staff หากต้องการ",
+                                confirmLabel: "เปิดร้าน",
+                                tone: "primary",
+                              },
                               onSuccessLocal: () =>
                                 setSettings((s) => ({ ...s, isOpen: true })),
                             },
@@ -2889,7 +2901,7 @@ function BranchDetailContent() {
                     เวลาทำการ
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    แยกเวลารับที่ร้านกับเดลิเวอรีได้
+                    มีผลเฉพาะฝั่งลูกค้าสั่งออนไลน์ — พนักงานเปิด/ปิดรอบขายเองจากหน้า Staff
                   </p>
                 </div>
                 <div className="space-y-6">
@@ -2956,11 +2968,12 @@ function BranchDetailContent() {
               <div className="space-y-3 border-t border-slate-100 pt-8">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    รอบวันธุรกิจและปิดรอบคีย์ออเดอร์
+                    รอบวันธุรกิจ (สรุปรายวัน / LINE)
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    สำหรับร้านเปิดข้ามวัน เช่น 16:30–01:00 — ตั้งเวลาตัดรอบให้คิวและสรุปยอดอยู่รอบเดิม
-                    และกำหนดเวลาตายตัวที่พนักงานยังคีย์ออเดอร์รอบนั้นได้
+                    ใช้ตัดสรุปรายวัน / LINE และเลขคิวต่อวัน — เมื่อถึงเวลาตัดรอบ
+                    ระบบจะปิดรอบพนักงานที่ยังเปิดอยู่ให้อัตโนมัติ และล็อกไม่ให้ขาย/แก้ต่อจนกว่าจะเปิดรอบใหม่
+                    (วันหนึ่งมีได้หลายรอบ)
                   </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -2984,8 +2997,8 @@ function BranchDetailContent() {
                       }
                     />
                     <p className="mt-1 text-[11px] text-slate-500">
-                      ค่าเริ่มต้น 00:00 = ตัดตามเที่ยงคืน (เหมือนเดิม) · ร้านข้ามวันแนะนำ
-                      04:00
+                      ค่าเริ่มต้น 00:00 = ตัดตามเที่ยงคืน · ร้านข้ามวันแนะนำ 04:00 ·
+                      ถึงเวลานี้ระบบปิดรอบ Staff อัตโนมัติ
                     </p>
                   </div>
                   <div>
@@ -2994,6 +3007,9 @@ function BranchDetailContent() {
                       htmlFor="late-entry-until"
                     >
                       พนักงานคีย์ออเดอร์ได้ถึง
+                      <span className="ml-1 font-normal text-slate-400">
+                        (เลิกใช้เป็นตัวบล็อกขาย — ใช้รอบ Staff แทน)
+                      </span>
                     </label>
                     <input
                       id="late-entry-until"
@@ -3008,8 +3024,8 @@ function BranchDetailContent() {
                       }
                     />
                     <p className="mt-1 text-[11px] text-slate-500">
-                      ว่างไว้ = คีย์ได้จนถึงเวลาตัดรอบ · ร้านข้ามวันเช่น คีย์ได้ถึง
-                      03:00 แล้วตัดรอบ 04:00
+                      ไม่ใช้บล็อกขาย/แก้แล้ว — หลังปิดรอบหรือถึงตัดรอบจะแก้ไม่ได้จนกว่าจะเปิดรอบใหม่
+                      (ค่านี้เก็บไว้เพื่ออ้างอิงรอบวันเดิม)
                     </p>
                     {settings.lateEntryUntilTime ? (
                       <button

@@ -1,10 +1,15 @@
 import { OrderStatus, PaymentMethod, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { requireStaff } from "@/lib/auth";
-import { generateOrderNumber } from "@/lib/constants";
+import { generateOrderNumber, queueBusinessDateFromKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { getOperatingRoundStatus } from "@/lib/operating-day";
+import {
+  requireActiveShift,
+  shiftCalendarDateKey,
+  ShiftGateError,
+} from "@/lib/branch-shift";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
 
 const schema = z.object({
@@ -14,7 +19,10 @@ const schema = z.object({
     .min(1)
     .max(2000)
     .refine(
-      (v) => v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/"),
+      (v) =>
+        v.startsWith("http://") ||
+        v.startsWith("https://") ||
+        v.startsWith("/"),
       "รูปไม่ถูกต้อง",
     ),
   note: z.string().trim().max(300).optional(),
@@ -35,14 +43,18 @@ export async function POST(request: Request) {
     });
     if (!branch) return jsonError("ไม่พบสาขา");
 
-    const dayState = getOperatingRoundStatus(branch);
-    if (dayState.entryLocked) {
-      return jsonError(
-        dayState.lateEntryUntilTime
-          ? `ปิดรอบคีย์ออเดอร์แล้ว (คีย์ได้ถึง ${dayState.lateEntryUntilTime} น.) — รอบใหม่เริ่ม ${dayState.cutoffTime} น.`
-          : `ปิดรอบคีย์ออเดอร์แล้ว — รอบใหม่เริ่ม ${dayState.cutoffTime} น.`,
-      );
+    let activeShift;
+    try {
+      activeShift = await requireActiveShift(session.branchId);
+    } catch (e) {
+      if (e instanceof ShiftGateError) {
+        return jsonError(e.message, e.status);
+      }
+      throw e;
     }
+
+    const dayState = getOperatingRoundStatus(branch);
+    const shiftDateKey = shiftCalendarDateKey(activeShift);
 
     const phone = walkInPhone(session.branchId);
     const customer = await prisma.customer.upsert({
@@ -64,6 +76,7 @@ export async function POST(request: Request) {
               queueBusinessDate: queue.queueBusinessDate,
               customerId: customer.id,
               branchId: session.branchId,
+              shiftId: activeShift.id,
               fulfillmentType: "PICKUP",
               customerName: "Walk-in",
               customerPhone: phone,
@@ -84,7 +97,7 @@ export async function POST(request: Request) {
               customer: true,
             },
           }),
-          { cutoffTime: branch.businessDayCutoffTime },
+          { queueBusinessDate: queueBusinessDateFromKey(shiftDateKey) },
         );
         break;
       } catch (e) {

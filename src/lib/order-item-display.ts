@@ -8,6 +8,23 @@ export function countOptionsInText(optionsText: string | null | undefined): numb
 }
 
 /**
+ * Free pieces for a promo pack (FROM_MENU), e.g. maxSelect 11 → 10 paid + 1 gift.
+ * giftPerPack = max(0, selectedFromMenuCount - (maxSelect - 1))
+ */
+export function giftQuantityForFromMenuPack(params: {
+  lineQuantity: number;
+  selectedFromMenuCount: number;
+  maxSelect: number;
+}): number {
+  const qty = Math.max(0, Math.floor(params.lineQuantity));
+  const selected = Math.max(0, Math.floor(params.selectedFromMenuCount));
+  const maxSelect = Math.max(0, Math.floor(params.maxSelect));
+  if (qty <= 0 || maxSelect < 2) return 0;
+  const giftPerPack = Math.max(0, selected - (maxSelect - 1));
+  return giftPerPack * qty;
+}
+
+/**
  * Promo packs (FROM_MENU / โปรเลือกไม้) store many picks in optionsText.
  * Regular add-ons are usually 1–2 names. Treat as pack-like when there are
  * many picks or repeated names (duplicate stick selections).

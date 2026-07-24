@@ -2,8 +2,12 @@
 
 import type { FulfillmentType, PaymentMethod } from "@prisma/client";
 import {
+  ACTIVE_PAYMENT_METHODS,
   CUSTOM_DELIVERY_ADDRESS_MIN_LENGTH,
   PAYMENT_METHOD_LABELS,
+  SALES_CHANNEL_LABELS,
+  STAFF_SALES_CHANNELS,
+  type StaffSalesChannel,
   formatPrice,
 } from "@/lib/constants";
 import {
@@ -12,11 +16,12 @@ import {
 } from "@/components/admin/AdminMapLocationPicker";
 import type { StaffDeliveryLocation } from "@/lib/staff-key-order";
 
-const PAYMENTS: PaymentMethod[] = ["CASH", "TRANSFER"];
+const PAYMENTS = ACTIVE_PAYMENT_METHODS;
 
 export type StaffFulfillmentState = {
   fulfillmentType: FulfillmentType;
   paymentMethod: PaymentMethod;
+  salesChannel: StaffSalesChannel;
   deliveryLocationId: string;
   addressDetail: string;
   mapPin: MapLocationValue;
@@ -26,6 +31,7 @@ export type StaffFulfillmentState = {
 export const emptyStaffFulfillment = (): StaffFulfillmentState => ({
   fulfillmentType: "PICKUP",
   paymentMethod: "CASH",
+  salesChannel: "STOREFRONT",
   deliveryLocationId: "",
   addressDetail: "",
   mapPin: { address: "", latitude: null, longitude: null },
@@ -53,7 +59,6 @@ export function StaffQuickFulfillment({
   function handleMapPinChange(mapPin: MapLocationValue) {
     const fromMap = mapPin.address.trim();
     const current = value.addressDetail.trim();
-    // Fill address when empty, or replace if it still matches the previous map address
     const prevMapAddr = value.mapPin.address.trim();
     const shouldFill =
       Boolean(fromMap) &&
@@ -172,6 +177,26 @@ export function StaffQuickFulfillment({
           </div>
         </div>
       ) : null}
+
+      <div>
+        <p className="mb-1 text-xs font-medium text-gray-500">ช่องทางการขาย</p>
+        <div className="grid grid-cols-2 gap-2">
+          {STAFF_SALES_CHANNELS.map((ch) => (
+            <button
+              key={ch}
+              type="button"
+              onClick={() => patch({ salesChannel: ch })}
+              className={`rounded-xl px-3 py-2.5 text-sm font-semibold ${
+                value.salesChannel === ch
+                  ? "bg-site-primary text-white"
+                  : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {SALES_CHANNEL_LABELS[ch]}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div>
         <p className="mb-1 text-xs font-medium text-gray-500">ชำระเงิน</p>

@@ -195,6 +195,8 @@ export function flattenMenuItemOptionGroups<T extends { optionGroupLinks: Linked
   };
 }
 
+import { giftQuantityForFromMenuPack } from "@/lib/order-item-display";
+
 /** Validate and resolve option picks for order creation (supports duplicate ids). */
 export function resolveOrderItemOptionsFromPrisma(
   groups: GroupWithSources[],
@@ -216,4 +218,27 @@ export function resolveOrderItemOptionsFromPrisma(
     chosen.push({ name: o.name, priceDelta: Number(o.priceDelta) });
   }
   return { ok: true, chosen };
+}
+
+/**
+ * Free pieces for FROM_MENU promo packs on a line
+ * (e.g. maxSelect 11 with 11 picks → 1 gift × quantity).
+ */
+export function computeLineGiftQuantity(
+  groups: GroupWithSources[],
+  optionIds: string[],
+  lineQuantity: number,
+): number {
+  let total = 0;
+  for (const group of groups) {
+    if (group.mode !== "FROM_MENU") continue;
+    const allowed = new Set(expandGroupOptions(group).map((o) => o.id));
+    const selectedCount = optionIds.filter((id) => allowed.has(id)).length;
+    total += giftQuantityForFromMenuPack({
+      lineQuantity,
+      selectedFromMenuCount: selectedCount,
+      maxSelect: group.maxSelect,
+    });
+  }
+  return total;
 }

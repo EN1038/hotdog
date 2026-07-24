@@ -28,6 +28,7 @@ import {
   menuItemVisibleForFulfillment,
 } from "@/components/customer/MenuChannelPrice";
 import { LoadingState } from "@/components/LoadingState";
+import { sortByThaiName } from "@/lib/thai-sort";
 import {
   IconBack,
   IconBranchPlaceholder,
@@ -291,6 +292,12 @@ export default function StorePage() {
     operatingDay: string;
     businessDayCutoffTime: string;
     lateEntryUntilTime: string | null;
+    canSell: boolean;
+    activeShift: {
+      roundNumber: number;
+      openedAt: string;
+      openingCash: number;
+    } | null;
   } | null>(null);
 
   useEffect(() => {
@@ -307,11 +314,23 @@ export default function StorePage() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (data.entryLocked || data.canEnter === false) {
+      if (
+        data.entryLocked ||
+        data.canEnter === false ||
+        data.canSell === false
+      ) {
         clearStaffKeyedOrder();
         router.replace("/staff");
         return;
       }
+      const activeShift =
+        data.activeShift && typeof data.activeShift === "object"
+          ? {
+              roundNumber: Number(data.activeShift.roundNumber ?? 0),
+              openedAt: String(data.activeShift.openedAt ?? ""),
+              openingCash: Number(data.activeShift.openingCash ?? 0),
+            }
+          : null;
       setStaffRound({
         operatingDay:
           typeof data.operatingDay === "string" ? data.operatingDay : "",
@@ -323,6 +342,8 @@ export default function StorePage() {
           typeof data.lateEntryUntilTime === "string"
             ? data.lateEntryUntilTime
             : null,
+        canSell: true,
+        activeShift,
       });
     })();
     return () => {
@@ -434,7 +455,7 @@ export default function StorePage() {
       menuItemVisibleForFulfillment(i, fulfillment),
     );
 
-    const bestSellers = visible.filter((i) => i.isBestSeller);
+    const bestSellers = sortByThaiName(visible.filter((i) => i.isBestSeller));
     const groups: { name: string; items: typeof visible }[] = [];
 
     if (bestSellers.length > 0) {
@@ -454,11 +475,13 @@ export default function StorePage() {
     }
 
     const sortedCats = [...byName.keys()].sort(
-      (a, b) => orderMap.get(a)! - orderMap.get(b)! || a.localeCompare(b, "th"),
+      (a, b) =>
+        orderMap.get(a)! - orderMap.get(b)! ||
+        a.localeCompare(b, "th", { sensitivity: "base" }),
     );
 
     for (const cat of sortedCats) {
-      groups.push({ name: cat, items: byName.get(cat)! });
+      groups.push({ name: cat, items: sortByThaiName(byName.get(cat)!) });
     }
 
     return groups;
@@ -602,6 +625,8 @@ export default function StorePage() {
             operatingDay={staffRound.operatingDay}
             businessDayCutoffTime={staffRound.businessDayCutoffTime}
             lateEntryUntilTime={staffRound.lateEntryUntilTime}
+            canSell={staffRound.canSell}
+            activeShift={staffRound.activeShift}
           />
         </div>
       ) : null}
@@ -860,7 +885,7 @@ export default function StorePage() {
                   <div key={group.name} className="pt-6 first:pt-4" data-category-heading={group.name}>
                     <h2 className="mb-3 text-[17px] font-bold text-gray-900">{group.name}</h2>
                     <div className="space-y-3">
-                      {group.items.map((item) => {
+                      {group.items.map((item, index) => {
                         const priced = menuItemSellPrice(item, fulfillment);
                         const cartItems = cartForThisBranch.filter((l) => l.branchMenuItemId === item.id);
                         const itemCartQuantity = cartItems.reduce((s, l) => s + l.quantity, 0);
@@ -884,6 +909,9 @@ export default function StorePage() {
                                 : "cursor-pointer transition-transform active:scale-[0.98]"
                             }`}
                           >
+                            <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                              {index + 1}
+                            </span>
                             <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
                               {item.imageUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element

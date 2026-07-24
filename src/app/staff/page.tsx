@@ -33,6 +33,11 @@ import {
   IconVolumeOff,
 } from "@/components/icons";
 import { StaffRoundSelector } from "@/components/staff/StaffRoundSelector";
+import {
+  StaffShiftControls,
+  type ActiveShiftInfo,
+} from "@/components/staff/StaffShiftControls";
+import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 import type { MenuItemData } from "@/lib/customer-types";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
@@ -87,6 +92,10 @@ export default function StaffPage() {
   } | null>(null);
   const [autoAcceptOrders, setAutoAcceptOrders] = useState(false);
   const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
+  const [canToggleStore, setCanToggleStore] = useState(false);
+  const [canSell, setCanSell] = useState(false);
+  const [activeShift, setActiveShift] = useState<ActiveShiftInfo | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [viewDate, setViewDate] = useState<string | null>(null);
   const [operatingDay, setOperatingDay] = useState("");
   const [isViewingToday, setIsViewingToday] = useState(true);
@@ -273,6 +282,13 @@ export default function StaffPage() {
     if (data.viewDate) setViewDate(data.viewDate);
     if (data.operatingDay) setOperatingDay(data.operatingDay);
     setCanEnter(data.canEnter !== false);
+    setCanSell(Boolean(data.canSell ?? data.canEnter));
+    setCanToggleStore(Boolean(data.canToggleStore));
+    if (data.activeShift && typeof data.activeShift === "object") {
+      setActiveShift(data.activeShift as ActiveShiftInfo);
+    } else {
+      setActiveShift(null);
+    }
     setLateEntryUntilTime(
       typeof data.lateEntryUntilTime === "string"
         ? data.lateEntryUntilTime
@@ -317,6 +333,13 @@ export default function StaffPage() {
     knownIdsRef.current = null;
     setViewDate(null);
     setLoading(true);
+  }
+
+  /** Switch to current round without full-page loading (keeps open-shift modal mounted). */
+  function goToTodayQuiet() {
+    if (isViewingToday) return;
+    knownIdsRef.current = null;
+    setViewDate(null);
   }
 
   function onViewRoundChange(next: string) {
@@ -785,7 +808,14 @@ export default function StaffPage() {
                 : "รับออเดอร์อัตโนมัติ: ปิดอยู่"}
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end">
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setSummaryOpen(true)}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-800 shadow-sm hover:bg-gray-50"
+            >
+              สรุปยอด
+            </button>
             <StaffRoundSelector
               viewRound={viewDate}
               currentRound={operatingDay}
@@ -798,6 +828,31 @@ export default function StaffPage() {
           </div>
         </div>
       </header>
+
+      <div className="mb-3">
+        <StaffShiftControls
+          canToggleStore={canToggleStore}
+          canSell={canSell}
+          activeShift={activeShift}
+          viewingOtherRound={!isViewingToday}
+          onBeforeOpen={goToTodayQuiet}
+          onOpened={() => {
+            pushSuccessToast("เปิดรอบแล้ว", "พร้อมรับออเดอร์");
+            void fetchOrders();
+          }}
+          onClosed={(msg) => {
+            pushSuccessToast("ปิดรอบแล้ว", msg);
+            void fetchOrders();
+          }}
+          onError={(title, detail) => pushErrorToast(title, detail)}
+        />
+      </div>
+
+      <StaffShiftSummarySheet
+        open={summaryOpen}
+        onClose={() => setSummaryOpen(false)}
+        initialDate={viewDate ?? operatingDay}
+      />
 
       {soundError ? (
         <p className="mb-3 text-xs text-red-600">{soundError}</p>
@@ -943,16 +998,24 @@ export default function StaffPage() {
             </Link>
           </>
         ) : isViewingToday && !canEnter ? (
-          <div className="flex w-full items-center justify-center rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3.5 text-base font-semibold text-amber-800">
-            ปิดรอบคีย์แล้ว
+          <div className="flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3.5 text-center text-base font-semibold text-amber-800">
+            <span>กด「เปิดรอบขาย」ด้านบนเพื่อเริ่มขาย</span>
+            {!canToggleStore ? (
+              <span className="text-xs font-normal text-amber-700">
+                เฉพาะพนักงานขายที่เปิด/ปิดร้านได้
+              </span>
+            ) : null}
           </div>
         ) : (
           <button
             type="button"
             onClick={goToToday}
-            className="flex w-full cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-3.5 text-base font-semibold text-gray-500"
+            className="flex w-full cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3.5 text-base font-semibold text-amber-900"
           >
-            คีย์ออเดอร์ (กลับรอบปัจจุบันก่อน)
+            <span>กำลังดูรอบอื่น — แตะเพื่อกลับรอบปัจจุบัน</span>
+            <span className="text-xs font-normal text-amber-800">
+              จากนั้นจึงคีย์ออเดอร์หรือเปิดรอบได้
+            </span>
           </button>
         )}
       </div>

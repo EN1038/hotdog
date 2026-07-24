@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { OrderStatus, type FulfillmentType } from "@prisma/client";
+import { OrderStatus, type FulfillmentType, type SalesChannel } from "@prisma/client";
 import {
   FULFILLMENT_LABELS,
   ORDER_STATUS_COLORS,
+  SALES_CHANNEL_LABELS,
   canStaffCancel,
   getAllowedNextStatuses,
   getStaffLegendStatuses,
@@ -50,6 +51,7 @@ export type OrderCardData = {
   deliveryLongitude?: number | null;
   createdAt: string;
   createdByStaffId?: string | null;
+  salesChannel?: SalesChannel | null;
   photoUrl?: string | null;
   awaitingPhotoKey?: boolean;
   promoSummary?: string | null;
@@ -237,6 +239,11 @@ export function OrderCard({
             {order.createdByStaffId ? (
               <span className="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
                 คีย์โดยพนักงาน
+              </span>
+            ) : null}
+            {order.salesChannel ? (
+              <span className="mt-1 ml-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                {SALES_CHANNEL_LABELS[order.salesChannel]}
               </span>
             ) : null}
             {order.awaitingPhotoKey ? (

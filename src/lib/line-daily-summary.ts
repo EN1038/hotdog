@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db";
 import { appAbsoluteUrl } from "@/lib/app-url";
 import {
+  formatShiftCode,
+  shiftCalendarDateKey,
+} from "@/lib/branch-shift";
+import {
   formatPrice,
   queueBusinessDateFromKey,
 } from "@/lib/constants";
@@ -23,6 +27,18 @@ import {
 const LINE_TEXT_MAX = 4800;
 const TOP_CANCEL_REASONS = 5;
 
+export type BranchDayShiftSummary = {
+  shiftId: string | null;
+  code: string;
+  roundNumber: number | null;
+  openedAt: string | null;
+  closedAt: string | null;
+  completedCount: number;
+  completedRevenue: number;
+  cancelledCount: number;
+  giftQuantity: number;
+};
+
 export type BranchDaySummary = {
   branchId: string;
   branchName: string;
@@ -38,6 +54,7 @@ export type BranchDaySummary = {
   totalOrders: number;
   soldItems: Array<{ name: string; quantity: number; revenue: number }>;
   cancelReasons: Array<{ reason: string; count: number }>;
+  shifts: BranchDayShiftSummary[];
   detailUrl: string;
 };
 
@@ -58,6 +75,45 @@ function formatDayLabel(dateYmd: string) {
   }
 }
 
+function formatHmBangkok(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}
+
+type ShiftAgg = {
+  shiftId: string | null;
+  code: string;
+  roundNumber: number | null;
+  openedAt: string | null;
+  closedAt: string | null;
+  completedCount: number;
+  completedRevenue: number;
+  cancelledCount: number;
+  giftQuantity: number;
+};
+
+function emptyShiftAgg(
+  partial: Pick<
+    ShiftAgg,
+    "shiftId" | "code" | "roundNumber" | "openedAt" | "closedAt"
+  >,
+): ShiftAgg {
+  return {
+    ...partial,
+    completedCount: 0,
+    completedRevenue: 0,
+    cancelledCount: 0,
+    giftQuantity: 0,
+  };
+}
+
 export async function buildBranchDaySummary(
   branchId: string,
   operatingDay: string,
@@ -75,23 +131,38 @@ export async function buildBranchDaySummary(
   if (!branch) return null;
 
   const businessDate = queueBusinessDateFromKey(operatingDay);
-  const orders = await prisma.order.findMany({
-    where: { branchId, queueBusinessDate: businessDate },
-    select: {
-      status: true,
-      deliveryFee: true,
-      discountAmount: true,
-      cancelReason: true,
-      items: {
-        select: {
-          itemName: true,
-          quantity: true,
-          unitPrice: true,
-          optionsPrice: true,
+  const [orders, dayShifts] = await Promise.all([
+    prisma.order.findMany({
+      where: { branchId, queueBusinessDate: businessDate },
+      select: {
+        status: true,
+        shiftId: true,
+        deliveryFee: true,
+        discountAmount: true,
+        cancelReason: true,
+        items: {
+          select: {
+            itemName: true,
+            quantity: true,
+            unitPrice: true,
+            optionsPrice: true,
+            giftQuantity: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.branchShift.findMany({
+      where: { branchId, calendarDate: businessDate },
+      select: {
+        id: true,
+        calendarDate: true,
+        roundNumber: true,
+        openedAt: true,
+        closedAt: true,
+      },
+      orderBy: { roundNumber: "asc" },
+    }),
+  ]);
 
   let completedCount = 0;
   let completedRevenue = 0;
@@ -100,6 +171,24 @@ export async function buildBranchDaySummary(
   let openCount = 0;
   const soldMap = new Map<string, { quantity: number; revenue: number }>();
   const cancelReasonMap = new Map<string, number>();
+  const shiftAggs = new Map<string, ShiftAgg>();
+
+  for (const shift of dayShifts) {
+    const calendarDate = shiftCalendarDateKey(shift);
+    shiftAggs.set(
+      shift.id,
+      emptyShiftAgg({
+        shiftId: shift.id,
+        code: formatShiftCode({
+          calendarDate,
+          roundNumber: shift.roundNumber,
+        }),
+        roundNumber: shift.roundNumber,
+        openedAt: shift.openedAt.toISOString(),
+        closedAt: shift.closedAt?.toISOString() ?? null,
+      }),
+    );
+  }
 
   for (const order of orders) {
     const total = orderGrandTotal(
@@ -111,10 +200,30 @@ export async function buildBranchDaySummary(
       Number(order.deliveryFee),
       Number(order.discountAmount),
     );
+    const giftQty = order.items.reduce(
+      (sum, it) => sum + Math.max(0, Number(it.giftQuantity ?? 0)),
+      0,
+    );
+
+    const shiftKey = order.shiftId ?? "__none__";
+    let agg = shiftAggs.get(shiftKey);
+    if (!agg) {
+      agg = emptyShiftAgg({
+        shiftId: order.shiftId,
+        code: order.shiftId ? `SHIFT-${order.shiftId.slice(0, 8)}` : "ไม่มีรอบ",
+        roundNumber: null,
+        openedAt: null,
+        closedAt: null,
+      });
+      shiftAggs.set(shiftKey, agg);
+    }
 
     if (isRevenueStatus(order.status)) {
       completedCount += 1;
       completedRevenue += total;
+      agg.completedCount += 1;
+      agg.completedRevenue += total;
+      agg.giftQuantity += giftQty;
       for (const it of order.items) {
         const name = it.itemName.trim() || "รายการ";
         const lineRev =
@@ -127,6 +236,7 @@ export async function buildBranchDaySummary(
     } else if (isCancelledStatus(order.status)) {
       cancelledCount += 1;
       cancelledRevenue += total;
+      agg.cancelledCount += 1;
       const reason = order.cancelReason?.trim() || "ไม่ระบุเหตุผล";
       cancelReasonMap.set(reason, (cancelReasonMap.get(reason) ?? 0) + 1);
     } else {
@@ -152,6 +262,19 @@ export async function buildBranchDaySummary(
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason, "th"))
     .slice(0, TOP_CANCEL_REASONS);
 
+  const shifts: BranchDayShiftSummary[] = [...shiftAggs.values()]
+    .sort((a, b) => {
+      if (a.shiftId === null) return 1;
+      if (b.shiftId === null) return -1;
+      const ra = a.roundNumber ?? 9999;
+      const rb = b.roundNumber ?? 9999;
+      return ra - rb || a.code.localeCompare(b.code);
+    })
+    .map((s) => ({
+      ...s,
+      completedRevenue: Math.round(s.completedRevenue * 100) / 100,
+    }));
+
   return {
     branchId: branch.id,
     branchName: branch.name,
@@ -167,6 +290,7 @@ export async function buildBranchDaySummary(
     totalOrders: orders.length,
     soldItems,
     cancelReasons,
+    shifts,
     detailUrl: appAbsoluteUrl(
       `/admin/branches/${branch.id}?tab=orders&date=${operatingDay}`,
     ),
@@ -185,6 +309,7 @@ export function formatBranchDaySummaryMessage(summary: BranchDaySummary): string
     `${dayLabel}`,
     window,
     "",
+    "ยอดรวมทั้งวัน",
     `ออเดอร์ทั้งหมด ${summary.totalOrders} รายการ`,
     `สำเร็จ ${summary.completedCount} · ฿${money(summary.completedRevenue)}`,
     `ยกเลิก ${summary.cancelledCount} · ฿${money(summary.cancelledRevenue)}`,
@@ -192,6 +317,29 @@ export function formatBranchDaySummaryMessage(summary: BranchDaySummary): string
       ? `ค้างในระบบตอนตัดรอบ ${summary.openCount}`
       : null,
   ].filter((line) => line !== null);
+
+  const shiftLines: string[] = [];
+  if (summary.shifts.length === 0) {
+    shiftLines.push("", "รอบขาย: ไม่มี");
+  } else {
+    for (const shift of summary.shifts) {
+      shiftLines.push("", `── ${shift.code} ──`);
+      if (shift.openedAt || shift.closedAt) {
+        shiftLines.push(
+          `เปิด ${formatHmBangkok(shift.openedAt)} – ปิด ${formatHmBangkok(shift.closedAt)} น.`,
+        );
+      }
+      shiftLines.push(
+        `สำเร็จ ${shift.completedCount} · ฿${money(shift.completedRevenue)}`,
+      );
+      if (shift.giftQuantity > 0) {
+        shiftLines.push(`ของแถม ${shift.giftQuantity}`);
+      }
+      if (shift.cancelledCount > 0) {
+        shiftLines.push(`ยกเลิก ${shift.cancelledCount}`);
+      }
+    }
+  }
 
   const soldLines: string[] = [];
   if (summary.soldItems.length === 0) {
@@ -219,12 +367,19 @@ export function formatBranchDaySummaryMessage(summary: BranchDaySummary): string
 
   const footer = ["", "ดูรายละเอียด:", summary.detailUrl];
 
-  let body = [...header, ...soldLines, ...cancelLines, ...footer].join("\n");
+  let body = [
+    ...header,
+    ...shiftLines,
+    ...soldLines,
+    ...cancelLines,
+    ...footer,
+  ].join("\n");
   if (body.length <= LINE_TEXT_MAX) return body;
 
-  // Truncate sold list to fit, keep totals + link
-  const reserve = [...header, "", "ขายออก (สำเร็จ):", ...cancelLines, ...footer]
-    .join("\n").length + 80;
+  // Truncate sold list to fit, keep day totals + shift blocks + link
+  const reserve =
+    [...header, ...shiftLines, "", "ขายออก (สำเร็จ):", ...cancelLines, ...footer]
+      .join("\n").length + 80;
   const budget = Math.max(200, LINE_TEXT_MAX - reserve);
   const kept: string[] = [];
   let used = 0;
@@ -242,6 +397,7 @@ export function formatBranchDaySummaryMessage(summary: BranchDaySummary): string
 
   body = [
     ...header,
+    ...shiftLines,
     "",
     "ขายออก (สำเร็จ):",
     ...(kept.length ? kept : ["· ไม่มี"]),

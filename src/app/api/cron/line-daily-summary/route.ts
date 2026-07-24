@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { closeShiftsPastCutoff } from "@/lib/branch-shift";
 import { runLineDailySummaries } from "@/lib/line-daily-summary";
 
 export const runtime = "nodejs";
@@ -24,13 +25,20 @@ async function handle(request: Request) {
   const operatingDay = url.searchParams.get("date")?.trim() || undefined;
   const force = url.searchParams.get("force") === "1";
 
+  // Close stale open shifts at operating-day cutoff before day summaries.
+  const autoClose = await closeShiftsPastCutoff();
+
   const result = await runLineDailySummaries({
     branchId,
     operatingDay,
     force,
   });
 
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json({
+    ok: true,
+    autoClose,
+    ...result,
+  });
 }
 
 /** External scheduler / Vercel Cron: every few minutes after cutoffs. */

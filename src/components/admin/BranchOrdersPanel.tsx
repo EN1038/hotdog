@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { OrderStatus } from "@prisma/client";
 import {
@@ -13,6 +13,11 @@ import {
   type AdminOrderRow,
 } from "@/components/admin/OrdersTable";
 import { ORDER_STATUS_LABELS } from "@/lib/constants";
+import {
+  isCancelledStatus,
+  isOrderCountableRevenue,
+  orderGrandTotal,
+} from "@/lib/order-totals";
 
 type DayStats = {
   completedRevenue: number;
@@ -23,14 +28,34 @@ type DayStats = {
   totalOrders: number;
 };
 
+type ShiftListItem = {
+  id: string;
+  calendarDate: string;
+  roundNumber: number;
+  openedAt: string;
+  closedAt: string | null;
+  openingCash: number;
+  note?: string | null;
+};
+
+type OrderRow = AdminOrderRow & {
+  shiftId?: string | null;
+  shift?: {
+    id: string;
+    roundNumber: number;
+    openedAt: string;
+    closedAt: string | null;
+  } | null;
+  awaitingPhotoKey?: boolean;
+};
+
 type OrdersPayload = {
   date: string;
   isToday: boolean;
   operatingDay?: string;
-  businessDayCutoffTime?: string;
-  lateEntryUntilTime?: string | null;
   dayStats: DayStats;
-  orders: AdminOrderRow[];
+  shifts: ShiftListItem[];
+  orders: OrderRow[];
 };
 
 function money(n: number) {
@@ -38,6 +63,11 @@ function money(n: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
+}
+
+function formatShiftCodeLabel(calendarDate: string, roundNumber: number) {
+  const ymd = calendarDate.slice(0, 10).replace(/-/g, "");
+  return `SHIFT-${ymd}-${String(roundNumber).padStart(3, "0")}`;
 }
 
 function formatDateLabel(dateYmd: string) {
@@ -53,6 +83,64 @@ function formatDateLabel(dateYmd: string) {
   }
 }
 
+function formatHm(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat("th-TH", {
+      timeZone: "Asia/Bangkok",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(iso));
+  } catch {
+    return "—";
+  }
+}
+
+function computeStats(orders: OrderRow[]): DayStats {
+  let completedRevenue = 0;
+  let cancelledRevenue = 0;
+  let completedCount = 0;
+  let cancelledCount = 0;
+  let openCount = 0;
+
+  for (const order of orders) {
+    const total = orderGrandTotal(
+      order.items.map((it) => ({
+        quantity: it.quantity,
+        unitPrice: Number(it.unitPrice),
+        optionsPrice: Number(it.optionsPrice ?? 0),
+      })),
+      Number(order.deliveryFee ?? 0),
+      Number(order.discountAmount ?? 0),
+    );
+
+    if (
+      isOrderCountableRevenue({
+        status: order.status,
+        awaitingPhotoKey: order.awaitingPhotoKey,
+      })
+    ) {
+      completedRevenue += total;
+      completedCount += 1;
+    } else if (isCancelledStatus(order.status)) {
+      cancelledRevenue += total;
+      cancelledCount += 1;
+    } else {
+      openCount += 1;
+    }
+  }
+
+  return {
+    completedRevenue,
+    cancelledRevenue,
+    completedCount,
+    cancelledCount,
+    openCount,
+    totalOrders: orders.length,
+  };
+}
+
 const STATUS_FILTERS: OrderStatus[] = [
   OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
   OrderStatus.PREPARING,
@@ -62,13 +150,20 @@ const STATUS_FILTERS: OrderStatus[] = [
   OrderStatus.CANCELLED,
 ];
 
+const SHIFT_ALL = "all";
+const SHIFT_NONE = "none";
+
 export function BranchOrdersPanel({ branchId }: { branchId: string }) {
   const searchParams = useSearchParams();
   const dateFromUrl = searchParams.get("date")?.trim() ?? "";
+  const shiftFromUrl = searchParams.get("shift")?.trim() ?? "";
   const initialDate =
     /^\d{4}-\d{2}-\d{2}$/.test(dateFromUrl) ? dateFromUrl : "";
   const [date, setDate] = useState<string>(initialDate);
   const [operatingDay, setOperatingDay] = useState<string>("");
+  const [shiftFilter, setShiftFilter] = useState<string>(
+    shiftFromUrl || SHIFT_ALL,
+  );
   const [statusFilter, setStatusFilter] = useState<"" | OrderStatus>("");
   const [data, setData] = useState<OrdersPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,12 +176,14 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
   }, [dateFromUrl]);
 
   useEffect(() => {
+    if (shiftFromUrl) setShiftFilter(shiftFromUrl);
+  }, [shiftFromUrl]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const qs = date
-      ? `?date=${encodeURIComponent(date)}`
-      : "";
+    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
     fetch(`/api/admin/branches/${branchId}/orders${qs}`)
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -97,9 +194,17 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
       })
       .then((payload) => {
         if (!cancelled) {
-          setData(payload);
+          setData({
+            ...payload,
+            shifts: Array.isArray(payload.shifts) ? payload.shifts : [],
+          });
           setOperatingDay(payload.operatingDay ?? payload.date);
           if (!date) setDate(payload.date);
+          setShiftFilter((prev) => {
+            if (prev === SHIFT_ALL || prev === SHIFT_NONE) return prev;
+            if (payload.shifts?.some((s) => s.id === prev)) return prev;
+            return SHIFT_ALL;
+          });
         }
       })
       .catch((e: unknown) => {
@@ -116,12 +221,34 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
     };
   }, [branchId, date]);
 
-  const stats = data?.dayStats;
-  const filteredOrders = data
-    ? statusFilter
-      ? data.orders.filter((o) => o.status === statusFilter)
-      : data.orders
-    : [];
+  const shifts = data?.shifts ?? [];
+  const hasOrphanOrders = Boolean(
+    data?.orders.some((o) => !o.shiftId),
+  );
+
+  const shiftScopedOrders = useMemo(() => {
+    if (!data) return [];
+    if (shiftFilter === SHIFT_ALL) return data.orders;
+    if (shiftFilter === SHIFT_NONE) {
+      return data.orders.filter((o) => !o.shiftId);
+    }
+    return data.orders.filter((o) => o.shiftId === shiftFilter);
+  }, [data, shiftFilter]);
+
+  const stats = useMemo(
+    () => computeStats(shiftScopedOrders),
+    [shiftScopedOrders],
+  );
+
+  const filteredOrders = statusFilter
+    ? shiftScopedOrders.filter((o) => o.status === statusFilter)
+    : shiftScopedOrders;
+
+  const selectedShift =
+    shiftFilter !== SHIFT_ALL && shiftFilter !== SHIFT_NONE
+      ? shifts.find((s) => s.id === shiftFilter) ?? null
+      : null;
+
   const maxDate = operatingDay || date;
 
   return (
@@ -130,17 +257,13 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
         <div>
           <h3 className="font-semibold text-gray-900">ออเดอร์</h3>
           <p className="text-sm text-gray-500">
-            สรุปยอดรายวันตามรอบวันธุรกิจ · ยอด = รายการ + ค่าส่ง − ส่วนลด
-            {data?.businessDayCutoffTime &&
-            data.businessDayCutoffTime !== "00:00"
-              ? ` · ตัดรอบ ${data.businessDayCutoffTime} น.`
-              : ""}
+            เลือกวันแล้วแยกรอบขาย · ยอด = รายการ + ค่าส่ง − ส่วนลด
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[10rem]">
             <label className={adminLabelClass} htmlFor="branch-orders-date">
-              วันที่ (รอบธุรกิจ)
+              วันที่ (วันปฏิทิน)
             </label>
             <DateInput
               id="branch-orders-date"
@@ -148,17 +271,23 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
               value={date}
               max={maxDate || undefined}
               onChange={(next) => {
-                if (next) setDate(next);
+                if (next) {
+                  setDate(next);
+                  setShiftFilter(SHIFT_ALL);
+                }
               }}
             />
           </div>
           {date && operatingDay && date !== operatingDay ? (
             <button
               type="button"
-              onClick={() => setDate(operatingDay)}
+              onClick={() => {
+                setDate(operatingDay);
+                setShiftFilter(SHIFT_ALL);
+              }}
               className="mb-0.5 cursor-pointer text-xs font-semibold text-site-primary underline"
             >
-              กลับรอบปัจจุบัน
+              กลับวันนี้
             </button>
           ) : null}
         </div>
@@ -169,46 +298,117 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
           {formatDateLabel(date)}
           {data?.isToday ? (
             <span className="ml-1.5 text-xs font-normal text-emerald-700">
-              (รอบปัจจุบัน)
+              (วันนี้)
             </span>
           ) : null}
         </p>
       ) : null}
 
-      {stats ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-            <p className="text-xs text-gray-500">ออเดอร์ทั้งหมด</p>
-            <p className="text-lg font-semibold text-gray-900">
-              {stats.totalOrders.toLocaleString("th-TH")}
-            </p>
-          </div>
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
-            <p className="text-xs text-emerald-700">รายได้</p>
-            <p className="text-lg font-semibold text-emerald-800">
-              {money(stats.completedRevenue)} ฿
-            </p>
-            <p className="text-[11px] text-emerald-600">
-              {stats.completedCount.toLocaleString("th-TH")} รายการสำเร็จ
-            </p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-            <p className="text-xs text-gray-500">กำลังดำเนินการ</p>
-            <p className="text-lg font-semibold text-amber-700">
-              {stats.openCount.toLocaleString("th-TH")}
-            </p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-            <p className="text-xs text-gray-500">ยกเลิก</p>
-            <p className="text-lg font-semibold text-gray-700">
-              {money(stats.cancelledRevenue)} ฿
-            </p>
-            <p className="text-[11px] text-gray-500">
-              {stats.cancelledCount.toLocaleString("th-TH")} รายการ
-            </p>
-          </div>
+      {!loading && data ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShiftFilter(SHIFT_ALL)}
+            className={`rounded-xl border px-3 py-2 text-left text-xs ${
+              shiftFilter === SHIFT_ALL
+                ? "border-site-primary bg-site-primary-soft font-bold text-site-primary"
+                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+            }`}
+          >
+            <span className="block">ทั้งวัน</span>
+            <span className="mt-0.5 block opacity-80">
+              {data.orders.length.toLocaleString("th-TH")} ออเดอร์
+            </span>
+          </button>
+          {shifts.map((s) => {
+            const count = data.orders.filter((o) => o.shiftId === s.id).length;
+            const selected = shiftFilter === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setShiftFilter(s.id)}
+                className={`rounded-xl border px-3 py-2 text-left text-xs ${
+                  selected
+                    ? "border-site-primary bg-site-primary-soft font-bold text-site-primary"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                }`}
+              >
+                <span className="block">
+                  รอบที่ {s.roundNumber}
+                  {!s.closedAt ? " · เปิดอยู่" : ""}
+                </span>
+                <span className="mt-0.5 block opacity-80">
+                  {formatHm(s.openedAt)}
+                  {s.closedAt ? `–${formatHm(s.closedAt)}` : "–…"} · {count}{" "}
+                  ออเดอร์
+                </span>
+              </button>
+            );
+          })}
+          {hasOrphanOrders ? (
+            <button
+              type="button"
+              onClick={() => setShiftFilter(SHIFT_NONE)}
+              className={`rounded-xl border px-3 py-2 text-left text-xs ${
+                shiftFilter === SHIFT_NONE
+                  ? "border-site-primary bg-site-primary-soft font-bold text-site-primary"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              <span className="block">ไม่มีรอบ</span>
+              <span className="mt-0.5 block opacity-80">
+                {data.orders.filter((o) => !o.shiftId).length} ออเดอร์
+              </span>
+            </button>
+          ) : null}
         </div>
       ) : null}
+
+      {selectedShift ? (
+        <p className="text-xs text-slate-600">
+          {formatShiftCodeLabel(
+            selectedShift.calendarDate || date,
+            selectedShift.roundNumber,
+          )}
+          {" · "}
+          ตังทอน {money(selectedShift.openingCash)} ฿
+          {selectedShift.note ? ` · ${selectedShift.note}` : ""}
+        </p>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+          <p className="text-xs text-gray-500">ออเดอร์ทั้งหมด</p>
+          <p className="text-lg font-semibold text-gray-900">
+            {stats.totalOrders.toLocaleString("th-TH")}
+          </p>
+        </div>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
+          <p className="text-xs text-emerald-700">รายได้</p>
+          <p className="text-lg font-semibold text-emerald-800">
+            {money(stats.completedRevenue)} ฿
+          </p>
+          <p className="text-[11px] text-emerald-600">
+            {stats.completedCount.toLocaleString("th-TH")} รายการสำเร็จ
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+          <p className="text-xs text-gray-500">กำลังดำเนินการ</p>
+          <p className="text-lg font-semibold text-amber-700">
+            {stats.openCount.toLocaleString("th-TH")}
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+          <p className="text-xs text-gray-500">ยกเลิก</p>
+          <p className="text-lg font-semibold text-gray-700">
+            {money(stats.cancelledRevenue)} ฿
+          </p>
+          <p className="text-[11px] text-gray-500">
+            {stats.cancelledCount.toLocaleString("th-TH")} รายการ
+          </p>
+        </div>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -254,7 +454,11 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
               ? "ไม่มีออเดอร์ที่ยกเลิกในรอบนี้"
               : statusFilter
                 ? `ไม่มีออเดอร์สถานะ${ORDER_STATUS_LABELS[statusFilter]}ในรอบนี้`
-                : "ยังไม่มีออเดอร์ในรอบนี้"
+                : shiftFilter === SHIFT_NONE
+                  ? "ไม่มีออเดอร์ที่ไม่มีรอบ"
+                  : selectedShift
+                    ? "ยังไม่มีออเดอร์ในรอบนี้"
+                    : "ยังไม่มีออเดอร์ในวันนี้"
           }
         />
       )}

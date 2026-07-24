@@ -888,8 +888,6 @@ export default function CheckoutPage() {
           <StaffOperatingRoundBanner
             compact
             operatingDay={staffOrderContext.operatingDay}
-            businessDayCutoffTime={staffOrderContext.businessDayCutoffTime}
-            lateEntryUntilTime={staffOrderContext.lateEntryUntilTime}
             canSell={staffOrderContext.canSell}
             activeShift={staffOrderContext.activeShift}
           />

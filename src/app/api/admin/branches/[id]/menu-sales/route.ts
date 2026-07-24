@@ -4,9 +4,7 @@ import { requireBranchAccess } from "@/lib/admin-access";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { bangkokDateKey } from "@/lib/branch-hours";
 import { queueBusinessDateFromKey } from "@/lib/constants";
-import {
-  getOperatingDayState,
-} from "@/lib/operating-day";
+import { getCalendarDayState } from "@/lib/operating-day";
 import {
   BESTSELLER_MIN_QTY,
   BESTSELLER_TOP_N,
@@ -44,15 +42,11 @@ export async function GET(request: Request, { params }: Params) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: branchId },
-      select: {
-        id: true,
-        businessDayCutoffTime: true,
-        lateEntryUntilTime: true,
-      },
+      select: { id: true },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
-    const dayState = getOperatingDayState(branch);
+    const dayState = getCalendarDayState();
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date")?.trim() || dayState.operatingDay;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {

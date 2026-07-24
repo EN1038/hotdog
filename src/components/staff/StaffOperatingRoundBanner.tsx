@@ -1,19 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { formatPrice } from "@/lib/constants";
-import {
-  formatMinutesRemainingTh,
-  formatOperatingDayLabel,
-  getOperatingRoundStatus,
-  type BranchOperatingDaySettings,
-  type OperatingRoundTone,
-} from "@/lib/operating-day";
+import { formatOperatingDayLabel } from "@/lib/operating-day";
 
 export type StaffRoundBannerProps = {
   operatingDay: string;
-  businessDayCutoffTime: string;
-  lateEntryUntilTime: string | null;
   /** Compact strip for key-order headers */
   compact?: boolean;
   /** When false, store has no open staff shift */
@@ -24,16 +15,6 @@ export type StaffRoundBannerProps = {
     openingCash: number;
   } | null;
 };
-
-function toneClasses(tone: OperatingRoundTone) {
-  if (tone === "locked") {
-    return "border-red-200 bg-red-50 text-red-900";
-  }
-  if (tone === "warn") {
-    return "border-amber-200 bg-amber-50 text-amber-950";
-  }
-  return "border-emerald-200 bg-emerald-50 text-emerald-950";
-}
 
 function formatShiftTime(iso: string) {
   try {
@@ -50,19 +31,10 @@ function formatShiftTime(iso: string) {
 
 export function StaffOperatingRoundBanner({
   operatingDay,
-  businessDayCutoffTime,
-  lateEntryUntilTime,
   compact = false,
   canSell,
   activeShift,
 }: StaffRoundBannerProps) {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
   // Explicit shift-aware mode (staff dashboard / key-order gate)
   if (canSell === false) {
     return (
@@ -74,7 +46,7 @@ export function StaffOperatingRoundBanner({
           ร้านปิดรอบ
         </p>
         <p className={`mt-0.5 ${compact ? "text-[11px]" : "text-xs"} opacity-90`}>
-          ปิดรอบอัตโนมัติตามเวลาตัดรอบ — เปิดรอบใหม่เพื่อขาย
+          ปิดรอบอัตโนมัติตอนเที่ยงคืน — เปิดรอบใหม่เพื่อขาย
         </p>
       </div>
     );
@@ -99,35 +71,5 @@ export function StaffOperatingRoundBanner({
     );
   }
 
-  // Legacy operating-day countdown (staff keyed flow on /order pages)
-  const branch: BranchOperatingDaySettings = {
-    businessDayCutoffTime,
-    lateEntryUntilTime,
-  };
-  const status = getOperatingRoundStatus(branch, now);
-  const dayLabel = formatOperatingDayLabel(status.operatingDay || operatingDay);
-  const remaining = formatMinutesRemainingTh(status.minutesRemaining);
-
-  return (
-    <div
-      className={`rounded-xl border px-3 ${compact ? "py-2" : "py-2.5"} ${toneClasses(status.tone)}`}
-      role="status"
-    >
-      <p className={`font-semibold ${compact ? "text-xs" : "text-sm"}`}>
-        รอบ {dayLabel}
-      </p>
-      <p className={`mt-0.5 ${compact ? "text-[11px]" : "text-xs"} opacity-90`}>
-        {status.entryLocked ? (
-          <>ปิดรอบคีย์แล้ว · รอบใหม่เริ่ม {status.cutoffTime} น.</>
-        ) : (
-          <>
-            คีย์ได้ถึง {status.entryDeadlineHm} น. · {remaining}
-            {businessDayCutoffTime !== "00:00" || lateEntryUntilTime
-              ? ` · ตัดรอบ ${status.cutoffTime} น.`
-              : null}
-          </>
-        )}
-      </p>
-    </div>
-  );
+  return null;
 }

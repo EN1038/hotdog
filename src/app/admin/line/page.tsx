@@ -234,7 +234,7 @@ export default function AdminLinePage() {
       const sent = summary?.sent ?? 0;
       const skipped = summary?.skipped ?? 0;
       if (sent > 0) {
-        toast.success(`ส่งสรุปตัดรอบแล้ว ${sent} สาขา`);
+        toast.success(`ส่งสรุปรอบขายแล้ว ${sent} สาขา`);
       } else if (summary?.errors?.length) {
         toast.error(summary.errors[0] ?? "ส่งไม่สำเร็จ");
       } else {
@@ -255,7 +255,7 @@ export default function AdminLinePage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="LINE Official Account"
-        description="แจ้งออเดอร์ใหม่ให้พนักงาน และสรุปตัดรอบให้เจ้าของแบรนด์"
+        description="แจ้งออเดอร์ใหม่ให้พนักงาน และสรุปรอบขายให้เจ้าของแบรนด์"
       />
 
       <section className={`${adminCardClass} space-y-3`}>
@@ -431,7 +431,7 @@ export default function AdminLinePage() {
           />
         </label>
         <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
-          <span>สรุปตัดรอบให้เจ้าของ/ผู้จัดการแบรนด์</span>
+          <span>สรุปรอบขายให้เจ้าของ/ผู้จัดการแบรนด์</span>
           <input
             type="checkbox"
             className="h-4 w-4"
@@ -443,8 +443,8 @@ export default function AdminLinePage() {
           />
         </label>
         <p className="text-xs text-slate-500">
-          ระบบจะส่งสรุปรอบที่เพิ่งปิดของแต่ละสาขาอัตโนมัติหลังถึงเวลาตัดรอบ
-          (ต้องตั้ง CRON เรียก{" "}
+          ระบบจะส่งสรุปรอบที่เพิ่งปิดของแต่ละสาขาอัตโนมัติหลังเที่ยงคืนไทย /
+          เมื่อพนักงานปิดรอบ (ต้องตั้ง CRON เรียก{" "}
           <code className="rounded bg-slate-100 px-1">
             /api/cron/line-daily-summary
           </code>
@@ -494,7 +494,7 @@ export default function AdminLinePage() {
 
       <section className={`${adminCardClass} space-y-4`}>
         <h2 className="text-base font-semibold text-slate-900">
-          ทดสอบ · เจ้าของแบรนด์ / สรุปตัดรอบ
+          ทดสอบ · เจ้าของแบรนด์ / สรุปรอบขาย
         </h2>
         {linkedAdmins.length === 0 ? (
           <p className="text-sm text-slate-600">
@@ -547,7 +547,7 @@ export default function AdminLinePage() {
         >
           {summaryTesting
             ? "กำลังส่งสรุป..."
-            : "ส่งสรุปตัดรอบรอบล่าสุด (ทดสอบ)"}
+            : "ส่งสรุปรอบขายรอบล่าสุด (ทดสอบ)"}
         </button>
         <p className="text-xs text-slate-500">
           สรุปจะมียอดสำเร็จ/ยกเลิก รายการที่ขายออก เหตุผลยกเลิก

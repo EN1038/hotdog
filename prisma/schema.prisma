@@ -242,10 +242,6 @@ model Branch {
   deliveryHours      Json?
   allowAdvanceOrder  Boolean            @default(true)
   autoAcceptOrders   Boolean            @default(false)
-  /// HH:mm Asia/Bangkok — operating day rolls at this clock time (00:00 = calendar midnight)
-  businessDayCutoffTime String          @default("00:00")
-  /// HH:mm Asia/Bangkok — staff late entry closes at this time (null = until cutoff)
-  lateEntryUntilTime String?
   /// Staff new-order alert sound (from platform library)
   alertSoundId       String?
   createdAt          DateTime           @default(now())

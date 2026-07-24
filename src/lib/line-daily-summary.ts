@@ -10,9 +10,7 @@ import {
 } from "@/lib/constants";
 import {
   addDaysToDateKey,
-  formatOperatingRoundWindow,
-  getOperatingDayState,
-  normalizeCutoffTime,
+  getCalendarDayState,
 } from "@/lib/operating-day";
 import {
   isCancelledStatus,
@@ -45,7 +43,6 @@ export type BranchDaySummary = {
   brandId: string | null;
   brandName: string | null;
   operatingDay: string;
-  cutoffTime: string;
   completedCount: number;
   completedRevenue: number;
   cancelledCount: number;
@@ -123,7 +120,6 @@ export async function buildBranchDaySummary(
     select: {
       id: true,
       name: true,
-      businessDayCutoffTime: true,
       brandId: true,
       brand: { select: { id: true, name: true } },
     },
@@ -281,7 +277,6 @@ export async function buildBranchDaySummary(
     brandId: branch.brand?.id ?? branch.brandId,
     brandName: branch.brand?.name ?? null,
     operatingDay,
-    cutoffTime: normalizeCutoffTime(branch.businessDayCutoffTime),
     completedCount,
     completedRevenue: Math.round(completedRevenue * 100) / 100,
     cancelledCount,
@@ -299,22 +294,18 @@ export async function buildBranchDaySummary(
 
 export function formatBranchDaySummaryMessage(summary: BranchDaySummary): string {
   const dayLabel = formatDayLabel(summary.operatingDay);
-  const window =
-    formatOperatingRoundWindow(summary.operatingDay, summary.cutoffTime) ??
-    `ตัดรอบ ${summary.cutoffTime} น.`;
 
   const header = [
-    "สรุปตัดรอบ",
+    "สรุปรายวัน",
     summary.brandName ? `${summary.brandName} · ${summary.branchName}` : summary.branchName,
     `${dayLabel}`,
-    window,
     "",
     "ยอดรวมทั้งวัน",
     `ออเดอร์ทั้งหมด ${summary.totalOrders} รายการ`,
     `สำเร็จ ${summary.completedCount} · ฿${money(summary.completedRevenue)}`,
     `ยกเลิก ${summary.cancelledCount} · ฿${money(summary.cancelledRevenue)}`,
     summary.openCount > 0
-      ? `ค้างในระบบตอนตัดรอบ ${summary.openCount}`
+      ? `ค้างในระบบ ${summary.openCount}`
       : null,
   ].filter((line) => line !== null);
 
@@ -487,7 +478,7 @@ export async function runLineDailySummaries(
     select: { lineNotifyBrandDailySummary: true },
   });
   if (!settings?.lineNotifyBrandDailySummary && !options.force) {
-    result.errors.push("ปิดการแจ้งสรุปตัดรอบไว้ในการตั้งค่า");
+    result.errors.push("ปิดการแจ้งสรุปรอบไว้ในการตั้งค่า");
     return result;
   }
 
@@ -501,14 +492,12 @@ export async function runLineDailySummaries(
       id: true,
       name: true,
       brandId: true,
-      businessDayCutoffTime: true,
-      lateEntryUntilTime: true,
     },
   });
 
   for (const branch of branches) {
     result.checked += 1;
-    const dayState = getOperatingDayState(branch);
+    const dayState = getCalendarDayState();
     const closedDay =
       options.operatingDay?.trim() ||
       addDaysToDateKey(dayState.operatingDay, -1);
@@ -525,26 +514,23 @@ export async function runLineDailySummaries(
       continue;
     }
 
-    // Don't send "today's" still-open round unless force + explicit day
-    if (
-      !options.force &&
-      closedDay === dayState.operatingDay
-    ) {
+    // Manual/force tool: skip "today" unless force + explicit day
+    if (!options.force && closedDay === dayState.operatingDay) {
       result.skipped += 1;
       result.details.push({
         branchId: branch.id,
         branchName: branch.name,
         operatingDay: closedDay,
         status: "skipped",
-        reason: "รอบยังไม่ปิด",
+        reason: "ยังเป็นวันปัจจุบัน",
       });
       continue;
     }
 
-    // Only auto-send within 24h after cutoff (catch-up if cron was down)
+    // Without force, only allow yesterday (catch-up window 24h after midnight)
     if (!options.force) {
       const closedEnd = new Date(
-        `${addDaysToDateKey(closedDay, 1)}T${normalizeCutoffTime(branch.businessDayCutoffTime)}:00+07:00`,
+        `${addDaysToDateKey(closedDay, 1)}T00:00:00+07:00`,
       );
       const ageMs = Date.now() - closedEnd.getTime();
       if (ageMs < 0 || ageMs > 24 * 60 * 60 * 1000) {
@@ -554,7 +540,7 @@ export async function runLineDailySummaries(
           branchName: branch.name,
           operatingDay: closedDay,
           status: "skipped",
-          reason: "นอกช่วงแจ้งเตือนหลังตัดรอบ",
+          reason: "นอกช่วงแจ้งเตือนหลังเที่ยงคืน",
         });
         continue;
       }

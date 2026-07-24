@@ -132,7 +132,7 @@ export default function AdminLineConnectPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="เชื่อม LINE"
-        description="ผูกบัญชีแอดมินกับ LINE OA เพื่อรับสรุปตัดรอบสาขา — ต้องล็อกอินและใช้รหัสครั้งเดียว"
+        description="ผูกบัญชีแอดมินกับ LINE OA เพื่อรับสรุปรอบขายสาขา — ต้องล็อกอินและใช้รหัสครั้งเดียว"
       />
 
       <section className={`${adminCardClass} space-y-3`}>
@@ -146,7 +146,7 @@ export default function AdminLineConnectPage() {
             <strong>{status.linked ? "เชื่อมแล้ว" : "ยังไม่เชื่อม"}</strong>
           </li>
           <li>
-            สิทธิ์รับสรุปตัดรอบ:{" "}
+            สิทธิ์รับสรุปรอบขาย:{" "}
             <strong>
               {status.canReceiveDailySummary ? "ได้" : "ไม่ได้ (ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์)"}
             </strong>
@@ -176,7 +176,7 @@ export default function AdminLineConnectPage() {
 
         {!status.canReceiveDailySummary ? (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
-            บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงสร้างรหัสเชื่อมสำหรับสรุปตัดรอบไม่ได้
+            บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงสร้างรหัสเชื่อมสำหรับสรุปรอบขายไม่ได้
           </p>
         ) : (
           <>

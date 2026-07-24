@@ -1,22 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { isBangkokDateKey } from "@/lib/constants";
-import {
-  formatMinutesRemainingTh,
-  formatOperatingDayLabel,
-  formatOperatingRoundWindow,
-  getOperatingRoundStatus,
-  type BranchOperatingDaySettings,
-} from "@/lib/operating-day";
+import { formatOperatingDayLabel } from "@/lib/operating-day";
 
 export type StaffRoundSelectorProps = {
   /** Selected operating-round key (YYYY-MM-DD), null until first load */
   viewRound: string | null;
   /** Current live operating round */
   currentRound: string;
-  businessDayCutoffTime: string;
-  lateEntryUntilTime: string | null;
   isViewingCurrent: boolean;
   onChangeRound: (roundKey: string) => void;
   onGoToCurrent: () => void;
@@ -25,35 +17,14 @@ export type StaffRoundSelectorProps = {
 export function StaffRoundSelector({
   viewRound,
   currentRound,
-  businessDayCutoffTime,
-  lateEntryUntilTime,
   isViewingCurrent,
   onChangeRound,
   onGoToCurrent,
 }: StaffRoundSelectorProps) {
   const dateRef = useRef<HTMLInputElement>(null);
-  const [now, setNow] = useState(() => new Date());
 
-  useEffect(() => {
-    if (!isViewingCurrent) return;
-    const id = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(id);
-  }, [isViewingCurrent]);
-
-  const branch: BranchOperatingDaySettings = {
-    businessDayCutoffTime,
-    lateEntryUntilTime,
-  };
-  const live = getOperatingRoundStatus(branch, now);
   const roundKey = viewRound ?? currentRound;
   const dayLabel = formatOperatingDayLabel(roundKey || currentRound || "");
-  const windowLabel = formatOperatingRoundWindow(
-    roundKey || currentRound,
-    businessDayCutoffTime,
-  );
-  const remaining = formatMinutesRemainingTh(live.minutesRemaining);
-  const deadlineSameAsCutoff =
-    !lateEntryUntilTime || live.entryDeadlineHm === live.cutoffTime;
 
   function openRoundPicker() {
     const el = dateRef.current;
@@ -111,47 +82,18 @@ export function StaffRoundSelector({
         aria-hidden
       />
 
-      <div className="mt-2.5 space-y-0.5">
-          {windowLabel ? (
-            <p className="whitespace-nowrap text-[10px] leading-snug text-gray-600">
-              {windowLabel}
-            </p>
-          ) : null}
-          {isViewingCurrent ? (
-            <p
-              className={`text-[10px] leading-snug ${
-                live.tone === "locked"
-                  ? "text-red-700"
-                  : live.tone === "warn"
-                    ? "text-amber-800"
-                    : "text-gray-600"
-              }`}
-            >
-              {live.entryLocked ? (
-                <>ปิดคีย์แล้ว · รอบใหม่เริ่ม {live.cutoffTime} น.</>
-              ) : deadlineSameAsCutoff ? (
-                <>คีย์ได้จนกว่าจะตัดรอบ · {remaining}</>
-              ) : (
-                <>
-                  คีย์ได้ถึง {live.entryDeadlineHm} น. · {remaining}
-                </>
-              )}
-            </p>
-          ) : (
-            <>
-              <p className="text-[10px] leading-snug text-gray-600">
-                ดูย้อนหลัง
-              </p>
-              <button
-                type="button"
-                onClick={onGoToCurrent}
-                className="mt-1 cursor-pointer text-[11px] font-semibold text-site-primary underline"
-              >
-                กลับรอบปัจจุบัน
-              </button>
-            </>
-          )}
+      {!isViewingCurrent ? (
+        <div className="mt-2.5 space-y-0.5">
+          <p className="text-[10px] leading-snug text-gray-600">ดูย้อนหลัง</p>
+          <button
+            type="button"
+            onClick={onGoToCurrent}
+            className="mt-1 cursor-pointer text-[11px] font-semibold text-site-primary underline"
+          >
+            กลับรอบปัจจุบัน
+          </button>
         </div>
+      ) : null}
     </div>
   );
 }

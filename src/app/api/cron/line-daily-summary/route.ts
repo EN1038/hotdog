@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { closeShiftsPastCutoff } from "@/lib/branch-shift";
-import { runLineDailySummaries } from "@/lib/line-daily-summary";
+import { closeShiftsPastMidnight } from "@/lib/branch-shift";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,28 +19,16 @@ async function handle(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const url = new URL(request.url);
-  const branchId = url.searchParams.get("branchId")?.trim() || undefined;
-  const operatingDay = url.searchParams.get("date")?.trim() || undefined;
-  const force = url.searchParams.get("force") === "1";
-
-  // Close stale open shifts at operating-day cutoff before day summaries.
-  const autoClose = await closeShiftsPastCutoff();
-
-  const result = await runLineDailySummaries({
-    branchId,
-    operatingDay,
-    force,
-  });
+  // Close shifts from previous Bangkok calendar days; LINE summary fires on each close.
+  const autoClose = await closeShiftsPastMidnight();
 
   return NextResponse.json({
     ok: true,
     autoClose,
-    ...result,
   });
 }
 
-/** External scheduler / Vercel Cron: every few minutes after cutoffs. */
+/** External scheduler / Vercel Cron: every few minutes (midnight auto-close). */
 export async function GET(request: Request) {
   return handle(request);
 }

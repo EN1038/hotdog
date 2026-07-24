@@ -1,9 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
-  DEFAULT_BUSINESS_DAY_CUTOFF,
-  operatingDayDate,
-} from "@/lib/operating-day";
+  bangkokDateKey,
+  queueBusinessDateFromKey,
+} from "@/lib/constants";
 
 export { formatQueueNumber } from "@/lib/order-queue-format";
 
@@ -25,14 +25,12 @@ async function nextQueueNumberForBranchDay(
 
 export type CreateOrderQueueOptions = {
   at?: Date;
-  /** Branch businessDayCutoffTime (HH:mm). Default calendar midnight. */
-  cutoffTime?: string | null;
   /** Explicit day override (tests / rare backfill). */
   queueBusinessDate?: Date;
 };
 
 /**
- * Create an order with the next queue number for this branch + operating day.
+ * Create an order with the next queue number for this branch + Bangkok calendar day.
  * Retries on unique (branch, day, queue) collisions under concurrency.
  */
 export async function createOrderWithDailyQueue(
@@ -44,10 +42,7 @@ export async function createOrderWithDailyQueue(
 ) {
   const queueBusinessDate =
     options?.queueBusinessDate ??
-    operatingDayDate(
-      options?.at ?? new Date(),
-      options?.cutoffTime ?? DEFAULT_BUSINESS_DAY_CUTOFF,
-    );
+    queueBusinessDateFromKey(bangkokDateKey(options?.at ?? new Date()));
 
   for (let attempt = 0; attempt < MAX_QUEUE_ALLOC_ATTEMPTS; attempt++) {
     try {

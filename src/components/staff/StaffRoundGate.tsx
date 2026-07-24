@@ -7,8 +7,6 @@ import { StaffOperatingRoundBanner } from "@/components/staff/StaffOperatingRoun
 
 export type StaffRoundGateState = {
   operatingDay: string;
-  businessDayCutoffTime: string;
-  lateEntryUntilTime: string | null;
   canEnter: boolean;
   entryLocked: boolean;
   canSell: boolean;
@@ -53,14 +51,6 @@ export function useStaffRoundGate() {
       const next: StaffRoundGateState = {
         operatingDay:
           typeof data.operatingDay === "string" ? data.operatingDay : "",
-        businessDayCutoffTime:
-          typeof data.businessDayCutoffTime === "string"
-            ? data.businessDayCutoffTime
-            : "00:00",
-        lateEntryUntilTime:
-          typeof data.lateEntryUntilTime === "string"
-            ? data.lateEntryUntilTime
-            : null,
         canEnter: canSell,
         entryLocked: !canSell,
         canSell,
@@ -99,8 +89,6 @@ export function StaffRoundStatusStrip({
     <StaffOperatingRoundBanner
       compact
       operatingDay={state.operatingDay}
-      businessDayCutoffTime={state.businessDayCutoffTime}
-      lateEntryUntilTime={state.lateEntryUntilTime}
       canSell={state.canSell}
       activeShift={state.activeShift}
     />

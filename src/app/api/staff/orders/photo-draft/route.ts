@@ -4,7 +4,7 @@ import { requireStaff } from "@/lib/auth";
 import { generateOrderNumber, queueBusinessDateFromKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { getOperatingRoundStatus } from "@/lib/operating-day";
+import { getCalendarDayState } from "@/lib/operating-day";
 import {
   requireActiveShift,
   shiftCalendarDateKey,
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       throw e;
     }
 
-    const dayState = getOperatingRoundStatus(branch);
+    const dayState = getCalendarDayState();
     const shiftDateKey = shiftCalendarDateKey(activeShift);
 
     const phone = walkInPhone(session.branchId);

@@ -279,16 +279,20 @@ export default function StaffPromoKeyOrderDetailPage() {
         staffName: typeof data.customerName === "string" ? data.customerName : null,
         orderType: data.fulfillmentType === "STOREFRONT" ? "ทานที่ร้าน" : data.fulfillmentType === "PICKUP" ? "รับกลับบ้าน" : data.fulfillmentType === "DELIVERY" ? "เดลิเวอรี" : null,
         items: Array.isArray(data.items) ? data.items.map((it: any) => ({
-          name: it.optionsText ? `${it.itemName} (${it.optionsText})` : it.itemName,
+          name: it.itemName,
+          optionsText: it.optionsText || "",
           qty: it.quantity,
           price: Number(it.unitPrice) + Number(it.optionsPrice),
           total: (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity
         })) : null,
         subtotal: typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
-        discount: Number(data.discountAmount) || 0,
+        discount: 0,
         paymentMethod: data.paymentMethod === "CASH" ? "เงินสด" : data.paymentMethod === "PROMPTPAY" ? "โอนเงิน (QR)" : data.paymentMethod,
+        brandName: data.brandName ?? "",
+        branchName: data.branchName ?? "",
+        branchAddress: data.branchAddress ?? "",
       });
-      router.replace("/staff");
+      window.location.href = "/staff";
     } catch {
       saveStaffOrderFeedback({
         kind: "error",

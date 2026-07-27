@@ -331,21 +331,23 @@ export function StaffAppShell({
 
 export function StaffHomeMenuIcon({
   href,
+  onClick,
   label,
   badge,
   color,
   children,
 }: {
-  href: string;
+  href?: string;
+  onClick?: () => void;
   label: string;
   badge?: number;
   color: string;
   children: ReactNode;
 }) {
-  return (
-    <Link href={href} className="flex flex-col items-center gap-2">
+  const content = (
+    <>
       <span
-        className="relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-sm"
+        className="relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-sm transition active:scale-95"
         style={{ backgroundColor: color }}
       >
         {children}
@@ -358,6 +360,24 @@ export function StaffHomeMenuIcon({
       <span className="max-w-[4.8rem] text-center text-[11px] font-semibold leading-tight text-slate-700">
         {label}
       </span>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex flex-col items-center gap-2"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={href || "#"} className="flex flex-col items-center gap-2">
+      {content}
     </Link>
   );
 }

@@ -119,14 +119,17 @@ class OneQueuePrinter(private val context: Context) {
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
 
+        val customTypeface = Typeface.createFromAsset(context.assets, "fonts/Kanit-Regular.ttf")
+        val customBoldTypeface = Typeface.create(customTypeface, Typeface.BOLD)
+
         val center = width / 2f
-        val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 26f }
-        val smallLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 26f }
-        val smallRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 26f }
-        val medium = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 34f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-        val mediumLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 30f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-        val mediumRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 30f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-        val huge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 110f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+        val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 26f; typeface = customTypeface }
+        val smallLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 26f; typeface = customTypeface }
+        val smallRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 26f; typeface = customTypeface }
+        val medium = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 34f; typeface = customBoldTypeface }
+        val mediumLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 30f; typeface = customBoldTypeface }
+        val mediumRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 30f; typeface = customBoldTypeface }
+        val huge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 110f; typeface = customBoldTypeface }
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; strokeWidth = 2f }
 
         var y = 50f

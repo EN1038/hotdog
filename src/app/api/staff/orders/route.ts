@@ -578,6 +578,9 @@ export async function POST(request: Request) {
         totalAmount,
         queueTicketCopies: session.brand.queueTicketCopies,
         operatingDay: dayState.operatingDay,
+        brandName: session.brand.name,
+        branchName: session.branchName,
+        branchAddress: branch.address,
       },
       201,
     );
@@ -585,4 +588,3 @@ export async function POST(request: Request) {
     return handleApiError(error);
   }
 }
-

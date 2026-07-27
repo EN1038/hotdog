@@ -108,7 +108,14 @@ class OneQueuePrinter(private val context: Context) {
         if (ticket.dateLabel.isNotBlank()) height += 36
         if (ticket.orderType.isNotBlank()) height += 36
         if (ticket.items.isNotEmpty()) {
-            height += ticket.items.size * 40 + 40
+            var itemsHeight = 40
+            for (item in ticket.items) {
+                itemsHeight += 40
+                if (!item.optionsText.isNullOrBlank()) {
+                    itemsHeight += 30
+                }
+            }
+            height += itemsHeight
         }
         height += 150
         if (ticket.discount > 0) height += 36
@@ -184,6 +191,13 @@ class OneQueuePrinter(private val context: Context) {
                 canvas.drawText("${item.qty}x${item.price.toInt()}", width - 120f, y, smallRight)
                 canvas.drawText(String.format("%.2f", item.total), width - 20f, y, smallRight)
                 y += 40f
+                if (!item.optionsText.isNullOrBlank()) {
+                    var opts = item.optionsText
+                    if (opts.length > 30) opts = opts.take(29) + ".."
+                    val optPaint = Paint(smallLeft).apply { textSize = 22f; color = Color.DKGRAY }
+                    canvas.drawText(" * $opts", 30f, y - 8f, optPaint)
+                    y += 30f
+                }
             }
             y -= 10f
             canvas.drawLine(10f, y, width - 10f, y, linePaint)

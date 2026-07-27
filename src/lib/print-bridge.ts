@@ -24,6 +24,15 @@ export type QueueTicketPayload = {
   orderNumber?: string | null;
   dateLabel?: string | null;
   copies?: number | null;
+  staffName?: string | null;
+  orderType?: string | null;
+  items?: Array<{ name: string; qty: number; price: number; total: number }> | null;
+  subtotal?: number | null;
+  discount?: number | null;
+  paymentMethod?: string | null;
+  amountReceived?: number | null;
+  change?: number | null;
+  totalAmount?: number | null;
 };
 
 type AndroidPrintBridge = {
@@ -144,6 +153,15 @@ export function printQueueTickets(
     orderNumber: payload.orderNumber?.trim() || "",
     dateLabel: payload.dateLabel?.trim() || "",
     copies: clampTicketCopies(payload.copies),
+    staffName: payload.staffName?.trim() || "",
+    orderType: payload.orderType?.trim() || "",
+    items: payload.items || [],
+    subtotal: payload.subtotal || 0,
+    discount: payload.discount || 0,
+    paymentMethod: payload.paymentMethod?.trim() || "",
+    amountReceived: payload.amountReceived || 0,
+    change: payload.change || 0,
+    totalAmount: payload.totalAmount || 0,
   });
   try {
     if (typeof bridge.printQueueTickets === "function") {

@@ -343,6 +343,17 @@ export default function StaffPhotoKeyOrderPage() {
         printTickets: false,
         totalAmount:
           typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
+        staffName: typeof data.customerName === "string" ? data.customerName : null,
+        orderType: data.fulfillmentType === "STOREFRONT" ? "ทานที่ร้าน" : data.fulfillmentType === "PICKUP" ? "รับกลับบ้าน" : data.fulfillmentType === "DELIVERY" ? "เดลิเวอรี" : null,
+        items: Array.isArray(data.items) ? data.items.map((it: any) => ({
+          name: it.optionsText ? `${it.itemName} (${it.optionsText})` : it.itemName,
+          qty: it.quantity,
+          price: Number(it.unitPrice) + Number(it.optionsPrice),
+          total: (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity
+        })) : null,
+        subtotal: typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
+        discount: Number(data.discountAmount) || 0,
+        paymentMethod: data.paymentMethod === "CASH" ? "เงินสด" : data.paymentMethod === "PROMPTPAY" ? "โอนเงิน (QR)" : data.paymentMethod,
       });
       router.replace("/staff");
     } catch {

@@ -6,6 +6,15 @@ data class QueueTicket(
     val dateLabel: String = "",
     val roleLabel: String = "",
     val copies: Int = 1,
+    val staffName: String = "",
+    val orderType: String = "",
+    val items: List<QueueTicketItem> = emptyList(),
+    val subtotal: Double = 0.0,
+    val discount: Double = 0.0,
+    val paymentMethod: String = "",
+    val amountReceived: Double = 0.0,
+    val change: Double = 0.0,
+    val totalAmount: Double = 0.0,
 ) {
     companion object {
         fun roleForIndex(index: Int, total: Int): String {
@@ -18,3 +27,10 @@ data class QueueTicket(
         }
     }
 }
+
+data class QueueTicketItem(
+    val name: String,
+    val qty: Int,
+    val price: Double,
+    val total: Double
+)

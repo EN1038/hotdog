@@ -39,6 +39,7 @@ type Brand = {
   contactPhone: string | null;
   color: string;
   queueTicketCopies?: number;
+  stockEnabled?: boolean;
   _count: { branches: number; members: number };
 };
 
@@ -508,6 +509,12 @@ export default function BrandsPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-5">
+                  <Link
+                    href={`/admin/brands/${brand.id}/stock`}
+                    className={btnOutline}
+                  >
+                    {brand.stockEnabled ? "จัดการสต๊อก" : "เปิดระบบสต๊อก"}
+                  </Link>
                   <button
                     type="button"
                     onClick={() => void saveBrand(brand)}

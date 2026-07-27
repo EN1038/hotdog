@@ -26,6 +26,7 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { orderGrandTotal } from "@/lib/order-totals";
+import { deductStockForOrder, StockError } from "@/lib/stock";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -245,6 +246,17 @@ export async function PUT(request: Request, { params }: Params) {
         },
       });
     });
+
+    if (nextStatus === OrderStatus.PREPARING) {
+      try {
+        await deductStockForOrder(updated.id);
+      } catch (e) {
+        if (e instanceof StockError) {
+          return jsonError(e.message, e.status);
+        }
+        throw e;
+      }
+    }
 
     const totalAmount = orderGrandTotal(
       orderItems.map((item) => ({

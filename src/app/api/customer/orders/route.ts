@@ -26,6 +26,7 @@ import {
 } from "@/lib/menu-pricing";
 import { notifyStaffNewOrder } from "@/lib/line";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
+import { deductStockForOrder, StockError } from "@/lib/stock";
 import {
   computeLineGiftQuantity,
   optionGroupDetailInclude,
@@ -378,6 +379,25 @@ export async function POST(request: Request) {
       }
     }
     if (!order) return jsonError("ไม่สามารถสร้างเลขออเดอร์ได้ กรุณาลองใหม่");
+
+    if (order.status === OrderStatus.PREPARING) {
+      try {
+        await deductStockForOrder(order.id);
+      } catch (e) {
+        if (e instanceof StockError) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: OrderStatus.CANCELLED,
+              cancelledAt: new Date(),
+              cancelReason: `สต๊อกไม่พอ: ${e.message}`,
+            },
+          });
+          return jsonError(e.message, e.status);
+        }
+        throw e;
+      }
+    }
 
     void notifyStaffNewOrder({
       id: order.id,

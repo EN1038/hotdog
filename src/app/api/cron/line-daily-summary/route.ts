@@ -20,7 +20,9 @@ async function handle(request: Request) {
   }
 
   // Close shifts from previous Bangkok calendar days; LINE summary fires on each close.
-  const autoClose = await closeShiftsPastMidnight();
+  // const autoClose = await closeShiftsPastMidnight();
+  // Disabled auto-close so shifts can continue past midnight. Staff must close manually.
+  const autoClose = { closed: 0, checked: 0, branchIds: [], errors: [] };
 
   return NextResponse.json({
     ok: true,

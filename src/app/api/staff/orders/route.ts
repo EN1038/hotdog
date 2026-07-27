@@ -147,6 +147,7 @@ export async function GET(request: Request) {
       select: {
         latitude: true,
         longitude: true,
+        address: true,
         isOpen: true,
         allowAdvanceOrder: true,
         storefrontHours: true,
@@ -224,6 +225,7 @@ export async function GET(request: Request) {
       dayStats,
       roles: session.staffRoles,
       branchName: session.branchName,
+      branchAddress: branchForDay.address,
       brand: session.brand,
       autoAcceptOrders: session.autoAcceptOrders ?? false,
       branchStatus: branchStatusSummary(branchForDay),

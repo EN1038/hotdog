@@ -120,6 +120,9 @@ class WebAppInterface(
                     amountReceived = obj.optDouble("amountReceived", 0.0),
                     change = obj.optDouble("change", 0.0),
                     totalAmount = obj.optDouble("totalAmount", 0.0),
+                    brandName = obj.optString("brandName", ""),
+                    branchName = obj.optString("branchName", ""),
+                    branchAddress = obj.optString("branchAddress", ""),
                 )
             val result = printService.printQueueTickets(ticket)
             if (result.code != "1") {

@@ -122,55 +122,48 @@ export default function StaffHomePage() {
   const stockOn = Boolean(meta?.stockEnabled && meta?.brandStockEnabled);
   const accent = meta?.brand?.color || "#ea580c";
 
-  const icons = [
+  const menuCards = [
     {
       href: "/staff/orders",
       label: "รับออเดอร์",
+      description: "ดูออเดอร์ & จัดการคิว",
       color: accent,
       badge: meta?.pendingOrderCount,
-      icon: <IconReceipt size={26} />,
+      icon: <IconReceipt size={24} />,
     },
     {
       href: "/staff/key-order/regular",
       label: "คีย์ออเดอร์",
+      description: "บันทึกรายการหน้าร้าน",
       color: "#0ea5e9",
-      icon: <IconKey size={26} />,
+      icon: <IconKey size={24} />,
     },
     {
       href: promoHref,
       label: "คีย์โปรโมชั่น",
+      description: "เลือกเมนูเซ็ตโปร",
       color: "#eab308",
-      icon: <IconPromo size={26} />,
+      icon: <IconPromo size={24} />,
     },
     {
-      href: "/staff/orders",
-      label: "คีย์จากรูป",
-      color: "#8b5cf6",
-      icon: <IconCamera size={26} />,
+      onClick: () => setSummaryOpen(true),
+      label: "สรุปยอด / รอบ",
+      description: "ดูรายงานรายได้ประจำรอบ",
+      color: "#6366f1",
+      icon: <IconMoney size={24} />,
     },
     ...(stockOn
       ? [
           {
             href: "/staff/stock",
             label: "รับของ / สต๊อก",
+            description: "รับของเข้า & ตรวจนับ",
             color: "#10b981",
             badge: meta?.pendingStockCount,
-            icon: <IconPackage size={26} />,
+            icon: <IconPackage size={24} />,
           },
         ]
       : []),
-    {
-      onClick: () => setSummaryOpen(true),
-      label: "สรุปยอด / รอบ",
-      color: "#64748b",
-      icon: <IconMoney size={26} />,
-    },
-    {
-      href: "/staff/settings",
-      label: "เปิด–ปิดร้าน",
-      color: "#f97316",
-      icon: <IconStore size={26} />,
-    },
   ];
 
   return (
@@ -192,23 +185,48 @@ export default function StaffHomePage() {
         />
 
         <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="text-sm font-bold text-slate-900">เมนูด่วน</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            เลือกงานที่ต้องการทำที่สาขานี้
-          </p>
-          <div className="mt-4 grid grid-cols-4 gap-x-2 gap-y-5">
-            {icons.map((item) => (
-              <StaffHomeMenuIcon
-                key={`${item.href || "action"}-${item.label}`}
-                href={item.href}
-                onClick={item.onClick}
-                label={item.label}
-                color={item.color}
-                badge={item.badge}
-              >
-                {item.icon}
-              </StaffHomeMenuIcon>
-            ))}
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold text-slate-900">เมนูด่วน</p>
+            <span className="text-xs font-medium text-slate-400">เลือกงานที่ต้องการทำ</span>
+          </div>
+          <div className="mt-3.5 grid grid-cols-2 gap-3">
+            {menuCards.map((card) => {
+              const isButton = Boolean(card.onClick);
+              const Component = isButton ? "button" : "a";
+              const props = isButton
+                ? { type: "button" as const, onClick: card.onClick }
+                : { href: card.href };
+
+              return (
+                <Component
+                  key={card.label}
+                  {...props}
+                  className="group relative flex flex-col justify-between rounded-2xl bg-slate-50/70 p-3.5 ring-1 ring-slate-200/80 transition hover:bg-white hover:shadow-md hover:ring-slate-300 active:scale-[0.98] text-left"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span
+                      className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm transition group-hover:scale-105"
+                      style={{ backgroundColor: card.color }}
+                    >
+                      {card.icon}
+                    </span>
+                    {(card.badge ?? 0) > 0 ? (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white shadow-sm">
+                        {card.badge! > 99 ? "99+" : card.badge}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3">
+                    <p className="text-sm font-bold text-slate-900 leading-tight">
+                      {card.label}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500 line-clamp-1">
+                      {card.description}
+                    </p>
+                  </div>
+                </Component>
+              );
+            })}
           </div>
         </section>
 

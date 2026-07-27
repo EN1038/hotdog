@@ -232,16 +232,19 @@ export function StaffShiftControls({
     <>
       {canSell && activeShift ? (
         <div
-          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-emerald-950"
+          className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3.5 text-emerald-950 shadow-sm"
           role="status"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold">
-                รอบที่ {activeShift.roundNumber} · เปิดอยู่
-              </p>
-              <p className="mt-0.5 text-xs opacity-90">
-                เปิด {formatShiftTime(activeShift.openedAt)} น. · ตังทอน{" "}
+              <div className="flex items-center gap-2">
+                <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-sm font-bold text-emerald-950">
+                  รอบที่ {activeShift.roundNumber} · เปิดขายอยู่
+                </p>
+              </div>
+              <p className="mt-1 text-xs font-medium text-emerald-700">
+                เปิดเวลา {formatShiftTime(activeShift.openedAt)} น. · เงินทอน{" "}
                 {formatPrice(activeShift.openingCash)}฿
               </p>
             </div>
@@ -250,9 +253,9 @@ export function StaffShiftControls({
                 type="button"
                 disabled={busy || submitting}
                 onClick={startClose}
-                className="shrink-0 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
+                className="w-full sm:w-auto shrink-0 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60 transition active:scale-[0.98]"
               >
-                ปิดร้าน
+                ปิดรอบขาย
               </button>
             ) : null}
           </div>
@@ -262,7 +265,7 @@ export function StaffShiftControls({
           type="button"
           disabled={busy || submitting}
           onClick={startOpen}
-          className="w-full rounded-xl bg-emerald-600 px-3 py-3 text-base font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+          className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-base font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 transition active:scale-[0.98]"
         >
           เปิดรอบขาย
         </button>

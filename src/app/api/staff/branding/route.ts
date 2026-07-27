@@ -18,7 +18,7 @@ export async function GET() {
             isOpen: true,
             stockEnabled: true,
             brandId: true,
-            brand: { select: { stockEnabled: true } },
+            brand: { select: { stockEnabled: true, coverImageUrl: true } },
           },
         }),
         getActiveShift(session.branchId),
@@ -45,7 +45,14 @@ export async function GET() {
       branchName: session.branchName,
       staffDisplayName: session.staffDisplayName,
       staffPhone: session.staffPhone,
-      brand: session.brand,
+      brand: {
+        ...session.brand,
+        coverImageUrl:
+          branch?.brand?.coverImageUrl ??
+          (session.brand as { coverImageUrl?: string | null } | undefined)
+            ?.coverImageUrl ??
+          null,
+      },
       autoAcceptOrders: session.autoAcceptOrders ?? false,
       operatingDay: activeShift ? shiftCalendarDateKey(activeShift) : day.operatingDay,
       canToggleStore:

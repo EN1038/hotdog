@@ -268,7 +268,13 @@ export async function PUT(request: Request, { params }: Params) {
       0,
     );
 
-    return jsonOk({ ...updated, totalAmount });
+    return jsonOk({
+      ...updated,
+      totalAmount,
+      brandName: session.brand.name,
+      branchName: session.branchName,
+      branchAddress: updated.branch?.address ?? "",
+    });
   } catch (error) {
     return handleApiError(error);
   }

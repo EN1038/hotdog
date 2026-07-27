@@ -123,16 +123,19 @@ export function clampTicketCopies(raw: number | null | undefined): number {
   return Math.min(5, Math.max(1, Math.trunc(raw)));
 }
 
-/** Bangkok calendar day as YYYY-MM-DD (or pass-through if already that shape). */
+/** Bangkok date+time label for receipt. If input is a date-only string (YYYY-MM-DD),
+ * uses the current time instead of midnight UTC to avoid the 07:00 bug. */
 export function formatTicketDateLabel(
   isoOrDay: string | null | undefined,
 ): string {
   if (!isoOrDay) return "";
   const trimmed = isoOrDay.trim();
   try {
-    const d = new Date(trimmed);
+    // If it's a date-only string like "2025-07-27", attach current time
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+    const d = isDateOnly ? new Date() : new Date(trimmed);
     if (Number.isNaN(d.getTime())) return trimmed;
-    return d.toLocaleDateString("th-TH", {
+    return d.toLocaleString("th-TH", {
       timeZone: "Asia/Bangkok",
       year: "numeric",
       month: "long",

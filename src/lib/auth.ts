@@ -128,6 +128,7 @@ export async function requireStaff() {
               nameTh: true,
               nameEn: true,
               logoUrl: true,
+              coverImageUrl: true,
               color: true,
               siteTitle: true,
               siteDescription: true,

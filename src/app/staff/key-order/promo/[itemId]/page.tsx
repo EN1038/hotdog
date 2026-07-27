@@ -292,7 +292,7 @@ export default function StaffPromoKeyOrderDetailPage() {
         branchName: data.branchName ?? "",
         branchAddress: data.branchAddress ?? "",
       });
-      window.location.href = "/staff";
+      window.location.href = "/staff/orders";
     } catch {
       saveStaffOrderFeedback({
         kind: "error",

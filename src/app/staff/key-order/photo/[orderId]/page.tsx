@@ -109,7 +109,7 @@ export default function StaffPhotoKeyOrderPage() {
           kind: "error",
           message: "ออเดอร์นี้คีย์รายการครบแล้ว",
         });
-        router.replace("/staff");
+        router.replace("/staff/orders");
         return;
       }
       setQueueNumber(
@@ -355,7 +355,7 @@ export default function StaffPhotoKeyOrderPage() {
         branchName: data.branchName ?? "",
         branchAddress: data.branchAddress ?? "",
       });
-      window.location.href = "/staff";
+      window.location.href = "/staff/orders";
     } catch {
       fail("บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally {

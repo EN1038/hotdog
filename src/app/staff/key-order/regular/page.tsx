@@ -344,7 +344,7 @@ export default function StaffRegularKeyOrderPage() {
       
       saveStaffOrderFeedback(feedbackPayload);
       
-      window.location.href = "/staff";
+      window.location.href = "/staff/orders";
     } catch {
       saveStaffOrderFeedback({
         kind: "error",

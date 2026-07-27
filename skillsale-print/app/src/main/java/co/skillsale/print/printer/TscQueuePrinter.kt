@@ -78,7 +78,9 @@ class TscQueuePrinter {
         val width = 360
         
         var height = 250
-        if (showRole && role.isNotBlank()) height += 36
+        if (ticket.brandName.isNotBlank() || ticket.branchName.isNotBlank()) height += 36
+        if (ticket.branchAddress.isNotBlank()) height += 26
+        if (ticket.staffName.isNotBlank()) height += 36
         if (ticket.orderNumber.isNotBlank()) height += 32
         if (ticket.dateLabel.isNotBlank()) height += 26
         if (ticket.orderType.isNotBlank()) height += 26
@@ -88,6 +90,7 @@ class TscQueuePrinter {
         height += 120
         if (ticket.discount > 0) height += 26
         if (ticket.paymentMethod.isNotBlank()) height += 30
+        height += 60 // space for footer
 
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -104,8 +107,25 @@ class TscQueuePrinter {
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; strokeWidth = 2f }
 
         var y = 36f
-        if (showRole && role.isNotBlank()) {
-            canvas.drawText(role, center, y, medium)
+        
+        val headerTitle = if (ticket.brandName.isNotBlank() && ticket.branchName.isNotBlank()) {
+            "${ticket.brandName} - สาขา ${ticket.branchName}"
+        } else if (ticket.brandName.isNotBlank()) {
+            ticket.brandName
+        } else {
+            ticket.branchName
+        }
+        
+        if (headerTitle.isNotBlank()) {
+            canvas.drawText(headerTitle, center, y, medium)
+            y += 36f
+        }
+        if (ticket.branchAddress.isNotBlank()) {
+            canvas.drawText(ticket.branchAddress.trim(), center, y, small)
+            y += 26f
+        }
+        if (ticket.staffName.isNotBlank()) {
+            canvas.drawText("พนักงาน: ${ticket.staffName.trim()}", center, y, small)
             y += 36f
         }
         
@@ -162,6 +182,10 @@ class TscQueuePrinter {
             canvas.drawText("ชำระโดย: ${ticket.paymentMethod}", center, y, small)
             y += 30f
         }
+        
+        y += 15f
+        canvas.drawText("ขอบคุณที่ใช้บริการ", center, y, small)
+        y += 30f
 
         return bitmap
     }

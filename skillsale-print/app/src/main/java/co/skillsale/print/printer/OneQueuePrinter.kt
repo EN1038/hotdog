@@ -101,7 +101,9 @@ class OneQueuePrinter(private val context: Context) {
         val width = PRINT_WIDTH
         
         var height = 350
-        if (showRole && role.isNotBlank()) height += 48
+        if (ticket.brandName.isNotBlank() || ticket.branchName.isNotBlank()) height += 48
+        if (ticket.branchAddress.isNotBlank()) height += 36
+        if (ticket.staffName.isNotBlank()) height += 36
         if (ticket.orderNumber.isNotBlank()) height += 42
         if (ticket.dateLabel.isNotBlank()) height += 36
         if (ticket.orderType.isNotBlank()) height += 36
@@ -111,6 +113,7 @@ class OneQueuePrinter(private val context: Context) {
         height += 150
         if (ticket.discount > 0) height += 36
         if (ticket.paymentMethod.isNotBlank()) height += 40
+        height += 80 // space for footer
 
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -127,10 +130,28 @@ class OneQueuePrinter(private val context: Context) {
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; strokeWidth = 2f }
 
         var y = 50f
-        if (showRole && role.isNotBlank()) {
-            canvas.drawText(role, center, y, medium)
+        
+        val headerTitle = if (ticket.brandName.isNotBlank() && ticket.branchName.isNotBlank()) {
+            "${ticket.brandName} - สาขา ${ticket.branchName}"
+        } else if (ticket.brandName.isNotBlank()) {
+            ticket.brandName
+        } else {
+            ticket.branchName
+        }
+        
+        if (headerTitle.isNotBlank()) {
+            canvas.drawText(headerTitle, center, y, medium)
             y += 48f
         }
+        if (ticket.branchAddress.isNotBlank()) {
+            canvas.drawText(ticket.branchAddress.trim(), center, y, small)
+            y += 36f
+        }
+        if (ticket.staffName.isNotBlank()) {
+            canvas.drawText("พนักงาน: ${ticket.staffName.trim()}", center, y, small)
+            y += 48f
+        }
+
         canvas.drawText("คิว", center, y, small)
         y += 100f
         canvas.drawText(ticket.queueNumber.trim(), center, y, huge)
@@ -186,6 +207,10 @@ class OneQueuePrinter(private val context: Context) {
             canvas.drawText("ชำระโดย: ${ticket.paymentMethod}", center, y, small)
             y += 40f
         }
+        
+        y += 20f
+        canvas.drawText("ขอบคุณที่ใช้บริการ", center, y, small)
+        y += 40f
 
         return bitmap
     }

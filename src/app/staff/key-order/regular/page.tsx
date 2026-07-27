@@ -343,9 +343,8 @@ export default function StaffRegularKeyOrderPage() {
       };
       
       saveStaffOrderFeedback(feedbackPayload);
-      autoPrintQueueTickets(feedbackPayload);
       
-      window.location.href = "/staff/new-order";
+      window.location.href = "/staff";
     } catch {
       saveStaffOrderFeedback({
         kind: "error",

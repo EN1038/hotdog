@@ -226,9 +226,9 @@ export default function StaffPage() {
           amountReceived: feedback.amountReceived,
           change: feedback.change,
           totalAmount: feedback.totalAmount,
-          brandName,
-          branchName,
-          branchAddress,
+          brandName: feedback.brandName || brandName,
+          branchName: feedback.branchName || branchName,
+          branchAddress: feedback.branchAddress || branchAddress,
         });
       }
     } else {

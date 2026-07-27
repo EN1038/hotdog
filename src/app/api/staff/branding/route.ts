@@ -48,6 +48,9 @@ export async function GET() {
       brand: session.brand,
       autoAcceptOrders: session.autoAcceptOrders ?? false,
       operatingDay: activeShift ? shiftCalendarDateKey(activeShift) : day.operatingDay,
+      canToggleStore:
+        session.staffRoles.includes("SELLER") ||
+        session.staffRoles.includes("BOTH"),
       entryLocked: !canSell,
       canEnter: canSell,
       canSell,

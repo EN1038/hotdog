@@ -83,6 +83,8 @@ export default function StaffPage() {
   const [orders, setOrders] = useState<OrderCardData[]>([]);
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [branchName, setBranchName] = useState("");
+  const [brandName, setBrandName] = useState("");
+  const [branchAddress, setBranchAddress] = useState("");
   const [branchPin, setBranchPin] = useState<{
     latitude: number;
     longitude: number;
@@ -224,6 +226,9 @@ export default function StaffPage() {
           amountReceived: feedback.amountReceived,
           change: feedback.change,
           totalAmount: feedback.totalAmount,
+          brandName,
+          branchName,
+          branchAddress,
         });
       }
     } else {
@@ -313,6 +318,8 @@ export default function StaffPage() {
     setOrders(nextOrders);
     setRoles(data.roles ?? []);
     setBranchName(data.branchName ?? "");
+    setBrandName(data.brand?.name ?? "");
+    setBranchAddress(data.branchAddress ?? "");
     setBranchPin(data.branchPin ?? null);
     setAutoAcceptOrders(Boolean(data.autoAcceptOrders));
     if (data.branchStatus) setBranchStatus(data.branchStatus);
@@ -391,6 +398,9 @@ export default function StaffPage() {
             ? data.queueTicketCopies
             : queueTicketCopies,
         ),
+        brandName,
+        branchName,
+        branchAddress,
       });
       if (typeof data.id === "string") {
         setHighlightedOrderId(data.id);

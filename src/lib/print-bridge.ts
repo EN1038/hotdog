@@ -33,6 +33,9 @@ export type QueueTicketPayload = {
   amountReceived?: number | null;
   change?: number | null;
   totalAmount?: number | null;
+  brandName?: string | null;
+  branchName?: string | null;
+  branchAddress?: string | null;
 };
 
 type AndroidPrintBridge = {
@@ -126,10 +129,16 @@ export function formatTicketDateLabel(
 ): string {
   if (!isoOrDay) return "";
   const trimmed = isoOrDay.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
   try {
-    return new Date(trimmed).toLocaleDateString("sv-SE", {
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return trimmed;
+    return d.toLocaleDateString("th-TH", {
       timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   } catch {
     return trimmed.slice(0, 10);
@@ -162,6 +171,9 @@ export function printQueueTickets(
     amountReceived: payload.amountReceived || 0,
     change: payload.change || 0,
     totalAmount: payload.totalAmount || 0,
+    brandName: payload.brandName?.trim() || "",
+    branchName: payload.branchName?.trim() || "",
+    branchAddress: payload.branchAddress?.trim() || "",
   });
   try {
     if (typeof bridge.printQueueTickets === "function") {

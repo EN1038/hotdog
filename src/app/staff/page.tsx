@@ -21,6 +21,7 @@ import {
   StaffShiftControls,
   type ActiveShiftInfo,
 } from "@/components/staff/StaffShiftControls";
+import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 
 type HomeMeta = {
   branchName?: string;
@@ -33,6 +34,7 @@ type HomeMeta = {
   isOpen?: boolean;
   canToggleStore?: boolean;
   activeShift?: ActiveShiftInfo | null;
+  operatingDay?: string;
 };
 
 function IconKey({ size = 26 }: { size?: number }) {
@@ -73,6 +75,7 @@ export default function StaffHomePage() {
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<HomeMeta | null>(null);
   const [promoHref, setPromoHref] = useState("/staff/key-order/promo");
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const reloadMeta = async () => {
     const res = await fetch("/api/staff/branding");
@@ -157,7 +160,7 @@ export default function StaffHomePage() {
         ]
       : []),
     {
-      href: "/staff/settings",
+      onClick: () => setSummaryOpen(true),
       label: "สรุปยอด / รอบ",
       color: "#64748b",
       icon: <IconMoney size={26} />,
@@ -196,8 +199,9 @@ export default function StaffHomePage() {
           <div className="mt-4 grid grid-cols-4 gap-x-2 gap-y-5">
             {icons.map((item) => (
               <StaffHomeMenuIcon
-                key={`${item.href}-${item.label}`}
+                key={`${item.href || "action"}-${item.label}`}
                 href={item.href}
+                onClick={item.onClick}
                 label={item.label}
                 color={item.color}
                 badge={item.badge}
@@ -248,6 +252,12 @@ export default function StaffHomePage() {
             </span>
           </a>
         ) : null}
+
+        <StaffShiftSummarySheet
+          open={summaryOpen}
+          onClose={() => setSummaryOpen(false)}
+          initialDate={meta?.operatingDay ?? ""}
+        />
       </div>
     </StaffAppShell>
   );

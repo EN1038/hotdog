@@ -85,6 +85,7 @@ type Brand = {
   name: string;
   nameTh?: string | null;
   nameEn?: string | null;
+  stockEnabled?: boolean;
 };
 
 type OrderStats = {
@@ -127,6 +128,7 @@ type BranchDetail = {
   deliveryHours: unknown;
   allowAdvanceOrder: boolean;
   autoAcceptOrders: boolean;
+  stockEnabled: boolean;
   brand: Brand | null;
   staff: {
     id: string;
@@ -446,6 +448,7 @@ function BranchDetailContent() {
     isHidden: false,
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
+    stockEnabled: false,
     storefrontHours: null as WeeklySchedule | null,
     deliveryHours: null as WeeklySchedule | null,
   });
@@ -573,6 +576,7 @@ function BranchDetailContent() {
       isHidden: data.isHidden ?? false,
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
+      stockEnabled: data.stockEnabled ?? false,
       storefrontHours: ensureWeeklySchedule(
         data.storefrontHours,
         data.opensAt,
@@ -2729,6 +2733,111 @@ function BranchDetailContent() {
                         เปิดรับอัตโนมัติ
                       </button>
                     )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">
+                        ระบบสต๊อกสาขา
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {!branch?.brandId
+                          ? "ใช้ได้เฉพาะสาขาที่อยู่ใต้แบรนด์"
+                          : !branch.brand?.stockEnabled
+                            ? "เปิดสต๊อกที่แบรนด์ก่อน แล้วค่อยเปิดที่สาขา"
+                            : settings.stockEnabled
+                              ? "เปิดอยู่ — ตัดจำนวนตอนรับออเดอร์ (เมนูที่ผูกสินค้า)"
+                              : "ปิดอยู่ — ใช้ระบบเดิม (หมด/ยังมี) ได้ตามปกติ"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {branch?.brandId && (
+                        <Link
+                          href={`/admin/branches/${id}/stock`}
+                          className={`${btnOutline} shrink-0`}
+                        >
+                          จัดการสต๊อก
+                        </Link>
+                      )}
+                      {settings.stockEnabled ? (
+                        <button
+                          type="button"
+                          className={`${btnDanger} shrink-0`}
+                          onClick={async () => {
+                            const res = await fetch(
+                              `/api/admin/branches/${id}/stock`,
+                              {
+                                method: "PATCH",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ stockEnabled: false }),
+                              },
+                            );
+                            const body = await res.json().catch(() => ({}));
+                            if (!res.ok) {
+                              toast.error(
+                                "บันทึกไม่สำเร็จ",
+                                body.error ?? "กรุณาลองใหม่",
+                              );
+                              return;
+                            }
+                            setSettings((s) => ({
+                              ...s,
+                              stockEnabled: false,
+                            }));
+                            setBranch((prev) =>
+                              prev
+                                ? { ...prev, stockEnabled: false }
+                                : prev,
+                            );
+                            toast.success("ปิดสต๊อกสาขาแล้ว");
+                          }}
+                        >
+                          ปิดใช้งานสต๊อก
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`${btnPrimary} shrink-0 disabled:opacity-50`}
+                          disabled={
+                            !branch?.brandId || !branch.brand?.stockEnabled
+                          }
+                          onClick={async () => {
+                            const res = await fetch(
+                              `/api/admin/branches/${id}/stock`,
+                              {
+                                method: "PATCH",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ stockEnabled: true }),
+                              },
+                            );
+                            const body = await res.json().catch(() => ({}));
+                            if (!res.ok) {
+                              toast.error(
+                                "บันทึกไม่สำเร็จ",
+                                body.error ?? "กรุณาลองใหม่",
+                              );
+                              return;
+                            }
+                            setSettings((s) => ({
+                              ...s,
+                              stockEnabled: true,
+                            }));
+                            setBranch((prev) =>
+                              prev
+                                ? { ...prev, stockEnabled: true }
+                                : prev,
+                            );
+                            toast.success("เปิดสต๊อกสาขาแล้ว");
+                          }}
+                        >
+                          เปิดใช้งานสต๊อก
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

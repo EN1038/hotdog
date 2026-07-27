@@ -33,6 +33,7 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
+import { deductStockForOrder, StockError } from "@/lib/stock";
 import {
   getBranchServiceStatus,
   type BranchHoursFields,
@@ -157,15 +158,19 @@ export async function GET(request: Request) {
     if (!branchForDay) return jsonError("ไม่พบสาขา", 404);
 
     const dayState = getCalendarDayState();
+    const activeShift = await getActiveShift(session.branchId);
+
     const viewDateKey =
       dateParam && isBangkokDateKey(dateParam)
         ? dateParam
-        : dayState.operatingDay;
+        : activeShift
+          ? shiftCalendarDateKey(activeShift)
+          : dayState.operatingDay;
+          
     const isToday = viewDateKey === dayState.operatingDay;
     const businessDate = queueBusinessDateFromKey(viewDateKey);
 
-    const [statsOrders, activeShift] = await Promise.all([
-      prisma.order.findMany({
+    const statsOrders = await prisma.order.findMany({
         where: {
           branchId: session.branchId,
           queueBusinessDate: businessDate,
@@ -183,9 +188,7 @@ export async function GET(request: Request) {
             },
           },
         },
-      }),
-      getActiveShift(session.branchId),
-    ]);
+      });
     const dayStats = computeStaffDayStats(statsOrders);
 
     const where: Prisma.OrderWhereInput = {
@@ -537,6 +540,25 @@ export async function POST(request: Request) {
       }
     }
     if (!order) return jsonError("ไม่สามารถสร้างเลขออเดอร์ได้ กรุณาลองใหม่");
+
+    if (order.status === OrderStatus.PREPARING) {
+      try {
+        await deductStockForOrder(order.id);
+      } catch (e) {
+        if (e instanceof StockError) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: OrderStatus.CANCELLED,
+              cancelledAt: new Date(),
+              cancelReason: `สต๊อกไม่พอ: ${e.message}`,
+            },
+          });
+          return jsonError(e.message, e.status);
+        }
+        throw e;
+      }
+    }
 
     const totalAmount = orderGrandTotal(
       orderItems.map((item) => ({

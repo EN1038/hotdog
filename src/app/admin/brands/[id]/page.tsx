@@ -72,12 +72,20 @@ export default function BrandBranchesPage() {
       backHref={isPlatform ? "/admin" : undefined}
       backLabel="กลับไปเลือกแบรนด์"
       headerActions={
-        <Link
-          href={`/admin/brands/${brand.id}/admins`}
-          className={btnOutline}
-        >
-          ผู้ดูแล
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/admin/brands/${brand.id}/stock`}
+            className={btnOutline}
+          >
+            สต๊อก / บ้านกลาง
+          </Link>
+          <Link
+            href={`/admin/brands/${brand.id}/admins`}
+            className={btnOutline}
+          >
+            ผู้ดูแล
+          </Link>
+        </div>
       }
     />
   );

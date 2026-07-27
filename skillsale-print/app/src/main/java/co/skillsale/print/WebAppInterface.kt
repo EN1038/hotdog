@@ -87,12 +87,39 @@ class WebAppInterface(
     fun printQueueTickets(json: String): String {
         return try {
             val obj = JSONObject(json)
+            val itemsArray = obj.optJSONArray("items")
+            val itemsList = mutableListOf<co.skillsale.print.printer.QueueTicketItem>()
+            if (itemsArray != null) {
+                for (i in 0 until itemsArray.length()) {
+                    val itemObj = itemsArray.optJSONObject(i)
+                    if (itemObj != null) {
+                        itemsList.add(
+                            co.skillsale.print.printer.QueueTicketItem(
+                                name = itemObj.optString("name", ""),
+                                qty = itemObj.optInt("qty", 1),
+                                price = itemObj.optDouble("price", 0.0),
+                                total = itemObj.optDouble("total", 0.0)
+                            )
+                        )
+                    }
+                }
+            }
+
             val ticket =
                 QueueTicket(
                     queueNumber = obj.optString("queueNumber", ""),
                     orderNumber = obj.optString("orderNumber", ""),
                     dateLabel = obj.optString("dateLabel", ""),
                     copies = obj.optInt("copies", 1).coerceIn(1, 5),
+                    staffName = obj.optString("staffName", ""),
+                    orderType = obj.optString("orderType", ""),
+                    items = itemsList,
+                    subtotal = obj.optDouble("subtotal", 0.0),
+                    discount = obj.optDouble("discount", 0.0),
+                    paymentMethod = obj.optString("paymentMethod", ""),
+                    amountReceived = obj.optDouble("amountReceived", 0.0),
+                    change = obj.optDouble("change", 0.0),
+                    totalAmount = obj.optDouble("totalAmount", 0.0),
                 )
             val result = printService.printQueueTickets(ticket)
             if (result.code != "1") {

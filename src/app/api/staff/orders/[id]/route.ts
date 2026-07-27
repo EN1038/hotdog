@@ -12,6 +12,11 @@ import {
   assertOrderMutableInActiveShift,
   ShiftGateError,
 } from "@/lib/branch-shift";
+import {
+  maybeDeductOnAccept,
+  restoreStockForOrder,
+  StockError,
+} from "@/lib/stock";
 
 const statusSchema = z.object({
   status: z.nativeEnum(OrderStatus),
@@ -56,6 +61,7 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const roles = session.staffRoles ?? [];
+    const previousStatus = order.status;
 
     if (body.status === OrderStatus.CANCELLED) {
       if (!canStaffCancel(roles, order.status)) {
@@ -89,6 +95,15 @@ export async function PATCH(request: Request, { params }: Params) {
             : null,
           order: latest,
         });
+      }
+
+      try {
+        await restoreStockForOrder(id);
+      } catch (e) {
+        if (e instanceof StockError) {
+          return jsonError(e.message, e.status);
+        }
+        throw e;
       }
     } else {
       if (order.awaitingPhotoKey) {
@@ -130,6 +145,27 @@ export async function PATCH(request: Request, { params }: Params) {
             order: latest,
           },
         );
+      }
+
+      try {
+        await maybeDeductOnAccept({
+          orderId: id,
+          previousStatus,
+          nextStatus: body.status,
+        });
+      } catch (e) {
+        if (e instanceof StockError) {
+          await prisma.order.updateMany({
+            where: {
+              id,
+              branchId: session.branchId,
+              status: body.status,
+            },
+            data: { status: previousStatus },
+          });
+          return jsonError(e.message, e.status);
+        }
+        throw e;
       }
     }
 

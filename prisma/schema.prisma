@@ -64,6 +64,71 @@ enum OptionGroupMode {
   FROM_MENU
 }
 
+enum StockLocationType {
+  WAREHOUSE
+  BRANCH
+}
+
+enum StockType {
+  SALE_ITEM
+  CONSUMABLE
+  EQUIPMENT
+}
+
+enum StockMovementType {
+  RECEIVE
+  STOCK_IN
+  TRANSFER
+  SALE
+  FREE
+  DAMAGE
+  LOST
+  ADJUST
+  COUNT
+  RETURN
+  ISSUE
+  WASTE
+}
+
+enum StockTransferStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+enum EquipmentStatus {
+  ACTIVE
+  DAMAGED
+  LOST
+  RETIRED
+}
+
+enum StockCountType {
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum StockCountStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+enum StockTransferKind {
+  WAREHOUSE_TO_BRANCH
+  BRANCH_TO_BRANCH
+}
+
 model Admin {
   id              String             @id @default(cuid())
   username        String             @unique
@@ -82,6 +147,10 @@ model Admin {
   createdAt       DateTime           @default(now())
   brandMembers    BrandMember[]
   activityLogs    AdminActivityLog[]
+  stockMovements  StockMovement[]
+  stockTransfers  StockTransfer[]
+  stockCounts     StockCount[]
+  purchaseOrders  PurchaseOrder[]
 
   @@index([lineLinkCode])
 }
@@ -102,10 +171,22 @@ model Brand {
   color           String             @default("#dc2626")
   /// How many queue tickets to print when opening a queue (1–5). 2 = shop + customer.
   queueTicketCopies Int              @default(1)
+  /// Master switch: brand warehouse + branch stock features
+  stockEnabled    Boolean            @default(false)
+  /// When true, managers may push balances below zero
+  allowNegativeStock Boolean         @default(false)
   createdAt       DateTime           @default(now())
   branches        Branch[]
   members         BrandMember[]
   activityLogs    AdminActivityLog[]
+  products        BrandProduct[]
+  stockLocations  StockLocation[]
+  stockMovements  StockMovement[]
+  stockTransfers  StockTransfer[]
+  stockCounts     StockCount[]
+  suppliers       Supplier[]
+  purchaseOrders  PurchaseOrder[]
+  stockLots       StockLot[]
 }
 
 /** Audit trail for platform + brand admin mutations */
@@ -242,6 +323,8 @@ model Branch {
   deliveryHours      Json?
   allowAdvanceOrder  Boolean            @default(true)
   autoAcceptOrders   Boolean            @default(false)
+  /// Opt-in stock for this branch (requires brand.stockEnabled + brandId)
+  stockEnabled       Boolean            @default(false)
   /// Staff new-order alert sound (from platform library)
   alertSoundId       String?
   createdAt          DateTime           @default(now())
@@ -257,6 +340,10 @@ model Branch {
   shareCodes         BranchShareCode[]
   lineDailySummaries LineDailySummaryLog[]
   activityLogs       AdminActivityLog[]
+  stockLocations     StockLocation[]
+  stockTransfersIn   StockTransfer[]     @relation("StockTransferDestination")
+  stockTransfersOut  StockTransfer[]     @relation("StockTransferSource")
+  stockCounts        StockCount[]
 
   @@unique([brandId, code])
   @@index([alertSoundId])
@@ -305,6 +392,9 @@ model Staff {
   createdOrders     Order[]               @relation("OrderCreatedByStaff")
   openedShifts      BranchShift[]         @relation("ShiftOpenedByStaff")
   closedShifts      BranchShift[]         @relation("ShiftClosedByStaff")
+  receivedTransfers StockTransfer[]       @relation("StockTransferReceivedBy")
+  stockMovements    StockMovement[]       @relation("StockMovementByStaff")
+  stockCounts       StockCount[]          @relation("StockCountByStaff")
 }
 
 model StaffRoleAssignment {
@@ -342,14 +432,19 @@ model BranchMenuItem {
   /// Hidden from staff keyed-order menu (still visible to customers unless isHidden)
   hideFromStaff    Boolean                      @default(false)
   isOutOfStock     Boolean                      @default(false)
+  /// Link to brand SKU for quantity stock (null = manual sold-out only)
+  brandProductId   String?
   sortOrder        Int                          @default(0)
   createdAt        DateTime                     @default(now())
   updatedAt        DateTime                     @updatedAt
   branch           Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   category         MenuCategory?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brandProduct     BrandProduct?                @relation(fields: [brandProductId], references: [id], onDelete: SetNull)
   optionGroupLinks BranchMenuItemOptionGroup[]
   optionGroupMenuSources BranchOptionGroupMenuItem[]
   orderItems       OrderItem[]
+
+  @@index([brandProductId])
 }
 
 model MenuCategory {
@@ -505,6 +600,8 @@ model Order {
   photoUrl           String?
   /// True until staff finishes keying items from the photo (not counted as sales yet)
   awaitingPhotoKey   Boolean           @default(false)
+  /// True after stock was deducted on accept / auto-accept
+  stockDeducted      Boolean           @default(false)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   customer           Customer          @relation(fields: [customerId], references: [id])
@@ -513,6 +610,7 @@ model Order {
   createdByStaff     Staff?            @relation("OrderCreatedByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
   shift              BranchShift?      @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   items              OrderItem[]
+  stockMovements     StockMovement[]
 
   @@unique([branchId, queueBusinessDate, queueNumber])
   @@index([branchId, queueBusinessDate])
@@ -535,4 +633,282 @@ model OrderItem {
   note             String?
   order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   branchMenuItem   BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
+}
+
+/// Brand-level SKU for SALE_ITEM / CONSUMABLE / EQUIPMENT
+model BrandProduct {
+  id              String           @id @default(cuid())
+  brandId         String
+  sku             String?
+  barcode         String?
+  name            String
+  stockType       StockType        @default(SALE_ITEM)
+  category        String?
+  unit            String           @default("ชิ้น")
+  trackStock      Boolean          @default(true)
+  trackLots       Boolean          @default(false)
+  lowStockAlert   Int?
+  costPrice       Decimal?         @db.Decimal(10, 2)
+  sellingPrice    Decimal?         @db.Decimal(10, 2)
+  isActive        Boolean          @default(true)
+  equipmentStatus EquipmentStatus?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  brand           Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  balances        StockBalance[]
+  movements       StockMovement[]
+  menuItems       BranchMenuItem[]
+  transfers       StockTransfer[]
+  countLines      StockCountLine[]
+  lots            StockLot[]
+  purchaseOrderLines PurchaseOrderLine[]
+  recipeLines     ProductRecipeLine[] @relation("RecipeParent")
+  usedInRecipes   ProductRecipeLine[] @relation("RecipeComponent")
+
+  @@unique([brandId, name])
+  @@index([brandId, stockType])
+  @@index([brandId, isActive])
+  @@index([brandId, barcode])
+}
+
+model StockLocation {
+  id        String            @id @default(cuid())
+  brandId   String
+  type      StockLocationType
+  branchId  String?
+  name      String
+  createdAt DateTime          @default(now())
+  brand     Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  branch    Branch?           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  balances  StockBalance[]
+  movementsFrom StockMovement[] @relation("StockMovementFrom")
+  movementsTo   StockMovement[] @relation("StockMovementTo")
+  movementsAt   StockMovement[] @relation("StockMovementAt")
+  counts    StockCount[]
+  lots      StockLot[]
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([branchId])
+  @@index([brandId, type])
+}
+
+model StockBalance {
+  id              String        @id @default(cuid())
+  stockLocationId String
+  brandProductId  String
+  quantity        Int           @default(0)
+  updatedAt       DateTime      @updatedAt
+  location        StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Cascade)
+  product         BrandProduct  @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
+
+  @@unique([stockLocationId, brandProductId])
+  @@index([brandProductId])
+}
+
+model StockLot {
+  id              String        @id @default(cuid())
+  brandId         String
+  brandProductId  String
+  stockLocationId String
+  lotNumber       String
+  expiresAt       DateTime?
+  quantity        Int           @default(0)
+  unitCost        Decimal?      @db.Decimal(10, 2)
+  receivedAt      DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  brand           Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  product         BrandProduct  @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
+  location        StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Cascade)
+  movements       StockMovement[]
+
+  @@unique([stockLocationId, brandProductId, lotNumber])
+  @@index([brandId, expiresAt])
+  @@index([brandProductId, expiresAt])
+}
+
+model StockMovement {
+  id               String            @id @default(cuid())
+  brandId          String
+  brandProductId   String
+  type             StockMovementType
+  quantity         Int
+  beforeQty        Int?
+  afterQty         Int?
+  unitCost         Decimal?          @db.Decimal(10, 2)
+  totalCost        Decimal?          @db.Decimal(10, 2)
+  supplier         String?
+  stockLocationId  String?
+  fromLocationId   String?
+  toLocationId     String?
+  orderId          String?
+  referenceType    String?
+  referenceId      String?
+  note             String?
+  imageUrl         String?
+  lotId            String?
+  lotNumber        String?
+  expiresAt        DateTime?
+  createdByAdminId String?
+  createdByStaffId String?
+  createdAt        DateTime          @default(now())
+  brand            Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  product          BrandProduct      @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
+  stockLocation    StockLocation?    @relation("StockMovementAt", fields: [stockLocationId], references: [id], onDelete: SetNull)
+  fromLocation     StockLocation?    @relation("StockMovementFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation       StockLocation?    @relation("StockMovementTo", fields: [toLocationId], references: [id], onDelete: SetNull)
+  order            Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  lot              StockLot?         @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  createdByAdmin   Admin?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByStaff   Staff?            @relation("StockMovementByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
+
+  @@index([brandId, createdAt])
+  @@index([orderId])
+  @@index([brandProductId, createdAt])
+  @@index([stockLocationId, createdAt])
+  @@index([type, createdAt])
+  @@index([lotId])
+}
+
+model StockTransfer {
+  id                String              @id @default(cuid())
+  brandId           String
+  kind              StockTransferKind   @default(WAREHOUSE_TO_BRANCH)
+  branchId          String
+  sourceBranchId    String?
+  brandProductId    String
+  quantity          Int
+  status            StockTransferStatus @default(PENDING)
+  note              String?
+  lotNumber         String?
+  expiresAt         DateTime?
+  createdByAdminId  String?
+  receivedByStaffId String?
+  createdAt         DateTime            @default(now())
+  receivedAt        DateTime?
+  brand             Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  branch            Branch              @relation("StockTransferDestination", fields: [branchId], references: [id], onDelete: Cascade)
+  sourceBranch      Branch?             @relation("StockTransferSource", fields: [sourceBranchId], references: [id], onDelete: SetNull)
+  product           BrandProduct        @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
+  createdByAdmin    Admin?              @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  receivedByStaff   Staff?              @relation("StockTransferReceivedBy", fields: [receivedByStaffId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, status, createdAt])
+  @@index([sourceBranchId, status])
+  @@index([brandId, status, createdAt])
+  @@index([brandProductId])
+}
+
+model StockCount {
+  id               String           @id @default(cuid())
+  brandId          String
+  branchId         String?
+  stockLocationId  String
+  name             String
+  type             StockCountType   @default(CUSTOM)
+  status           StockCountStatus @default(DRAFT)
+  startsAt         DateTime         @default(now())
+  endsAt           DateTime?
+  note             String?
+  createdByAdminId String?
+  createdByStaffId String?
+  completedAt      DateTime?
+  createdAt        DateTime         @default(now())
+  brand            Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  branch           Branch?          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  location         StockLocation    @relation(fields: [stockLocationId], references: [id], onDelete: Cascade)
+  createdByAdmin   Admin?           @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByStaff   Staff?           @relation("StockCountByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
+  lines            StockCountLine[]
+
+  @@index([brandId, status, createdAt])
+  @@index([branchId, status])
+  @@index([stockLocationId])
+}
+
+model StockCountLine {
+  id             String       @id @default(cuid())
+  countId        String
+  brandProductId String
+  systemQty      Int
+  countedQty     Int?
+  note           String?
+  count          StockCount   @relation(fields: [countId], references: [id], onDelete: Cascade)
+  product        BrandProduct @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
+
+  @@unique([countId, brandProductId])
+  @@index([brandProductId])
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  brandId   String
+  code      String?
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([brandId, name])
+  @@index([brandId, isActive])
+}
+
+model PurchaseOrder {
+  id               String              @id @default(cuid())
+  brandId          String
+  supplierId       String
+  stockLocationId  String?
+  orderNumber      String
+  status           PurchaseOrderStatus @default(DRAFT)
+  expectedAt       DateTime?
+  note             String?
+  orderedAt        DateTime?
+  receivedAt       DateTime?
+  createdByAdminId String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  brand            Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  supplier         Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  location         StockLocation?      @relation(fields: [stockLocationId], references: [id], onDelete: SetNull)
+  createdByAdmin   Admin?              @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  lines            PurchaseOrderLine[]
+
+  @@unique([brandId, orderNumber])
+  @@index([brandId, status, createdAt])
+  @@index([supplierId])
+}
+
+model PurchaseOrderLine {
+  id               String        @id @default(cuid())
+  purchaseOrderId  String
+  brandProductId   String
+  quantityOrdered  Int
+  quantityReceived Int           @default(0)
+  unitCost         Decimal?      @db.Decimal(10, 2)
+  note             String?
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product          BrandProduct  @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseOrderId, brandProductId])
+  @@index([brandProductId])
+}
+
+model ProductRecipeLine {
+  id                 String       @id @default(cuid())
+  parentProductId    String
+  componentProductId String
+  quantityPerUnit    Decimal      @db.Decimal(12, 4)
+  note               String?
+  createdAt          DateTime     @default(now())
+  parent             BrandProduct @relation("RecipeParent", fields: [parentProductId], references: [id], onDelete: Cascade)
+  component          BrandProduct @relation("RecipeComponent", fields: [componentProductId], references: [id], onDelete: Restrict)
+
+  @@unique([parentProductId, componentProductId])
+  @@index([componentProductId])
 }

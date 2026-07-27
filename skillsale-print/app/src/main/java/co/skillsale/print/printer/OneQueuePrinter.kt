@@ -142,7 +142,7 @@ class OneQueuePrinter(private val context: Context) {
         var y = 50f
         
         val headerTitle = if (ticket.brandName.isNotBlank() && ticket.branchName.isNotBlank()) {
-            "${ticket.brandName} - สาขา ${ticket.branchName}"
+            "${ticket.brandName} - ${ticket.branchName}"
         } else if (ticket.brandName.isNotBlank()) {
             ticket.brandName
         } else {
@@ -154,8 +154,21 @@ class OneQueuePrinter(private val context: Context) {
             y += 48f
         }
         if (ticket.branchAddress.isNotBlank()) {
-            canvas.drawText(ticket.branchAddress.trim(), center, y, small)
-            y += 36f
+            val addr = ticket.branchAddress.trim()
+            val maxChars = 28
+            if (addr.length > maxChars) {
+                // Split at a space near the middle
+                val splitIdx = addr.lastIndexOf(' ', maxChars)
+                val line1 = if (splitIdx > 0) addr.substring(0, splitIdx) else addr.substring(0, maxChars)
+                val line2 = addr.substring(if (splitIdx > 0) splitIdx + 1 else maxChars)
+                canvas.drawText(line1, center, y, small)
+                y += 30f
+                canvas.drawText(line2, center, y, small)
+                y += 36f
+            } else {
+                canvas.drawText(addr, center, y, small)
+                y += 36f
+            }
         }
         if (ticket.staffName.isNotBlank()) {
             canvas.drawText("พนักงาน: ${ticket.staffName.trim()}", center, y, small)

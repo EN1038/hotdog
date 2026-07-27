@@ -1,5 +1,6 @@
 package co.skillsale.print.printer
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -9,7 +10,7 @@ import android.util.Log
 import com.example.tscdll.TSCActivity
 
 /** Zenpert / TSC label printers (e.g. 3R20) via Bluetooth. */
-class TscQueuePrinter {
+class TscQueuePrinter(private val context: Context) {
     private val tsc = TSCActivity()
     private var mac: String = ""
 
@@ -96,14 +97,17 @@ class TscQueuePrinter {
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
         
+        val customTypeface = Typeface.createFromAsset(context.assets, "fonts/Kanit-Regular.ttf")
+        val customBoldTypeface = Typeface.create(customTypeface, Typeface.BOLD)
+
         val center = width / 2f
-        val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 20f }
-        val smallLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 20f }
-        val smallRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 20f }
-        val medium = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 26f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-        val mediumLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 22f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-        val mediumRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 22f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-        val huge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 72f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+        val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 20f; typeface = customTypeface }
+        val smallLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 20f; typeface = customTypeface }
+        val smallRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 20f; typeface = customTypeface }
+        val medium = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 26f; typeface = customBoldTypeface }
+        val mediumLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.LEFT; textSize = 22f; typeface = customBoldTypeface }
+        val mediumRight = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.RIGHT; textSize = 22f; typeface = customBoldTypeface }
+        val huge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textAlign = Paint.Align.CENTER; textSize = 72f; typeface = customBoldTypeface }
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; strokeWidth = 2f }
 
         var y = 36f

@@ -7,7 +7,7 @@ import co.skillsale.print.PrinterRouter
 
 class QueuePrintService(private val context: Context) {
     private val onePrinter = OneQueuePrinter(context)
-    private val tscPrinter = TscQueuePrinter()
+    private val tscPrinter = TscQueuePrinter(context)
 
     fun closeAll() {
         onePrinter.close()

@@ -35,5 +35,6 @@ data class QueueTicketItem(
     val name: String,
     val qty: Int,
     val price: Double,
-    val total: Double
+    val total: Double,
+    val optionsText: String? = null
 )

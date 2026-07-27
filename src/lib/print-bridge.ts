@@ -26,7 +26,7 @@ export type QueueTicketPayload = {
   copies?: number | null;
   staffName?: string | null;
   orderType?: string | null;
-  items?: Array<{ name: string; qty: number; price: number; total: number }> | null;
+  items?: Array<{ name: string; optionsText?: string | null; qty: number; price: number; total: number }> | null;
   subtotal?: number | null;
   discount?: number | null;
   paymentMethod?: string | null;

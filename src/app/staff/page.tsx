@@ -16,6 +16,11 @@ import {
 } from "@/components/icons";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
 import type { MenuItemData } from "@/lib/customer-types";
+import { useToast } from "@/components/admin/Toast";
+import {
+  StaffShiftControls,
+  type ActiveShiftInfo,
+} from "@/components/staff/StaffShiftControls";
 
 type HomeMeta = {
   branchName?: string;
@@ -26,6 +31,8 @@ type HomeMeta = {
   pendingStockCount?: number;
   canSell?: boolean;
   isOpen?: boolean;
+  canToggleStore?: boolean;
+  activeShift?: ActiveShiftInfo | null;
 };
 
 function IconKey({ size = 26 }: { size?: number }) {
@@ -62,27 +69,26 @@ function IconPromo({ size = 26 }: { size?: number }) {
 
 export default function StaffHomePage() {
   const router = useRouter();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<HomeMeta | null>(null);
   const [promoHref, setPromoHref] = useState("/staff/key-order/promo");
 
+  const reloadMeta = async () => {
+    const res = await fetch("/api/staff/branding");
+    if (res.status === 401) {
+      router.replace("/staff/login");
+      return;
+    }
+    if (res.ok) {
+      const data = await res.json();
+      setMeta(data);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const res = await fetch("/api/staff/branding");
-      if (res.status === 401) {
-        router.replace("/staff/login");
-        return;
-      }
-      if (res.ok) {
-        const data = await res.json();
-        if (!cancelled) setMeta(data);
-      }
-      if (!cancelled) setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void reloadMeta();
   }, [router]);
 
   useEffect(() => {
@@ -166,7 +172,22 @@ export default function StaffHomePage() {
 
   return (
     <StaffAppShell active="home">
-      <div className="px-4 pb-6 pt-4">
+      <div className="px-4 pb-6 pt-4 space-y-4">
+        <StaffShiftControls
+          canToggleStore={Boolean(meta?.canToggleStore)}
+          canSell={Boolean(meta?.canSell)}
+          activeShift={meta?.activeShift ?? null}
+          onOpened={() => {
+            toast.success("เปิดรอบแล้ว", "พร้อมรับออเดอร์");
+            void reloadMeta();
+          }}
+          onClosed={(msg) => {
+            toast.success("ปิดรอบแล้ว", msg);
+            void reloadMeta();
+          }}
+          onError={(title, detail) => toast.error(title, detail)}
+        />
+
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <p className="text-sm font-bold text-slate-900">เมนูด่วน</p>
           <p className="mt-0.5 text-xs text-slate-500">

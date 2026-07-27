@@ -15,6 +15,9 @@ data class QueueTicket(
     val amountReceived: Double = 0.0,
     val change: Double = 0.0,
     val totalAmount: Double = 0.0,
+    val brandName: String = "",
+    val branchName: String = "",
+    val branchAddress: String = "",
 ) {
     companion object {
         fun roleForIndex(index: Int, total: Int): String {

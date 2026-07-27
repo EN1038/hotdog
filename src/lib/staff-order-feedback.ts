@@ -13,6 +13,15 @@ export type StaffOrderFeedback = {
   /** When true (default for new queues), auto-print in SkillSale Print APK */
   printTickets?: boolean;
   totalAmount?: number;
+  // Receipt details
+  staffName?: string | null;
+  orderType?: string | null;
+  items?: Array<{ name: string; qty: number; price: number; total: number }> | null;
+  subtotal?: number | null;
+  discount?: number | null;
+  paymentMethod?: string | null;
+  amountReceived?: number | null;
+  change?: number | null;
 };
 
 export function saveStaffOrderFeedback(payload: StaffOrderFeedback) {

@@ -20,6 +20,7 @@ type BrandingPayload = {
     name?: string | null;
     nameTh?: string | null;
     logoUrl?: string | null;
+    coverImageUrl?: string | null;
     color?: string | null;
   };
   isOpen?: boolean;
@@ -115,6 +116,7 @@ export function StaffAppShell({
     "SkillSale";
   const branchName = meta?.branchName || "";
   const logoUrl = meta?.brand?.logoUrl || branding.logoUrl;
+  const coverUrl = meta?.brand?.coverImageUrl || null;
   const accent = meta?.brand?.color || branding.primaryColor || "#ea580c";
   const stockOn = Boolean(
     meta?.stockEnabled && meta?.brandStockEnabled,
@@ -184,64 +186,78 @@ export function StaffAppShell({
   return (
     <div className="min-h-screen bg-[#f3f4f6] pb-[4.75rem]">
       {showHeader ? (
-        <header className="bg-[#2a2a2a] text-white">
-          <div className="mx-auto flex max-w-lg items-center gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-white/15 ring-2 ring-white/20">
-              {logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={logoUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-white/80">
-                  <IconStore size={22} />
-                </div>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-bold leading-tight">
-                {brandName}
-              </p>
-              <p className="mt-0.5 truncate text-xs text-white/70">
-                {branchName || "—"}
-              </p>
-            </div>
-            <Link
-              href="/staff/orders"
-              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
-              aria-label="การแจ้งเตือนออเดอร์"
-            >
-              <IconReceipt size={20} />
-              {pendingOrders > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold">
-                  {pendingOrders > 99 ? "99+" : pendingOrders}
-                </span>
-              ) : null}
-            </Link>
-          </div>
-          <div className="mx-auto max-w-lg px-4 pb-3">
-            <div className="flex items-center justify-between gap-2 rounded-xl bg-white/95 px-3 py-2 text-slate-800">
-              <p className="text-xs font-semibold">
-                <span
-                  className={
-                    isOpen && canSell ? "text-emerald-700" : "text-amber-700"
-                  }
-                >
-                  {isOpen && canSell
-                    ? "เปิดรับออเดอร์"
-                    : isOpen
-                      ? "เปิดร้าน — ยังไม่เปิดรอบ"
-                      : "ปิดร้านชั่วคราว"}
-                </span>
-              </p>
+        <header className="relative overflow-hidden bg-[#1e1e1e] text-white shadow-md">
+          {coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={coverUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover object-center"
+            />
+          ) : null}
+          {/* Overlay gradient to keep text readable */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/60 to-black/85 backdrop-blur-[2px]" />
+
+          <div className="relative z-10 mx-auto max-w-lg px-4 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))]">
+            <div className="flex items-center gap-3.5">
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-white/20 ring-2 ring-white/40 shadow-md">
+                {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={logoUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-white/90">
+                    <IconStore size={26} />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[17px] font-extrabold leading-tight drop-shadow-sm">
+                  {brandName}
+                </p>
+                <p className="mt-1 truncate text-xs font-medium text-white/90 drop-shadow-sm">
+                  {branchName ? `สาขา ${branchName.replace(/^สาขา\s*/, "")}` : "—"}
+                </p>
+              </div>
               <Link
-                href="/staff/settings"
-                className="text-xs font-bold text-slate-600"
+                href="/staff/orders"
+                className="relative flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white shadow-sm transition hover:bg-white/30"
+                aria-label="การแจ้งเตือนออเดอร์"
               >
-                จัดการ
+                <IconReceipt size={22} />
+                {pendingOrders > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold shadow">
+                    {pendingOrders > 99 ? "99+" : pendingOrders}
+                  </span>
+                ) : null}
               </Link>
+            </div>
+
+            <div className="mt-3.5">
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-white/95 px-3.5 py-2 text-slate-800 shadow-sm backdrop-blur-sm">
+                <p className="text-xs font-semibold">
+                  <span
+                    className={
+                      isOpen && canSell ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"
+                    }
+                  >
+                    {isOpen && canSell
+                      ? "● เปิดรับออเดอร์"
+                      : isOpen
+                        ? "● เปิดร้าน — ยังไม่เปิดรอบ"
+                        : "● ปิดร้านชั่วคราว"}
+                  </span>
+                </p>
+                <Link
+                  href="/staff/settings"
+                  className="text-xs font-bold text-slate-600 hover:text-slate-900"
+                >
+                  จัดการ
+                </Link>
+              </div>
             </div>
           </div>
         </header>

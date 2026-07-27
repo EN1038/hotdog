@@ -16,12 +16,15 @@ export type StaffOrderFeedback = {
   // Receipt details
   staffName?: string | null;
   orderType?: string | null;
-  items?: Array<{ name: string; qty: number; price: number; total: number }> | null;
+  items?: Array<{ name: string; optionsText?: string | null; qty: number; price: number; total: number }> | null;
   subtotal?: number | null;
   discount?: number | null;
   paymentMethod?: string | null;
   amountReceived?: number | null;
   change?: number | null;
+  brandName?: string | null;
+  branchName?: string | null;
+  branchAddress?: string | null;
 };
 
 export function saveStaffOrderFeedback(payload: StaffOrderFeedback) {

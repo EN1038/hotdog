@@ -98,7 +98,8 @@ class WebAppInterface(
                                 name = itemObj.optString("name", ""),
                                 qty = itemObj.optInt("qty", 1),
                                 price = itemObj.optDouble("price", 0.0),
-                                total = itemObj.optDouble("total", 0.0)
+                                total = itemObj.optDouble("total", 0.0),
+                                optionsText = if (itemObj.has("optionsText")) itemObj.optString("optionsText") else null,
                             )
                         )
                     }

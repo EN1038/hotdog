@@ -80,7 +80,9 @@ class TscQueuePrinter(private val context: Context) {
         
         var height = 250
         if (ticket.brandName.isNotBlank() || ticket.branchName.isNotBlank()) height += 36
-        if (ticket.branchAddress.isNotBlank()) height += 26
+        if (ticket.branchAddress.isNotBlank()) {
+            height += if (ticket.branchAddress.trim().length > 28) 52 else 26
+        }
         if (ticket.staffName.isNotBlank()) height += 36
         if (ticket.orderNumber.isNotBlank()) height += 32
         if (ticket.dateLabel.isNotBlank()) height += 26
@@ -120,7 +122,7 @@ class TscQueuePrinter(private val context: Context) {
         var y = 36f
         
         val headerTitle = if (ticket.brandName.isNotBlank() && ticket.branchName.isNotBlank()) {
-            "${ticket.brandName} - สาขา ${ticket.branchName}"
+            "${ticket.brandName} - ${ticket.branchName}"
         } else if (ticket.brandName.isNotBlank()) {
             ticket.brandName
         } else {
@@ -132,8 +134,20 @@ class TscQueuePrinter(private val context: Context) {
             y += 36f
         }
         if (ticket.branchAddress.isNotBlank()) {
-            canvas.drawText(ticket.branchAddress.trim(), center, y, small)
-            y += 26f
+            val addr = ticket.branchAddress.trim()
+            val maxChars = 28
+            if (addr.length > maxChars) {
+                val splitIdx = addr.lastIndexOf(' ', maxChars)
+                val line1 = if (splitIdx > 0) addr.substring(0, splitIdx) else addr.substring(0, maxChars)
+                val line2 = addr.substring(if (splitIdx > 0) splitIdx + 1 else maxChars)
+                canvas.drawText(line1, center, y, small)
+                y += 24f
+                canvas.drawText(line2, center, y, small)
+                y += 28f
+            } else {
+                canvas.drawText(addr, center, y, small)
+                y += 26f
+            }
         }
         if (ticket.staffName.isNotBlank()) {
             canvas.drawText("พนักงาน: ${ticket.staffName.trim()}", center, y, small)

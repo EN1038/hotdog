@@ -86,7 +86,14 @@ class TscQueuePrinter(private val context: Context) {
         if (ticket.dateLabel.isNotBlank()) height += 26
         if (ticket.orderType.isNotBlank()) height += 26
         if (ticket.items.isNotEmpty()) {
-            height += ticket.items.size * 30 + 30
+            var itemsHeight = 30
+            for (item in ticket.items) {
+                itemsHeight += 30
+                if (!item.optionsText.isNullOrBlank()) {
+                    itemsHeight += 24
+                }
+            }
+            height += itemsHeight
         }
         height += 120
         if (ticket.discount > 0) height += 26
@@ -160,6 +167,13 @@ class TscQueuePrinter(private val context: Context) {
                 canvas.drawText("${item.qty}x${item.price.toInt()}", width - 100f, y, smallRight)
                 canvas.drawText(String.format("%.2f", item.total), width - 10f, y, smallRight)
                 y += 30f
+                if (!item.optionsText.isNullOrBlank()) {
+                    var opts = item.optionsText
+                    if (opts.length > 30) opts = opts.take(29) + ".."
+                    val optPaint = Paint(smallLeft).apply { textSize = 18f; color = Color.DKGRAY }
+                    canvas.drawText(" * $opts", 20f, y - 6f, optPaint)
+                    y += 24f
+                }
             }
             y -= 5f
             canvas.drawLine(10f, y, width - 10f, y, linePaint)

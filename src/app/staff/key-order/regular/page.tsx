@@ -44,6 +44,7 @@ import {
 } from "@/lib/option-selection";
 import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
 import { saveStaffOrderFeedback } from "@/lib/staff-order-feedback";
+import { autoPrintQueueTickets } from "@/lib/print-bridge";
 
 type MenuPayload = {
   branchName?: string;
@@ -303,8 +304,8 @@ export default function StaffRegularKeyOrderPage() {
         fail(data.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
-      saveStaffOrderFeedback({
-        kind: "success",
+      const feedbackPayload = {
+        kind: "success" as const,
         message: "บันทึกออเดอร์แล้ว",
         orderId: typeof data.id === "string" ? data.id : undefined,
         queueNumber:
@@ -327,7 +328,8 @@ export default function StaffRegularKeyOrderPage() {
         staffName: typeof data.customerName === "string" ? data.customerName : null,
         orderType: data.fulfillmentType === "STOREFRONT" ? "ทานที่ร้าน" : data.fulfillmentType === "PICKUP" ? "รับกลับบ้าน" : data.fulfillmentType === "DELIVERY" ? "เดลิเวอรี" : null,
         items: Array.isArray(data.items) ? data.items.map((it: any) => ({
-          name: it.optionsText ? `${it.itemName} (${it.optionsText})` : it.itemName,
+          name: it.itemName,
+          optionsText: it.optionsText || "",
           qty: it.quantity,
           price: Number(it.unitPrice) + Number(it.optionsPrice),
           total: (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity
@@ -335,8 +337,15 @@ export default function StaffRegularKeyOrderPage() {
         subtotal: typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
         discount: Number(data.discountAmount) || 0,
         paymentMethod: data.paymentMethod === "CASH" ? "เงินสด" : data.paymentMethod === "PROMPTPAY" ? "โอนเงิน (QR)" : data.paymentMethod,
-      });
-      router.replace("/staff");
+        brandName: data.brandName ?? "",
+        branchName: data.branchName ?? "",
+        branchAddress: data.branchAddress ?? "",
+      };
+      
+      saveStaffOrderFeedback(feedbackPayload);
+      autoPrintQueueTickets(feedbackPayload);
+      
+      window.location.href = "/staff/new-order";
     } catch {
       saveStaffOrderFeedback({
         kind: "error",

@@ -161,14 +161,15 @@ export async function GET(request: Request) {
     const dayState = getCalendarDayState();
     const activeShift = await getActiveShift(session.branchId);
 
+    const activeShiftDateKey = activeShift ? shiftCalendarDateKey(activeShift) : null;
+    const currentRoundKey = activeShiftDateKey ?? dayState.operatingDay;
+
     const viewDateKey =
       dateParam && isBangkokDateKey(dateParam)
         ? dateParam
-        : activeShift
-          ? shiftCalendarDateKey(activeShift)
-          : dayState.operatingDay;
-          
-    const isToday = viewDateKey === dayState.operatingDay;
+        : currentRoundKey;
+
+    const isToday = viewDateKey === currentRoundKey;
     const businessDate = queueBusinessDateFromKey(viewDateKey);
 
     const statsOrders = await prisma.order.findMany({
@@ -216,7 +217,7 @@ export async function GET(request: Request) {
       orders,
       viewDate: viewDateKey,
       isToday,
-      operatingDay: dayState.operatingDay,
+      operatingDay: currentRoundKey,
       entryLocked: !canSell,
       canEnter: canSell && isToday,
       canSell,

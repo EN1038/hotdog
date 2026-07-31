@@ -1,14 +1,31 @@
 import type { MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 
-export function isPromoMenuItem(
-  item: Pick<MenuItemData, "optionGroups">,
-): boolean {
+/** Minimal shape for promo / sold-out checks (API may only select `mode`). */
+type StockCheckItem = {
+  isOutOfStock?: boolean | null;
+  stockQuantity?: number | null;
+  optionGroups?: Array<{ mode?: MenuOptionGroupData["mode"] }> | null;
+  category?: { stockExempt?: boolean | null } | null;
+};
+
+export function isPromoMenuItem(item: StockCheckItem): boolean {
   return (item.optionGroups ?? []).some((g) => g.mode === "FROM_MENU");
 }
 
-export function isRegularMenuItem(
-  item: Pick<MenuItemData, "optionGroups">,
-): boolean {
+/** Pack/promo or category marked stock-exempt: ignore stock qty, use manual flag only. */
+export function isStockExemptMenuItem(item: StockCheckItem): boolean {
+  if (isPromoMenuItem(item)) return true;
+  return Boolean(item.category?.stockExempt);
+}
+
+/** Sold-out: stock qty when tracked; promo/exempt packs use manual isOutOfStock only. */
+export function isMenuItemSoldOut(item: StockCheckItem): boolean {
+  if (isStockExemptMenuItem(item)) return Boolean(item.isOutOfStock);
+  if (item.stockQuantity != null) return item.stockQuantity <= 0;
+  return Boolean(item.isOutOfStock);
+}
+
+export function isRegularMenuItem(item: StockCheckItem): boolean {
   return !isPromoMenuItem(item);
 }
 

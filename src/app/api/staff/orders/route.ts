@@ -33,7 +33,8 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
-import { deductStockForOrder, StockError } from "@/lib/stock";
+import { deductStockForOrder, deductBranchMenuStockForOrder, StockError } from "@/lib/stock";
+import { isMenuItemSoldOut, isPromoMenuItem } from "@/lib/staff-key-order";
 import {
   getBranchServiceStatus,
   type BranchHoursFields,
@@ -134,6 +135,8 @@ const createStaffOrderSchema = z.object({
     .enum(["STOREFRONT", "FACEBOOK", "APP_DELIVERY", "OTHER"])
     .default("STOREFRONT"),
   items: z.array(orderItemSchema).min(1),
+  /** Skip queue — mark COMPLETED immediately (walk-in / instant mode) */
+  completeImmediately: z.boolean().optional(),
 });
 
 export async function GET(request: Request) {
@@ -289,6 +292,8 @@ export async function POST(request: Request) {
           id: { in: requestedIds },
         },
         include: {
+          stock: true,
+          category: { select: { stockExempt: true } },
           optionGroupLinks: {
             include: {
               group: { include: optionGroupDetailInclude },
@@ -346,17 +351,47 @@ export async function POST(request: Request) {
         });
         continue;
       }
-      if (orderable.isOutOfStock) {
+
+      const optionGroups = orderable.optionGroupLinks.map((l) => ({
+        mode: l.group.mode,
+      }));
+      const stockQuantity = orderable.stock?.quantity ?? null;
+      const menuLike = {
+        isOutOfStock: orderable.isOutOfStock,
+        stockQuantity,
+        optionGroups,
+        category: orderable.category,
+      };
+
+      if (isMenuItemSoldOut(menuLike)) {
         unavailableItems.push({
           branchMenuItemId: orderable.id,
           name: orderable.name,
           reason: "หมดชั่วคราว",
         });
+        continue;
+      }
+
+      // Qty guard when stock is tracked (promo packs skip pack-level qty).
+      if (
+        !isPromoMenuItem(menuLike) &&
+        !orderable.category?.stockExempt &&
+        stockQuantity != null &&
+        item.quantity > stockQuantity
+      ) {
+        unavailableItems.push({
+          branchMenuItemId: orderable.id,
+          name: orderable.name,
+          reason: `สต๊อกไม่พอ (เหลือ ${stockQuantity})`,
+        });
       }
     }
 
     if (unavailableItems.length > 0) {
-      return jsonError("มีรายการที่ไม่สามารถสั่งได้", 400, {
+      const detail = unavailableItems
+        .map((u) => `${u.name}: ${u.reason}`)
+        .join(" · ");
+      return jsonError(`มีรายการที่ไม่สามารถสั่งได้ — ${detail}`, 400, {
         unavailableItems,
       });
     }
@@ -515,9 +550,11 @@ export async function POST(request: Request) {
               discountAmount: new Prisma.Decimal(0),
               promoSummary: null,
               createdByStaffId: session.staffId,
-              status: branch.autoAcceptOrders
-                ? OrderStatus.PREPARING
-                : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+              status: body.completeImmediately
+                ? OrderStatus.COMPLETED
+                : branch.autoAcceptOrders
+                  ? OrderStatus.PREPARING
+                  : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
               items: {
                 create: orderItems,
               },
@@ -544,9 +581,24 @@ export async function POST(request: Request) {
     }
     if (!order) return jsonError("ไม่สามารถสร้างเลขออเดอร์ได้ กรุณาลองใหม่");
 
-    if (order.status === OrderStatus.PREPARING) {
+    const shouldDeductStock =
+      order.status === OrderStatus.PREPARING ||
+      order.status === OrderStatus.COMPLETED;
+
+    if (shouldDeductStock) {
       try {
         await deductStockForOrder(order.id);
+        await deductBranchMenuStockForOrder({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          branchId: session.branchId,
+          staffId: session.staffId,
+          lines: body.items.map((i) => ({
+            branchMenuItemId: i.branchMenuItemId,
+            quantity: i.quantity,
+            optionIds: i.optionIds,
+          })),
+        });
       } catch (e) {
         if (e instanceof StockError) {
           await prisma.order.update({

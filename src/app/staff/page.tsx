@@ -14,14 +14,20 @@ import {
   IconReceipt,
   IconStore,
 } from "@/components/icons";
-import { isPromoMenuItem } from "@/lib/staff-key-order";
+import { isPromoMenuItem, isMenuItemSoldOut } from "@/lib/staff-key-order";
 import type { MenuItemData } from "@/lib/customer-types";
 import { useToast } from "@/components/admin/Toast";
-import {
-  StaffShiftControls,
-  type ActiveShiftInfo,
-} from "@/components/staff/StaffShiftControls";
+import { type ActiveShiftInfo, StaffShiftControls } from "@/components/staff/StaffShiftControls";
 import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
+import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
+import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
+import { formatQueueNumber } from "@/lib/order-queue-format";
+import { formatPrice } from "@/lib/constants";
+import {
+  autoPrintQueueTickets,
+  clampTicketCopies,
+  formatTicketDateLabel,
+} from "@/lib/print-bridge";
 
 type HomeMeta = {
   branchName?: string;
@@ -75,7 +81,10 @@ export default function StaffHomePage() {
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<HomeMeta | null>(null);
   const [promoHref, setPromoHref] = useState("/staff/key-order/promo");
+  const [promoLabel, setPromoLabel] = useState("คีย์โปรโมชั่น");
+  const [promoDescription, setPromoDescription] = useState("เลือกเมนูเซ็ตโปร");
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [dailySalesOpen, setDailySalesOpen] = useState(false);
 
   const reloadMeta = async () => {
     const res = await fetch("/api/staff/branding");
@@ -91,18 +100,76 @@ export default function StaffHomePage() {
   };
 
   useEffect(() => {
+    const feedback = takeStaffOrderFeedback();
+    if (!feedback) return;
+    if (feedback.kind === "success") {
+      toast.success(
+        feedback.message,
+        `${feedback.queueNumber != null ? `คิว ${formatQueueNumber(feedback.queueNumber)}` : "สร้างออเดอร์แล้ว"}${
+          typeof feedback.totalAmount === "number"
+            ? ` · ${formatPrice(feedback.totalAmount)}฿`
+            : ""
+        }`,
+      );
+      if (feedback.printTickets !== false) {
+        autoPrintQueueTickets({
+          queueNumber: feedback.queueNumber,
+          orderNumber: feedback.orderNumber,
+          dateLabel:
+            formatTicketDateLabel(feedback.dateLabel) ||
+            formatTicketDateLabel(meta?.operatingDay) ||
+            formatTicketDateLabel(new Date().toISOString()),
+          copies: clampTicketCopies(feedback.queueTicketCopies ?? 1),
+          staffName: feedback.staffName,
+          orderType: feedback.orderType,
+          items: feedback.items,
+          subtotal: feedback.subtotal,
+          discount: feedback.discount,
+          paymentMethod: feedback.paymentMethod,
+          amountReceived: feedback.amountReceived,
+          change: feedback.change,
+          totalAmount: feedback.totalAmount,
+          brandName: feedback.brandName || meta?.brand?.name || "",
+          branchName: feedback.branchName || meta?.branchName || "",
+          branchAddress: feedback.branchAddress || "",
+        });
+      }
+    } else {
+      toast.error("บันทึกไม่สำเร็จ", feedback.message);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on land after key-order
+  }, []);
+
+  useEffect(() => {
     void reloadMeta();
   }, [router]);
 
   useEffect(() => {
+    const onReload = () => {
+      void reloadMeta();
+    };
+    window.addEventListener("staff-branding-reload", onReload);
+    return () => window.removeEventListener("staff-branding-reload", onReload);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
-    fetch("/api/staff/menu")
+    fetch("/api/staff/menu?channel=storefront")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { menuItems?: MenuItemData[] } | null) => {
         if (cancelled || !data?.menuItems) return;
-        const promo = data.menuItems.filter(isPromoMenuItem);
-        if (promo.length === 1) {
-          setPromoHref(`/staff/key-order/promo/${promo[0].id}`);
+        const promos = data.menuItems.filter(
+          (item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item),
+        );
+        if (promos.length === 1) {
+          const only = promos[0]!;
+          setPromoHref(`/staff/key-order/promo/${only.id}`);
+          setPromoLabel(only.name);
+          setPromoDescription("คีย์โปรโมชั่น");
+        } else {
+          setPromoHref("/staff/key-order/promo");
+          setPromoLabel("คีย์โปรโมชั่น");
+          setPromoDescription("เลือกเมนูเซ็ตโปร");
         }
       })
       .catch(() => {});
@@ -121,29 +188,36 @@ export default function StaffHomePage() {
 
   const stockOn = Boolean(meta?.stockEnabled && meta?.brandStockEnabled);
   const accent = meta?.brand?.color || "#ea580c";
+  const hasOpenShift = Boolean(meta?.activeShift);
 
   const menuCards = [
-    {
-      href: "/staff/orders",
-      label: "รับออเดอร์",
-      description: "ดูออเดอร์ & จัดการคิว",
-      color: accent,
-      badge: meta?.pendingOrderCount,
-      icon: <IconReceipt size={24} />,
-    },
     {
       href: "/staff/key-order/regular",
       label: "คีย์ออเดอร์",
       description: "บันทึกรายการหน้าร้าน",
       color: "#0ea5e9",
       icon: <IconKey size={24} />,
+      requiresShift: true,
+      kind: "key" as const,
     },
     {
       href: promoHref,
-      label: "คีย์โปรโมชั่น",
-      description: "เลือกเมนูเซ็ตโปร",
+      label: promoLabel,
+      description: promoDescription,
       color: "#eab308",
       icon: <IconPromo size={24} />,
+      requiresShift: true,
+      kind: "promo" as const,
+    },
+    {
+      href: "/staff/orders",
+      label: "ประวัติออเดอร์",
+      description: "ดูออเดอร์ & จัดการคิว",
+      color: accent,
+      badge: meta?.pendingOrderCount,
+      icon: <IconReceipt size={24} />,
+      requiresShift: true,
+      kind: "orders" as const,
     },
     {
       onClick: () => setSummaryOpen(true),
@@ -151,46 +225,102 @@ export default function StaffHomePage() {
       description: "ดูรายงานรายได้ประจำรอบ",
       color: "#6366f1",
       icon: <IconMoney size={24} />,
+      requiresShift: false,
+      kind: "summary" as const,
     },
     ...(stockOn
       ? [
           {
+            onClick: () => setDailySalesOpen(true),
+            label: "สรุปยอดขายรายวัน",
+            description: "ดูสรุปรอบ / สร้างสรุปสิ้นวัน",
+            color: "#2563eb",
+            icon: <IconMoney size={24} />,
+            requiresShift: false,
+            kind: "daily-sales" as const,
+          },
+          {
             href: "/staff/stock",
-            label: "รับของ / สต๊อก",
+            label: "สต๊อก",
             description: "รับของเข้า & ตรวจนับ",
             color: "#10b981",
             badge: meta?.pendingStockCount,
             icon: <IconPackage size={24} />,
+            requiresShift: false,
+            kind: "stock" as const,
           },
         ]
       : []),
   ];
 
+  function cardEmoji(kind: string) {
+    if (kind === "orders") return "📝";
+    if (kind === "key") return "🛒";
+    if (kind === "promo") return "🌟";
+    if (kind === "summary") return "📊";
+    if (kind === "daily-sales") return "💰";
+    if (kind === "stock") return "📦";
+    return "🔹";
+  }
+
   return (
     <StaffAppShell active="home">
       <div className="px-4 pb-6 pt-4 space-y-4">
-        <StaffShiftControls
-          canToggleStore={Boolean(meta?.canToggleStore)}
-          canSell={Boolean(meta?.canSell)}
-          activeShift={meta?.activeShift ?? null}
-          onOpened={() => {
-            toast.success("เปิดรอบแล้ว", "พร้อมรับออเดอร์");
-            void reloadMeta();
-          }}
-          onClosed={(msg) => {
-            toast.success("ปิดรอบแล้ว", msg);
-            void reloadMeta();
-          }}
-          onError={(title, detail) => toast.error(title, detail)}
-        />
-
         <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-bold text-slate-900">เมนูด่วน</p>
             <span className="text-xs font-medium text-slate-400">เลือกงานที่ต้องการทำ</span>
           </div>
-          <div className="mt-3.5 grid grid-cols-2 gap-3">
-            {menuCards.map((card) => {
+          <div className="space-y-4">
+            {!hasOpenShift ? (
+              <div className="relative">
+                <div className="pointer-events-none space-y-4 select-none">
+                  {menuCards
+                    .filter((card) => card.requiresShift)
+                    .map((card) => {
+                      const emoji = cardEmoji(card.kind);
+
+                      return (
+                        <div
+                          key={card.kind}
+                          aria-disabled="true"
+                          className="w-full flex items-center justify-between rounded-2xl p-6 text-white shadow-md text-left opacity-40 grayscale"
+                          style={{ backgroundColor: card.color }}
+                        >
+                          <div>
+                            <h3 className="text-2xl font-black drop-shadow-sm">{card.label}</h3>
+                            <p className="mt-1 text-white/90 text-sm font-medium">เปิดรอบขายก่อน</p>
+                          </div>
+                          <div className="text-4xl">{emoji}</div>
+                        </div>
+                      );
+                    })}
+                </div>
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl px-5 backdrop-blur-[3px]">
+                  <div className="w-full max-w-xs drop-shadow-lg">
+                    <StaffShiftControls
+                      canToggleStore={Boolean(meta?.canToggleStore)}
+                      canSell={false}
+                      activeShift={null}
+                      onOpened={() => {
+                        toast.success("เปิดรอบแล้ว", "พร้อมรับออเดอร์");
+                        void reloadMeta();
+                        window.dispatchEvent(new Event("staff-branding-reload"));
+                      }}
+                      onClosed={() => {}}
+                      onError={(title, detail) => toast.error(title, detail)}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {menuCards
+              .filter((card) => hasOpenShift || !card.requiresShift)
+              .map((card) => {
+              const description = card.description;
+              const emoji = cardEmoji(card.kind);
+
               const isButton = Boolean(card.onClick);
               const Component = isButton ? "button" : "a";
               const props = isButton
@@ -199,30 +329,22 @@ export default function StaffHomePage() {
 
               return (
                 <Component
-                  key={card.label}
+                  key={card.kind}
                   {...props}
-                  className="group relative flex flex-col justify-between rounded-2xl bg-slate-50/70 p-3.5 ring-1 ring-slate-200/80 transition hover:bg-white hover:shadow-md hover:ring-slate-300 active:scale-[0.98] text-left"
+                  className="w-full flex items-center justify-between rounded-2xl p-6 text-white shadow-md active:scale-[0.98] transition-transform text-left"
+                  style={{ backgroundColor: card.color }}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span
-                      className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm transition group-hover:scale-105"
-                      style={{ backgroundColor: card.color }}
-                    >
-                      {card.icon}
-                    </span>
-                    {(card.badge ?? 0) > 0 ? (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white shadow-sm">
+                  <div className="min-w-0 pr-2">
+                    <h3 className="truncate text-2xl font-black drop-shadow-sm">{card.label}</h3>
+                    <p className="mt-1 text-white/90 text-sm font-medium">{description}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {(card.badge ?? 0) > 0 && (
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-900 font-black shadow-sm">
                         {card.badge! > 99 ? "99+" : card.badge}
                       </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-3">
-                    <p className="text-sm font-bold text-slate-900 leading-tight">
-                      {card.label}
-                    </p>
-                    <p className="mt-0.5 text-[11px] font-medium text-slate-500 line-clamp-1">
-                      {card.description}
-                    </p>
+                    )}
+                    <div className="text-4xl">{emoji}</div>
                   </div>
                 </Component>
               );
@@ -249,31 +371,17 @@ export default function StaffHomePage() {
           </a>
         ) : null}
 
-        {(meta?.pendingOrderCount ?? 0) > 0 ? (
-          <a
-            href="/staff/orders"
-            className="mt-3 flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3"
-          >
-            <div>
-              <p className="text-sm font-bold text-orange-950">
-                ออเดอร์รอรับ
-              </p>
-              <p className="text-xs text-orange-800">
-                {meta?.pendingOrderCount} ออเดอร์ใหม่
-              </p>
-            </div>
-            <span
-              className="rounded-full px-3 py-1 text-xs font-bold text-white"
-              style={{ backgroundColor: accent }}
-            >
-              เปิดคิว
-            </span>
-          </a>
-        ) : null}
+
 
         <StaffShiftSummarySheet
           open={summaryOpen}
           onClose={() => setSummaryOpen(false)}
+          initialDate={meta?.operatingDay ?? ""}
+        />
+
+        <StaffDailySalesSummarySheet
+          open={dailySalesOpen}
+          onClose={() => setDailySalesOpen(false)}
           initialDate={meta?.operatingDay ?? ""}
         />
       </div>

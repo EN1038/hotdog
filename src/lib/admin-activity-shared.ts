@@ -21,6 +21,8 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "brand.po.create": "สร้างใบสั่งซื้อ",
   "brand.po.receive": "รับของจากใบสั่งซื้อ",
   "brand.stock.branch_transfer": "โอนสต๊อกระหว่างสาขา",
+  "brand.stock.copy_from_branch": "คัดลอกเมนูจากสาขาเข้าบ้านกลาง",
+  "brand.stock.copy_to_branch": "คัดลอกเมนูจากบ้านกลางไปสาขา",
   "brand.admin.create": "สร้างผู้ดูแลแบรนด์",
   "brand.admin.link": "ผูกผู้ดูแลกับแบรนด์",
   "brand.admin.update": "แก้ไขผู้ดูแลแบรนด์",

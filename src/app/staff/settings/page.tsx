@@ -6,11 +6,7 @@ import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { logout } from "@/components/LoginForm";
-import {
-  StaffShiftControls,
-  type ActiveShiftInfo,
-} from "@/components/staff/StaffShiftControls";
-import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
+
 import {
   IconLogout,
   IconPrinter,
@@ -36,11 +32,6 @@ export default function StaffSettingsPage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
-  const [canToggleStore, setCanToggleStore] = useState(false);
-  const [canSell, setCanSell] = useState(false);
-  const [activeShift, setActiveShift] = useState<ActiveShiftInfo | null>(null);
-  const [summaryOpen, setSummaryOpen] = useState(false);
-  const [operatingDay, setOperatingDay] = useState("");
   const [soundOn, setSoundOn] = useState(false);
   const [alertSounds, setAlertSounds] = useState<AlertSoundOption[]>([]);
   const [selectedAlertSoundId, setSelectedAlertSoundId] = useState("");
@@ -60,10 +51,6 @@ export default function StaffSettingsPage() {
       return;
     }
     const data = await res.json();
-    setCanToggleStore(Boolean(data.canToggleStore));
-    setCanSell(Boolean(data.canSell));
-    setActiveShift(data.activeShift ?? null);
-    setOperatingDay(data.operatingDay ?? "");
     setLoading(false);
   }, [router]);
 
@@ -143,32 +130,7 @@ export default function StaffSettingsPage() {
   return (
     <StaffAppShell active="settings">
       <div className="space-y-4 px-4 py-4">
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900">รอบขาย / เปิด–ปิด</h2>
-          <div className="mt-3">
-            <StaffShiftControls
-              canToggleStore={canToggleStore}
-              canSell={canSell}
-              activeShift={activeShift}
-              onOpened={() => {
-                toast.success("เปิดรอบแล้ว");
-                void load();
-              }}
-              onClosed={(msg) => {
-                toast.success("ปิดรอบแล้ว", msg);
-                void load();
-              }}
-              onError={(title, detail) => toast.error(title, detail)}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setSummaryOpen(true)}
-            className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm font-bold text-slate-800"
-          >
-            ดูสรุปยอด
-          </button>
-        </section>
+
 
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-sm font-bold text-slate-900">เสียงแจ้งเตือน</h2>
@@ -264,11 +226,7 @@ export default function StaffSettingsPage() {
         </button>
       </div>
 
-      <StaffShiftSummarySheet
-        open={summaryOpen}
-        onClose={() => setSummaryOpen(false)}
-        initialDate={operatingDay}
-      />
+
     </StaffAppShell>
   );
 }

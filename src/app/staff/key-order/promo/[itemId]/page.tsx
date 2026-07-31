@@ -17,6 +17,7 @@ import {
 } from "@/components/staff/StaffQuickFulfillment";
 import {
   StaffKeyOrderAlertModal,
+  StaffKeyOrderSuccessModal,
   StaffOrderSummary,
   StaffOrderStickySummary,
   scrollToStaffAnchor,
@@ -30,17 +31,23 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import {
+  isMenuItemSoldOut,
   isPromoMenuItem,
   orderOptionGroupsForStaffPromo,
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
+import { readStaffOrderMode } from "@/lib/staff-order-mode";
 import {
   computeSelectedOptions,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
 import { sortByThaiName } from "@/lib/thai-sort";
-import { saveStaffOrderFeedback } from "@/lib/staff-order-feedback";
+import {
+  autoPrintQueueTickets,
+  clampTicketCopies,
+  formatTicketDateLabel,
+} from "@/lib/print-bridge";
 
 export default function StaffPromoKeyOrderDetailPage() {
   const { itemId } = useParams<{ itemId: string }>();
@@ -54,6 +61,12 @@ export default function StaffPromoKeyOrderDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{
+    queueNumber: number | null;
+    orderNumber: string | null;
+    itemCount: number;
+    totalAmount: number;
+  } | null>(null);
   const [branchName, setBranchName] = useState("");
   const [item, setItem] = useState<MenuItemData | null>(null);
   const [promoCount, setPromoCount] = useState(0);
@@ -85,7 +98,7 @@ export default function StaffPromoKeyOrderDetailPage() {
         ? (data.menuItems as MenuItemData[])
         : [];
       const promos = sortByThaiName(
-        items.filter((m) => isPromoMenuItem(m) && !m.isOutOfStock),
+        items.filter((m) => isPromoMenuItem(m) && !isMenuItemSoldOut(m)),
       );
       const found = promos.find((m) => m.id === itemId) ?? null;
       setBranchName(data.branchName ?? "");
@@ -110,7 +123,7 @@ export default function StaffPromoKeyOrderDetailPage() {
 
   const canSell = useMemo(() => {
     if (!item) return false;
-    return isChannelSellEnabled(item, channel) && !item.isOutOfStock;
+    return isChannelSellEnabled(item, channel) && !isMenuItemSoldOut(item);
   }, [item, channel]);
 
   const unitPrice = item ? resolveSellPrice(item, channel).final : 0;
@@ -228,6 +241,7 @@ export default function StaffPromoKeyOrderDetailPage() {
             optionIds,
           },
         ],
+        completeImmediately: readStaffOrderMode() === "instant",
       };
       if (fulfillment.fulfillmentType === "DELIVERY") {
         body.deliveryLocationId = fulfillment.deliveryLocationId;
@@ -248,56 +262,96 @@ export default function StaffPromoKeyOrderDetailPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        saveStaffOrderFeedback({
-          kind: "error",
-          message: data.error ?? "บันทึกไม่สำเร็จ",
-        });
-        fail(data.error ?? "บันทึกไม่สำเร็จ");
+        const unavailable = Array.isArray(data.unavailableItems)
+          ? (data.unavailableItems as Array<{ name?: string; reason?: string }>)
+          : [];
+        const detail =
+          unavailable.length > 0
+            ? unavailable
+                .map((u) => `${u.name ?? "รายการ"}: ${u.reason ?? ""}`)
+                .join(" · ")
+            : null;
+        const message = detail || data.error || "บันทึกไม่สำเร็จ";
+        fail(message);
         return;
       }
-      saveStaffOrderFeedback({
-        kind: "success",
-        message: "บันทึกออเดอร์แล้ว",
-        orderId: typeof data.id === "string" ? data.id : undefined,
-        queueNumber:
-          typeof data.queueNumber === "number" ? data.queueNumber : null,
-        orderNumber:
-          typeof data.orderNumber === "string" ? data.orderNumber : null,
+
+      const queueNumber =
+        typeof data.queueNumber === "number" ? data.queueNumber : null;
+      const orderNumber =
+        typeof data.orderNumber === "string" ? data.orderNumber : null;
+      const totalAmount =
+        typeof data.totalAmount === "number" ? data.totalAmount : orderTotal;
+
+      autoPrintQueueTickets({
+        queueNumber,
+        orderNumber,
         dateLabel:
-          typeof data.operatingDay === "string"
-            ? data.operatingDay
-            : typeof data.queueBusinessDate === "string"
-              ? data.queueBusinessDate
-              : null,
-        queueTicketCopies:
+          formatTicketDateLabel(
+            typeof data.operatingDay === "string"
+              ? data.operatingDay
+              : typeof data.queueBusinessDate === "string"
+                ? data.queueBusinessDate
+                : null,
+          ) || formatTicketDateLabel(new Date().toISOString()),
+        copies: clampTicketCopies(
           typeof data.queueTicketCopies === "number"
             ? data.queueTicketCopies
-            : null,
-        printTickets: true,
-        totalAmount:
-          typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
-        staffName: typeof data.customerName === "string" ? data.customerName : null,
-        orderType: data.fulfillmentType === "STOREFRONT" ? "ทานที่ร้าน" : data.fulfillmentType === "PICKUP" ? "รับกลับบ้าน" : data.fulfillmentType === "DELIVERY" ? "เดลิเวอรี" : null,
-        items: Array.isArray(data.items) ? data.items.map((it: any) => ({
-          name: it.itemName,
-          optionsText: it.optionsText || "",
-          qty: it.quantity,
-          price: Number(it.unitPrice) + Number(it.optionsPrice),
-          total: (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity
-        })) : null,
-        subtotal: typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
+            : 1,
+        ),
+        staffName:
+          typeof data.customerName === "string" ? data.customerName : null,
+        orderType:
+          data.fulfillmentType === "STOREFRONT"
+            ? "ทานที่ร้าน"
+            : data.fulfillmentType === "PICKUP"
+              ? "รับกลับบ้าน"
+              : data.fulfillmentType === "DELIVERY"
+                ? "เดลิเวอรี"
+                : null,
+        items: Array.isArray(data.items)
+          ? data.items.map((it: {
+              itemName?: string;
+              optionsText?: string | null;
+              quantity: number;
+              unitPrice: unknown;
+              optionsPrice: unknown;
+            }) => ({
+              name: it.itemName ?? "",
+              optionsText: it.optionsText || "",
+              qty: it.quantity,
+              price: Number(it.unitPrice) + Number(it.optionsPrice),
+              total:
+                (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity,
+            }))
+          : null,
+        subtotal: totalAmount,
         discount: 0,
-        paymentMethod: data.paymentMethod === "CASH" ? "เงินสด" : data.paymentMethod === "PROMPTPAY" ? "โอนเงิน (QR)" : data.paymentMethod,
+        paymentMethod:
+          data.paymentMethod === "CASH"
+            ? "เงินสด"
+            : data.paymentMethod === "PROMPTPAY"
+              ? "โอนเงิน (QR)"
+              : data.paymentMethod,
+        totalAmount,
         brandName: data.brandName ?? "",
         branchName: data.branchName ?? "",
         branchAddress: data.branchAddress ?? "",
       });
-      window.location.href = "/staff/orders";
-    } catch {
-      saveStaffOrderFeedback({
-        kind: "error",
-        message: "บันทึกไม่สำเร็จ กรุณาลองใหม่",
+
+      const skewerCount = (item.optionGroups ?? [])
+        .filter((g) => g.mode === "FROM_MENU")
+        .reduce((sum, g) => sum + (selectedByGroup[g.id]?.length ?? 0), 0);
+      const pieceCount =
+        skewerCount > 0 ? skewerCount * quantity : quantity;
+
+      setSuccessInfo({
+        queueNumber,
+        orderNumber,
+        itemCount: pieceCount,
+        totalAmount,
       });
+    } catch {
       fail("บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setSubmitting(false);
@@ -484,6 +538,17 @@ export default function StaffPromoKeyOrderDetailPage() {
         open={Boolean(alertMessage)}
         message={alertMessage ?? ""}
         onClose={() => setAlertMessage(null)}
+      />
+
+      <StaffKeyOrderSuccessModal
+        open={Boolean(successInfo)}
+        queueNumber={successInfo?.queueNumber ?? null}
+        orderNumber={successInfo?.orderNumber ?? null}
+        itemCount={successInfo?.itemCount ?? 0}
+        totalAmount={successInfo?.totalAmount ?? 0}
+        onBack={() => {
+          window.location.href = "/staff";
+        }}
       />
     </StaffKeyOrderLayout>
   );

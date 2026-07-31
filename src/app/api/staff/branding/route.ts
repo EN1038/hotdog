@@ -5,6 +5,11 @@ import { handleApiError, jsonOk } from "@/lib/api";
 import { getCalendarDayState } from "@/lib/operating-day";
 import { getActiveShift, serializeShift, shiftCalendarDateKey } from "@/lib/branch-shift";
 import { isBranchStockActive } from "@/lib/stock";
+import { queueBusinessDateFromKey } from "@/lib/constants";
+import {
+  isOrderCountableRevenue,
+  orderGrandTotal,
+} from "@/lib/order-totals";
 
 /** GET — ธีมแบรนด์ + สถานะรอบทำงาน + badge สำหรับ shell */
 export async function GET() {
@@ -39,6 +44,44 @@ export async function GET() {
     const canSell = Boolean(activeShift);
     const brandStockEnabled = Boolean(branch?.brand?.stockEnabled);
     const stockEnabled = Boolean(branch?.stockEnabled);
+    const operatingDay = activeShift
+      ? shiftCalendarDateKey(activeShift)
+      : day.operatingDay;
+    const businessDate = queueBusinessDateFromKey(operatingDay);
+
+    const todayOrders = await prisma.order.findMany({
+      where: {
+        branchId: session.branchId,
+        queueBusinessDate: businessDate,
+      },
+      select: {
+        status: true,
+        awaitingPhotoKey: true,
+        deliveryFee: true,
+        discountAmount: true,
+        items: {
+          select: {
+            quantity: true,
+            unitPrice: true,
+            optionsPrice: true,
+          },
+        },
+      },
+    });
+
+    let todayRevenueBaht = 0;
+    for (const o of todayOrders) {
+      if (!isOrderCountableRevenue(o)) continue;
+      todayRevenueBaht += orderGrandTotal(
+        o.items.map((i) => ({
+          quantity: i.quantity,
+          unitPrice: Number(i.unitPrice),
+          optionsPrice: Number(i.optionsPrice),
+        })),
+        Number(o.deliveryFee),
+        Number(o.discountAmount),
+      );
+    }
 
     return jsonOk({
       branchId: session.branchId,
@@ -54,7 +97,7 @@ export async function GET() {
           null,
       },
       autoAcceptOrders: session.autoAcceptOrders ?? false,
-      operatingDay: activeShift ? shiftCalendarDateKey(activeShift) : day.operatingDay,
+      operatingDay,
       canToggleStore:
         session.staffRoles.includes("SELLER") ||
         session.staffRoles.includes("BOTH"),
@@ -73,6 +116,7 @@ export async function GET() {
       }),
       pendingOrderCount,
       pendingStockCount,
+      todayRevenueBaht,
     });
   } catch (error) {
     return handleApiError(error);

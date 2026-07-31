@@ -26,7 +26,8 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { orderGrandTotal } from "@/lib/order-totals";
-import { deductStockForOrder, StockError } from "@/lib/stock";
+import { deductStockForOrder, deductBranchMenuStockForOrder, StockError } from "@/lib/stock";
+import { isMenuItemSoldOut, isPromoMenuItem } from "@/lib/staff-key-order";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -105,6 +106,8 @@ export async function PUT(request: Request, { params }: Params) {
         id: { in: requestedIds },
       },
       include: {
+        stock: true,
+        category: { select: { stockExempt: true } },
         optionGroupLinks: {
           include: {
             group: { include: optionGroupDetailInclude },
@@ -121,8 +124,24 @@ export async function PUT(request: Request, { params }: Params) {
       if (!isChannelSellEnabled(menu, channel)) {
         return jsonError(`“${menu.name}” ไม่จำหน่ายในช่องทางที่เลือก`);
       }
-      if (menu.isOutOfStock) {
+      const menuLike = {
+        isOutOfStock: menu.isOutOfStock,
+        stockQuantity: menu.stock?.quantity ?? null,
+        optionGroups: menu.optionGroupLinks.map((l) => ({ mode: l.group.mode })),
+        category: menu.category,
+      };
+      if (isMenuItemSoldOut(menuLike)) {
         return jsonError(`“${menu.name}” หมดชั่วคราว`);
+      }
+      if (
+        !isPromoMenuItem(menuLike) &&
+        !menu.category?.stockExempt &&
+        menu.stock?.quantity != null &&
+        item.quantity > menu.stock.quantity
+      ) {
+        return jsonError(
+          `“${menu.name}” สต๊อกไม่พอ (เหลือ ${menu.stock.quantity})`,
+        );
       }
     }
 
@@ -250,6 +269,17 @@ export async function PUT(request: Request, { params }: Params) {
     if (nextStatus === OrderStatus.PREPARING) {
       try {
         await deductStockForOrder(updated.id);
+        await deductBranchMenuStockForOrder({
+          orderId: updated.id,
+          orderNumber: updated.orderNumber,
+          branchId: session.branchId,
+          staffId: session.staffId,
+          lines: body.items.map((i) => ({
+            branchMenuItemId: i.branchMenuItemId,
+            quantity: i.quantity,
+            optionIds: i.optionIds,
+          })),
+        });
       } catch (e) {
         if (e instanceof StockError) {
           return jsonError(e.message, e.status);

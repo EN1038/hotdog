@@ -658,7 +658,7 @@ export default function StaffPage() {
       <header className="mb-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold text-gray-900">รับออเดอร์</h1>
+            <h1 className="text-lg font-bold text-gray-900">ประวัติออเดอร์</h1>
             <p className="truncate text-sm text-gray-600">
               พนักงาน: {formatStaffRoles(roles)}
             </p>

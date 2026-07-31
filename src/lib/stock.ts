@@ -172,7 +172,7 @@ async function readQty(
   return bal.quantity;
 }
 
-async function changeBalance(
+export async function changeBalance(
   tx: Tx,
   input: {
     stockLocationId: string;
@@ -241,7 +241,7 @@ export async function syncMenuOutOfStockForBranchProduct(
   });
 }
 
-async function syncAfterBranchQtyChange(
+export async function syncAfterBranchQtyChange(
   tx: Tx,
   location: { id: string; type: StockLocationType; branchId: string | null },
   brandProductId: string,
@@ -370,6 +370,7 @@ export async function transferWarehouseToBranch(input: {
   quantity: number;
   note?: string | null;
   adminId?: string | null;
+  sourceLocationId?: string | null;
 }) {
   if (input.quantity <= 0) throw new StockError("จำนวนต้องมากกว่า 0");
 
@@ -392,7 +393,16 @@ export async function transferWarehouseToBranch(input: {
     });
     if (!product) throw new StockError("ไม่พบสินค้า", 404);
 
-    const warehouse = await ensureWarehouseLocation(input.brandId, tx);
+    let warehouse;
+    if (input.sourceLocationId) {
+      warehouse = await tx.stockLocation.findFirst({
+        where: { id: input.sourceLocationId, brandId: input.brandId, type: StockLocationType.WAREHOUSE },
+      });
+    }
+    if (!warehouse) {
+      warehouse = await ensureWarehouseLocation(input.brandId, tx);
+    }
+
     await ensureBranchStockLocation(
       {
         brandId: input.brandId,
@@ -448,6 +458,8 @@ export async function confirmStockTransfer(input: {
   transferId: string;
   branchId: string;
   staffId: string;
+  receivedQuantity?: number | null;
+  varianceNote?: string | null;
 }) {
   return prisma.$transaction(async (tx) => {
     const transfer = await tx.stockTransfer.findFirst({
@@ -471,6 +483,12 @@ export async function confirmStockTransfer(input: {
     ) {
       throw new StockError("สาขานี้ยังไม่ได้เปิดระบบสต๊อก");
     }
+
+    const actualReceived =
+      typeof input.receivedQuantity === "number" && input.receivedQuantity >= 0
+        ? input.receivedQuantity
+        : transfer.quantity;
+    const varianceQty = actualReceived - transfer.quantity;
 
     const branchLoc = await ensureBranchStockLocation(
       {
@@ -507,7 +525,7 @@ export async function confirmStockTransfer(input: {
     const { beforeQty, afterQty } = await changeBalance(tx, {
       stockLocationId: branchLoc.id,
       brandProductId: transfer.brandProductId,
-      delta: transfer.quantity,
+      delta: actualReceived,
     });
     await syncAfterBranchQtyChange(
       tx,
@@ -516,18 +534,25 @@ export async function confirmStockTransfer(input: {
       afterQty,
     );
 
+    let finalNote = receiveNote;
+    if (varianceQty !== 0) {
+      finalNote += ` (นับรับจริง ${actualReceived}/${transfer.quantity} ผลต่าง ${
+        varianceQty > 0 ? `+${varianceQty}` : varianceQty
+      }${input.varianceNote ? `: ${input.varianceNote}` : ""})`;
+    }
+
     await tx.stockMovement.create({
       data: {
         brandId: transfer.brandId,
         brandProductId: transfer.brandProductId,
         type: StockMovementType.TRANSFER,
-        quantity: transfer.quantity,
+        quantity: actualReceived,
         beforeQty,
         afterQty,
         stockLocationId: branchLoc.id,
         fromLocationId,
         toLocationId: branchLoc.id,
-        note: receiveNote,
+        note: finalNote,
         referenceType: "STOCK_TRANSFER",
         referenceId: transfer.id,
         lotNumber: transfer.lotNumber,
@@ -542,6 +567,9 @@ export async function confirmStockTransfer(input: {
         status: "RECEIVED",
         receivedAt: new Date(),
         receivedByStaffId: input.staffId,
+        receivedQuantity: actualReceived,
+        varianceQuantity: varianceQty,
+        varianceNote: input.varianceNote || null,
       },
       include: { product: true },
     });
@@ -1057,6 +1085,339 @@ export async function restoreStockForOrder(orderId: string, tx?: Tx) {
     });
   };
 
+  if (tx) {
+    await run(tx);
+    await restoreBranchMenuStockForOrder(orderId, tx);
+    return;
+  }
+  await prisma.$transaction(async (client) => {
+    await run(client);
+    await restoreBranchMenuStockForOrder(orderId, client);
+  });
+}
+
+const BRANCH_MENU_ORDER_NOTE_PREFIX = "ORDER:";
+
+function branchMenuOrderNote(orderId: string, orderNumber: string) {
+  return `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}|${orderNumber}`;
+}
+
+/** Parse `ORDER:{orderId}|{orderNumber}` from BranchMenuItemStockHistory.note */
+export function parseBranchMenuOrderNote(
+  note: string | null | undefined,
+): { orderId: string; orderNumber: string } | null {
+  if (!note || !note.startsWith(BRANCH_MENU_ORDER_NOTE_PREFIX)) return null;
+  const rest = note.slice(BRANCH_MENU_ORDER_NOTE_PREFIX.length);
+  const pipe = rest.indexOf("|");
+  if (pipe < 0) {
+    const orderId = rest.trim();
+    return orderId ? { orderId, orderNumber: "" } : null;
+  }
+  const orderId = rest.slice(0, pipe).trim();
+  if (!orderId) return null;
+  return { orderId, orderNumber: rest.slice(pipe + 1).trim() };
+}
+
+export type BranchMenuStockSaleAgg = {
+  menuItemId: string;
+  name: string;
+  /** Positive units deducted */
+  quantity: number;
+  orders: Array<{ id: string; orderNumber: string }>;
+};
+
+/**
+ * Aggregate SALE histories for the given orders (still stock-deducted sales).
+ * quantity on history rows is negative for SALE.
+ */
+export async function aggregateBranchMenuStockSalesByOrders(
+  branchId: string,
+  orders: Array<{ id: string; orderNumber: string }>,
+): Promise<BranchMenuStockSaleAgg[]> {
+  if (orders.length === 0) return [];
+
+  const orderById = new Map(orders.map((o) => [o.id, o]));
+  const orFilters = orders.map((o) => ({
+    note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${o.id}` },
+  }));
+
+  const histories: Array<{
+    menuItemId: string;
+    quantity: number;
+    note: string | null;
+    menuItem: { id: string; name: string };
+  }> = [];
+
+  const chunkSize = 40;
+  for (let i = 0; i < orFilters.length; i += chunkSize) {
+    const chunk = orFilters.slice(i, i + chunkSize);
+    const rows = await prisma.branchMenuItemStockHistory.findMany({
+      where: {
+        branchId,
+        type: "SALE",
+        OR: chunk,
+      },
+      select: {
+        menuItemId: true,
+        quantity: true,
+        note: true,
+        menuItem: { select: { id: true, name: true } },
+      },
+    });
+    histories.push(...rows);
+  }
+
+  type Acc = {
+    menuItemId: string;
+    name: string;
+    quantity: number;
+    orderMap: Map<string, string>;
+  };
+  const byMenu = new Map<string, Acc>();
+
+  for (const h of histories) {
+    const parsed = parseBranchMenuOrderNote(h.note);
+    if (!parsed || !orderById.has(parsed.orderId)) continue;
+    const order = orderById.get(parsed.orderId)!;
+    const deducted = Math.abs(h.quantity);
+    if (deducted <= 0) continue;
+
+    let acc = byMenu.get(h.menuItemId);
+    if (!acc) {
+      acc = {
+        menuItemId: h.menuItemId,
+        name: h.menuItem.name,
+        quantity: 0,
+        orderMap: new Map(),
+      };
+      byMenu.set(h.menuItemId, acc);
+    }
+    acc.quantity += deducted;
+    acc.orderMap.set(order.id, order.orderNumber);
+  }
+
+  return [...byMenu.values()]
+    .map((a) => ({
+      menuItemId: a.menuItemId,
+      name: a.name,
+      quantity: a.quantity,
+      orders: [...a.orderMap.entries()]
+        .map(([id, orderNumber]) => ({ id, orderNumber }))
+        .sort((x, y) => x.orderNumber.localeCompare(y.orderNumber, "th")),
+    }))
+    .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name, "th"));
+}
+
+/**
+ * Deduct BranchMenuItemStock for staff/customer orders.
+ * Prefers FROM_MENU option picks (promo skewers); otherwise deducts the line item itself.
+ */
+export async function deductBranchMenuStockForOrder(input: {
+  orderId: string;
+  orderNumber: string;
+  branchId: string;
+  staffId?: string | null;
+  lines: Array<{
+    branchMenuItemId: string;
+    quantity: number;
+    optionIds?: string[];
+  }>;
+  tx?: Tx;
+}) {
+  const run = async (client: Tx) => {
+    const already = await client.branchMenuItemStockHistory.findFirst({
+      where: {
+        branchId: input.branchId,
+        type: "SALE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${input.orderId}` },
+      },
+      select: { id: true },
+    });
+    if (already) return;
+
+    const menuIds = [...new Set(input.lines.map((l) => l.branchMenuItemId))];
+    const menus = await client.branchMenuItem.findMany({
+      where: { id: { in: menuIds }, branchId: input.branchId },
+      include: {
+        optionGroupLinks: {
+          include: {
+            group: {
+              select: {
+                id: true,
+                mode: true,
+                menuItemSources: {
+                  where: { isEnabled: true },
+                  select: { menuItemId: true },
+                },
+              },
+            },
+          },
+        },
+        category: { select: { stockExempt: true } },
+        stock: true,
+      },
+    });
+    const menuMap = new Map(menus.map((m) => [m.id, m]));
+
+    const needs = new Map<string, { qty: number; name: string }>();
+
+    for (const line of input.lines) {
+      if (line.quantity <= 0) continue;
+      const menu = menuMap.get(line.branchMenuItemId);
+      if (!menu) continue;
+
+      const fromMenuGroups = menu.optionGroupLinks
+        .filter((l) => l.group.mode === "FROM_MENU")
+        .map((l) => l.group);
+      const fromMenuOptionIds = new Set(
+        fromMenuGroups.flatMap((g) =>
+          g.menuItemSources.map((s) => s.menuItemId),
+        ),
+      );
+
+      if (fromMenuOptionIds.size > 0 && (line.optionIds?.length ?? 0) > 0) {
+        // Promo pack: deduct selected skewers only (ignore MANUAL option ids)
+        const counts = new Map<string, number>();
+        for (const optId of line.optionIds ?? []) {
+          if (!fromMenuOptionIds.has(optId)) continue;
+          counts.set(optId, (counts.get(optId) ?? 0) + 1);
+        }
+        for (const [optMenuId, perPack] of counts) {
+          const total = perPack * line.quantity;
+          const prev = needs.get(optMenuId);
+          needs.set(optMenuId, {
+            qty: (prev?.qty ?? 0) + total,
+            name: prev?.name ?? optMenuId,
+          });
+        }
+      } else if (menu.category?.stockExempt) {
+        // Category exempt from stock — skip pack/line deduction
+        continue;
+      } else {
+        const prev = needs.get(menu.id);
+        needs.set(menu.id, {
+          qty: (prev?.qty ?? 0) + line.quantity,
+          name: menu.name,
+        });
+      }
+    }
+
+    if (needs.size === 0) return;
+
+    // Resolve names for option picks
+    const needIds = [...needs.keys()];
+    const named = await client.branchMenuItem.findMany({
+      where: { id: { in: needIds }, branchId: input.branchId },
+      include: { stock: true },
+    });
+    const namedMap = new Map(named.map((m) => [m.id, m]));
+
+    for (const [menuItemId, need] of needs) {
+      const item = namedMap.get(menuItemId);
+      if (!item) {
+        throw new StockError(`ไม่พบเมนูสำหรับตัดสต๊อก`, 400);
+      }
+      need.name = item.name;
+      const have = item.stock?.quantity ?? 0;
+      if (have < need.qty) {
+        throw new StockError(
+          `สต๊อกไม่พอ: ${item.name} (เหลือ ${have} ต้องการ ${need.qty})`,
+        );
+      }
+    }
+
+    const note = branchMenuOrderNote(input.orderId, input.orderNumber);
+
+    for (const [menuItemId, need] of needs) {
+      const item = namedMap.get(menuItemId)!;
+      const oldQty = item.stock?.quantity ?? 0;
+      const newQty = oldQty - need.qty;
+
+      await client.branchMenuItemStock.upsert({
+        where: { menuItemId },
+        update: { quantity: newQty },
+        create: {
+          branchId: input.branchId,
+          menuItemId,
+          quantity: newQty,
+        },
+      });
+
+      await client.branchMenuItem.update({
+        where: { id: menuItemId },
+        data: { isOutOfStock: newQty <= 0 },
+      });
+
+      await client.branchMenuItemStockHistory.create({
+        data: {
+          branchId: input.branchId,
+          menuItemId,
+          quantity: -need.qty,
+          type: "SALE",
+          note,
+          createdByStaffId: input.staffId ?? null,
+        },
+      });
+    }
+
+    await client.order.update({
+      where: { id: input.orderId },
+      data: { stockDeducted: true },
+    });
+  };
+
+  if (input.tx) return run(input.tx);
+  return prisma.$transaction(run);
+}
+
+export async function restoreBranchMenuStockForOrder(
+  orderId: string,
+  tx?: Tx,
+) {
+  const run = async (client: Tx) => {
+    const histories = await client.branchMenuItemStockHistory.findMany({
+      where: {
+        type: "SALE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
+      },
+    });
+    if (histories.length === 0) return;
+
+    for (const h of histories) {
+      const stock = await client.branchMenuItemStock.findUnique({
+        where: { menuItemId: h.menuItemId },
+      });
+      const oldQty = stock?.quantity ?? 0;
+      const newQty = oldQty - h.quantity; // h.quantity is negative for SALE
+
+      await client.branchMenuItemStock.upsert({
+        where: { menuItemId: h.menuItemId },
+        update: { quantity: newQty },
+        create: {
+          branchId: h.branchId,
+          menuItemId: h.menuItemId,
+          quantity: newQty,
+        },
+      });
+
+      await client.branchMenuItem.update({
+        where: { id: h.menuItemId },
+        data: { isOutOfStock: newQty <= 0 },
+      });
+
+      await client.branchMenuItemStockHistory.create({
+        data: {
+          branchId: h.branchId,
+          menuItemId: h.menuItemId,
+          quantity: -h.quantity,
+          type: "ADJUST",
+          note: `คืนสต๊อกจากยกเลิกออเดอร์ ${orderId}`,
+          createdByStaffId: null,
+        },
+      });
+    }
+  };
+
   if (tx) return run(tx);
   return prisma.$transaction(run);
 }
@@ -1072,6 +1433,24 @@ export async function maybeDeductOnAccept(input: {
     input.nextStatus === OrderStatus.PREPARING
   ) {
     await deductStockForOrder(input.orderId);
+    const order = await prisma.order.findUnique({
+      where: { id: input.orderId },
+      include: { items: true },
+    });
+    if (order) {
+      await deductBranchMenuStockForOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        branchId: order.branchId,
+        lines: order.items
+          .filter((i) => i.branchMenuItemId)
+          .map((i) => ({
+            branchMenuItemId: i.branchMenuItemId!,
+            quantity: i.quantity + (i.giftQuantity ?? 0),
+            optionIds: [],
+          })),
+      });
+    }
   }
 }
 

@@ -12,6 +12,7 @@ import {
   IconReceipt,
   IconStore,
   IconUser,
+  IconPackage,
 } from "@/components/icons";
 import { getBrandProfileGaps } from "@/lib/brand-profile";
 
@@ -82,6 +83,15 @@ const NAV_GROUPS: NavGroup[] = [
         match: (pathname) => pathname === "/admin/brands",
         brandAdminOnly: true,
         icon: IconStore,
+      },
+      {
+        href: "/admin/stock",
+        label: "สต๊อกบ้านกลาง",
+        brandAdminOnly: true,
+        match: (pathname) =>
+          pathname === "/admin/stock" ||
+          /^\/admin\/brands\/[^/]+\/stock(\/.*)?$/.test(pathname),
+        icon: IconPackage,
       },
       {
         href: "/admin/team",

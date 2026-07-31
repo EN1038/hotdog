@@ -11,8 +11,12 @@ import {
   IconReceipt,
   IconStore,
 } from "@/components/icons";
+import { useToast } from "@/components/admin/Toast";
+import { StaffShiftControls, type ActiveShiftInfo } from "@/components/staff/StaffShiftControls";
+import { StaffOrderModeProvider } from "@/components/staff/StaffOrderModeContext";
+import { formatPrice } from "@/lib/constants";
 
-export type StaffShellTab = "home" | "key" | "orders" | "stock" | "settings";
+export type StaffShellTab = "home" | "key" | "orders" | "stock" | "shift-stock" | "settings";
 
 type BrandingPayload = {
   branchName?: string;
@@ -24,12 +28,14 @@ type BrandingPayload = {
     color?: string | null;
   };
   isOpen?: boolean;
+  canToggleStore?: boolean;
   stockEnabled?: boolean;
   brandStockEnabled?: boolean;
   pendingOrderCount?: number;
   pendingStockCount?: number;
   canSell?: boolean;
-  activeShift?: { roundNumber?: number } | null;
+  activeShift?: ActiveShiftInfo | null;
+  todayRevenueBaht?: number;
 };
 
 function IconKeyOrder({ size = 22 }: { size?: number }) {
@@ -92,22 +98,47 @@ export function StaffAppShell({
   active: StaffShellTab;
   showHeader?: boolean;
 }) {
+  return (
+    <StaffOrderModeProvider>
+      <StaffAppShellInner active={active} showHeader={showHeader}>
+        {children}
+      </StaffAppShellInner>
+    </StaffOrderModeProvider>
+  );
+}
+
+function StaffAppShellInner({
+  children,
+  active,
+  showHeader = true,
+}: {
+  children: ReactNode;
+  active: StaffShellTab;
+  showHeader?: boolean;
+}) {
   const pathname = usePathname();
   const branding = useSiteBranding();
+  const toast = useToast();
   const [meta, setMeta] = useState<BrandingPayload | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const reloadMeta = () => {
     fetch("/api/staff/branding")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: BrandingPayload | null) => {
-        if (!cancelled && data) setMeta(data);
+        if (data) setMeta(data);
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+  };
+
+  useEffect(() => {
+    reloadMeta();
   }, [pathname]);
+
+  useEffect(() => {
+    const onReload = () => reloadMeta();
+    window.addEventListener("staff-branding-reload", onReload);
+    return () => window.removeEventListener("staff-branding-reload", onReload);
+  }, []);
 
   const brandName =
     meta?.brand?.nameTh ||
@@ -151,7 +182,7 @@ export function StaffAppShell({
       {
         id: "orders" as const,
         href: "/staff/orders",
-        label: "รับออเดอร์",
+        label: "ประวัติออเดอร์",
         icon: <IconBasket size={26} />,
         badge: pendingOrders,
         center: true,
@@ -165,13 +196,33 @@ export function StaffAppShell({
         hide: !stockOn,
       },
       {
+        id: "shift-stock" as const,
+        href: "/staff/shift-stock",
+        label: "นับรอบกะ",
+        icon: (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ),
+        hide: !stockOn,
+      },
+      {
         id: "settings" as const,
         href: "/staff/settings",
         label: "ตั้งค่า",
         icon: <IconGear size={22} />,
       },
     ] as const
-  ).filter((t) => !("hide" in t && t.hide)) as {
+  ).filter((t) => {
+    if ("hide" in t && t.hide) return false;
+    return ["home", "key", "orders", "stock"].includes(t.id);
+  }) as {
     id: StaffShellTab;
     href: string;
     label: string;
@@ -198,7 +249,7 @@ export function StaffAppShell({
           {/* Overlay gradient to keep text readable */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/60 to-black/85 backdrop-blur-[2px]" />
 
-          <div className="relative z-10 mx-auto max-w-lg px-4 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))]">
+          <div className="relative z-[60] mx-auto max-w-lg px-4 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))]">
             <div className="flex items-center gap-3.5">
               <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-white/20 ring-2 ring-white/40 shadow-md">
                 {logoUrl ? (
@@ -222,43 +273,49 @@ export function StaffAppShell({
                   {branchName ? `สาขา ${branchName.replace(/^สาขา\s*/, "")}` : "—"}
                 </p>
               </div>
-              <Link
-                href="/staff/orders"
-                className="relative flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white shadow-sm transition hover:bg-white/30"
-                aria-label="การแจ้งเตือนออเดอร์"
-              >
-                <IconReceipt size={22} />
-                {pendingOrders > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold shadow">
-                    {pendingOrders > 99 ? "99+" : pendingOrders}
+              <div className="flex shrink-0 items-center gap-2">
+                <div
+                  className="flex h-11 max-w-[9.5rem] flex-col items-center justify-center rounded-full bg-emerald-500 px-3 py-1 text-center text-white shadow-sm"
+                  title="ยอดขายวันนี้ (ออเดอร์ที่สำเร็จแล้ว)"
+                >
+                  <span className="text-[9px] font-semibold leading-none text-white/90">
+                    ยอดขายวันนี้
                   </span>
-                ) : null}
-              </Link>
-            </div>
-
-            <div className="mt-3.5">
-              <div className="flex items-center justify-between gap-2 rounded-xl bg-white/95 px-3.5 py-2 text-slate-800 shadow-sm backdrop-blur-sm">
-                <p className="text-xs font-semibold">
-                  <span
-                    className={
-                      isOpen && canSell ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"
-                    }
-                  >
-                    {isOpen && canSell
-                      ? "● เปิดรับออเดอร์"
-                      : isOpen
-                        ? "● เปิดร้าน — ยังไม่เปิดรอบ"
-                        : "● ปิดร้านชั่วคราว"}
+                  <span className="mt-0.5 truncate text-[12px] font-extrabold leading-tight tabular-nums">
+                    {formatPrice(meta?.todayRevenueBaht ?? 0)}฿
                   </span>
-                </p>
+                </div>
                 <Link
                   href="/staff/settings"
-                  className="text-xs font-bold text-slate-600 hover:text-slate-900"
+                  className="relative flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white shadow-sm transition hover:bg-white/30"
+                  aria-label="ตั้งค่า"
                 >
-                  จัดการ
+                  <IconGear size={22} />
                 </Link>
               </div>
             </div>
+
+            {meta?.activeShift || active !== "home" ? (
+              <div className="mt-3.5">
+                <StaffShiftControls
+                  canToggleStore={Boolean(meta?.canToggleStore)}
+                  canSell={Boolean(meta?.canSell)}
+                  activeShift={meta?.activeShift ?? null}
+                  hideClosedButton={active === "home"}
+                  onOpened={() => {
+                    toast.success("เปิดรอบแล้ว", "พร้อมรับออเดอร์");
+                    reloadMeta();
+                    window.dispatchEvent(new Event("staff-branding-reload"));
+                  }}
+                  onClosed={(msg) => {
+                    toast.success("ปิดรอบแล้ว", msg);
+                    reloadMeta();
+                    window.dispatchEvent(new Event("staff-branding-reload"));
+                  }}
+                  onError={(title, detail) => toast.error(title, detail)}
+                />
+              </div>
+            ) : null}
           </div>
         </header>
       ) : null}

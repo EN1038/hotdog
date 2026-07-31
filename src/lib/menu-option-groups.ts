@@ -14,6 +14,7 @@ export const optionGroupDetailInclude = {
           isHidden: true,
           isOutOfStock: true,
           category: { select: { id: true, name: true, sortOrder: true } },
+          stock: true,
         },
       },
     },
@@ -71,6 +72,7 @@ type GroupWithSources = {
       isHidden: boolean;
       isOutOfStock: boolean;
       category: { id: string; name: string; sortOrder: number } | null;
+      stock: { quantity: number } | null;
     } | null;
   }>;
 };
@@ -84,6 +86,7 @@ type ExpandedMenuSourceOption = {
   categoryId: string | null;
   categoryName: string | null;
   categorySortOrder: number;
+  stockQuantity: number | null;
 };
 
 type ExpandedManualOption = {
@@ -105,19 +108,24 @@ export function expandGroupOptions(group: GroupWithSources): ExpandedGroupOption
   if (group.mode === "FROM_MENU") {
     return group.menuItemSources
       .filter((s) => s.isEnabled && s.menuItem && !s.menuItem.isHidden)
-      .map((s) => ({
-        id: s.menuItemId,
-        name: s.menuItem!.name,
-        priceDelta:
-          typeof s.priceDelta === "object" && s.priceDelta != null && "toString" in s.priceDelta
-            ? s.priceDelta
-            : s.priceDelta,
-        isOutOfStock: s.menuItem!.isOutOfStock,
-        imageUrl: s.menuItem!.imageUrl,
-        categoryId: s.menuItem!.category?.id ?? null,
-        categoryName: s.menuItem!.category?.name ?? "อื่นๆ",
-        categorySortOrder: s.menuItem!.category?.sortOrder ?? 999,
-      }));
+      .map((s) => {
+        const stockQuantity = s.menuItem!.stock?.quantity ?? null;
+        return {
+          id: s.menuItemId,
+          name: s.menuItem!.name,
+          priceDelta:
+            typeof s.priceDelta === "object" && s.priceDelta != null && "toString" in s.priceDelta
+              ? s.priceDelta
+              : s.priceDelta,
+          isOutOfStock:
+            stockQuantity != null ? stockQuantity <= 0 : s.menuItem!.isOutOfStock,
+          imageUrl: s.menuItem!.imageUrl,
+          categoryId: s.menuItem!.category?.id ?? null,
+          categoryName: s.menuItem!.category?.name ?? "อื่นๆ",
+          categorySortOrder: s.menuItem!.category?.sortOrder ?? 999,
+          stockQuantity,
+        };
+      });
   }
   return group.options.map((o) => ({
     id: o.id,
@@ -157,6 +165,7 @@ export function serializeOptionGroup(group: GroupWithSources) {
           categoryId: o.categoryId ?? null,
           categoryName: o.categoryName ?? null,
           categorySortOrder: o.categorySortOrder,
+          stockQuantity: o.stockQuantity,
         };
       }
       return base;

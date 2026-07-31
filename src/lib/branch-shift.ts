@@ -9,6 +9,7 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import { aggregateBranchMenuStockSalesByOrders } from "@/lib/stock";
 
 export type ActiveShift = Pick<
   BranchShift,
@@ -28,6 +29,13 @@ export type ShiftSummaryMenuRow = {
   name: string;
   quantity: number;
   revenueBaht: number;
+};
+
+export type ShiftStockDeductionRow = {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  orders: Array<{ id: string; orderNumber: string }>;
 };
 
 export type ShiftSummary = {
@@ -58,6 +66,8 @@ export type ShiftSummary = {
   totalWithOpeningCash: number;
   giftQuantity: number;
   menus: ShiftSummaryMenuRow[];
+  /** Branch menu stock cut by sales in this shift */
+  stockDeductions: ShiftStockDeductionRow[];
 };
 
 const activeShiftSelect = {
@@ -475,6 +485,7 @@ export function computeShiftSummaryFromOrders(
     totalWithOpeningCash: openingCash + revenueBaht,
     giftQuantity,
     menus,
+    stockDeductions: [],
   };
 }
 
@@ -490,11 +501,14 @@ export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> 
   const orders = await prisma.order.findMany({
     where: { shiftId },
     select: {
+      id: true,
+      orderNumber: true,
       status: true,
       awaitingPhotoKey: true,
       paymentMethod: true,
       deliveryFee: true,
       discountAmount: true,
+      stockDeducted: true,
       items: {
         select: {
           itemName: true,
@@ -507,7 +521,16 @@ export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> 
     },
   });
 
-  return computeShiftSummaryFromOrders(shift, orders);
+  const base = computeShiftSummaryFromOrders(shift, orders);
+  const deductedOrders = orders
+    .filter((o) => o.stockDeducted)
+    .map((o) => ({ id: o.id, orderNumber: o.orderNumber }));
+  const stockDeductions = await aggregateBranchMenuStockSalesByOrders(
+    shift.branchId,
+    deductedOrders,
+  );
+
+  return { ...base, stockDeductions };
 }
 
 export async function listShiftsForBranchDate(

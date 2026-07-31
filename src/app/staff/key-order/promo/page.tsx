@@ -12,7 +12,7 @@ import {
 import { formatPrice } from "@/lib/constants";
 import type { MenuItemData } from "@/lib/customer-types";
 import { resolveSellPrice } from "@/lib/menu-pricing";
-import { isPromoMenuItem } from "@/lib/staff-key-order";
+import { isPromoMenuItem, isMenuItemSoldOut, isStockExemptMenuItem } from "@/lib/staff-key-order";
 import { sortByThaiName } from "@/lib/thai-sort";
 
 export default function StaffPromoKeyOrderIndexPage() {
@@ -45,7 +45,7 @@ export default function StaffPromoKeyOrderIndexPage() {
       setLoading(false);
 
       const promos = sortByThaiName(
-        items.filter((item) => isPromoMenuItem(item) && !item.isOutOfStock),
+        items.filter((item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item)),
       );
       if (promos.length === 1) {
         router.replace(`/staff/key-order/promo/${promos[0]!.id}`);
@@ -59,7 +59,7 @@ export default function StaffPromoKeyOrderIndexPage() {
   const promoItems = useMemo(
     () =>
       sortByThaiName(
-        menuItems.filter((item) => isPromoMenuItem(item) && !item.isOutOfStock),
+        menuItems.filter((item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item)),
       ),
     [menuItems],
   );
@@ -125,6 +125,14 @@ export default function StaffPromoKeyOrderIndexPage() {
                               )?.maxSelect ?? ""
                             } ไม้`
                           : ""}
+                        {!isStockExemptMenuItem(item) ? (
+                          <>
+                            {" · "}
+                            <span className="font-bold text-gray-900">
+                              เหลือ {item.stockQuantity ?? 0}
+                            </span>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                     <span className="text-sm font-semibold text-site-primary">

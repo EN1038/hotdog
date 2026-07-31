@@ -14,6 +14,7 @@ export type MenuOptionData = {
   categoryId?: string | null;
   categoryName?: string | null;
   categorySortOrder?: number;
+  stockQuantity?: number | null;
 };
 
 export type MenuOptionGroupData = {
@@ -38,9 +39,16 @@ export type MenuItemData = {
   sellPickup?: boolean;
   sellStorefront?: boolean;
   description: string | null;
-  category: { id: string; name: string; sortOrder: number } | null;
+  category: {
+    id: string;
+    name: string;
+    sortOrder: number;
+    /** Category exempt from stock qty gating (e.g. promo packs) */
+    stockExempt?: boolean;
+  } | null;
   imageUrl: string | null;
   isOutOfStock: boolean;
+  stockQuantity?: number | null;
   /** Top sellers from completed orders at this branch */
   isBestSeller?: boolean;
   optionGroups: MenuOptionGroupData[];

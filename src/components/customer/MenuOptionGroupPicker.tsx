@@ -218,8 +218,11 @@ export function MenuOptionGroupPicker({
         <ul className="w-full min-w-0 pb-1">
           {visibleOptions.map((opt, index) => {
             const qty = qtyMap[opt.id] ?? 0;
-            const disabled = opt.isOutOfStock;
-            const atMax = selectedCount >= group.maxSelect;
+            // MANUAL options: no stock qty — only manual isOutOfStock.
+            // FROM_MENU (skewers): gate by stock quantity (null/0 = sold out).
+            const sq = fromMenu ? (opt.stockQuantity ?? 0) : Number.POSITIVE_INFINITY;
+            const disabled = Boolean(opt.isOutOfStock) || (fromMenu && sq <= 0);
+            const atMax = selectedCount >= group.maxSelect || (fromMenu && qty >= sq);
             const showThumb = fromMenu || Boolean(opt.imageUrl);
             return (
               <li
@@ -244,14 +247,21 @@ export function MenuOptionGroupPicker({
                   <p className="truncate text-[15px] font-medium leading-snug text-gray-900">
                     {opt.name}
                   </p>
-                  {opt.isOutOfStock ? (
+                  {disabled ? (
                     <p className="mt-0.5 text-xs text-gray-400">หมดชั่วคราว</p>
                   ) : null}
-                  {Number(opt.priceDelta) > 0 && (
-                    <p className="mt-0.5 text-[14px] font-medium text-site-primary">
-                      +฿{formatPrice(opt.priceDelta)}
-                    </p>
-                  )}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
+                    {Number(opt.priceDelta) > 0 && (
+                      <span className="font-medium text-site-primary">
+                        +฿{formatPrice(opt.priceDelta)}
+                      </span>
+                    )}
+                    {fromMenu && (
+                      <span className="font-bold text-gray-900">
+                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ {opt.stockQuantity ?? 0}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button
@@ -341,16 +351,20 @@ export function MenuOptionGroupPicker({
       <ul className="w-full min-w-0 divide-y divide-gray-50 pb-1">
         {visibleOptions.map((opt, index) => {
           const active = selectedIds.includes(opt.id);
+          // MANUAL options: no stock qty — only manual isOutOfStock.
+          // FROM_MENU (skewers): gate by stock quantity (null/0 = sold out).
+          const sq = fromMenu ? (opt.stockQuantity ?? 0) : Number.POSITIVE_INFINITY;
+          const isSoldOut = Boolean(opt.isOutOfStock) || (fromMenu && sq <= 0);
           const atMax = !isSingle && !active && selectedCount >= group.maxSelect;
           const showThumb = fromMenu || Boolean(opt.imageUrl);
           return (
             <li key={opt.id} className="min-w-0">
               <button
                 type="button"
-                disabled={atMax || opt.isOutOfStock}
+                disabled={atMax || isSoldOut}
                 onClick={() => toggle(opt.id)}
                 className={`grid w-full min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 text-left transition-colors ${rowPad} ${
-                  atMax || opt.isOutOfStock
+                  atMax || isSoldOut
                     ? "cursor-not-allowed opacity-40"
                     : "active:bg-gray-50"
                 } ${active ? "bg-site-primary-soft/40" : ""}`}
@@ -375,11 +389,21 @@ export function MenuOptionGroupPicker({
                   >
                     {opt.name}
                   </span>
-                  {Number(opt.priceDelta) > 0 && (
-                    <span className="text-[15px] font-medium text-site-primary">
-                      +฿{formatPrice(opt.priceDelta)}
-                    </span>
-                  )}
+                  {isSoldOut ? (
+                    <p className="mt-0.5 text-xs text-gray-400">หมดชั่วคราว</p>
+                  ) : null}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
+                    {Number(opt.priceDelta) > 0 && (
+                      <span className="font-medium text-site-primary">
+                        +฿{formatPrice(opt.priceDelta)}
+                      </span>
+                    )}
+                    {fromMenu && (
+                      <span className="font-bold text-gray-900">
+                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ {opt.stockQuantity ?? 0}
+                      </span>
+                    )}
+                  </div>
                 </span>
                 <CheckIndicator
                   checked={active}

@@ -17,6 +17,7 @@ import {
 } from "@/components/staff/StaffQuickFulfillment";
 import {
   StaffKeyOrderAlertModal,
+  StaffKeyOrderSuccessModal,
   StaffOrderSummary,
   StaffOrderStickySummary,
   scrollToStaffAnchor,
@@ -33,18 +34,23 @@ import {
 } from "@/lib/menu-pricing";
 import {
   collectSharedOptionGroups,
+  isMenuItemSoldOut,
   isRegularMenuItem,
   optionIdsForMenuItem,
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
+import { readStaffOrderMode } from "@/lib/staff-order-mode";
 import {
   computeSelectedOptions,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
 import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
-import { saveStaffOrderFeedback } from "@/lib/staff-order-feedback";
-import { autoPrintQueueTickets } from "@/lib/print-bridge";
+import {
+  autoPrintQueueTickets,
+  clampTicketCopies,
+  formatTicketDateLabel,
+} from "@/lib/print-bridge";
 
 type MenuPayload = {
   branchName?: string;
@@ -63,6 +69,12 @@ export default function StaffRegularKeyOrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{
+    queueNumber: number | null;
+    orderNumber: string | null;
+    itemCount: number;
+    totalAmount: number;
+  } | null>(null);
   const [branchName, setBranchName] = useState("");
   const [menuItems, setMenuItems] = useState<MenuItemData[]>([]);
   const [deliveryLocations, setDeliveryLocations] = useState<
@@ -239,7 +251,7 @@ export default function StaffRegularKeyOrderPage() {
     clearValidation();
 
     const lines = regularItems.filter(
-      (item) => (qtyByItemId[item.id] ?? 0) > 0 && !item.isOutOfStock,
+      (item) => (qtyByItemId[item.id] ?? 0) > 0 && !isMenuItemSoldOut(item),
     );
     if (lines.length === 0) {
       fail("กรุณาเลือกอย่างน้อย 1 เมนู", "staff-menu-section");
@@ -277,6 +289,7 @@ export default function StaffRegularKeyOrderPage() {
         salesChannel: fulfillment.salesChannel,
         note: fulfillment.note.trim() || undefined,
         items,
+        completeImmediately: readStaffOrderMode() === "instant",
       };
       if (fulfillment.fulfillmentType === "DELIVERY") {
         body.deliveryLocationId = fulfillment.deliveryLocationId;
@@ -297,59 +310,86 @@ export default function StaffRegularKeyOrderPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        saveStaffOrderFeedback({
-          kind: "error",
-          message: data.error ?? "บันทึกไม่สำเร็จ",
-        });
-        fail(data.error ?? "บันทึกไม่สำเร็จ");
+        const unavailable = Array.isArray(data.unavailableItems)
+          ? (data.unavailableItems as Array<{ name?: string; reason?: string }>)
+          : [];
+        const detail =
+          unavailable.length > 0
+            ? unavailable
+                .map((u) => `${u.name ?? "รายการ"}: ${u.reason ?? ""}`)
+                .join(" · ")
+            : null;
+        const message = detail || data.error || "บันทึกไม่สำเร็จ";
+        fail(message);
         return;
       }
-      const feedbackPayload = {
-        kind: "success" as const,
-        message: "บันทึกออเดอร์แล้ว",
-        orderId: typeof data.id === "string" ? data.id : undefined,
-        queueNumber:
-          typeof data.queueNumber === "number" ? data.queueNumber : null,
-        orderNumber:
-          typeof data.orderNumber === "string" ? data.orderNumber : null,
+
+      const queueNumber =
+        typeof data.queueNumber === "number" ? data.queueNumber : null;
+      const orderNumber =
+        typeof data.orderNumber === "string" ? data.orderNumber : null;
+      const totalAmount =
+        typeof data.totalAmount === "number" ? data.totalAmount : orderTotal;
+      const itemCount = selectedCount;
+
+      autoPrintQueueTickets({
+        queueNumber,
+        orderNumber,
         dateLabel:
-          typeof data.operatingDay === "string"
-            ? data.operatingDay
-            : typeof data.queueBusinessDate === "string"
-              ? data.queueBusinessDate
-              : null,
-        queueTicketCopies:
+          formatTicketDateLabel(
+            typeof data.operatingDay === "string"
+              ? data.operatingDay
+              : typeof data.queueBusinessDate === "string"
+                ? data.queueBusinessDate
+                : null,
+          ) || formatTicketDateLabel(new Date().toISOString()),
+        copies: clampTicketCopies(
           typeof data.queueTicketCopies === "number"
             ? data.queueTicketCopies
-            : null,
-        printTickets: true,
-        totalAmount:
-          typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
-        staffName: typeof data.customerName === "string" ? data.customerName : null,
-        orderType: data.fulfillmentType === "STOREFRONT" ? "ทานที่ร้าน" : data.fulfillmentType === "PICKUP" ? "รับกลับบ้าน" : data.fulfillmentType === "DELIVERY" ? "เดลิเวอรี" : null,
-        items: Array.isArray(data.items) ? data.items.map((it: any) => ({
-          name: it.itemName,
-          optionsText: it.optionsText || "",
-          qty: it.quantity,
-          price: Number(it.unitPrice) + Number(it.optionsPrice),
-          total: (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity
-        })) : null,
-        subtotal: typeof data.totalAmount === "number" ? data.totalAmount : orderTotal,
+            : 1,
+        ),
+        staffName:
+          typeof data.customerName === "string" ? data.customerName : null,
+        orderType:
+          data.fulfillmentType === "STOREFRONT"
+            ? "ทานที่ร้าน"
+            : data.fulfillmentType === "PICKUP"
+              ? "รับกลับบ้าน"
+              : data.fulfillmentType === "DELIVERY"
+                ? "เดลิเวอรี"
+                : null,
+        items: Array.isArray(data.items)
+          ? data.items.map((it: {
+              itemName?: string;
+              optionsText?: string | null;
+              quantity: number;
+              unitPrice: unknown;
+              optionsPrice: unknown;
+            }) => ({
+              name: it.itemName ?? "",
+              optionsText: it.optionsText || "",
+              qty: it.quantity,
+              price: Number(it.unitPrice) + Number(it.optionsPrice),
+              total:
+                (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity,
+            }))
+          : null,
+        subtotal: totalAmount,
         discount: Number(data.discountAmount) || 0,
-        paymentMethod: data.paymentMethod === "CASH" ? "เงินสด" : data.paymentMethod === "PROMPTPAY" ? "โอนเงิน (QR)" : data.paymentMethod,
+        paymentMethod:
+          data.paymentMethod === "CASH"
+            ? "เงินสด"
+            : data.paymentMethod === "PROMPTPAY"
+              ? "โอนเงิน (QR)"
+              : data.paymentMethod,
+        totalAmount,
         brandName: data.brandName ?? "",
         branchName: data.branchName ?? "",
         branchAddress: data.branchAddress ?? "",
-      };
-      
-      saveStaffOrderFeedback(feedbackPayload);
-      
-      window.location.href = "/staff/orders";
-    } catch {
-      saveStaffOrderFeedback({
-        kind: "error",
-        message: "บันทึกไม่สำเร็จ กรุณาลองใหม่",
       });
+
+      setSuccessInfo({ queueNumber, orderNumber, itemCount, totalAmount });
+    } catch {
       fail("บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setSubmitting(false);
@@ -459,7 +499,8 @@ export default function StaffRegularKeyOrderPage() {
                 {visibleItems.map((item, index) => {
                   const qty = qtyByItemId[item.id] ?? 0;
                   const price = resolveSellPrice(item, channel).final;
-                  const soldOut = item.isOutOfStock;
+                  const sq = item.stockQuantity ?? 0;
+                  const soldOut = isMenuItemSoldOut(item);
                   return (
                     <li
                       key={item.id}
@@ -489,9 +530,17 @@ export default function StaffRegularKeyOrderPage() {
                           {item.name}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {soldOut
-                            ? "หมดชั่วคราว"
-                            : `${item.category?.name ? `${item.category.name} · ` : ""}${formatPrice(price)}฿`}
+                          {soldOut ? (
+                            "หมดชั่วคราว"
+                          ) : (
+                            <>
+                              {item.category?.name ? `${item.category.name} · ` : ""}
+                              {formatPrice(price)}฿ ·{" "}
+                              <span className="font-bold text-gray-900">
+                                เหลือ {item.stockQuantity ?? 0}
+                              </span>
+                            </>
+                          )}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
@@ -510,7 +559,7 @@ export default function StaffRegularKeyOrderPage() {
                         <button
                           type="button"
                           aria-label="เพิ่ม"
-                          disabled={soldOut}
+                          disabled={soldOut || qty >= sq}
                           onClick={() => setQty(item.id, qty + 1)}
                           className="flex h-8 w-8 items-center justify-center rounded-lg bg-site-primary text-lg font-bold text-white disabled:opacity-40"
                         >
@@ -583,6 +632,17 @@ export default function StaffRegularKeyOrderPage() {
         open={Boolean(alertMessage)}
         message={alertMessage ?? ""}
         onClose={() => setAlertMessage(null)}
+      />
+
+      <StaffKeyOrderSuccessModal
+        open={Boolean(successInfo)}
+        queueNumber={successInfo?.queueNumber ?? null}
+        orderNumber={successInfo?.orderNumber ?? null}
+        itemCount={successInfo?.itemCount ?? 0}
+        totalAmount={successInfo?.totalAmount ?? 0}
+        onBack={() => {
+          window.location.href = "/staff";
+        }}
       />
     </StaffKeyOrderLayout>
   );

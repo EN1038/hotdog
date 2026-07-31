@@ -192,6 +192,95 @@ export function StaffKeyOrderAlertModal({
   );
 }
 
+/** Success after key-order — backdrop / outside tap does not dismiss. */
+export function StaffKeyOrderSuccessModal({
+  open,
+  queueNumber,
+  orderNumber,
+  itemCount,
+  totalAmount,
+  onBack,
+}: {
+  open: boolean;
+  queueNumber: number | null;
+  orderNumber?: string | null;
+  itemCount: number;
+  totalAmount: number;
+  onBack: () => void;
+}) {
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  const queueLabel =
+    queueNumber != null && Number.isFinite(queueNumber)
+      ? String(Math.trunc(queueNumber))
+      : "—";
+  const billLabel = orderNumber?.trim() || "—";
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/45 p-4 sm:items-center">
+      <div className="absolute inset-0" aria-hidden />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+      >
+        <p className="text-center text-sm font-semibold text-emerald-700">
+          สั่งสำเร็จ
+        </p>
+        <h2
+          id={titleId}
+          className="mt-3 text-center text-xs font-medium text-gray-500"
+        >
+          เลขคิว
+        </h2>
+        <p className="mt-1 text-center text-6xl font-black tracking-tight text-gray-900 tabular-nums">
+          {queueLabel}
+        </p>
+        <p className="mt-1.5 text-center text-xs text-gray-500">
+          เลขบิล{" "}
+          <span className="font-semibold text-gray-700 tabular-nums">
+            {billLabel}
+          </span>
+        </p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-gray-50 px-2 py-3 text-center">
+            <p className="text-xs text-gray-500">จำนวน</p>
+            <p className="mt-1 text-5xl font-black tracking-tight text-gray-900 tabular-nums sm:text-6xl">
+              {itemCount.toLocaleString("th-TH")}
+            </p>
+          </div>
+          <div className="rounded-xl bg-gray-50 px-2 py-3 text-center">
+            <p className="text-xs text-gray-500">ราคารวม</p>
+            <p className="mt-1 text-4xl font-black tracking-tight text-gray-900 tabular-nums sm:text-5xl">
+              {formatPrice(totalAmount)}
+              <span className="text-2xl font-extrabold">฿</span>
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-5 w-full rounded-xl bg-site-primary px-4 py-3.5 text-sm font-bold text-white"
+        >
+          ย้อนกลับ
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Scroll to a field and briefly focus it for validation UX. */
 export function scrollToStaffAnchor(anchorId: string) {
   const el = document.getElementById(anchorId);

@@ -14,9 +14,15 @@ export async function POST(request: Request) {
       return jsonError("ไม่พบไฟล์รูปภาพ");
     }
 
+    const folderRaw = form.get("folder");
+    const folder =
+      typeof folderRaw === "string" && folderRaw.trim()
+        ? folderRaw.trim()
+        : "order-photos";
+
     const url = await saveUploadedImage(file, {
       shopCode: session.branchId,
-      folder: "order-photos",
+      folder,
     });
     return jsonOk({ url }, 201);
   } catch (error) {

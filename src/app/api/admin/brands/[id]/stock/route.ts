@@ -29,17 +29,36 @@ export async function GET(_request: Request, { params }: Params) {
     });
     if (!brand) return jsonError("ไม่พบแบรนด์", 404);
 
-    const [warehouse, products, branches, pendingTransfers, dashboard, locations] =
-      await Promise.all([
-        prisma.stockLocation.findFirst({
-          where: { brandId: id, type: "WAREHOUSE" },
-          include: {
-            balances: {
-              include: { product: true },
-              orderBy: { product: { name: "asc" } },
-            },
+    let warehouses = await prisma.stockLocation.findMany({
+      where: { brandId: id, type: "WAREHOUSE" },
+      include: {
+        balances: {
+          include: { product: true },
+          orderBy: { product: { name: "asc" } },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (warehouses.length === 0) {
+      const { ensureWarehouseLocation } = await import("@/lib/stock");
+      await ensureWarehouseLocation(id);
+      warehouses = await prisma.stockLocation.findMany({
+        where: { brandId: id, type: "WAREHOUSE" },
+        include: {
+          balances: {
+            include: { product: true },
+            orderBy: { product: { name: "asc" } },
           },
-        }),
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+
+    const warehouse = warehouses[0] ?? null;
+
+    const [products, branches, pendingTransfers, completedTransfers, dashboard, locations] =
+      await Promise.all([
         prisma.brandProduct.findMany({
           where: { brandId: id },
           orderBy: [{ stockType: "asc" }, { name: "asc" }],
@@ -62,6 +81,16 @@ export async function GET(_request: Request, { params }: Params) {
           },
           orderBy: { createdAt: "desc" },
           take: 30,
+        }),
+        prisma.stockTransfer.findMany({
+          where: { brandId: id, status: "RECEIVED" },
+          include: {
+            product: { select: { id: true, name: true, unit: true } },
+            branch: { select: { id: true, name: true } },
+            receivedByStaff: { select: { id: true, name: true } },
+          },
+          orderBy: { receivedAt: "desc" },
+          take: 50,
         }),
         brand.stockEnabled ? getStockDashboard(id) : null,
         prisma.stockLocation.findMany({
@@ -91,10 +120,12 @@ export async function GET(_request: Request, { params }: Params) {
     return jsonOk({
       brand,
       warehouse,
+      warehouses,
       products,
       branches,
       locations,
       pendingTransfers,
+      completedTransfers,
       recentMovements,
       dashboard,
     });

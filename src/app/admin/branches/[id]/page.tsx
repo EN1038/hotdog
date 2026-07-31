@@ -32,6 +32,7 @@ import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
 import { BranchOrdersPanel } from "@/components/admin/BranchOrdersPanel";
 import { BranchShiftsPanel } from "@/components/admin/BranchShiftsPanel";
+import { BranchStockPanel } from "@/components/admin/BranchStockPanel";
 import { AdminCloseStoreModal } from "@/components/admin/AdminCloseStoreModal";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
@@ -182,6 +183,7 @@ type TabId =
   | "copy"
   | "orders"
   | "shifts"
+  | "stock"
   | "staff"
   | "locations"
   | "settings";
@@ -190,6 +192,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "ภาพรวม" },
   { id: "orders", label: "ออเดอร์" },
   { id: "shifts", label: "รอบขาย" },
+  { id: "stock", label: "สต๊อกสาขา" },
   { id: "menu", label: "เมนู" },
   { id: "categories", label: "หมวดหมู่" },
   { id: "options", label: "ตัวเลือก" },
@@ -1881,6 +1884,8 @@ function BranchDetailContent() {
         {activeTab === "orders" && <BranchOrdersPanel branchId={id} />}
 
         {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
+
+        {activeTab === "stock" && <BranchStockPanel branchId={id} />}
 
         {activeTab === "staff" && (
           <div className={panelClass}>

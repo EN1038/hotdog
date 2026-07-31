@@ -16,6 +16,7 @@ type BranchCategory = {
   id: string;
   name: string;
   sortOrder: number;
+  stockExempt?: boolean;
   _count?: { menuItems: number };
 };
 
@@ -112,6 +113,35 @@ export function BranchCategoryLibrary({ branchId }: Props) {
       setName("");
       await load();
       toast.success("สร้างหมวดแล้ว");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleStockExempt(category: BranchCategory) {
+    const next = !category.stockExempt;
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/categories/${category.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stockExempt: next }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("บันทึกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      await load();
+      toast.success(
+        next ? "ยกเว้นสต็อกแล้ว" : "ติดตามสต็อกแล้ว",
+        next
+          ? `หมวด “${category.name}” ไม่ต้องรับเข้าสต็อก และเปิดขายได้ทันที`
+          : `หมวด “${category.name}” ต้องมีสต็อกถึงจะขายได้`,
+      );
     } finally {
       setSaving(false);
     }
@@ -238,6 +268,7 @@ export function BranchCategoryLibrary({ branchId }: Props) {
         <h3 className="text-base font-semibold text-slate-900">หมวดหมู่เมนู</h3>
         <p className="mt-0.5 text-sm text-slate-600">
           หมวดของสาขานี้เท่านั้น — ใช้จัดกลุ่มเมนูและแท็บฝั่งลูกค้า
+          กด “ยกเว้นสต็อก” สำหรับหมวดโปรโมชั่นที่ไม่ต้องรับเข้าสต็อก
         </p>
       </div>
 
@@ -315,10 +346,28 @@ export function BranchCategoryLibrary({ branchId }: Props) {
                     <p className="font-semibold text-slate-900">{cat.name}</p>
                     <p className="text-sm text-slate-500">
                       ใช้กับเมนู {cat._count?.menuItems ?? 0} รายการ
+                      {cat.stockExempt ? (
+                        <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                          ยกเว้นสต็อก
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={cat.stockExempt ? btnDark : btnOutline}
+                    disabled={Boolean(draggingId) || saving}
+                    onClick={() => void toggleStockExempt(cat)}
+                    title={
+                      cat.stockExempt
+                        ? "คลิกเพื่อติดตามสต็อกอีกครั้ง"
+                        : "ไม่ต้องรับเข้าสต็อก — เปิดขายได้ทันที"
+                    }
+                  >
+                    {cat.stockExempt ? "ติดตามสต็อก" : "ยกเว้นสต็อก"}
+                  </button>
                   <button
                     type="button"
                     className={btnOutline}

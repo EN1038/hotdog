@@ -2075,7 +2075,7 @@ export default function BrandStockPage() {
                       </p>
                     </div>
                     <Link
-                      href={`/admin/branches/${b.id}/stock`}
+                      href={`/admin/branches/${b.id}?tab=stock`}
                       className="text-xs font-semibold text-site-primary hover:underline"
                     >
                       ดูสต๊อกสาขา

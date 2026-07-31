@@ -21,6 +21,8 @@ const patchSchema = z.object({
   sellingPrice: z.number().min(0).nullable().optional(),
   isActive: z.boolean().optional(),
   equipmentStatus: z.nativeEnum(EquipmentStatus).nullable().optional(),
+  imageUrl: z.string().trim().nullable().optional(),
+  description: z.string().trim().nullable().optional(),
 });
 
 export async function PATCH(request: Request, { params }: Params) {
@@ -54,6 +56,12 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.stockType !== undefined && { stockType: body.stockType }),
         ...(body.category !== undefined && {
           category: body.category?.trim() || null,
+        }),
+        ...(body.imageUrl !== undefined && {
+          imageUrl: body.imageUrl?.trim() || null,
+        }),
+        ...(body.description !== undefined && {
+          description: body.description?.trim() || null,
         }),
         ...(body.trackStock !== undefined && { trackStock: body.trackStock }),
         ...(body.trackLots !== undefined && { trackLots: body.trackLots }),

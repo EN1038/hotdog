@@ -1,26 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
+import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
+import { IconCamera, IconSkewerPlaceholder } from "@/components/icons";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
-
-const STOCK_TYPE_LABELS: Record<StockType, string> = {
-  SALE_ITEM: "สินค้าขาย",
-  CONSUMABLE: "ของสิ้นเปลือง",
-  EQUIPMENT: "อุปกรณ์",
-};
 
 type Product = {
   id: string;
   name: string;
   unit: string;
   stockType: StockType;
+  category?: string | null;
   lowStockAlert: number | null;
   trackStock?: boolean;
+  imageUrl?: string | null;
+};
+
+type Balance = {
+  id: string;
+  quantity: number;
+  product: Product;
 };
 
 type Pending = {
@@ -33,117 +37,60 @@ type Pending = {
   sourceBranch?: { id: string; name: string } | null;
 };
 
-type Balance = {
-  id: string;
-  quantity: number;
-  product: Product;
-};
-
-type CountSummary = {
-  id: string;
-  name: string;
-  status: string;
-  createdAt: string;
-  _count?: { lines: number };
-};
-
-type CountLine = {
-  id: string;
-  brandProductId: string;
-  systemQty: number;
-  countedQty: number | null;
-  note: string | null;
-  product: Product;
-};
-
-type CountDetail = {
-  id: string;
-  name: string;
-  status: string;
-  lines: CountLine[];
-};
-
 type Payload = {
   stockActive: boolean;
   locationId: string | null;
-  pending: Pending[];
   balances: Balance[];
   products: Product[];
   lowItems: Balance[];
-  counts: CountSummary[];
+  pending: Pending[];
 };
 
-type TabId =
-  | "pending"
-  | "low"
-  | "balances"
-  | "scan"
-  | "stock_in"
-  | "damage"
-  | "issue"
-  | "count";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "pending", label: "รอรับ" },
-  { id: "low", label: "ใกล้หมด" },
-  { id: "balances", label: "คงเหลือ" },
-  { id: "scan", label: "สแกน" },
-  { id: "stock_in", label: "รับเข้า" },
-  { id: "damage", label: "เสีย/สูญ" },
-  { id: "issue", label: "เบิกใช้" },
-  { id: "count", label: "ตรวจนับ" },
-];
-
-const inputClass =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400";
-const labelClass = "mb-1 block text-xs font-semibold text-slate-600";
-const sectionCard = "rounded-2xl bg-white p-4 shadow-sm";
-
 export default function StaffStockPage() {
+  return (
+    <Suspense
+      fallback={
+        <StaffAppShell active="stock">
+          <LoadingState />
+        </StaffAppShell>
+      }
+    >
+      <StaffStockContent />
+    </Suspense>
+  );
+}
+
+function StaffStockContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const openAsDailySummary = searchParams.get("action") === "summary";
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [data, setData] = useState<Payload | null>(null);
-  const [tab, setTab] = useState<TabId>("pending");
 
-  // stock_in
-  const [inProductId, setInProductId] = useState("");
-  const [inQty, setInQty] = useState("1");
-  const [inSupplier, setInSupplier] = useState("");
-  const [inNote, setInNote] = useState("");
+  const [mode, setMode] = useState<"menu" | "select_type" | "items" | "summary">("menu");
+  const [actionType, setActionType] = useState<"stock_in" | "issue" | "pending" | "view" | null>(null);
 
-  // damage / lost
-  const [outKind, setOutKind] = useState<"damage" | "lost">("damage");
-  const [outProductId, setOutProductId] = useState("");
-  const [outQty, setOutQty] = useState("1");
-  const [outReason, setOutReason] = useState("");
-  const [outNote, setOutNote] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"ALL" | StockType>("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [qtyByItemId, setQtyByItemId] = useState<Record<string, number>>({});
 
-  // issue
-  const [issueProductId, setIssueProductId] = useState("");
-  const [issueQty, setIssueQty] = useState("1");
   const [issueNote, setIssueNote] = useState("");
+  const [issueImage, setIssueImage] = useState<File | null>(null);
+  const [issuePreviewUrl, setIssuePreviewUrl] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraBusy, setCameraBusy] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  // count
-  const [countName, setCountName] = useState("");
-  const [activeCountId, setActiveCountId] = useState<string | null>(null);
-  const [countDetail, setCountDetail] = useState<CountDetail | null>(null);
-  const [countQtyMap, setCountQtyMap] = useState<Record<string, string>>({});
-  const [countLoading, setCountLoading] = useState(false);
-
-  // barcode scan
-  const [scanCode, setScanCode] = useState("");
-  const [scanBusy, setScanBusy] = useState(false);
-  const [scanResult, setScanResult] = useState<{
-    id: string;
-    name: string;
-    unit: string;
-    barcode: string | null;
-    branchQty: number;
-    lots: { lotNumber: string; quantity: number; expiresAt: string | null }[];
-  } | null>(null);
+  const [cashVal, setCashVal] = useState("");
+  const [transferVal, setTransferVal] = useState("");
+  const [changeVal, setChangeVal] = useState("");
+  const [customersVal, setCustomersVal] = useState("");
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [attemptedSummary, setAttemptedSummary] = useState(false);
+  
 
   const load = useCallback(async () => {
     const res = await fetch("/api/staff/stock");
@@ -152,15 +99,7 @@ export default function StaffStockPage() {
       return;
     }
     if (res.status === 403 || res.status === 404) {
-      setData({
-        stockActive: false,
-        locationId: null,
-        pending: [],
-        balances: [],
-        products: [],
-        lowItems: [],
-        counts: [],
-      });
+      setData({ stockActive: false, locationId: null, balances: [], products: [], lowItems: [], pending: [] });
       setLoading(false);
       return;
     }
@@ -170,887 +109,963 @@ export default function StaffStockPage() {
     setLoading(false);
   }, [router]);
 
+  useEffect(() => { void load(); }, [load]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!openAsDailySummary || loading || !data?.stockActive) return;
+    setMode("summary");
+    setQtyByItemId({});
+    setCashVal("");
+    setTransferVal("");
+    setChangeVal("");
+    setCustomersVal("");
+    setAttemptedSummary(false);
+  }, [openAsDailySummary, loading, data?.stockActive]);
 
-  const consumables = useMemo(
-    () => (data?.products ?? []).filter((p) => p.stockType === "CONSUMABLE"),
-    [data?.products],
-  );
+  const categories = useMemo(() => {
+    if (!data) return [];
+    const map = new Map<string, { id: string; name: string }>();
+    for (const item of data.products) {
+      if (typeFilter !== "ALL" && item.stockType !== typeFilter) continue;
+      const name = item.category || "ไม่มีหมวดหมู่";
+      const id = name;
+      if (!map.has(id)) map.set(id, { id, name });
+    }
+    return [...map.values()].sort((a, b) => compareThaiText(a.name, b.name));
+  }, [data, typeFilter]);
 
-  const balancesByType = useMemo(() => {
-    const groups: Record<StockType, Balance[]> = {
-      SALE_ITEM: [],
-      CONSUMABLE: [],
-      EQUIPMENT: [],
+  const visibleItems = useMemo(() => {
+    if (!data) return [];
+    let list = data.products;
+
+    if (typeFilter !== "ALL") {
+      list = list.filter((item) => item.stockType === typeFilter);
+    }
+
+    if (categoryFilter !== "ALL") {
+      list = list.filter((item) => (item.category || "ไม่มีหมวดหมู่") === categoryFilter);
+    }
+
+    return list.sort((a, b) => compareThaiText(a.name, b.name));
+  }, [data, typeFilter, categoryFilter]);
+
+  const selectedItems = useMemo(() => {
+    const changes: { id: string, name: string, quantity: number }[] = [];
+    if (!data) return changes;
+    for (const prod of data.products) {
+      const q = qtyByItemId[prod.id] ?? 0;
+      if (q > 0) {
+        changes.push({ id: prod.id, name: prod.name, quantity: q });
+      }
+    }
+    return changes;
+  }, [data, qtyByItemId]);
+
+  function setQty(itemId: string, next: number) {
+    setQtyByItemId((prev) => {
+      const q = Math.max(0, Math.floor(next));
+      if (q === 0) {
+        const copy = { ...prev };
+        delete copy[itemId];
+        return copy;
+      }
+      return { ...prev, [itemId]: q };
+    });
+  }
+
+  const handleActionClick = (action: "stock_in" | "issue" | "pending" | "summary" | "view") => {
+    if (action === "summary") {
+      setMode("summary");
+      setQtyByItemId({});
+      setCashVal("");
+      setTransferVal("");
+      setChangeVal("");
+      setCustomersVal("");
+      setAttemptedSummary(false);
+      return;
+    }
+    setActionType(action);
+    setMode("select_type");
+    setQtyByItemId({});
+    setCategoryFilter("ALL");
+    clearIssueFields();
+  };
+
+  const handleTypeSelectClick = (type: StockType) => {
+    setTypeFilter(type);
+    setCategoryFilter("ALL");
+    setMode("items");
+  };
+
+  function clearIssueFields() {
+    setIssueNote("");
+    setIssueImage(null);
+    setIssuePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
+
+  const handleBack = () => {
+    if (mode === "items") {
+      setMode("select_type");
+      setQtyByItemId({});
+      clearIssueFields();
+      closeIssueCamera();
+    } else if (mode === "summary") {
+      if (openAsDailySummary) {
+        router.replace("/staff");
+        return;
+      }
+      setMode("menu");
+      setQtyByItemId({});
+      setCashVal("");
+      setTransferVal("");
+      setChangeVal("");
+      setCustomersVal("");
+      setAttemptedSummary(false);
+      setShowSummaryModal(false);
+    } else {
+      setMode("menu");
+      setActionType(null);
+      setQtyByItemId({});
+      clearIssueFields();
+      closeIssueCamera();
+    }
+  };
+
+  function stopCameraStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }
+
+  async function openIssueCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("อุปกรณ์นี้ไม่รองรับกล้อง", "ต้องถ่ายรูปด้วยกล้องเท่านั้น");
+      return;
+    }
+    setCameraOpen(true);
+  }
+
+  useEffect(() => {
+    if (!cameraOpen) return;
+    let cancelled = false;
+    (async () => {
+      setCameraBusy(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          await video.play().catch(() => {});
+        }
+      } catch {
+        if (!cancelled) {
+          stopCameraStream();
+          setCameraOpen(false);
+          toast.error("เปิดกล้องไม่สำเร็จ", "อนุญาตการใช้กล้องแล้วลองใหม่");
+        }
+      } finally {
+        if (!cancelled) setCameraBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stopCameraStream();
     };
-    for (const b of data?.balances ?? []) {
-      const t = b.product.stockType ?? "SALE_ITEM";
-      groups[t].push(b);
-    }
-    return groups;
-  }, [data?.balances]);
+  }, [cameraOpen]);
 
-  const openCount = useMemo(
-    () =>
-      (data?.counts ?? []).find(
-        (c) => c.status === "DRAFT" || c.status === "IN_PROGRESS",
-      ) ?? null,
-    [data?.counts],
-  );
+  function closeIssueCamera() {
+    stopCameraStream();
+    setCameraOpen(false);
+    setCameraBusy(false);
+  }
+
+  /** ปิดกล้องโดยไม่บันทึกรูปใหม่ — เคลียร์รูปที่เคยถ่ายไว้ด้วย */
+  function dismissIssueCamera() {
+    closeIssueCamera();
+    setIssueImage(null);
+    setIssuePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
+
+  function captureIssuePhoto() {
+    const video = videoRef.current;
+    if (!video || video.videoWidth <= 0) {
+      toast.error("กล้องยังไม่พร้อม", "รอสักครู่แล้วลองใหม่");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          toast.error("บันทึกรูปไม่สำเร็จ");
+          return;
+        }
+        const file = new File([blob], `issue-${Date.now()}.jpg`, {
+          type: "image/jpeg",
+        });
+        setIssuePreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+        setIssueImage(file);
+        closeIssueCamera();
+      },
+      "image/jpeg",
+      0.85,
+    );
+  }
 
   useEffect(() => {
-    if (!data?.products?.length) return;
-    if (!inProductId) setInProductId(data.products[0].id);
-    if (!outProductId) setOutProductId(data.products[0].id);
-  }, [data?.products, inProductId, outProductId]);
+    return () => {
+      stopCameraStream();
+      if (issuePreviewUrl) URL.revokeObjectURL(issuePreviewUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup on unmount only
+  }, []);
 
-  useEffect(() => {
-    if (!consumables.length) return;
-    if (!issueProductId || !consumables.some((p) => p.id === issueProductId)) {
-      setIssueProductId(consumables[0].id);
-    }
-  }, [consumables, issueProductId]);
-
-  async function postAction(body: Record<string, unknown>, okMsg: string) {
+  async function submitChanges() {
+    if (selectedItems.length === 0 || !actionType) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/staff/stock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error("ไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
-        return null;
+      let uploadedUrl = null;
+      if (actionType === "issue") {
+        if (!issueNote.trim()) {
+          toast.error("กรุณากรอกรายละเอียด");
+          setBusy(false);
+          return;
+        }
+        if (!issueImage) {
+          toast.error("กรุณาถ่ายรูปประกอบ");
+          setBusy(false);
+          return;
+        }
+        const body = new FormData();
+        body.append("file", issueImage);
+        body.append("folder", "Branch");
+        const res = await fetch("/api/staff/uploads", { method: "POST", body });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toast.error(
+            "อัพโหลดรูปไม่สำเร็จ",
+            typeof err.error === "string" ? err.error : "ลองใหม่",
+          );
+          setBusy(false);
+          return;
+        }
+        const json = await res.json();
+        uploadedUrl = json.url;
       }
-      toast.success(okMsg);
+
+      let hasError = false;
+      for (const item of selectedItems) {
+        const payload: any = {
+          action: actionType,
+          brandProductId: item.id,
+          quantity: item.quantity,
+          note: actionType === "stock_in" ? "เพิ่มผ่านระบบมือถือ" : issueNote,
+        };
+        if (actionType === "issue" && uploadedUrl) {
+          payload.imageUrl = uploadedUrl;
+        }
+
+        const res = await fetch("/api/staff/stock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          hasError = true;
+          const text = await res.text();
+          console.error("API error:", text);
+        }
+      }
+
+      if (hasError) {
+        toast.error("บันทึกบางรายการไม่สำเร็จ", "กรุณาตรวจสอบยอดอีกครั้ง (ดูรายละเอียดใน Console)");
+      } else {
+        toast.success(actionType === "stock_in" ? "รับเข้าสำเร็จ" : "จ่ายออกสำเร็จ", `อัปเดต ${selectedItems.length} รายการ`);
+        setMode("menu");
+        setActionType(null);
+        setQtyByItemId({});
+        clearIssueFields();
+      }
       await load();
-      return json;
+    } catch (e: any) {
+      toast.error("เกิดข้อผิดพลาด", e.message || "ไม่สามารถบันทึกได้");
     } finally {
       setBusy(false);
     }
   }
 
-  async function confirmReceive(id: string) {
-    setBusyId(id);
-    try {
-      const res = await fetch(`/api/staff/stock/transfers/${id}/receive`, {
-        method: "POST",
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error("รับของไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
-        return;
-      }
-      toast.success("รับเข้าสต๊อกสาขาแล้ว");
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  }
+  async function submitSummary() {
+    const lines = data?.products
+      .filter(p => p.stockType === "SALE_ITEM")
+      .map(p => {
+        const raw = qtyByItemId[p.id];
+        const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+        return {
+          brandProductId: p.id,
+          countedQty: Number.isFinite(parsed) && parsed >= 0 ? parsed : 0,
+        };
+      }) || [];
 
-  async function submitStockIn() {
-    const qty = Number.parseInt(inQty, 10);
-    if (!inProductId || !Number.isFinite(qty) || qty <= 0) {
-      toast.error("เลือกสินค้าและจำนวนที่ถูกต้อง");
+    if (lines.length === 0) {
+      toast.error("ไม่มีเมนูขายให้นับสต๊อก");
       return;
-    }
-    const ok = await postAction(
-      {
-        action: "stock_in",
-        brandProductId: inProductId,
-        quantity: qty,
-        supplier: inSupplier.trim() || null,
-        note: inNote.trim() || null,
-      },
-      "รับเข้าสาขาแล้ว",
-    );
-    if (ok) {
-      setInQty("1");
-      setInSupplier("");
-      setInNote("");
-    }
-  }
-
-  async function submitDamageLost() {
-    const qty = Number.parseInt(outQty, 10);
-    if (!outProductId || !Number.isFinite(qty) || qty <= 0) {
-      toast.error("เลือกสินค้าและจำนวนที่ถูกต้อง");
-      return;
-    }
-    const ok = await postAction(
-      {
-        action: outKind,
-        brandProductId: outProductId,
-        quantity: qty,
-        reason: outReason.trim() || null,
-        note: outNote.trim() || null,
-      },
-      outKind === "damage" ? "บันทึกของเสียแล้ว" : "บันทึกสูญหายแล้ว",
-    );
-    if (ok) {
-      setOutQty("1");
-      setOutReason("");
-      setOutNote("");
-    }
-  }
-
-  async function submitIssue() {
-    const qty = Number.parseInt(issueQty, 10);
-    if (!issueProductId || !Number.isFinite(qty) || qty <= 0) {
-      toast.error("เลือกสินค้าและจำนวนที่ถูกต้อง");
-      return;
-    }
-    const ok = await postAction(
-      {
-        action: "issue",
-        brandProductId: issueProductId,
-        quantity: qty,
-        note: issueNote.trim() || null,
-      },
-      "เบิกใช้แล้ว",
-    );
-    if (ok) {
-      setIssueQty("1");
-      setIssueNote("");
-    }
-  }
-
-  async function createCount() {
-    const name = countName.trim() || `ตรวจนับ ${new Date().toLocaleDateString("th-TH")}`;
-    const created = await postAction(
-      { action: "count_create", name },
-      "สร้างรอบตรวจนับแล้ว",
-    );
-    if (created?.id) {
-      setCountName("");
-      setActiveCountId(created.id);
-      await loadCount(created.id);
-      setTab("count");
-    }
-  }
-
-  async function loadCount(id: string) {
-    setCountLoading(true);
-    setActiveCountId(id);
-    try {
-      const res = await fetch(`/api/staff/stock/counts/${id}`);
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error("โหลดตรวจนับไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
-        return;
-      }
-      const detail = body as CountDetail;
-      setCountDetail(detail);
-      const map: Record<string, string> = {};
-      for (const line of detail.lines) {
-        map[line.brandProductId] =
-          line.countedQty != null ? String(line.countedQty) : "";
-      }
-      setCountQtyMap(map);
-    } finally {
-      setCountLoading(false);
-    }
-  }
-
-  async function saveCountLines(complete: boolean) {
-    if (!activeCountId || !countDetail) return;
-    const lines = countDetail.lines.map((line) => {
-      const raw = countQtyMap[line.brandProductId];
-      const n = Number.parseInt(raw ?? "", 10);
-      return {
-        brandProductId: line.brandProductId,
-        countedQty: Number.isFinite(n) && n >= 0 ? n : 0,
-      };
-    });
-
-    if (complete) {
-      const missing = lines.filter((l) => {
-        const raw = countQtyMap[l.brandProductId];
-        return raw === undefined || raw.trim() === "";
-      });
-      if (missing.length > 0) {
-        toast.error(`ยังนับไม่ครบ ${missing.length} รายการ`);
-        return;
-      }
     }
 
     setBusy(true);
     try {
-      const res = await fetch(`/api/staff/stock/counts/${activeCountId}`, {
-        method: "PATCH",
+      const res = await fetch("/api/staff/stock", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lines, complete }),
+        body: JSON.stringify({
+          action: "summary",
+          lines,
+          cash: Number(cashVal) || 0,
+          transfer: Number(transferVal) || 0,
+          change: Number(changeVal) || 0,
+          customers: Number(customersVal) || 0,
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error("บันทึกไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
+        throw new Error(body.error || "บันทึกไม่สำเร็จ");
+      }
+      toast.success("บันทึกสรุปยอดขายรายวันเรียบร้อย");
+      setShowSummaryModal(false);
+      setCashVal("");
+      setTransferVal("");
+      setChangeVal("");
+      setCustomersVal("");
+      setQtyByItemId({});
+      setAttemptedSummary(false);
+      if (openAsDailySummary) {
+        router.replace("/staff");
         return;
       }
-      toast.success(complete ? "ปิดรอบตรวจนับแล้ว" : "บันทึกยอดนับแล้ว");
-      if (complete) {
-        setCountDetail(null);
-        setActiveCountId(null);
-        setCountQtyMap({});
-        await load();
-      } else {
-        setCountDetail(body as CountDetail);
-      }
+      setMode("menu");
+      await load();
+    } catch (e: any) {
+      toast.error("บันทึกไม่สำเร็จ", e.message || "กรุณาลองใหม่อีกครั้ง");
     } finally {
       setBusy(false);
     }
   }
 
   if (loading || !data) {
-    return (
-      <main className="flex min-h-screen items-center justify-center px-4">
-        <LoadingState className="w-full max-w-sm" />
-      </main>
-    );
+    return <main className="flex min-h-screen items-center justify-center px-4"><LoadingState className="w-full max-w-sm" /></main>;
   }
 
   return (
     <StaffAppShell active="stock">
-      <div className="space-y-3 px-4 py-4">
+      <div className="space-y-4 px-4 py-6 max-w-lg mx-auto pb-32">
         {!data.stockActive ? (
-          <div className={`${sectionCard} text-center`}>
-            <p className="text-sm font-bold text-slate-900">
-              สาขานี้ยังไม่เปิดระบบสต๊อก
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              ให้แอดมินเปิดสต๊อกที่แบรนด์และสาขาก่อน
-            </p>
+          <div className="rounded-2xl bg-white p-4 shadow-sm text-center">
+            <p className="text-sm font-bold text-slate-900">สาขานี้ยังไม่เปิดระบบสต๊อก</p>
           </div>
         ) : (
           <>
-            <div className="-mx-4 overflow-x-auto px-4">
-              <div className="flex w-max gap-1.5 pb-1">
-                {TABS.map((t) => {
-                  const badge =
-                    t.id === "pending"
-                      ? data.pending.length
-                      : t.id === "low"
-                        ? data.lowItems.length
-                        : t.id === "count"
-                          ? openCount
-                            ? 1
-                            : 0
-                          : 0;
-                  const active = tab === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => {
-                        setTab(t.id);
-                        if (t.id === "count" && openCount && !countDetail) {
-                          void loadCount(openCount.id);
-                        }
-                      }}
-                      className={`relative shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                        active
-                          ? "bg-slate-900 text-white"
-                          : "bg-white text-slate-600 shadow-sm"
-                      }`}
-                    >
-                      {t.label}
-                      {badge > 0 ? (
-                        <span
-                          className={`ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
-                            t.id === "pending"
-                              ? "bg-emerald-500 text-white"
-                              : "bg-amber-500 text-white"
-                          }`}
-                        >
-                          {badge > 99 ? "99+" : badge}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {mode === "menu" ? (
+              <>
+                <div className="mb-4">
+                  <h2 className="text-lg font-extrabold text-slate-900">จัดการสต๊อก</h2>
+                  <p className="text-xs text-slate-500">ปรับปรุงจำนวนสต๊อกของเมนูที่หน้าร้าน</p>
+                </div>
+                <div className="space-y-4 mt-6">
+                  <button
+                    onClick={() => handleActionClick("stock_in")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-emerald-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">รับเข้า</h3>
+                      <p className="mt-1 text-emerald-100 text-sm">เพิ่มจำนวนสต๊อกเมนู (ของมาส่ง/ทำเพิ่ม)</p>
+                    </div>
+                    <div className="text-4xl">📦</div>
+                  </button>
 
-            {tab === "pending" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">
-                  ของรอรับ
-                </h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  จากบ้านกลางหรือสาขาอื่น — กดยืนยันเมื่อของถึงแล้ว
-                </p>
-                <ul className="mt-3 divide-y divide-slate-100">
-                  {data.pending.map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-2 py-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {item.product.name}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {item.quantity} {item.product.unit}
-                          {item.note ? ` · ${item.note}` : ""}
-                        </p>
-                        <p className="text-[11px] text-slate-400">
-                          จาก{" "}
-                          {item.sourceBranch?.name
-                            ? `สาขา ${item.sourceBranch.name}`
-                            : "บ้านกลาง"}
-                          {" · "}
-                          {new Date(item.createdAt).toLocaleString("th-TH")}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={busyId === item.id}
-                        onClick={() => void confirmReceive(item.id)}
-                        className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
-                      >
-                        {busyId === item.id ? "กำลังรับ..." : "ยืนยันรับ"}
-                      </button>
-                    </li>
-                  ))}
-                  {data.pending.length === 0 ? (
-                    <li className="py-4 text-center text-sm text-slate-500">
-                      ไม่มีของรอรับ
-                    </li>
-                  ) : null}
-                </ul>
-              </section>
-            ) : null}
+                  <button
+                    onClick={() => handleActionClick("view")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-slate-800 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">สต็อก</h3>
+                      <p className="mt-1 text-slate-300 text-sm">ดูยอดคงเหลือของแต่ละรายการ</p>
+                    </div>
+                    <div className="text-4xl">📋</div>
+                  </button>
 
-            {tab === "scan" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">
-                  สแกนบาร์โค้ด
-                </h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  สแกนหรือพิมพ์บาร์โค้ดเพื่อดูยอดคงเหลือสาขานี้
-                </p>
-                <form
-                  className="mt-3 flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void (async () => {
-                      const code = scanCode.trim();
-                      if (!code) {
-                        toast.error("ใส่บาร์โค้ด");
-                        return;
-                      }
-                      setScanBusy(true);
-                      try {
-                        const res = await fetch(
-                          `/api/staff/stock/barcode?barcode=${encodeURIComponent(code)}`,
+                  <button
+                    onClick={() => handleActionClick("issue")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-amber-500 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">จ่ายออก</h3>
+                      <p className="mt-1 text-amber-100 text-sm">เบิกใช้ / ตัดสต๊อกสูญหาย</p>
+                    </div>
+                    <div className="text-4xl">📤</div>
+                  </button>
+                </div>
+              </>
+            ) : mode === "summary" ? (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={handleBack}
+                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                  >
+                    ← กลับ
+                  </button>
+                  <h2 className="text-lg font-extrabold text-slate-900">สรุปยอดขายรายวัน</h2>
+                </div>
+
+                <div className="space-y-6 mt-6">
+                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
+                    <h3 className="font-bold text-slate-900 mb-4 border-b pb-2">1. กรอกยอดคงเหลือ (เมนูขาย)</h3>
+                    <ul className="divide-y divide-gray-100">
+                      {data.products.filter(p => p.stockType === "SALE_ITEM").map(item => {
+                        const qty = qtyByItemId[item.id] ?? 0;
+                        const isMissing = attemptedSummary && ((qty as any) === "" || qty == null);
+                        const dbBalance = data.balances.find(b => b.product.id === item.id)?.quantity ?? 0;
+                        return (
+                          <li key={item.id} className="flex items-center justify-between gap-3 py-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold text-gray-900 leading-tight">{item.name}</p>
+                              <p className="mt-0.5 text-xs text-gray-400">สต๊อกระบบ: {dbBalance}</p>
+                            </div>
+                            <input
+                              type="number" inputMode="numeric" placeholder="0"
+                              value={qty}
+                              onChange={(e) => setQtyByItemId(p => ({ ...p, [item.id]: e.target.value === "" ? ("" as any) : parseInt(e.target.value) }))}
+                              className={`w-20 rounded-lg border-2 px-3 py-2 text-center font-bold focus:outline-none focus:ring-1 ${isMissing
+                                  ? "border-red-500 bg-red-50 focus:border-red-500 focus:ring-red-500"
+                                  : "border-slate-300 bg-white focus:border-site-primary focus:ring-site-primary"
+                                }`}
+                            />
+                          </li>
                         );
-                        const body = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                          setScanResult(null);
-                          toast.error(
-                            "ไม่พบสินค้า",
-                            body.error ?? "ลองใหม่",
-                          );
-                          return;
-                        }
-                        setScanResult(body);
-                        setInProductId(body.id);
-                      } finally {
-                        setScanBusy(false);
-                      }
-                    })();
-                  }}
-                >
-                  <input
-                    className={inputClass}
-                    value={scanCode}
-                    onChange={(e) => setScanCode(e.target.value)}
-                    placeholder="บาร์โค้ด"
-                    autoFocus
-                  />
-                  <button
-                    type="submit"
-                    disabled={scanBusy}
-                    className="shrink-0 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                  >
-                    {scanBusy ? "..." : "ค้นหา"}
-                  </button>
-                </form>
-                {scanResult ? (
-                  <div className="mt-4 rounded-xl bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">
-                      {scanResult.name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {scanResult.barcode
-                        ? `บาร์โค้ด ${scanResult.barcode}`
-                        : ""}
-                      {" · คงเหลือ "}
-                      {scanResult.branchQty} {scanResult.unit}
-                    </p>
-                    {scanResult.lots?.length ? (
-                      <ul className="mt-2 space-y-1 text-xs text-slate-600">
-                        {scanResult.lots.map((lot) => (
-                          <li key={lot.lotNumber}>
-                            ล็อต {lot.lotNumber}: {lot.quantity}
-                            {lot.expiresAt
-                              ? ` · หมด ${new Date(lot.expiresAt).toLocaleDateString("th-TH")}`
-                              : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="mt-3 text-xs font-semibold text-emerald-700"
-                      onClick={() => setTab("stock_in")}
-                    >
-                      ไปรับเข้าสินค้านี้ →
-                    </button>
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
+                      })}
+                    </ul>
+                  </section>
 
-            {tab === "low" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">ใกล้หมด</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  รายการที่หมดหรือต่ำกว่าเกณฑ์แจ้งเตือน
-                </p>
-                <ul className="mt-3 divide-y divide-slate-100">
-                  {data.lowItems.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center justify-between gap-2 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {b.product.name}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          {STOCK_TYPE_LABELS[b.product.stockType] ??
-                            b.product.stockType}
-                          {b.product.lowStockAlert != null
-                            ? ` · แจ้งเตือน ≤ ${b.product.lowStockAlert}`
-                            : ""}
-                        </p>
-                      </div>
-                      <span
-                        className={`shrink-0 font-mono text-sm font-bold ${
-                          b.quantity <= 0 ? "text-red-600" : "text-amber-600"
-                        }`}
-                      >
-                        {b.quantity} {b.product.unit}
-                      </span>
-                    </li>
-                  ))}
-                  {data.lowItems.length === 0 ? (
-                    <li className="py-4 text-center text-sm text-slate-500">
-                      ไม่มีรายการใกล้หมด
-                    </li>
-                  ) : null}
-                </ul>
-              </section>
-            ) : null}
+                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100 space-y-4">
+                    <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">2. สรุปการเงิน</h3>
 
-            {tab === "balances" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">คงเหลือ</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  สต๊อกปัจจุบันที่สาขา แยกตามประเภท
-                </p>
-                {(
-                  ["SALE_ITEM", "CONSUMABLE", "EQUIPMENT"] as StockType[]
-                ).map((type) => {
-                  const rows = balancesByType[type];
-                  if (!rows.length) return null;
-                  return (
-                    <div key={type} className="mt-3">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                        {STOCK_TYPE_LABELS[type]}
-                      </p>
-                      <ul className="mt-1 divide-y divide-slate-100">
-                        {rows.map((b) => (
-                          <li
-                            key={b.id}
-                            className="flex items-center justify-between py-2"
-                          >
-                            <span className="text-sm text-slate-800">
-                              {b.product.name}
-                            </span>
-                            <span
-                              className={`font-mono text-sm font-bold ${
-                                b.quantity <= 0
-                                  ? "text-red-600"
-                                  : "text-slate-900"
-                              }`}
-                            >
-                              {b.quantity} {b.product.unit}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })}
-                {data.balances.length === 0 ? (
-                  <p className="mt-4 py-2 text-center text-sm text-slate-500">
-                    ยังไม่มีของในสาขา
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
-
-            {tab === "stock_in" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">
-                  รับเข้าสาขา
-                </h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  รับของเข้าสต๊อกสาขาโดยตรง (ไม่ผ่านบ้านกลาง)
-                </p>
-                <div className="mt-3 space-y-3">
-                  <div>
-                    <label className={labelClass}>สินค้า</label>
-                    <select
-                      className={inputClass}
-                      value={inProductId}
-                      onChange={(e) => setInProductId(e.target.value)}
-                    >
-                      {data.products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({STOCK_TYPE_LABELS[p.stockType]}) · {p.unit}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>จำนวน</label>
-                    <input
-                      type="number"
-                      min={1}
-                      inputMode="numeric"
-                      className={inputClass}
-                      value={inQty}
-                      onChange={(e) => setInQty(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>ผู้จำหน่าย (ถ้ามี)</label>
-                    <input
-                      className={inputClass}
-                      value={inSupplier}
-                      onChange={(e) => setInSupplier(e.target.value)}
-                      placeholder="ชื่อร้าน / บริษัท"
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>หมายเหตุ</label>
-                    <input
-                      className={inputClass}
-                      value={inNote}
-                      onChange={(e) => setInNote(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busy || !data.products.length}
-                    onClick={() => void submitStockIn()}
-                    className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                  >
-                    {busy ? "กำลังบันทึก..." : "บันทึกรับเข้า"}
-                  </button>
-                </div>
-              </section>
-            ) : null}
-
-            {tab === "damage" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">
-                  เสีย / สูญหาย
-                </h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  ตัดสต๊อกเมื่อของเสียหรือสูญหาย
-                </p>
-                <div className="mt-3 flex gap-2">
-                  {(
-                    [
-                      { id: "damage" as const, label: "เสียหาย" },
-                      { id: "lost" as const, label: "สูญหาย" },
-                    ] as const
-                  ).map((k) => (
-                    <button
-                      key={k.id}
-                      type="button"
-                      onClick={() => setOutKind(k.id)}
-                      className={`flex-1 rounded-xl py-2 text-xs font-bold ${
-                        outKind === k.id
-                          ? "bg-red-600 text-white"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {k.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-3 space-y-3">
-                  <div>
-                    <label className={labelClass}>สินค้า</label>
-                    <select
-                      className={inputClass}
-                      value={outProductId}
-                      onChange={(e) => setOutProductId(e.target.value)}
-                    >
-                      {data.products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} · {p.unit}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>จำนวน</label>
-                    <input
-                      type="number"
-                      min={1}
-                      inputMode="numeric"
-                      className={inputClass}
-                      value={outQty}
-                      onChange={(e) => setOutQty(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>สาเหตุ</label>
-                    <input
-                      className={inputClass}
-                      value={outReason}
-                      onChange={(e) => setOutReason(e.target.value)}
-                      placeholder="เช่น หมดอายุ / แตก"
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>หมายเหตุ</label>
-                    <input
-                      className={inputClass}
-                      value={outNote}
-                      onChange={(e) => setOutNote(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busy || !data.products.length}
-                    onClick={() => void submitDamageLost()}
-                    className="w-full rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                  >
-                    {busy
-                      ? "กำลังบันทึก..."
-                      : outKind === "damage"
-                        ? "บันทึกของเสีย"
-                        : "บันทึกสูญหาย"}
-                  </button>
-                </div>
-              </section>
-            ) : null}
-
-            {tab === "issue" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">เบิกใช้</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  เบิกของสิ้นเปลืองออกจากสต๊อกสาขา
-                </p>
-                {consumables.length === 0 ? (
-                  <p className="mt-4 py-2 text-center text-sm text-slate-500">
-                    ยังไม่มีสินค้าประเภทของสิ้นเปลือง
-                  </p>
-                ) : (
-                  <div className="mt-3 space-y-3">
+                    {/* 1. เงินสด */}
                     <div>
-                      <label className={labelClass}>ของสิ้นเปลือง</label>
-                      <select
-                        className={inputClass}
-                        value={issueProductId}
-                        onChange={(e) => setIssueProductId(e.target.value)}
-                      >
-                        {consumables.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} · {p.unit}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className={labelClass}>จำนวน</label>
+                      <label className="mb-1 block text-sm font-bold text-slate-700">เงินสด (บาท) <span className="text-red-500">*</span></label>
                       <input
                         type="number"
-                        min={1}
-                        inputMode="numeric"
-                        className={inputClass}
-                        value={issueQty}
-                        onChange={(e) => setIssueQty(e.target.value)}
+                        value={cashVal}
+                        onChange={e => setCashVal(e.target.value)}
+                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && cashVal.trim() === ""
+                            ? "border-red-500 bg-red-50 focus:border-red-500"
+                            : "border-slate-300 bg-white focus:border-site-primary"
+                          }`}
+                        placeholder="0"
                       />
                     </div>
+
+                    {/* 2. เงินโอน */}
                     <div>
-                      <label className={labelClass}>หมายเหตุ</label>
+                      <label className="mb-1 block text-sm font-bold text-slate-700">เงินโอน (บาท) <span className="text-red-500">*</span></label>
                       <input
-                        className={inputClass}
-                        value={issueNote}
-                        onChange={(e) => setIssueNote(e.target.value)}
+                        type="number"
+                        value={transferVal}
+                        onChange={e => setTransferVal(e.target.value)}
+                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && transferVal.trim() === ""
+                            ? "border-red-500 bg-red-50 focus:border-red-500"
+                            : "border-slate-300 bg-white focus:border-site-primary"
+                          }`}
+                        placeholder="0"
                       />
                     </div>
+
+                    {/* 3. เงินทอน */}
+                    <div>
+                      <label className="mb-1 block text-sm font-bold text-slate-700">เงินทอน (บาท) <span className="text-red-500">*</span></label>
+                      <input
+                        type="number"
+                        value={changeVal}
+                        onChange={e => setChangeVal(e.target.value)}
+                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && changeVal.trim() === ""
+                            ? "border-red-500 bg-red-50 focus:border-red-500"
+                            : "border-slate-300 bg-white focus:border-site-primary"
+                          }`}
+                        placeholder="0"
+                      />
+                    </div>
+
+                    <div className="pt-2">
+                      <label className="mb-1 block text-sm font-bold text-slate-700">รวมเงินทั้งหมด</label>
+                      <input type="text" readOnly value={(Number(cashVal || 0) + Number(transferVal || 0)).toLocaleString()} className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 bg-slate-100 font-bold text-lg text-slate-900 focus:outline-none" />
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100 mb-24">
+                    <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">3. สถิติ</h3>
+
+                    {/* 4. จำนวนลูกค้า */}
+                    <div>
+                      <label className="mb-1 block text-sm font-bold text-slate-700">จำนวนลูกค้า (คิว) <span className="text-red-500">*</span></label>
+                      <input
+                        type="number"
+                        value={customersVal}
+                        onChange={e => setCustomersVal(e.target.value)}
+                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && customersVal.trim() === ""
+                            ? "border-red-500 bg-red-50 focus:border-red-500"
+                            : "border-slate-300 bg-white focus:border-site-primary"
+                          }`}
+                        placeholder="0"
+                      />
+                    </div>
+                  </section>
+
+
+                </div>
+
+                <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
+                  <div className="mx-auto max-w-lg bg-white p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] rounded-t-2xl border-t border-slate-200">
                     <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void submitIssue()}
-                      className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                      onClick={() => {
+                        setAttemptedSummary(true);
+                        const saleItems = data?.products.filter(p => p.stockType === "SALE_ITEM") || [];
+
+                        // 1. เช็คว่าทุกช่องสต๊อกถูกกรอกแล้วหรือยัง (ต้องไม่เป็น undefined, null หรือสตริงว่าง "")
+                        const isAnyQtyMissing = saleItems.some(item => {
+                          const val = qtyByItemId[item.id];
+                          return (val as any) === ""; // ถ้าเป็น undefined หรือ 0 จะถือว่าผ่าน (มีค่าแล้ว)
+                        });
+                        // 2. เช็คสรุปการเงินและสถิติ (ใช้ trim() เพื่อยอมรับเลข 0)
+                        const isCashInvalid = cashVal.trim() === "";
+                        const isTransferInvalid = transferVal.trim() === "";
+                        const isChangeInvalid = changeVal.trim() === "";
+                        const isCustomersInvalid = customersVal.trim() === "";
+
+                        if (isCashInvalid || isTransferInvalid || isChangeInvalid || isCustomersInvalid || isAnyQtyMissing) {
+                          toast.error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+                          setTimeout(() => {
+                            document.querySelector('.border-red-500')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 100);
+                          return;
+                        }
+
+                        setShowSummaryModal(true);
+                      }}
+                      className="w-full rounded-xl py-3.5 text-center text-base font-bold text-white shadow-md active:scale-[0.98] transition-transform bg-blue-600"
                     >
-                      {busy ? "กำลังบันทึก..." : "บันทึกเบิกใช้"}
+                      บันทึกสรุปยอด
                     </button>
                   </div>
-                )}
-              </section>
-            ) : null}
+                </div>
 
-            {tab === "count" ? (
-              <section className={sectionCard}>
-                <h2 className="text-sm font-bold text-slate-900">ตรวจนับ</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  สร้างรอบตรวจนับ กรอกยอดจริง แล้วปิดรอบเพื่อปรับสต๊อก
-                </p>
-
-                {!countDetail ? (
-                  <div className="mt-3 space-y-3">
-                    {openCount ? (
-                      <button
-                        type="button"
-                        disabled={countLoading}
-                        onClick={() => void loadCount(openCount.id)}
-                        className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-left"
-                      >
-                        <p className="text-sm font-bold text-emerald-900">
-                          รอบเปิดอยู่: {openCount.name}
-                        </p>
-                        <p className="mt-0.5 text-xs text-emerald-700">
-                          {openCount._count?.lines ?? "—"} รายการ · กดเพื่อกรอกยอด
-                        </p>
-                      </button>
-                    ) : null}
-
-                    {(data.counts ?? []).length > 0 && !openCount ? (
-                      <p className="text-xs text-slate-500">
-                        ไม่มีรอบเปิด — สร้างรอบใหม่ด้านล่าง
+                {showSummaryModal && (
+                  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+                      <h3 className="text-xl font-black text-slate-900">ยืนยันบันทึกสรุปยอด</h3>
+                      <p className="mt-2 text-sm text-slate-500">
+                        คุณตรวจสอบข้อมูล ยอดเงินสด <strong>{cashVal || 0}</strong> บ.,
+                        ยอดโอน <strong>{transferVal || 0}</strong> บ. และ
+                        ยอดลูกค้า <strong>{customersVal || 0}</strong> คิว ถูกต้องแล้วใช่หรือไม่?
                       </p>
-                    ) : null}
-
-                    <div>
-                      <label className={labelClass}>ชื่อรอบตรวจนับ</label>
-                      <input
-                        className={inputClass}
-                        value={countName}
-                        onChange={(e) => setCountName(e.target.value)}
-                        placeholder={`ตรวจนับ ${new Date().toLocaleDateString("th-TH")}`}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      disabled={busy || Boolean(openCount)}
-                      onClick={() => void createCount()}
-                      className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                    >
-                      {busy
-                        ? "กำลังสร้าง..."
-                        : openCount
-                          ? "มีรอบเปิดอยู่แล้ว"
-                          : "สร้างรอบตรวจนับ"}
-                    </button>
-                  </div>
-                ) : countLoading ? (
-                  <div className="mt-4">
-                    <LoadingState className="w-full" />
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">
-                          {countDetail.name}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          {countDetail.lines.length} รายการ
-                        </p>
+                      <div className="mt-6 flex gap-3">
+                        <button onClick={() => setShowSummaryModal(false)} disabled={busy} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-700 active:scale-95 disabled:opacity-50">ยกเลิก</button>
+                        <button onClick={() => void submitSummary()} disabled={busy} className="flex-1 rounded-xl bg-blue-600 py-3 font-bold text-white active:scale-95 disabled:opacity-50">
+                          {busy ? "กำลังบันทึก..." : "ยืนยัน"}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-slate-500"
-                        onClick={() => {
-                          setCountDetail(null);
-                          setActiveCountId(null);
-                        }}
-                      >
-                        ปิด
-                      </button>
-                    </div>
-
-                    <ul className="divide-y divide-slate-100">
-                      {countDetail.lines.map((line) => (
-                        <li
-                          key={line.id}
-                          className="flex items-center gap-2 py-2.5"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-slate-900">
-                              {line.product.name}
-                            </p>
-                            <p className="text-[11px] text-slate-500">
-                              ในระบบ {line.systemQty} {line.product.unit}
-                            </p>
-                          </div>
-                          <input
-                            type="number"
-                            min={0}
-                            inputMode="numeric"
-                            className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center font-mono text-sm"
-                            placeholder="นับ"
-                            value={countQtyMap[line.brandProductId] ?? ""}
-                            onChange={(e) =>
-                              setCountQtyMap((prev) => ({
-                                ...prev,
-                                [line.brandProductId]: e.target.value,
-                              }))
-                            }
-                          />
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void saveCountLines(false)}
-                        className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-bold text-slate-800 disabled:opacity-60"
-                      >
-                        บันทึก
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void saveCountLines(true)}
-                        className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                      >
-                        ปิดรอบ
-                      </button>
                     </div>
                   </div>
                 )}
-              </section>
-            ) : null}
+              </>
+            ) : mode === "select_type" ? (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={handleBack}
+                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                  >
+                    ← กลับ
+                  </button>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    {actionType === "view"
+                      ? "เลือกประเภทสต็อก"
+                      : actionType === "stock_in"
+                        ? "เลือกประเภทรับเข้า"
+                        : actionType === "issue"
+                          ? "เลือกประเภทจ่ายออก"
+                          : ""}
+                  </h2>
+                </div>
+
+                <div className="grid gap-4 mt-6">
+                  <button
+                    onClick={() => handleTypeSelectClick("SALE_ITEM")}
+                    className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                  >
+                    <div className="text-3xl">🍜</div>
+                    <h3 className="text-xl font-bold">เมนูขาย</h3>
+                  </button>
+                  <button
+                    onClick={() => handleTypeSelectClick("CONSUMABLE")}
+                    className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                  >
+                    <div className="text-3xl">📦</div>
+                    <h3 className="text-xl font-bold">ของสิ้นเปลือง</h3>
+                  </button>
+                  <button
+                    onClick={() => handleTypeSelectClick("EQUIPMENT")}
+                    className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                  >
+                    <div className="text-3xl">🛠️</div>
+                    <h3 className="text-xl font-bold">อุปกรณ์</h3>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={handleBack}
+                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                  >
+                    ← กลับ
+                  </button>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    {actionType === "view"
+                      ? "ยอดคงเหลือ"
+                      : actionType === "stock_in"
+                        ? "รับเข้า"
+                        : actionType === "issue"
+                          ? "จ่ายออก"
+                          : ""}
+                  </h2>
+                </div>
+
+                <section className="rounded-2xl border border-gray-200 bg-white p-4">
+                  {data.products.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
+                      ไม่มีรายการเมนูสต๊อก
+                    </p>
+                  ) : (
+                    <>
+                      {categories.length > 1 ? (
+                        <div className="mb-3 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                          <div className="flex w-max min-w-full gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setCategoryFilter("ALL")}
+                              className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${categoryFilter === "ALL"
+                                  ? "bg-site-primary text-white"
+                                  : "bg-gray-100 text-gray-700"
+                                }`}
+                            >
+                              ทั้งหมด
+                            </button>
+                            {categories.map((cat) => (
+                              <button
+                                key={cat.id}
+                                type="button"
+                                onClick={() => setCategoryFilter(cat.id)}
+                                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${categoryFilter === cat.id
+                                    ? "bg-site-primary text-white"
+                                    : "bg-gray-100 text-gray-700"
+                                  }`}
+                              >
+                                {cat.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {visibleItems.length === 0 ? (
+                        <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
+                          ไม่มีเมนูในหมวดนี้
+                        </p>
+                      ) : actionType === "view" ? (
+                        <ul className="divide-y divide-gray-100">
+                          {visibleItems.map((item) => {
+                            const dbBalance = data.balances.find((b) => b.product.id === item.id)?.quantity ?? 0;
+                            const isLow = item.lowStockAlert != null && dbBalance <= item.lowStockAlert;
+                            const isEmpty = dbBalance <= 0;
+                            return (
+                              <li
+                                key={item.id}
+                                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                              >
+                                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                                  {item.imageUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={item.imageUrl}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center">
+                                      <IconSkewerPlaceholder size={28} />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-bold text-gray-900 leading-tight">
+                                    {item.name}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-gray-400">
+                                    {item.unit}
+                                    {isEmpty ? " · หมดสต๊อก" : isLow ? " · สต๊อกใกล้หมด" : ""}
+                                  </p>
+                                </div>
+                                <div
+                                  className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
+                                    isEmpty
+                                      ? "bg-red-50 text-red-700"
+                                      : isLow
+                                        ? "bg-amber-50 text-amber-700"
+                                        : "bg-slate-100 text-slate-900"
+                                  }`}
+                                >
+                                  <p className="text-lg font-black tabular-nums leading-none">{dbBalance}</p>
+                                  <p className="mt-0.5 text-[10px] font-semibold opacity-70">คงเหลือ</p>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <ul className="divide-y divide-gray-100">
+                          {visibleItems.map((item) => {
+                            const qty = qtyByItemId[item.id] ?? 0;
+                            const dbBalance = data.balances.find(b => b.product.id === item.id)?.quantity ?? 0;
+
+                            return (
+                              <li
+                                key={item.id}
+                                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                              >
+                                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                                  {item.imageUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={item.imageUrl}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center">
+                                      <IconSkewerPlaceholder size={28} />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-bold text-gray-900 leading-tight">
+                                    {item.name}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-gray-400">สต๊อกเดิม: {dbBalance}</p>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                  <div className={`flex h-9 shrink-0 items-center overflow-hidden rounded-full border border-gray-200 bg-white ${qty > 0 ? "border-site-primary ring-1 ring-site-primary" : ""}`}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setQty(item.id, qty - 1)}
+                                      className="flex h-full w-9 shrink-0 items-center justify-center bg-gray-50 text-gray-600 transition hover:bg-gray-100 active:bg-gray-200"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      inputMode="numeric"
+                                      value={qty || ""}
+                                      placeholder="0"
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value, 10);
+                                        setQty(item.id, isNaN(val) ? 0 : val);
+                                      }}
+                                      className="w-12 text-center text-sm font-bold tabular-nums text-gray-900 focus:outline-none focus:bg-site-primary-soft/20 h-full bg-transparent p-0 border-none ring-0"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setQty(item.id, qty + 1)}
+                                      className="flex h-full w-9 shrink-0 items-center justify-center bg-site-primary-soft text-site-primary-focus transition hover:bg-site-primary-soft/80 active:bg-site-primary-soft/60"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </section>
+              </>
+            )}
           </>
         )}
       </div>
+
+      {mode === "items" && selectedItems.length > 0 && (
+        <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
+          <div className="mx-auto max-w-lg bg-white p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] rounded-t-2xl border-t border-slate-200">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-bold text-slate-900">
+                  {actionType === "stock_in" ? "สรุปยอดรับเข้า" : "สรุปยอดจ่ายออก"}
+                </h3>
+                <p className="text-xs text-slate-500">เลือกไว้ {selectedItems.length} รายการ</p>
+              </div>
+              <button
+                onClick={() => {
+                  setQtyByItemId({});
+                  clearIssueFields();
+                }}
+                className="text-sm font-semibold text-slate-500 underline"
+              >
+                ล้างข้อมูล
+              </button>
+            </div>
+            {actionType === "issue" && (
+              <div className="mb-4 space-y-3 border-t border-slate-100 pt-3">
+                <div>
+                  <label className="mb-1 block text-sm font-bold text-slate-700">รายละเอียด <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={issueNote}
+                    onChange={(e) => setIssueNote(e.target.value)}
+                    placeholder="เช่น ทำหล่น, เบิกไปใช้งาน..."
+                    className="w-full rounded-xl border-slate-200 px-3 py-2 text-sm focus:border-site-primary focus:ring-1 focus:ring-site-primary"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">
+                    ถ่ายรูปประกอบ <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void openIssueCamera()}
+                      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-2 border-dashed border-amber-400 bg-amber-50 text-amber-700 transition hover:border-amber-500 hover:bg-amber-100 active:scale-[0.98]"
+                      aria-label="ถ่ายรูปด้วยกล้อง"
+                      title="ถ่ายรูปด้วยกล้องเท่านั้น"
+                    >
+                      <IconCamera size={28} aria-hidden />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      {issuePreviewUrl ? (
+                        <div className="flex items-center gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={issuePreviewUrl}
+                            alt="รูปประกอบจ่ายออก"
+                            className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">
+                              ถ่ายแล้ว
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => void openIssueCamera()}
+                              className="mt-0.5 text-xs font-semibold text-amber-700 underline"
+                            >
+                              ถ่ายใหม่
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs leading-relaxed text-slate-500">
+                          กดไอคอนกล้องเพื่อถ่ายรูป
+                          <br />
+                          (ใช้กล้องเท่านั้น เลือกจากแกลเลอรีไม่ได้)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => void submitChanges()}
+              disabled={busy}
+              className={`w-full rounded-xl py-3.5 text-center text-base font-bold text-white shadow-md active:scale-[0.98] transition-transform disabled:opacity-70 ${actionType === "stock_in" ? "bg-emerald-600" : "bg-amber-500"
+                }`}
+            >
+              {busy ? "กำลังบันทึก..." : "ยืนยันการทำรายการ"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {cameraOpen ? (
+        <div
+          className="fixed inset-0 z-[90] flex flex-col bg-black"
+          role="dialog"
+          aria-modal="true"
+          aria-label="ถ่ายรูปประกอบ"
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white">
+            <p className="text-sm font-bold">ถ่ายรูปประกอบ</p>
+            <button
+              type="button"
+              onClick={dismissIssueCamera}
+              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/90 hover:bg-white/10"
+            >
+              ยกเลิก
+            </button>
+          </div>
+          <div className="relative min-h-0 flex-1 bg-black">
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className="h-full w-full object-cover"
+            />
+            {cameraBusy ? (
+              <p className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+                กำลังเปิดกล้อง…
+              </p>
+            ) : null}
+          </div>
+          <div className="flex items-center justify-center gap-4 bg-black px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+            <button
+              type="button"
+              disabled={cameraBusy}
+              onClick={captureIssuePhoto}
+              className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-amber-500 text-white shadow-lg disabled:opacity-50"
+              aria-label="ถ่ายรูป"
+            >
+              <IconCamera size={28} aria-hidden />
+            </button>
+          </div>
+        </div>
+      ) : null}
+      
     </StaffAppShell>
   );
 }

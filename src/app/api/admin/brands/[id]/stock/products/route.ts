@@ -21,6 +21,8 @@ const createSchema = z.object({
   sellingPrice: z.number().min(0).nullable().optional(),
   isActive: z.boolean().optional(),
   equipmentStatus: z.nativeEnum(EquipmentStatus).nullable().optional(),
+  imageUrl: z.string().trim().nullable().optional(),
+  description: z.string().trim().nullable().optional(),
 });
 
 export async function GET(request: Request, { params }: Params) {
@@ -76,6 +78,8 @@ export async function POST(request: Request, { params }: Params) {
         unit: body.unit?.trim() || "ชิ้น",
         stockType,
         category: body.category?.trim() || null,
+        imageUrl: body.imageUrl || null,
+        description: body.description || null,
         trackStock: body.trackStock ?? true,
         trackLots: body.trackLots ?? false,
         lowStockAlert: body.lowStockAlert ?? null,

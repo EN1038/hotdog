@@ -5,7 +5,7 @@ import { confirmStockTransfer, StockError } from "@/lib/stock";
 type Params = { params: Promise<{ id: string }> };
 
 /** POST — พนักงานยืนยันรับของจากบ้านกลางเข้าสต๊อกสาขา */
-export async function POST(_request: Request, { params }: Params) {
+export async function POST(request: Request, { params }: Params) {
   try {
     const session = await requireStaff();
     const { id } = await params;
@@ -13,10 +13,20 @@ export async function POST(_request: Request, { params }: Params) {
       return jsonError("ไม่พบข้อมูลพนักงาน", 401);
     }
 
+    const body = await request.json().catch(() => ({}));
+    const receivedQuantity =
+      typeof body.receivedQuantity === "number" && body.receivedQuantity >= 0
+        ? body.receivedQuantity
+        : undefined;
+    const varianceNote =
+      typeof body.varianceNote === "string" ? body.varianceNote.trim() : undefined;
+
     const transfer = await confirmStockTransfer({
       transferId: id,
       branchId: session.branchId,
       staffId: session.staffId,
+      receivedQuantity,
+      varianceNote,
     });
 
     return jsonOk(transfer);

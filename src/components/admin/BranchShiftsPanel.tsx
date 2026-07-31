@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   adminInputClass,
@@ -42,6 +43,12 @@ type ShiftSummary = {
   totalWithOpeningCash: number;
   giftQuantity: number;
   menus: Array<{ name: string; quantity: number; revenueBaht: number }>;
+  stockDeductions: Array<{
+    menuItemId: string;
+    name: string;
+    quantity: number;
+    orders: Array<{ id: string; orderNumber: string }>;
+  }>;
 };
 
 function formatHm(iso: string | null) {
@@ -181,6 +188,9 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
     };
   }, [branchId, selectedId]);
 
+  const stockDeductions = summary?.stockDeductions ?? [];
+  const stockTotalQty = stockDeductions.reduce((n, r) => n + r.quantity, 0);
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -190,7 +200,8 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
               สรุปรอบขาย
             </h3>
             <p className="mt-0.5 text-sm text-slate-600">
-              เลือกวันและรอบเพื่อดูยอดขาย เงินเริ่มต้น ของแถม และเมนูที่ขาย
+              เลือกวันและรอบเพื่อดูยอดขาย เงินเริ่มต้น ของแถม สต็อกที่หัก
+              และเมนูที่ขาย
             </p>
           </div>
           <div className="w-full max-w-xs sm:w-44">
@@ -253,82 +264,136 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
       {loadingSummary ? (
         <p className="text-sm text-slate-500">กำลังโหลดสรุป…</p>
       ) : summary ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-1 shadow-sm sm:px-4">
-            <SummaryRow label="เลขที่รอบ" value={summary.shift.code} />
-            <SummaryRow
-              label="วันที่และเวลาเปิด"
-              value={formatShiftDateTime(summary.shift.openedAt)}
-            />
-            <SummaryRow
-              label="วันที่และเวลาปิด"
-              value={
-                summary.shift.closedAt
-                  ? formatShiftDateTime(summary.shift.closedAt)
-                  : "ยังไม่ปิดรอบ"
-              }
-            />
-            <SummaryRow
-              label="จำนวนออเดอร์"
-              value={`${summary.orderCount.toLocaleString("th-TH")} ออเดอร์`}
-            />
-            {summary.cancelledOrders > 0 ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-1 shadow-sm sm:px-4">
+              <SummaryRow label="เลขที่รอบ" value={summary.shift.code} />
               <SummaryRow
-                label="ยกเลิก"
-                value={`${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`}
+                label="วันที่และเวลาเปิด"
+                value={formatShiftDateTime(summary.shift.openedAt)}
               />
-            ) : null}
-            <SummaryRow
-              label="เงินเริ่มต้น"
-              value={`${formatPrice(summary.shift.openingCash)} บาท`}
-            />
-            {summary.shift.note ? (
-              <SummaryRow label="หมายเหตุ" value={summary.shift.note} />
-            ) : null}
-            <SummaryRow
-              label="ยอดเงินสด"
-              value={`${formatPrice(summary.cashRevenueBaht)} บาท`}
-            />
-            <SummaryRow
-              label="ยอดเงินโอน"
-              value={`${formatPrice(summary.transferRevenueBaht)} บาท`}
-            />
-            <SummaryRow
-              label="ยอดขายสุทธิ"
-              value={`${formatPrice(summary.revenueBaht)} บาท`}
-            />
-            <SummaryRow
-              label="ยอดรวมเงินเริ่มต้น"
-              value={`${formatPrice(summary.totalWithOpeningCash)} บาท`}
-            />
-            <SummaryRow
-              label="จำนวนของแถม"
-              value={`${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`}
-              last
-            />
+              <SummaryRow
+                label="วันที่และเวลาปิด"
+                value={
+                  summary.shift.closedAt
+                    ? formatShiftDateTime(summary.shift.closedAt)
+                    : "ยังไม่ปิดรอบ"
+                }
+              />
+              <SummaryRow
+                label="จำนวนออเดอร์"
+                value={`${summary.orderCount.toLocaleString("th-TH")} ออเดอร์`}
+              />
+              {summary.cancelledOrders > 0 ? (
+                <SummaryRow
+                  label="ยกเลิก"
+                  value={`${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`}
+                />
+              ) : null}
+              <SummaryRow
+                label="เงินเริ่มต้น"
+                value={`${formatPrice(summary.shift.openingCash)} บาท`}
+              />
+              {summary.shift.note ? (
+                <SummaryRow label="หมายเหตุ" value={summary.shift.note} />
+              ) : null}
+              <SummaryRow
+                label="ยอดเงินสด"
+                value={`${formatPrice(summary.cashRevenueBaht)} บาท`}
+              />
+              <SummaryRow
+                label="ยอดเงินโอน"
+                value={`${formatPrice(summary.transferRevenueBaht)} บาท`}
+              />
+              <SummaryRow
+                label="ยอดขายสุทธิ"
+                value={`${formatPrice(summary.revenueBaht)} บาท`}
+              />
+              <SummaryRow
+                label="ยอดรวมเงินเริ่มต้น"
+                value={`${formatPrice(summary.totalWithOpeningCash)} บาท`}
+              />
+              <SummaryRow
+                label="จำนวนของแถม"
+                value={`${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`}
+                last
+              />
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-sm font-bold text-slate-900">เมนูที่ขาย</p>
+              {summary.menus.length === 0 ? (
+                <p className="text-sm text-slate-500">ยังไม่มีรายการที่นับยอด</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {summary.menus.map((m) => (
+                    <li
+                      key={m.name}
+                      className="flex items-center justify-between gap-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {m.name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {m.quantity.toLocaleString("th-TH")} ชิ้น
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-sm font-semibold text-slate-800">
+                        {formatPrice(m.revenueBaht)}฿
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="mb-2 text-sm font-bold text-slate-900">เมนูที่ขาย</p>
-            {summary.menus.length === 0 ? (
-              <p className="text-sm text-slate-500">ยังไม่มีรายการที่นับยอด</p>
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <p className="text-sm font-bold text-slate-900">
+                  สต็อกที่หักจากการขาย
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  รวมตามเมนูจากออเดอร์ที่ตัดสต็อกแล้วในรอบนี้
+                </p>
+              </div>
+              {stockDeductions.length > 0 ? (
+                <p className="text-xs font-semibold text-slate-600">
+                  รวม {stockTotalQty.toLocaleString("th-TH")} ชิ้น
+                </p>
+              ) : null}
+            </div>
+            {stockDeductions.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                ยังไม่มีรายการหักสต็อกในรอบนี้
+              </p>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {summary.menus.map((m) => (
+                {stockDeductions.map((row) => (
                   <li
-                    key={m.name}
-                    className="flex items-center justify-between gap-3 py-2.5"
+                    key={row.menuItemId}
+                    className="flex flex-col gap-1.5 py-3 sm:flex-row sm:items-start sm:justify-between"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-900">
-                        {m.name}
+                        {row.name}
                       </p>
-                      <p className="text-xs text-slate-500">
-                        {m.quantity.toLocaleString("th-TH")} ชิ้น
+                      <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500">
+                        {row.orders.map((o) => (
+                          <Link
+                            key={o.id}
+                            href={`/admin/orders/${o.id}`}
+                            className="font-medium text-site-primary hover:underline"
+                          >
+                            {o.orderNumber || o.id.slice(0, 8)}
+                          </Link>
+                        ))}
                       </p>
                     </div>
-                    <p className="shrink-0 text-sm font-semibold text-slate-800">
-                      {formatPrice(m.revenueBaht)}฿
+                    <p className="shrink-0 text-sm font-bold text-red-700 tabular-nums">
+                      −{row.quantity.toLocaleString("th-TH")}
                     </p>
                   </li>
                 ))}

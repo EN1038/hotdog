@@ -44,6 +44,8 @@ type Props = {
   onError: (title: string, detail?: string) => void;
   /** Called before open modal when viewing another round — e.g. jump to current */
   onBeforeOpen?: () => void;
+  /** Hide the "เปิดรอบขาย" trigger (e.g. when shown as overlay elsewhere) */
+  hideClosedButton?: boolean;
 };
 
 function formatShiftTime(iso: string) {
@@ -57,6 +59,38 @@ function formatShiftTime(iso: string) {
   } catch {
     return "";
   }
+}
+
+function formatElapsed(ms: number) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+  return `${pad(m)}:${pad(s)}`;
+}
+
+function useShiftElapsed(openedAt: string | null | undefined) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    if (!openedAt) {
+      setElapsedMs(0);
+      return;
+    }
+    const start = new Date(openedAt).getTime();
+    if (!Number.isFinite(start)) {
+      setElapsedMs(0);
+      return;
+    }
+    const tick = () => setElapsedMs(Date.now() - start);
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [openedAt]);
+
+  return elapsedMs;
 }
 
 function formatShiftDateTime(iso: string | null) {
@@ -105,9 +139,11 @@ export function StaffShiftControls({
   onClosed,
   onError,
   onBeforeOpen,
+  hideClosedButton = false,
 }: Props) {
   const [openModal, setOpenModal] = useState(false);
   const [closeModal, setCloseModal] = useState(false);
+  const [detailModal, setDetailModal] = useState(false);
   const [openingCashInput, setOpeningCashInput] = useState("0");
   const [noteInput, setNoteInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -124,10 +160,18 @@ export function StaffShiftControls({
     setCloseModal(true);
   }
 
+  function startDetail() {
+    setDetailModal(true);
+  }
+
+  const summaryModalOpen = closeModal || detailModal;
+
   useEffect(() => {
-    if (!closeModal || !activeShift?.id) {
-      setCloseSummary(null);
-      setCloseSummaryError("");
+    if (!summaryModalOpen || !activeShift?.id) {
+      if (!summaryModalOpen) {
+        setCloseSummary(null);
+        setCloseSummaryError("");
+      }
       return;
     }
     let cancelled = false;
@@ -156,7 +200,7 @@ export function StaffShiftControls({
     return () => {
       cancelled = true;
     };
-  }, [closeModal, activeShift?.id]);
+  }, [summaryModalOpen, activeShift?.id]);
 
   async function submitOpen() {
     const openingCash = Number(openingCashInput.replace(/,/g, ""));
@@ -228,6 +272,10 @@ export function StaffShiftControls({
     }
   }
 
+  const elapsedMs = useShiftElapsed(
+    canSell && activeShift ? activeShift.openedAt : null,
+  );
+
   return (
     <>
       {canSell && activeShift ? (
@@ -235,8 +283,8 @@ export function StaffShiftControls({
           className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3.5 text-emerald-950 shadow-sm"
           role="status"
         >
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="min-w-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <p className="text-sm font-bold text-emerald-950">
@@ -248,12 +296,55 @@ export function StaffShiftControls({
                 {formatPrice(activeShift.openingCash)}฿
               </p>
             </div>
+            <div className="shrink-0 text-right">
+              <p className="text-sm font-bold leading-none text-emerald-950">
+                เปิดมาแล้ว
+              </p>
+              <p
+                className="mt-1 font-mono text-xs font-bold tabular-nums text-emerald-700"
+                aria-live="polite"
+              >
+                {formatElapsed(elapsedMs)}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy || submitting}
+              onClick={startDetail}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-emerald-300 bg-white text-emerald-900 shadow-sm hover:bg-emerald-50 disabled:opacity-60 transition active:scale-[0.98]"
+              aria-label="ดูรายละเอียดรอบขาย"
+              title="ดูรายละเอียดรอบขาย"
+            >
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden
+              >
+                <path
+                  d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="2.75"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </button>
             {canToggleStore ? (
               <button
                 type="button"
                 disabled={busy || submitting}
                 onClick={startClose}
-                className="w-full sm:w-auto shrink-0 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60 transition active:scale-[0.98]"
+                className="min-w-0 flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60 transition active:scale-[0.98]"
               >
                 ปิดรอบขาย
               </button>
@@ -261,15 +352,17 @@ export function StaffShiftControls({
           </div>
         </div>
       ) : canToggleStore ? (
-        <button
-          type="button"
-          disabled={busy || submitting}
-          onClick={startOpen}
-          className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-base font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 transition active:scale-[0.98]"
-        >
-          เปิดรอบขาย
-        </button>
-      ) : (
+        hideClosedButton ? null : (
+          <button
+            type="button"
+            disabled={busy || submitting}
+            onClick={startOpen}
+            className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-base font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 transition active:scale-[0.98]"
+          >
+            เปิดรอบขาย
+          </button>
+        )
+      ) : hideClosedButton ? null : (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">
           บัญชีนี้เปิดรอบไม่ได้ — ต้องเป็นพนักงานขาย (ตั้งค่าที่แอดมิน)
         </p>
@@ -277,7 +370,7 @@ export function StaffShiftControls({
 
       {openModal ? (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
           aria-label="เปิดร้าน"
@@ -340,9 +433,136 @@ export function StaffShiftControls({
         </div>
       ) : null}
 
+      {detailModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label="รายละเอียดรอบขาย"
+          onClick={() => setDetailModal(false)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-md flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-gray-100 px-4 py-3 text-center">
+              <p className="text-base font-bold text-gray-900">
+                รายละเอียดรอบขาย
+              </p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                สรุปยอดรอบนี้ — เหมือนข้อมูลตอนปิดรอบ
+              </p>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+              {closeSummaryLoading ? (
+                <p className="py-6 text-center text-sm text-gray-500">
+                  กำลังโหลดสรุปยอด…
+                </p>
+              ) : closeSummaryError ? (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {closeSummaryError}
+                </p>
+              ) : closeSummary ? (
+                <>
+                  <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
+                    <Row label="เลขที่รอบ" value={closeSummary.shift.code} />
+                    <Row
+                      label="เปิดเมื่อ"
+                      value={formatShiftDateTime(closeSummary.shift.openedAt)}
+                    />
+                    <Row
+                      label="จำนวนออเดอร์"
+                      value={`${closeSummary.orderCount.toLocaleString("th-TH")} ออเดอร์`}
+                    />
+                    {closeSummary.cancelledOrders > 0 ? (
+                      <Row
+                        label="ยกเลิก"
+                        value={`${closeSummary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`}
+                      />
+                    ) : null}
+                    <Row
+                      label="เงินเริ่มต้น"
+                      value={`${formatPrice(closeSummary.shift.openingCash)} บาท`}
+                    />
+                    {closeSummary.shift.note ? (
+                      <Row label="หมายเหตุ" value={closeSummary.shift.note} />
+                    ) : null}
+                    <Row
+                      label="ยอดเงินสด"
+                      value={`${formatPrice(closeSummary.cashRevenueBaht)} บาท`}
+                    />
+                    <Row
+                      label="ยอดเงินโอน"
+                      value={`${formatPrice(closeSummary.transferRevenueBaht)} บาท`}
+                    />
+                    <Row
+                      label="ยอดขายสุทธิ"
+                      value={`${formatPrice(closeSummary.revenueBaht)} บาท`}
+                    />
+                    <Row
+                      label="ยอดรวมเงินเริ่มต้น"
+                      value={`${formatPrice(closeSummary.totalWithOpeningCash)} บาท`}
+                    />
+                    <Row
+                      label="จำนวนของแถม"
+                      value={`${closeSummary.giftQuantity.toLocaleString("th-TH")} ชิ้น`}
+                      last
+                    />
+                  </div>
+
+                  {closeSummary.menus.length > 0 ? (
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold text-gray-700">
+                        เมนูที่ขาย
+                      </p>
+                      <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                        {closeSummary.menus.slice(0, 12).map((m) => (
+                          <li
+                            key={m.name}
+                            className="flex items-center justify-between gap-3 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-gray-900">
+                                {m.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {m.quantity.toLocaleString("th-TH")} ชิ้น
+                              </p>
+                            </div>
+                            <p className="shrink-0 text-sm font-semibold text-gray-800">
+                              {formatPrice(m.revenueBaht)}฿
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </>
+              ) : activeShift ? (
+                <p className="rounded-lg bg-gray-50 px-3 py-2 text-center text-xs text-gray-600">
+                  รอบที่ {activeShift.roundNumber} · ตังทอน{" "}
+                  {formatPrice(activeShift.openingCash)}฿
+                </p>
+              ) : null}
+            </div>
+
+            <div className="border-t border-gray-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setDetailModal(false)}
+                className="w-full rounded-xl bg-site-primary px-3 py-2.5 text-sm font-bold text-white"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {closeModal ? (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
           aria-label="ยืนยันปิดรอบ"

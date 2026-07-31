@@ -2758,7 +2758,7 @@ function BranchDetailContent() {
                     <div className="flex flex-wrap gap-2">
                       {branch?.brandId && (
                         <Link
-                          href={`/admin/branches/${id}/stock`}
+                          href={`/admin/branches/${id}?tab=stock`}
                           className={`${btnOutline} shrink-0`}
                         >
                           จัดการสต๊อก

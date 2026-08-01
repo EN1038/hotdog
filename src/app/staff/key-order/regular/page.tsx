@@ -45,7 +45,11 @@ import {
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
-import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
+import { compareThaiText } from "@/lib/thai-sort";
+import {
+  assignStableMenuSequence,
+  sortMenuItemData,
+} from "@/lib/staff-menu-order";
 import {
   autoPrintQueueTickets,
   clampTicketCopies,
@@ -117,12 +121,17 @@ export default function StaffRegularKeyOrderPage() {
   const channel = fulfillmentToChannel(fulfillment.fulfillmentType);
 
   const regularItems = useMemo(() => {
-    return sortByThaiName(
+    return sortMenuItemData(
       menuItems
         .filter(isRegularMenuItem)
         .filter((item) => isChannelSellEnabled(item, channel)),
     );
   }, [menuItems, channel]);
+
+  const seqById = useMemo(
+    () => assignStableMenuSequence(regularItems),
+    [regularItems],
+  );
 
   const categories = useMemo(() => {
     const map = new Map<string, { id: string; name: string; sortOrder: number }>();
@@ -138,13 +147,10 @@ export default function StaffRegularKeyOrderPage() {
   }, [regularItems]);
 
   const visibleItems = useMemo(() => {
-    const list =
-      categoryFilter === "ALL"
-        ? regularItems
-        : regularItems.filter(
-            (item) => (item.category?.id ?? "__other__") === categoryFilter,
-          );
-    return sortByThaiName(list);
+    if (categoryFilter === "ALL") return regularItems;
+    return regularItems.filter(
+      (item) => (item.category?.id ?? "__other__") === categoryFilter,
+    );
   }, [regularItems, categoryFilter]);
 
   const sharedGroups = useMemo(
@@ -496,11 +502,12 @@ export default function StaffRegularKeyOrderPage() {
               </p>
             ) : (
               <ul className="divide-y divide-gray-100">
-                {visibleItems.map((item, index) => {
+                {visibleItems.map((item) => {
                   const qty = qtyByItemId[item.id] ?? 0;
                   const price = resolveSellPrice(item, channel).final;
                   const sq = item.stockQuantity ?? 0;
                   const soldOut = isMenuItemSoldOut(item);
+                  const seq = seqById.get(item.id) ?? 0;
                   return (
                     <li
                       key={item.id}
@@ -509,7 +516,7 @@ export default function StaffRegularKeyOrderPage() {
                       }`}
                     >
                       <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                        {index + 1}
+                        {seq}
                       </span>
                       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
                         {item.imageUrl ? (

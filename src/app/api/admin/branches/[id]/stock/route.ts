@@ -87,6 +87,8 @@ export async function GET(_request: Request, { params }: Params) {
         unit: "ชิ้น",
         stockType: "SALE_ITEM",
         category: item.category?.name ?? "เมนู",
+        sortOrder: item.sortOrder,
+        categorySortOrder: item.category?.sortOrder ?? 999,
         lowStockAlert: 10,
         trackStock: true,
         imageUrl: item.imageUrl,
@@ -101,6 +103,9 @@ export async function GET(_request: Request, { params }: Params) {
           name: item.name,
           unit: "ชิ้น",
           stockType: "SALE_ITEM",
+          category: item.category?.name ?? "เมนู",
+          sortOrder: item.sortOrder,
+          categorySortOrder: item.category?.sortOrder ?? 999,
         },
       });
     }
@@ -114,6 +119,8 @@ export async function GET(_request: Request, { params }: Params) {
         unit: item.unit,
         stockType: item.stockType,
         category: typeLabel,
+        sortOrder: 0,
+        categorySortOrder: 999,
         lowStockAlert: 10,
         trackStock: true,
         imageUrl: item.imageUrl,
@@ -128,6 +135,9 @@ export async function GET(_request: Request, { params }: Params) {
           name: item.name,
           unit: item.unit,
           stockType: item.stockType,
+          category: typeLabel,
+          sortOrder: 0,
+          categorySortOrder: 999,
         },
       });
     }

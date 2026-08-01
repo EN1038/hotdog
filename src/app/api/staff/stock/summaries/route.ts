@@ -98,6 +98,7 @@ export async function GET(request: Request) {
           rawNote: note.lines ? null : c.note,
           isDailySales:
             c.name.includes("สรุปยอดขายรายวัน") ||
+            c.name.includes("สรุปยอดสต๊อกและขายราย") ||
             c.name.includes("สรุปยอดสต๊อก") ||
             (typeof note.cash === "number" && Array.isArray(note.lines)),
         };

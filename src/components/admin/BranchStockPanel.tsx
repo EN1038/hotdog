@@ -10,6 +10,11 @@ import {
 } from "@/components/admin/AdminShell";
 import { useToast } from "@/components/admin/Toast";
 import { compareThaiText } from "@/lib/thai-sort";
+import {
+  assignStableMenuSequence,
+  sortStaffMenuItems,
+} from "@/lib/staff-menu-order";
+import { formatPrice } from "@/lib/constants";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { ImageField } from "@/components/admin/ImageField";
 import { BranchStockCountsView } from "@/components/admin/BranchStockCountsView";
@@ -23,6 +28,8 @@ type Product = {
   unit: string;
   stockType: StockType;
   category?: string | null;
+  sortOrder?: number;
+  categorySortOrder?: number;
   lowStockAlert: number | null;
   trackStock?: boolean;
   imageUrl?: string | null;
@@ -90,14 +97,27 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
 
   const categories = useMemo(() => {
     if (!data) return [];
-    const map = new Map<string, { id: string; name: string }>();
+    const map = new Map<
+      string,
+      { id: string; name: string; categorySortOrder: number }
+    >();
     for (const item of data.products) {
       if (typeFilter !== "ALL" && item.stockType !== typeFilter) continue;
       const name = item.category || "ไม่มีหมวดหมู่";
       const catId = name;
-      if (!map.has(catId)) map.set(catId, { id: catId, name });
+      if (!map.has(catId)) {
+        map.set(catId, {
+          id: catId,
+          name,
+          categorySortOrder: item.categorySortOrder ?? 999,
+        });
+      }
     }
-    return [...map.values()].sort((a, b) => compareThaiText(a.name, b.name));
+    return [...map.values()].sort(
+      (a, b) =>
+        a.categorySortOrder - b.categorySortOrder ||
+        compareThaiText(a.name, b.name),
+    );
   }, [data, typeFilter]);
 
   const dashboardStats = useMemo(() => {
@@ -140,20 +160,26 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
     };
   }, [data]);
 
-  const visibleItems = useMemo(() => {
+  const typedCatalog = useMemo(() => {
     if (!data) return [];
     let list = data.products;
-    
     if (typeFilter !== "ALL") {
       list = list.filter((item) => item.stockType === typeFilter);
     }
-    
-    if (categoryFilter !== "ALL") {
-      list = list.filter((item) => (item.category || "ไม่มีหมวดหมู่") === categoryFilter);
-    }
-    
-    return list.sort((a, b) => compareThaiText(a.name, b.name));
-  }, [data, typeFilter, categoryFilter]);
+    return sortStaffMenuItems(list);
+  }, [data, typeFilter]);
+
+  const seqById = useMemo(
+    () => assignStableMenuSequence(typedCatalog),
+    [typedCatalog],
+  );
+
+  const visibleItems = useMemo(() => {
+    if (categoryFilter === "ALL") return typedCatalog;
+    return typedCatalog.filter(
+      (item) => (item.category || "ไม่มีหมวดหมู่") === categoryFilter,
+    );
+  }, [typedCatalog, categoryFilter]);
 
   const selectedItems = useMemo(() => {
     const changes: { id: string; name: string; quantity: number }[] = [];
@@ -166,6 +192,11 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
     }
     return changes;
   }, [data, qtyByItemId]);
+
+  const selectedTotalQty = useMemo(
+    () => selectedItems.reduce((sum, item) => sum + item.quantity, 0),
+    [selectedItems],
+  );
 
   function setQty(itemId: string, next: number) {
     setQtyByItemId((prev) => {
@@ -530,6 +561,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                   <table className="w-full text-left text-sm text-slate-600">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
                       <tr>
+                        <th className="px-4 py-3 font-semibold w-12">#</th>
                         <th className="px-4 py-3 font-semibold">รายการ</th>
                         <th className="px-4 py-3 font-semibold">หมวดหมู่</th>
                         <th className="px-4 py-3 font-semibold text-right">ยอดคงเหลือ</th>
@@ -538,8 +570,12 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                     <tbody className="divide-y divide-slate-100">
                       {visibleItems.map((item) => {
                         const dbBalance = data.balances.find((b) => b.product.id === item.id)?.quantity ?? 0;
+                        const seq = seqById.get(item.id) ?? 0;
                         return (
                           <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 text-sm font-bold tabular-nums text-slate-400">
+                              {seq}
+                            </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
@@ -579,7 +615,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                       })}
                       {visibleItems.length === 0 && (
                         <tr>
-                          <td colSpan={3} className="px-4 py-8 text-center text-sm text-slate-500">
+                          <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">
                             ไม่พบรายการที่ตรงกับตัวกรอง
                           </td>
                         </tr>
@@ -707,6 +743,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                   {visibleItems.map((item) => {
                     const qty = qtyByItemId[item.id] ?? 0;
                     const dbBalance = data.balances.find((b) => b.product.id === item.id)?.quantity ?? 0;
+                    const seq = seqById.get(item.id) ?? 0;
                     
                     return (
                       <li
@@ -714,6 +751,9 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                         className="flex items-center justify-between gap-4 py-4"
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-400">
+                            {seq}
+                          </span>
                           <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
                             {item.imageUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
@@ -773,12 +813,18 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
               )}
               
               {selectedItems.length > 0 && (
-                <div className="sticky bottom-4 mt-8 rounded-2xl bg-slate-900 p-4 shadow-lg border border-slate-800 flex items-center justify-between z-10">
-                  <div>
+                <div className="sticky bottom-4 mt-8 rounded-2xl bg-slate-900 p-4 shadow-lg border border-slate-800 flex items-center justify-between z-10 gap-3">
+                  <div className="min-w-0">
                     <h3 className="font-bold text-white">
                       {actionType === "stock_in" ? "ยอดรับเข้า" : "ยอดจ่ายออก"}
                     </h3>
                     <p className="text-xs text-slate-400">เลือกไว้ {selectedItems.length} รายการ</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[11px] font-semibold text-slate-400">จำนวนรวม</p>
+                    <p className="text-lg font-black tabular-nums leading-none text-white">
+                      {formatPrice(selectedTotalQty)}
+                    </p>
                   </div>
                   <button
                     onClick={() => void submitChanges()}

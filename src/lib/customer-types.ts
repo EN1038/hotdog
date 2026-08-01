@@ -49,6 +49,8 @@ export type MenuItemData = {
   imageUrl: string | null;
   isOutOfStock: boolean;
   stockQuantity?: number | null;
+  /** Branch menu display order (admin) */
+  sortOrder?: number;
   /** Top sellers from completed orders at this branch */
   isBestSeller?: boolean;
   optionGroups: MenuOptionGroupData[];

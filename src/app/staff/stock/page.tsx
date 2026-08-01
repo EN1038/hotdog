@@ -6,9 +6,15 @@ import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
+import { formatPrice } from "@/lib/constants";
 import { IconCamera, IconSkewerPlaceholder } from "@/components/icons";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+
+type StockQtyValue = {
+  quantity: number;
+  valueBaht: number;
+};
 
 type Product = {
   id: string;
@@ -19,6 +25,7 @@ type Product = {
   lowStockAlert: number | null;
   trackStock?: boolean;
   imageUrl?: string | null;
+  price?: number;
 };
 
 type Balance = {
@@ -44,6 +51,11 @@ type Payload = {
   products: Product[];
   lowItems: Balance[];
   pending: Pending[];
+  summary?: {
+    monthLabel: string;
+    currentByType: Record<StockType, StockQtyValue>;
+    wasteByType: Record<StockType, StockQtyValue>;
+  };
 };
 
 export default function StaffStockPage() {
@@ -148,6 +160,22 @@ function StaffStockContent() {
 
     return list.sort((a, b) => compareThaiText(a.name, b.name));
   }, [data, typeFilter, categoryFilter]);
+
+  const viewSummary = useMemo(() => {
+    const empty = { quantity: 0, valueBaht: 0 };
+    if (!data || typeFilter === "ALL") {
+      return {
+        monthLabel: data?.summary?.monthLabel ?? "",
+        current: empty,
+        waste: empty,
+      };
+    }
+    return {
+      monthLabel: data.summary?.monthLabel ?? "",
+      current: data.summary?.currentByType?.[typeFilter] ?? empty,
+      waste: data.summary?.wasteByType?.[typeFilter] ?? empty,
+    };
+  }, [data, typeFilter]);
 
   const selectedItems = useMemo(() => {
     const changes: { id: string, name: string, quantity: number }[] = [];
@@ -763,6 +791,69 @@ function StaffStockContent() {
                           : ""}
                   </h2>
                 </div>
+
+                {actionType === "view" ? (
+                  <div className="mb-4 grid grid-cols-2 gap-2.5">
+                    <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white px-3.5 py-3 shadow-sm">
+                      <p className="text-[11px] font-bold tracking-wide text-emerald-700/80">
+                        สต๊อกปัจจุบัน
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-emerald-800/70">
+                        คงเหลือ
+                      </p>
+                      <div className="mt-2.5 space-y-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[11px] font-medium text-slate-500">
+                            รวม
+                          </span>
+                          <span className="text-lg font-black tabular-nums leading-none text-slate-900">
+                            {formatPrice(viewSummary.current.quantity)}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[11px] font-medium text-slate-500">
+                            มูลค่า
+                          </span>
+                          <span className="text-sm font-extrabold tabular-nums text-emerald-700">
+                            {formatPrice(Math.round(viewSummary.current.valueBaht))}{" "}
+                            <span className="text-[10px] font-bold">บาท</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white px-3.5 py-3 shadow-sm">
+                      <p className="text-[11px] font-bold tracking-wide text-rose-700/80">
+                        สต๊อกสะสมของเสีย
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-rose-800/70">
+                        ดูรายเดือน
+                        {viewSummary.monthLabel
+                          ? ` · ${viewSummary.monthLabel}`
+                          : ""}
+                      </p>
+                      <div className="mt-2.5 space-y-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[11px] font-medium text-slate-500">
+                            รวม
+                          </span>
+                          <span className="text-lg font-black tabular-nums leading-none text-slate-900">
+                            {formatPrice(viewSummary.waste.quantity)}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[11px] font-medium text-slate-500">
+                            มูลค่า
+                          </span>
+                          <span className="text-sm font-extrabold tabular-nums text-rose-700">
+                            {formatPrice(Math.round(viewSummary.waste.valueBaht))}{" "}
+                            <span className="text-[10px] font-bold">บาท</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <section className="rounded-2xl border border-gray-200 bg-white p-4">
                   {data.products.length === 0 ? (

@@ -377,6 +377,8 @@ export default function StaffHomePage() {
           open={summaryOpen}
           onClose={() => setSummaryOpen(false)}
           initialDate={bangkokDateKey()}
+          brandName={meta?.brand?.name ?? ""}
+          branchName={meta?.branchName ?? ""}
         />
 
         <StaffDailySalesSummarySheet

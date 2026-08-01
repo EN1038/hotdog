@@ -7,6 +7,11 @@ import {
   bangkokDateKey,
   startOfBangkokDayFromKey,
 } from "@/lib/constants";
+import {
+  assignStableMenuSequence,
+  sortStaffMenuItems,
+  withMenuOrderFields,
+} from "@/lib/staff-menu-order";
 
 const WASTE_HISTORY_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
 
@@ -335,13 +340,27 @@ export async function POST(request: Request) {
 
     // End-of-day stock + cash summary (BranchMenuItem stock system)
     if (body.action === "summary") {
-      const menuItems = await prisma.branchMenuItem.findMany({
-        where: {
-          branchId: branch.id,
-          id: { in: body.lines.map((l) => l.brandProductId) },
-        },
-        include: { stock: true },
-      });
+      const [menuItems, catalogMenus] = await Promise.all([
+        prisma.branchMenuItem.findMany({
+          where: {
+            branchId: branch.id,
+            id: { in: body.lines.map((l) => l.brandProductId) },
+          },
+          include: { stock: true },
+        }),
+        prisma.branchMenuItem.findMany({
+          where: { branchId: branch.id, isHidden: false },
+          select: {
+            id: true,
+            name: true,
+            sortOrder: true,
+            category: { select: { sortOrder: true, stockExempt: true } },
+            optionGroupLinks: {
+              select: { group: { select: { mode: true } } },
+            },
+          },
+        }),
+      ]);
       const menuMap = new Map(menuItems.map((m) => [m.id, m]));
 
       for (const line of body.lines) {
@@ -350,12 +369,31 @@ export async function POST(request: Request) {
         }
       }
 
+      const saleCatalog = catalogMenus.filter((item) => {
+        const isPromo = item.optionGroupLinks.some(
+          (l) => l.group.mode === "FROM_MENU",
+        );
+        return !isPromo && !item.category?.stockExempt;
+      });
+      const sortedSaleCatalog = sortStaffMenuItems(
+        saleCatalog.map((item) =>
+          withMenuOrderFields({
+            id: item.id,
+            name: item.name,
+            sortOrder: item.sortOrder,
+            category: item.category,
+          }),
+        ),
+      );
+      const seqById = assignStableMenuSequence(sortedSaleCatalog);
+
       const activeShift = await getActiveShift(branch.id);
       const countLinesPayload: Array<{
         name: string;
         systemQty: number;
         countedQty: number;
         unitPrice: number;
+        seq: number;
       }> = [];
 
       await prisma.$transaction(async (tx) => {
@@ -399,8 +437,15 @@ export async function POST(request: Request) {
             systemQty: oldQty,
             countedQty: newQty,
             unitPrice,
+            seq: seqById.get(menu.id) ?? 0,
           });
         }
+      });
+
+      // Keep note lines in menu sequence order
+      countLinesPayload.sort((a, b) => {
+        if (a.seq && b.seq && a.seq !== b.seq) return a.seq - b.seq;
+        return a.name.localeCompare(b.name, "th");
       });
 
       // Persist summary for admin history (best-effort; stock already saved)

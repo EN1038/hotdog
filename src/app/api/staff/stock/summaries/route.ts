@@ -4,12 +4,19 @@ import { isBangkokDateKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { listShiftsForBranchDate } from "@/lib/branch-shift";
 
+type NoteLine = {
+  name: string;
+  systemQty: number;
+  countedQty: number;
+  unitPrice?: number;
+};
+
 type NotePayload = {
   cash?: number;
   transfer?: number;
   change?: number;
   customers?: number;
-  lines?: Array<{ name: string; systemQty: number; countedQty: number }>;
+  lines?: NoteLine[];
 };
 
 function parseNote(note: string | null): NotePayload {
@@ -36,7 +43,7 @@ export async function GET(request: Request) {
     const startOfDay = new Date(`${dateStr}T00:00:00+07:00`);
     const endOfDay = new Date(`${dateStr}T23:59:59.999+07:00`);
 
-    const [shifts, counts] = await Promise.all([
+    const [shifts, counts, menuItems] = await Promise.all([
       listShiftsForBranchDate(session.branchId, dateStr),
       prisma.stockCount.findMany({
         where: {
@@ -71,11 +78,47 @@ export async function GET(request: Request) {
           createdByStaff: { select: { id: true, name: true } },
         },
       }),
+      prisma.branchMenuItem.findMany({
+        where: { branchId: session.branchId, isHidden: false },
+        select: { name: true, price: true },
+      }),
     ]);
+
+    const priceByName = new Map<string, number>();
+    for (const item of menuItems) {
+      if (!priceByName.has(item.name)) {
+        priceByName.set(item.name, Number(item.price ?? 0));
+      }
+    }
 
     const summaries = counts
       .map((c) => {
         const note = parseNote(c.note);
+        const lines = (Array.isArray(note.lines) ? note.lines : []).map(
+          (line) => {
+            const unitPrice =
+              typeof line.unitPrice === "number" && Number.isFinite(line.unitPrice)
+                ? line.unitPrice
+                : (priceByName.get(line.name) ?? 0);
+            return {
+              name: line.name,
+              systemQty: Number(line.systemQty) || 0,
+              countedQty: Number(line.countedQty) || 0,
+              unitPrice,
+            };
+          },
+        );
+        const systemQtyTotal = lines.reduce((s, l) => s + l.systemQty, 0);
+        const countedQtyTotal = lines.reduce((s, l) => s + l.countedQty, 0);
+        const systemValueBaht = lines.reduce(
+          (s, l) => s + l.systemQty * l.unitPrice,
+          0,
+        );
+        const countedValueBaht = lines.reduce(
+          (s, l) => s + l.countedQty * l.unitPrice,
+          0,
+        );
+
         return {
           id: c.id,
           name: c.name,
@@ -94,7 +137,13 @@ export async function GET(request: Request) {
           transfer: Number(note.transfer) || 0,
           change: Number(note.change) || 0,
           customers: Number(note.customers) || 0,
-          lines: Array.isArray(note.lines) ? note.lines : [],
+          lines,
+          stockTotals: {
+            systemQty: systemQtyTotal,
+            countedQty: countedQtyTotal,
+            systemValueBaht,
+            countedValueBaht,
+          },
           rawNote: note.lines ? null : c.note,
           isDailySales:
             c.name.includes("สรุปยอดขายรายวัน") ||

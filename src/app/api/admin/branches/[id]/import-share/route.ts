@@ -10,6 +10,7 @@ const importSchema = z.object({
   code: z.string().trim().min(1),
   overwriteMenu: z.boolean().optional(),
   includeLocations: z.boolean().optional(),
+  includeNonMenuItems: z.boolean().optional(),
 });
 
 export async function POST(request: Request, { params }: Params) {
@@ -45,6 +46,7 @@ export async function POST(request: Request, { params }: Params) {
       targetBranchId,
       overwriteMenu: body.overwriteMenu ?? false,
       includeLocations: body.includeLocations ?? false,
+      includeNonMenuItems: body.includeNonMenuItems ?? false,
     });
 
     return jsonOk({ ok: true, ...result });

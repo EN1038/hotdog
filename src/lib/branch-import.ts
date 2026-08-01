@@ -17,7 +17,15 @@ export type BranchImportResult = {
   optionGroups: number;
   menuItems: number;
   locations: number;
+  nonMenuItems: {
+    created: number;
+    updated: number;
+  };
 };
+
+function nonMenuKey(stockType: string, name: string) {
+  return `${stockType}::${name.trim()}`;
+}
 
 const optionGroupImportInclude = {
   options: { orderBy: { createdAt: "asc" as const } },
@@ -86,56 +94,69 @@ function buildOptionGroupCreateData(
   };
 }
 
-/** Copy categories, option library, menu (and optional locations) from source → target */
+/** Copy categories, option library, menu (and optional locations / non-menu stock) from source → target */
 export async function importBranchCatalog(opts: {
   sourceBranchId: string;
   targetBranchId: string;
   overwriteMenu?: boolean;
   includeLocations?: boolean;
+  includeNonMenuItems?: boolean;
 }): Promise<BranchImportResult> {
   const {
     sourceBranchId,
     targetBranchId,
     overwriteMenu = false,
     includeLocations = false,
+    includeNonMenuItems = false,
   } = opts;
 
   if (sourceBranchId === targetBranchId) {
     throw new Error("ไม่สามารถนำเข้าจากสาขาเดียวกัน");
   }
 
-  const [sourceCategories, sourceOptionGroups, sourceItems, sourceLocations] =
-    await Promise.all([
-      prisma.menuCategory.findMany({
-        where: { branchId: sourceBranchId },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      }),
-      prisma.branchOptionGroup.findMany({
-        where: { branchId: sourceBranchId },
-        include: optionGroupImportInclude,
-        orderBy: { createdAt: "asc" },
-      }),
-      prisma.branchMenuItem.findMany({
-        where: { branchId: sourceBranchId },
-        include: {
-          optionGroupLinks: {
-            orderBy: { createdAt: "asc" },
-            include: { group: true },
-          },
+  const [
+    sourceCategories,
+    sourceOptionGroups,
+    sourceItems,
+    sourceLocations,
+    sourceNonMenuItems,
+  ] = await Promise.all([
+    prisma.menuCategory.findMany({
+      where: { branchId: sourceBranchId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.branchOptionGroup.findMany({
+      where: { branchId: sourceBranchId },
+      include: optionGroupImportInclude,
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.branchMenuItem.findMany({
+      where: { branchId: sourceBranchId },
+      include: {
+        optionGroupLinks: {
+          orderBy: { createdAt: "asc" },
+          include: { group: true },
         },
-        orderBy: [
-          { isHidden: "asc" },
-          { sortOrder: "asc" },
-          { createdAt: "desc" },
-        ],
-      }),
-      includeLocations
-        ? prisma.deliveryLocation.findMany({
-            where: { branchId: sourceBranchId },
-            orderBy: { name: "asc" },
-          })
-        : Promise.resolve([]),
-    ]);
+      },
+      orderBy: [
+        { isHidden: "asc" },
+        { sortOrder: "asc" },
+        { createdAt: "desc" },
+      ],
+    }),
+    includeLocations
+      ? prisma.deliveryLocation.findMany({
+          where: { branchId: sourceBranchId },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
+    includeNonMenuItems
+      ? prisma.branchNonMenuItem.findMany({
+          where: { branchId: sourceBranchId },
+          orderBy: [{ stockType: "asc" }, { name: "asc" }],
+        })
+      : Promise.resolve([]),
+  ]);
 
   const targetCategories = await prisma.menuCategory.findMany({
     where: { branchId: targetBranchId },
@@ -265,28 +286,97 @@ export async function importBranchCatalog(opts: {
     }
   }
 
+  let nonMenuCreated = 0;
+  let nonMenuUpdated = 0;
+  if (includeNonMenuItems) {
+    const targetNonMenu = await prisma.branchNonMenuItem.findMany({
+      where: { branchId: targetBranchId },
+    });
+    const targetByKey = new Map(
+      targetNonMenu.map((item) => [nonMenuKey(item.stockType, item.name), item]),
+    );
+
+    for (const src of sourceNonMenuItems) {
+      const key = nonMenuKey(src.stockType, src.name);
+      const existing = targetByKey.get(key);
+      if (!existing) {
+        const created = await prisma.branchNonMenuItem.create({
+          data: {
+            branchId: targetBranchId,
+            name: src.name,
+            description: src.description,
+            unit: src.unit,
+            price: src.price,
+            imageUrl: src.imageUrl,
+            stockType: src.stockType,
+            quantity: 0,
+          },
+        });
+        targetByKey.set(key, created);
+        nonMenuCreated += 1;
+        continue;
+      }
+
+      await prisma.branchNonMenuItem.update({
+        where: { id: existing.id },
+        data: {
+          description: src.description,
+          unit: src.unit,
+          price: src.price,
+          imageUrl: src.imageUrl,
+        },
+      });
+      nonMenuUpdated += 1;
+    }
+  }
+
   return {
     categories: categoriesCreated,
     optionGroups: optionGroupsCreated,
     menuItems: menuItemsCreated,
     locations: locationsCreated,
+    nonMenuItems: {
+      created: nonMenuCreated,
+      updated: nonMenuUpdated,
+    },
   };
 }
 
 export async function getBranchSharePreview(sourceBranchId: string) {
-  const [categories, optionGroups, menuItems, locations, branch] =
-    await Promise.all([
-      prisma.menuCategory.count({ where: { branchId: sourceBranchId } }),
-      prisma.branchOptionGroup.count({ where: { branchId: sourceBranchId } }),
-      prisma.branchMenuItem.count({ where: { branchId: sourceBranchId } }),
-      prisma.deliveryLocation.count({ where: { branchId: sourceBranchId } }),
-      prisma.branch.findUnique({
-        where: { id: sourceBranchId },
-        select: { id: true, name: true, code: true },
-      }),
-    ]);
+  const [
+    categories,
+    optionGroups,
+    menuItems,
+    locations,
+    consumables,
+    equipment,
+    branch,
+  ] = await Promise.all([
+    prisma.menuCategory.count({ where: { branchId: sourceBranchId } }),
+    prisma.branchOptionGroup.count({ where: { branchId: sourceBranchId } }),
+    prisma.branchMenuItem.count({ where: { branchId: sourceBranchId } }),
+    prisma.deliveryLocation.count({ where: { branchId: sourceBranchId } }),
+    prisma.branchNonMenuItem.count({
+      where: { branchId: sourceBranchId, stockType: "CONSUMABLE" },
+    }),
+    prisma.branchNonMenuItem.count({
+      where: { branchId: sourceBranchId, stockType: "EQUIPMENT" },
+    }),
+    prisma.branch.findUnique({
+      where: { id: sourceBranchId },
+      select: { id: true, name: true, code: true },
+    }),
+  ]);
   return {
     branch,
-    counts: { categories, optionGroups, menuItems, locations },
+    counts: {
+      categories,
+      optionGroups,
+      menuItems,
+      locations,
+      consumables,
+      equipment,
+      nonMenuItems: consumables + equipment,
+    },
   };
 }

@@ -34,6 +34,28 @@ type Product = {
   price?: number;
 };
 
+function StockItemName({
+  name,
+  unit,
+  stockType,
+}: {
+  name: string;
+  unit?: string | null;
+  stockType?: StockType | null;
+}) {
+  const showUnit =
+    (stockType === "CONSUMABLE" || stockType === "EQUIPMENT") &&
+    Boolean(unit?.trim());
+  return (
+    <p className="truncate text-sm font-bold text-gray-900 leading-tight">
+      {name}
+      {showUnit ? (
+        <span className="font-bold text-red-600"> ({unit!.trim()})</span>
+      ) : null}
+    </p>
+  );
+}
+
 type Balance = {
   id: string;
   quantity: number;
@@ -1066,12 +1088,26 @@ function StaffStockContent() {
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-bold text-gray-900 leading-tight">
-                                    {item.name}
-                                  </p>
+                                  <StockItemName
+                                    name={item.name}
+                                    unit={item.unit}
+                                    stockType={item.stockType}
+                                  />
                                   <p className="mt-0.5 text-xs text-gray-400">
-                                    {item.unit}
-                                    {isEmpty ? " · หมดสต๊อก" : isLow ? " · สต๊อกใกล้หมด" : ""}
+                                    {item.stockType === "CONSUMABLE" ||
+                                    item.stockType === "EQUIPMENT"
+                                      ? isEmpty
+                                        ? "หมดสต๊อก"
+                                        : isLow
+                                          ? "สต๊อกใกล้หมด"
+                                          : null
+                                      : `${item.unit}${
+                                          isEmpty
+                                            ? " · หมดสต๊อก"
+                                            : isLow
+                                              ? " · สต๊อกใกล้หมด"
+                                              : ""
+                                        }`}
                                   </p>
                                 </div>
                                 <div
@@ -1120,10 +1156,14 @@ function StaffStockContent() {
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-bold text-gray-900 leading-tight">
-                                    {item.name}
+                                  <StockItemName
+                                    name={item.name}
+                                    unit={item.unit}
+                                    stockType={item.stockType}
+                                  />
+                                  <p className="mt-0.5 text-xs text-gray-400">
+                                    สต๊อกเดิม: {dbBalance}
                                   </p>
-                                  <p className="mt-0.5 text-xs text-gray-400">สต๊อกเดิม: {dbBalance}</p>
                                 </div>
                                 <div className="flex flex-col items-end gap-1">
                                   <div className={`flex h-9 shrink-0 items-center overflow-hidden rounded-full border border-gray-200 bg-white ${qty > 0 ? "border-site-primary ring-1 ring-site-primary" : ""}`}>

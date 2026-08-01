@@ -10,6 +10,7 @@ const copySchema = z.object({
   sourceBranchId: z.string().min(1),
   overwrite: z.boolean().optional(),
   includeLocations: z.boolean().optional(),
+  includeNonMenuItems: z.boolean().optional(),
 });
 
 export async function POST(request: Request, { params }: Params) {
@@ -31,6 +32,7 @@ export async function POST(request: Request, { params }: Params) {
       targetBranchId,
       overwriteMenu: body.overwrite ?? false,
       includeLocations: body.includeLocations ?? false,
+      includeNonMenuItems: body.includeNonMenuItems ?? false,
     });
 
     return jsonOk({ ok: true, copied: result.menuItems, ...result });

@@ -198,7 +198,7 @@ export function StaffShiftSummarySheet({
       className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="สรุปยอดรอบ"
+      aria-label="สรุปยอดขายตามรอบ"
       onClick={onClose}
     >
       <div
@@ -207,7 +207,7 @@ export function StaffShiftSummarySheet({
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div>
-            <p className="text-base font-bold text-gray-900">สรุปก่อนปิดรอบ</p>
+            <p className="text-base font-bold text-gray-900">สรุปยอดขายตามรอบ</p>
             <p className="text-xs text-gray-500">
               เลือกวันและรอบเพื่อดูยอดขาย
             </p>

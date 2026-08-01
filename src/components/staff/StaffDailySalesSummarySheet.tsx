@@ -159,7 +159,7 @@ export function StaffDailySalesSummarySheet({
       className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="สรุปยอดขายรายวัน"
+      aria-label="สรุปยอดสต๊อกและขายราย"
       onClick={onClose}
     >
       <div
@@ -168,7 +168,7 @@ export function StaffDailySalesSummarySheet({
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div>
-            <p className="text-base font-bold text-gray-900">สรุปยอดขายรายวัน</p>
+            <p className="text-base font-bold text-gray-900">สรุปยอดสต๊อกและขายราย</p>
             <p className="text-xs text-gray-500">
               เลือกวันเพื่อดูสรุป หรือสร้างสรุปใหม่
             </p>
@@ -202,7 +202,7 @@ export function StaffDailySalesSummarySheet({
             <p className="text-sm text-red-600">{error}</p>
           ) : summaries.length === 0 ? (
             <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
-              ยังไม่มีสรุปยอดขายรายวันในวันที่{" "}
+              ยังไม่มีสรุปยอดสต๊อกและขายรายในวันที่{" "}
               {formatOperatingDayLabel(date) || date}
             </p>
           ) : (
@@ -312,7 +312,7 @@ export function StaffDailySalesSummarySheet({
             onClick={goCreate}
             className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700"
           >
-            สร้างสรุปยอดขายรายวัน
+            สร้างสรุปยอดสต๊อกและขายราย
           </button>
         </div>
       </div>

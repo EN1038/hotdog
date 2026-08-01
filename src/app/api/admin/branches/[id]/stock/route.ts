@@ -126,6 +126,7 @@ export async function GET(_request: Request, { params }: Params) {
         imageUrl: item.imageUrl,
         isMenu: false,
         price: Number(item.price ?? 0),
+        description: item.description ?? "",
       });
       balances.push({
         id: item.id,

@@ -9,13 +9,14 @@ import {
   adminInputClass,
 } from "@/components/admin/AdminShell";
 import { useToast } from "@/components/admin/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { compareThaiText } from "@/lib/thai-sort";
 import {
   assignStableMenuSequence,
   sortStaffMenuItems,
 } from "@/lib/staff-menu-order";
 import { formatPrice } from "@/lib/constants";
-import { IconSkewerPlaceholder } from "@/components/icons";
+import { IconEdit, IconSkewerPlaceholder, IconTrash } from "@/components/icons";
 import { ImageField } from "@/components/admin/ImageField";
 import { BranchStockCountsView } from "@/components/admin/BranchStockCountsView";
 import { BranchStockMovementsView } from "@/components/admin/BranchStockMovementsView";
@@ -34,6 +35,8 @@ type Product = {
   trackStock?: boolean;
   imageUrl?: string | null;
   price?: number;
+  description?: string | null;
+  isMenu?: boolean;
 };
 
 type Balance = {
@@ -52,6 +55,7 @@ type StockPayload = {
 export function BranchStockPanel({ branchId }: { branchId: string }) {
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = useConfirm();
 
   const [data, setData] = useState<StockPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,9 +75,39 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   // Dropdown for "สร้างรายการใหม่"
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
 
-  // Modal state for non-menu items
+  // Modal state for non-menu items (create or edit)
   const [showCreateModal, setShowCreateModal] = useState<"CONSUMABLE" | "EQUIPMENT" | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [newItemData, setNewItemData] = useState({ name: "", description: "", unit: "ชิ้น", price: "", imageUrl: "" });
+
+  function closeItemModal() {
+    setShowCreateModal(null);
+    setEditingItemId(null);
+    setNewItemData({ name: "", description: "", unit: "ชิ้น", price: "", imageUrl: "" });
+  }
+
+  function openCreateItem(type: "CONSUMABLE" | "EQUIPMENT") {
+    setEditingItemId(null);
+    setNewItemData({ name: "", description: "", unit: "ชิ้น", price: "", imageUrl: "" });
+    setShowCreateModal(type);
+    setShowCreateDropdown(false);
+  }
+
+  function openEditNonMenu(item: Product) {
+    if (item.stockType !== "CONSUMABLE" && item.stockType !== "EQUIPMENT") return;
+    setEditingItemId(item.id);
+    setNewItemData({
+      name: item.name,
+      description: item.description ?? "",
+      unit: item.unit || "ชิ้น",
+      price:
+        item.price != null && Number.isFinite(item.price)
+          ? String(item.price)
+          : "",
+      imageUrl: item.imageUrl ?? "",
+    });
+    setShowCreateModal(item.stockType);
+  }
 
   const load = useCallback(async () => {
     try {
@@ -271,14 +305,20 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
     if (!showCreateModal) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/admin/branches/${branchId}/stock/items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newItemData,
-          stockType: showCreateModal,
-        }),
-      });
+      const isEdit = Boolean(editingItemId);
+      const res = await fetch(
+        isEdit
+          ? `/api/admin/branches/${branchId}/stock/items/${editingItemId}`
+          : `/api/admin/branches/${branchId}/stock/items`,
+        {
+          method: isEdit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...newItemData,
+            stockType: showCreateModal,
+          }),
+        },
+      );
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -286,9 +326,60 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
         return;
       }
 
-      toast.success("สร้างรายการเรียบร้อยแล้ว");
-      setShowCreateModal(null);
-      setNewItemData({ name: "", description: "", unit: "ชิ้น", price: "", imageUrl: "" });
+      toast.success(isEdit ? "แก้ไขรายการเรียบร้อยแล้ว" : "สร้างรายการเรียบร้อยแล้ว");
+      closeItemModal();
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteMenuItem(item: Product) {
+    const ok = await confirm({
+      title: "ลบเมนู?",
+      message: `ลบเมนู “${item.name}” ออกจากสาขา ไม่สามารถกู้คืนได้`,
+      confirmLabel: "ลบเมนู",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/menu-items/${item.id}`,
+        { method: "DELETE" },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("ลบไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      toast.success("ลบเมนูแล้ว");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteNonMenuItem(item: Product) {
+    const typeLabel =
+      item.stockType === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์";
+    const ok = await confirm({
+      title: `ลบ${typeLabel}?`,
+      message: `ลบ “${item.name}” ออกจากสต๊อกสาขา ไม่สามารถกู้คืนได้`,
+      confirmLabel: "ลบรายการ",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/stock/items/${item.id}`,
+        { method: "DELETE" },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("ลบไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      toast.success("ลบรายการแล้ว");
       await load();
     } finally {
       setBusy(false);
@@ -356,19 +447,13 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                 🍜 เมนูขาย
               </Link>
               <button
-                onClick={() => {
-                  setShowCreateDropdown(false);
-                  setShowCreateModal("CONSUMABLE");
-                }}
+                onClick={() => openCreateItem("CONSUMABLE")}
                 className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
               >
                 📦 ของสิ้นเปลือง
               </button>
               <button
-                onClick={() => {
-                  setShowCreateDropdown(false);
-                  setShowCreateModal("EQUIPMENT");
-                }}
+                onClick={() => openCreateItem("EQUIPMENT")}
                 className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
               >
                 🛠️ อุปกรณ์
@@ -565,12 +650,14 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                         <th className="px-4 py-3 font-semibold">รายการ</th>
                         <th className="px-4 py-3 font-semibold">หมวดหมู่</th>
                         <th className="px-4 py-3 font-semibold text-right">ยอดคงเหลือ</th>
+                        <th className="px-4 py-3 font-semibold text-right w-28">จัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {visibleItems.map((item) => {
                         const dbBalance = data.balances.find((b) => b.product.id === item.id)?.quantity ?? 0;
                         const seq = seqById.get(item.id) ?? 0;
+                        const isMenu = item.stockType === "SALE_ITEM" || item.isMenu;
                         return (
                           <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3 text-sm font-bold tabular-nums text-slate-400">
@@ -610,12 +697,51 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                                 {dbBalance} {item.unit}
                               </span>
                             </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-end gap-2">
+                                {isMenu ? (
+                                  <Link
+                                    href={`/admin/branches/${branchId}/menu/${item.id}`}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                                    aria-label={`แก้ไข ${item.name}`}
+                                    title="แก้ไข"
+                                  >
+                                    <IconEdit size={16} />
+                                  </Link>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditNonMenu(item)}
+                                    disabled={busy}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
+                                    aria-label={`แก้ไข ${item.name}`}
+                                    title="แก้ไข"
+                                  >
+                                    <IconEdit size={16} />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void (isMenu
+                                      ? deleteMenuItem(item)
+                                      : deleteNonMenuItem(item))
+                                  }
+                                  disabled={busy}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+                                  aria-label={`ลบ ${item.name}`}
+                                  title="ลบ"
+                                >
+                                  <IconTrash size={16} />
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
                       {visibleItems.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">
+                          <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
                             ไม่พบรายการที่ตรงกับตัวกรอง
                           </td>
                         </tr>
@@ -850,9 +976,11 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-900">
-                สร้าง{showCreateModal === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์"}ใหม่
+                {editingItemId ? "แก้ไข" : "สร้าง"}
+                {showCreateModal === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์"}
+                {editingItemId ? "" : "ใหม่"}
               </h2>
-              <button onClick={() => setShowCreateModal(null)} className="text-slate-400 hover:text-slate-600 p-2">✕</button>
+              <button onClick={closeItemModal} className="text-slate-400 hover:text-slate-600 p-2">✕</button>
             </div>
             
             <form onSubmit={handleCreateNonMenu} className="p-5 overflow-y-auto space-y-4">
@@ -915,7 +1043,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
               <div className="pt-4 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(null)}
+                  onClick={closeItemModal}
                   className="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200"
                 >
                   ยกเลิก
@@ -925,7 +1053,11 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                   disabled={busy}
                   className="flex-1 rounded-xl bg-site-primary py-3 text-sm font-bold text-white hover:bg-site-primary-focus disabled:opacity-70"
                 >
-                  {busy ? "กำลังบันทึก..." : "สร้างรายการ"}
+                  {busy
+                    ? "กำลังบันทึก..."
+                    : editingItemId
+                      ? "บันทึกการแก้ไข"
+                      : "สร้างรายการ"}
                 </button>
               </div>
             </form>

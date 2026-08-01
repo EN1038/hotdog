@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toPng } from "html-to-image";
 import { bangkokDateKey, formatPrice, isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 
@@ -42,7 +43,15 @@ type Props = {
   open: boolean;
   onClose: () => void;
   initialDate?: string | null;
+  brandName?: string | null;
+  branchName?: string | null;
 };
+
+function formatBranchLabel(branchName: string) {
+  const trimmed = branchName.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/^สาขา\s*/i, "");
+}
 
 function formatHm(iso: string | null) {
   if (!iso) return "—";
@@ -96,11 +105,29 @@ function SummaryRow({
   );
 }
 
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+function downloadDataUrl(dataUrl: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export function StaffShiftSummarySheet({
   open,
   onClose,
   initialDate,
+  brandName: brandNameProp,
+  branchName: branchNameProp,
 }: Props) {
+  const captureRef = useRef<HTMLDivElement>(null);
   const [date, setDate] = useState(
     () =>
       (initialDate && isBangkokDateKey(initialDate)
@@ -113,6 +140,10 @@ export function StaffShiftSummarySheet({
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [error, setError] = useState("");
+  const [exportBusy, setExportBusy] = useState<"save" | "share" | null>(null);
+  const [exportMsg, setExportMsg] = useState("");
+  const [brandName, setBrandName] = useState(brandNameProp?.trim() || "");
+  const [branchName, setBranchName] = useState(branchNameProp?.trim() || "");
 
   useEffect(() => {
     if (!open) return;
@@ -123,7 +154,39 @@ export function StaffShiftSummarySheet({
     setDate(next);
     setSelectedId(null);
     setSummary(null);
+    setExportMsg("");
   }, [open, initialDate]);
+
+  useEffect(() => {
+    if (brandNameProp?.trim()) setBrandName(brandNameProp.trim());
+    if (branchNameProp?.trim()) setBranchName(branchNameProp.trim());
+  }, [brandNameProp, branchNameProp]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (brandNameProp?.trim() && branchNameProp?.trim()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/staff/branding");
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        const nextBrand =
+          (typeof data.brand?.nameTh === "string" && data.brand.nameTh.trim()) ||
+          (typeof data.brand?.name === "string" && data.brand.name.trim()) ||
+          "";
+        const nextBranch =
+          typeof data.branchName === "string" ? data.branchName.trim() : "";
+        if (nextBrand) setBrandName(nextBrand);
+        if (nextBranch) setBranchName(nextBranch);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, brandNameProp, branchNameProp]);
 
   useEffect(() => {
     if (!open) return;
@@ -170,6 +233,7 @@ export function StaffShiftSummarySheet({
     (async () => {
       setLoadingSummary(true);
       setError("");
+      setExportMsg("");
       try {
         const res = await fetch(`/api/staff/shifts/${selectedId}/summary`);
         const data = await res.json().catch(() => ({}));
@@ -191,7 +255,83 @@ export function StaffShiftSummarySheet({
     };
   }, [open, selectedId]);
 
+  async function captureSummaryPng(): Promise<string> {
+    const node = captureRef.current;
+    if (!node) throw new Error("ไม่พบเนื้อหาสรุป");
+    return toPng(node, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+    });
+  }
+
+  function exportFilename() {
+    const round = summary?.shift.roundNumber ?? "";
+    return `สรุปยอดขายตามรอบ_${date}_รอบ${round}.png`;
+  }
+
+  async function handleSaveImage() {
+    if (!summary || exportBusy) return;
+    setExportBusy("save");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureSummaryPng();
+      downloadDataUrl(dataUrl, exportFilename());
+      setExportMsg("บันทึกรูปแล้ว");
+    } catch {
+      setExportMsg("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleShareImage() {
+    if (!summary || exportBusy) return;
+    setExportBusy("share");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureSummaryPng();
+      const blob = await dataUrlToBlob(dataUrl);
+      const file = new File([blob], exportFilename(), { type: "image/png" });
+
+      if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      ) {
+        await navigator.share({
+          files: [file],
+          title: [
+            brandName,
+            formatBranchLabel(branchName)
+              ? `สาขา ${formatBranchLabel(branchName)}`
+              : "",
+            "สรุปยอดขายตามรอบ",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          text: summary.shift.code,
+        });
+        setExportMsg("แชร์รูปแล้ว");
+        return;
+      }
+
+      downloadDataUrl(dataUrl, exportFilename());
+      setExportMsg("อุปกรณ์นี้แชร์ไม่ได้ — บันทึกรูปแทนแล้ว ส่งในไลน์จากแกลเลอรี");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setExportMsg("");
+        return;
+      }
+      setExportMsg("แชร์รูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
   if (!open) return null;
+
+  const branchLabel = formatBranchLabel(branchName);
 
   return (
     <div
@@ -221,7 +361,7 @@ export function StaffShiftSummarySheet({
           </button>
         </div>
 
-        <div className="space-y-3 overflow-y-auto px-4 py-3">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
           <label className="block text-xs font-medium text-gray-600">
             วันที่
             <input
@@ -272,96 +412,148 @@ export function StaffShiftSummarySheet({
           {loadingSummary ? (
             <p className="text-sm text-gray-500">กำลังโหลดสรุป…</p>
           ) : summary ? (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
-                <SummaryRow
-                  label="เลขที่รอบ"
-                  value={summary.shift.code}
-                />
-                <SummaryRow
-                  label="วันที่และเวลาเปิด"
-                  value={formatShiftDateTime(summary.shift.openedAt)}
-                />
-                <SummaryRow
-                  label="วันที่และเวลาปิด"
-                  value={
-                    summary.shift.closedAt
-                      ? formatShiftDateTime(summary.shift.closedAt)
-                      : "ยังไม่ปิดรอบ"
-                  }
-                />
-                <SummaryRow
-                  label="จำนวนออเดอร์"
-                  value={`${summary.orderCount.toLocaleString("th-TH")} ออเดอร์`}
-                />
-                {summary.cancelledOrders > 0 ? (
+            <div className="space-y-3">
+              <div
+                ref={captureRef}
+                className="space-y-3 rounded-xl bg-white p-1"
+              >
+                <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-center">
+                  {brandName ? (
+                    <p className="text-base font-bold text-gray-900">
+                      {brandName}
+                    </p>
+                  ) : null}
+                  {branchLabel ? (
+                    <p className="mt-0.5 text-sm font-semibold text-gray-800">
+                      สาขา {branchLabel}
+                    </p>
+                  ) : null}
+                  <p
+                    className={`text-xs font-medium text-gray-500 ${
+                      brandName || branchLabel ? "mt-1.5" : ""
+                    }`}
+                  >
+                    สรุปยอดขายตามรอบ
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
+                  <SummaryRow label="เลขที่รอบ" value={summary.shift.code} />
                   <SummaryRow
-                    label="ยกเลิก"
-                    value={`${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`}
+                    label="วันที่และเวลาเปิด"
+                    value={formatShiftDateTime(summary.shift.openedAt)}
                   />
-                ) : null}
-                <SummaryRow
-                  label="เงินเริ่มต้น"
-                  value={`${formatPrice(summary.shift.openingCash)} บาท`}
-                />
-                {summary.shift.note ? (
-                  <SummaryRow label="หมายเหตุ" value={summary.shift.note} />
-                ) : null}
-                <SummaryRow
-                  label="ยอดเงินสด"
-                  value={`${formatPrice(summary.cashRevenueBaht)} บาท`}
-                />
-                <SummaryRow
-                  label="ยอดเงินโอน"
-                  value={`${formatPrice(summary.transferRevenueBaht)} บาท`}
-                />
-                <SummaryRow
-                  label="ยอดขายสุทธิ"
-                  value={`${formatPrice(summary.revenueBaht)} บาท`}
-                />
-                <SummaryRow
-                  label="ยอดรวมเงินเริ่มต้น"
-                  value={`${formatPrice(summary.totalWithOpeningCash)} บาท`}
-                />
-                <SummaryRow
-                  label="จำนวนของแถม"
-                  value={`${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`}
-                  last
-                />
+                  <SummaryRow
+                    label="วันที่และเวลาปิด"
+                    value={
+                      summary.shift.closedAt
+                        ? formatShiftDateTime(summary.shift.closedAt)
+                        : "ยังไม่ปิดรอบ"
+                    }
+                  />
+                  <SummaryRow
+                    label="จำนวนออเดอร์"
+                    value={`${summary.orderCount.toLocaleString("th-TH")} ออเดอร์`}
+                  />
+                  {summary.cancelledOrders > 0 ? (
+                    <SummaryRow
+                      label="ยกเลิก"
+                      value={`${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`}
+                    />
+                  ) : null}
+                  <SummaryRow
+                    label="เงินเริ่มต้น"
+                    value={`${formatPrice(summary.shift.openingCash)} บาท`}
+                  />
+                  {summary.shift.note ? (
+                    <SummaryRow label="หมายเหตุ" value={summary.shift.note} />
+                  ) : null}
+                  <SummaryRow
+                    label="ยอดเงินสด"
+                    value={`${formatPrice(summary.cashRevenueBaht)} บาท`}
+                  />
+                  <SummaryRow
+                    label="ยอดเงินโอน"
+                    value={`${formatPrice(summary.transferRevenueBaht)} บาท`}
+                  />
+                  <SummaryRow
+                    label="ยอดขายสุทธิ"
+                    value={`${formatPrice(summary.revenueBaht)} บาท`}
+                  />
+                  <SummaryRow
+                    label="ยอดรวมเงินเริ่มต้น"
+                    value={`${formatPrice(summary.totalWithOpeningCash)} บาท`}
+                  />
+                  <SummaryRow
+                    label="จำนวนของแถม"
+                    value={`${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`}
+                    last
+                  />
+                </div>
+
+                <div>
+                  <p className="mb-2 text-sm font-bold text-gray-900">
+                    เมนูที่ขาย
+                  </p>
+                  {summary.menus.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      ยังไม่มีรายการที่นับยอด
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                      {summary.menus.map((m, index) => (
+                        <li
+                          key={m.name}
+                          className="flex items-center justify-between gap-3 px-3 py-2.5"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-gray-900">
+                                {m.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {m.quantity.toLocaleString("th-TH")} ชิ้น
+                              </p>
+                            </div>
+                          </div>
+                          <p className="shrink-0 text-sm font-semibold text-gray-800">
+                            {formatPrice(m.revenueBaht)}฿
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
 
-              <div>
-                <p className="mb-2 text-sm font-bold text-gray-900">
-                  เมนูที่ขาย
-                </p>
-                {summary.menus.length === 0 ? (
-                  <p className="text-sm text-gray-500">ยังไม่มีรายการที่นับยอด</p>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={!!exportBusy}
+                    onClick={() => void handleSaveImage()}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!exportBusy}
+                    onClick={() => void handleShareImage()}
+                    className="rounded-xl border border-green-600 bg-green-50 px-3 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
+                  >
+                    {exportBusy === "share" ? "กำลังแชร์…" : "LINE"}
+                  </button>
+                </div>
+                {exportMsg ? (
+                  <p className="text-center text-xs text-gray-600">{exportMsg}</p>
                 ) : (
-                  <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                    {summary.menus.map((m, index) => (
-                      <li
-                        key={m.name}
-                        className="flex items-center justify-between gap-3 px-3 py-2.5"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-gray-900">
-                              {m.name}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {m.quantity.toLocaleString("th-TH")} ชิ้น
-                            </p>
-                          </div>
-                        </div>
-                        <p className="shrink-0 text-sm font-semibold text-gray-800">
-                          {formatPrice(m.revenueBaht)}฿
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+                  <p className="text-center text-xs text-gray-400">
+                    กด LINE แล้วเลือกแอปไลน์จากเมนูแชร์ของเครื่อง
+                  </p>
                 )}
               </div>
             </div>

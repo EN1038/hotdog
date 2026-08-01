@@ -383,6 +383,8 @@ export default function StaffHomePage() {
           open={dailySalesOpen}
           onClose={() => setDailySalesOpen(false)}
           initialDate={bangkokDateKey()}
+          brandName={meta?.brand?.name ?? ""}
+          branchName={meta?.branchName ?? ""}
         />
       </div>
     </StaffAppShell>

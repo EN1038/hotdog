@@ -5,8 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
-import { compareThaiText, sortByThaiName } from "@/lib/thai-sort";
-import { formatPrice } from "@/lib/constants";
+import { compareThaiText } from "@/lib/thai-sort";
+import {
+  assignStableMenuSequence,
+  sortStaffMenuItems,
+} from "@/lib/staff-menu-order";
+import { formatPrice, bangkokDateKey } from "@/lib/constants";
 import { IconCamera, IconSkewerPlaceholder } from "@/components/icons";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
@@ -22,6 +26,8 @@ type Product = {
   unit: string;
   stockType: StockType;
   category?: string | null;
+  sortOrder?: number;
+  categorySortOrder?: number;
   lowStockAlert: number | null;
   trackStock?: boolean;
   imageUrl?: string | null;
@@ -124,6 +130,15 @@ function StaffStockContent() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
+    return () => {
+      setIssuePreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     if (!openAsDailySummary || loading || !data?.stockActive) return;
     setMode("summary");
     setQtyByItemId({});
@@ -136,30 +151,52 @@ function StaffStockContent() {
 
   const categories = useMemo(() => {
     if (!data) return [];
-    const map = new Map<string, { id: string; name: string }>();
+    const map = new Map<
+      string,
+      { id: string; name: string; categorySortOrder: number }
+    >();
     for (const item of data.products) {
       if (typeFilter !== "ALL" && item.stockType !== typeFilter) continue;
       const name = item.category || "ไม่มีหมวดหมู่";
       const id = name;
-      if (!map.has(id)) map.set(id, { id, name });
+      if (!map.has(id)) {
+        map.set(id, {
+          id,
+          name,
+          categorySortOrder: item.categorySortOrder ?? 999,
+        });
+      }
     }
-    return [...map.values()].sort((a, b) => compareThaiText(a.name, b.name));
+    return [...map.values()].sort(
+      (a, b) =>
+        a.categorySortOrder - b.categorySortOrder ||
+        compareThaiText(a.name, b.name),
+    );
   }, [data, typeFilter]);
 
-  const visibleItems = useMemo(() => {
+  const typedCatalog = useMemo(() => {
     if (!data) return [];
     let list = data.products;
-
     if (typeFilter !== "ALL") {
       list = list.filter((item) => item.stockType === typeFilter);
     }
+    return sortStaffMenuItems(list);
+  }, [data, typeFilter]);
 
+  const seqById = useMemo(
+    () => assignStableMenuSequence(typedCatalog),
+    [typedCatalog],
+  );
+
+  const visibleItems = useMemo(() => {
+    let list = typedCatalog;
     if (categoryFilter !== "ALL") {
-      list = list.filter((item) => (item.category || "ไม่มีหมวดหมู่") === categoryFilter);
+      list = list.filter(
+        (item) => (item.category || "ไม่มีหมวดหมู่") === categoryFilter,
+      );
     }
-
-    return list.sort((a, b) => compareThaiText(a.name, b.name));
-  }, [data, typeFilter, categoryFilter]);
+    return list;
+  }, [typedCatalog, categoryFilter]);
 
   const viewSummary = useMemo(() => {
     const empty = { quantity: 0, valueBaht: 0 };
@@ -178,7 +215,7 @@ function StaffStockContent() {
   }, [data, typeFilter]);
 
   const selectedItems = useMemo(() => {
-    const changes: { id: string, name: string, quantity: number }[] = [];
+    const changes: { id: string; name: string; quantity: number }[] = [];
     if (!data) return changes;
     for (const prod of data.products) {
       const q = qtyByItemId[prod.id] ?? 0;
@@ -188,6 +225,52 @@ function StaffStockContent() {
     }
     return changes;
   }, [data, qtyByItemId]);
+
+  const selectedTotalQty = useMemo(
+    () => selectedItems.reduce((sum, item) => sum + item.quantity, 0),
+    [selectedItems],
+  );
+
+  const summarySaleItems = useMemo(() => {
+    if (!data) return [];
+    return sortStaffMenuItems(
+      data.products.filter((p) => p.stockType === "SALE_ITEM"),
+    );
+  }, [data]);
+
+  const summarySeqById = useMemo(
+    () => assignStableMenuSequence(summarySaleItems),
+    [summarySaleItems],
+  );
+
+  const summaryTodayLabel = useMemo(() => {
+    return new Intl.DateTimeFormat("th-TH", {
+      timeZone: "Asia/Bangkok",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(new Date());
+  }, []);
+
+  const summaryEnteredStats = useMemo(() => {
+    let filledItems = 0;
+    let totalQty = 0;
+    for (const item of summarySaleItems) {
+      const raw = qtyByItemId[item.id];
+      if (raw === undefined || (raw as unknown) === "") continue;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) continue;
+      filledItems += 1;
+      totalQty += Math.floor(n);
+    }
+    return {
+      itemCount: summarySaleItems.length,
+      filledItems,
+      totalQty,
+      todayKey: bangkokDateKey(),
+    };
+  }, [summarySaleItems, qtyByItemId]);
 
   function setQty(itemId: string, next: number) {
     setQtyByItemId((prev) => {
@@ -482,7 +565,7 @@ function StaffStockContent() {
       if (!res.ok) {
         throw new Error(body.error || "บันทึกไม่สำเร็จ");
       }
-      toast.success("บันทึกสรุปยอดขายรายวันเรียบร้อย");
+      toast.success("บันทึกสรุปยอดสต๊อกและขายรายเรียบร้อย");
       setShowSummaryModal(false);
       setCashVal("");
       setTransferVal("");
@@ -559,35 +642,74 @@ function StaffStockContent() {
               </>
             ) : mode === "summary" ? (
               <>
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-2 mb-2">
                   <button
                     onClick={handleBack}
                     className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
                   >
                     ← กลับ
                   </button>
-                  <h2 className="text-lg font-extrabold text-slate-900">สรุปยอดขายรายวัน</h2>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-extrabold text-slate-900">
+                      สรุปยอดสต๊อกและขายราย
+                    </h2>
+                    <p className="text-xs font-semibold text-slate-700">
+                      วันที่ {summaryTodayLabel}
+                      <span className="ml-1 font-medium text-slate-500">
+                        (วันนี้เสมอ)
+                      </span>
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-6 mt-6">
+                <div className="space-y-6 mt-4 pb-36">
                   <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
-                    <h3 className="font-bold text-slate-900 mb-4 border-b pb-2">1. กรอกยอดคงเหลือ (เมนูขาย)</h3>
+                    <div className="mb-4 flex items-end justify-between gap-3 border-b pb-2">
+                      <h3 className="font-bold text-slate-900">
+                        1. กรอกยอดคงเหลือ (เมนูขาย)
+                      </h3>
+                      <div className="text-right text-xs font-semibold text-slate-800">
+                        <p>
+                          จำนวนรายการ{" "}
+                          <span className="tabular-nums font-black text-slate-900">
+                            {summaryEnteredStats.itemCount}
+                          </span>
+                        </p>
+                        <p className="mt-0.5">
+                          ยอดรวมกรอก{" "}
+                          <span className="tabular-nums font-black text-slate-900">
+                            {formatPrice(summaryEnteredStats.totalQty)}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
                     <ul className="divide-y divide-gray-100">
-                      {data.products.filter(p => p.stockType === "SALE_ITEM").map(item => {
+                      {summarySaleItems.map((item) => {
                         const qty = qtyByItemId[item.id] ?? 0;
                         const isMissing = attemptedSummary && ((qty as any) === "" || qty == null);
                         const dbBalance = data.balances.find(b => b.product.id === item.id)?.quantity ?? 0;
+                        const seq = summarySeqById.get(item.id) ?? 0;
                         return (
                           <li key={item.id} className="flex items-center justify-between gap-3 py-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-bold text-gray-900 leading-tight">{item.name}</p>
-                              <p className="mt-0.5 text-xs text-gray-400">สต๊อกระบบ: {dbBalance}</p>
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
+                                {seq}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold text-gray-900 leading-tight">{item.name}</p>
+                                <p className="mt-0.5 text-xs font-semibold text-slate-900">
+                                  สต๊อกระบบ:{" "}
+                                  <span className="tabular-nums font-bold text-black">
+                                    {dbBalance}
+                                  </span>
+                                </p>
+                              </div>
                             </div>
                             <input
                               type="number" inputMode="numeric" placeholder="0"
                               value={qty}
                               onChange={(e) => setQtyByItemId(p => ({ ...p, [item.id]: e.target.value === "" ? ("" as any) : parseInt(e.target.value) }))}
-                              className={`w-20 rounded-lg border-2 px-3 py-2 text-center font-bold focus:outline-none focus:ring-1 ${isMissing
+                              className={`w-20 rounded-lg border-2 px-3 py-2 text-center font-bold tabular-nums text-black focus:outline-none focus:ring-1 ${isMissing
                                   ? "border-red-500 bg-red-50 focus:border-red-500 focus:ring-red-500"
                                   : "border-slate-300 bg-white focus:border-site-primary focus:ring-site-primary"
                                 }`}
@@ -608,7 +730,7 @@ function StaffStockContent() {
                         type="number"
                         value={cashVal}
                         onChange={e => setCashVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && cashVal.trim() === ""
+                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && cashVal.trim() === ""
                             ? "border-red-500 bg-red-50 focus:border-red-500"
                             : "border-slate-300 bg-white focus:border-site-primary"
                           }`}
@@ -623,7 +745,7 @@ function StaffStockContent() {
                         type="number"
                         value={transferVal}
                         onChange={e => setTransferVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && transferVal.trim() === ""
+                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && transferVal.trim() === ""
                             ? "border-red-500 bg-red-50 focus:border-red-500"
                             : "border-slate-300 bg-white focus:border-site-primary"
                           }`}
@@ -638,7 +760,7 @@ function StaffStockContent() {
                         type="number"
                         value={changeVal}
                         onChange={e => setChangeVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && changeVal.trim() === ""
+                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && changeVal.trim() === ""
                             ? "border-red-500 bg-red-50 focus:border-red-500"
                             : "border-slate-300 bg-white focus:border-site-primary"
                           }`}
@@ -648,11 +770,11 @@ function StaffStockContent() {
 
                     <div className="pt-2">
                       <label className="mb-1 block text-sm font-bold text-slate-700">รวมเงินทั้งหมด</label>
-                      <input type="text" readOnly value={(Number(cashVal || 0) + Number(transferVal || 0)).toLocaleString()} className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 bg-slate-100 font-bold text-lg text-slate-900 focus:outline-none" />
+                      <input type="text" readOnly value={(Number(cashVal || 0) + Number(transferVal || 0)).toLocaleString()} className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 bg-slate-100 font-bold text-lg tabular-nums text-black focus:outline-none" />
                     </div>
                   </section>
 
-                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100 mb-24">
+                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
                     <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">3. สถิติ</h3>
 
                     {/* 4. จำนวนลูกค้า */}
@@ -662,7 +784,7 @@ function StaffStockContent() {
                         type="number"
                         value={customersVal}
                         onChange={e => setCustomersVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 focus:bg-white focus:outline-none ${attemptedSummary && customersVal.trim() === ""
+                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && customersVal.trim() === ""
                             ? "border-red-500 bg-red-50 focus:border-red-500"
                             : "border-slate-300 bg-white focus:border-site-primary"
                           }`}
@@ -674,8 +796,26 @@ function StaffStockContent() {
 
                 </div>
 
-                <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
-                  <div className="mx-auto max-w-lg bg-white p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] rounded-t-2xl border-t border-slate-200">
+                <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4 pb-[env(safe-area-inset-bottom)]">
+                  <div className="mx-auto max-w-lg rounded-t-2xl border-t border-slate-200 bg-white p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-500">
+                          จำนวนรายการ
+                        </p>
+                        <p className="text-lg font-black tabular-nums leading-none text-black">
+                          {summaryEnteredStats.itemCount}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[11px] font-semibold text-slate-500">
+                          ยอดรวมกรอก
+                        </p>
+                        <p className="text-lg font-black tabular-nums leading-none text-black">
+                          {formatPrice(summaryEnteredStats.totalQty)}
+                        </p>
+                      </div>
+                    </div>
                     <button
                       onClick={() => {
                         setAttemptedSummary(true);
@@ -714,7 +854,7 @@ function StaffStockContent() {
                     <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
                       <h3 className="text-xl font-black text-slate-900">ยืนยันบันทึกสรุปยอด</h3>
                       <p className="mt-2 text-sm text-slate-500">
-                        คุณตรวจสอบข้อมูล ยอดเงินสด <strong>{cashVal || 0}</strong> บ.,
+                        วันที่ {summaryTodayLabel} · ยอดเงินสด <strong>{cashVal || 0}</strong> บ.,
                         ยอดโอน <strong>{transferVal || 0}</strong> บ. และ
                         ยอดลูกค้า <strong>{customersVal || 0}</strong> คิว ถูกต้องแล้วใช่หรือไม่?
                       </p>
@@ -902,11 +1042,15 @@ function StaffStockContent() {
                             const dbBalance = data.balances.find((b) => b.product.id === item.id)?.quantity ?? 0;
                             const isLow = item.lowStockAlert != null && dbBalance <= item.lowStockAlert;
                             const isEmpty = dbBalance <= 0;
+                            const seq = seqById.get(item.id) ?? 0;
                             return (
                               <li
                                 key={item.id}
-                                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                                className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
                               >
+                                <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                                  {seq}
+                                </span>
                                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
                                   {item.imageUrl ? (
                                     // eslint-disable-next-line @next/next/no-img-element
@@ -951,12 +1095,16 @@ function StaffStockContent() {
                           {visibleItems.map((item) => {
                             const qty = qtyByItemId[item.id] ?? 0;
                             const dbBalance = data.balances.find(b => b.product.id === item.id)?.quantity ?? 0;
+                            const seq = seqById.get(item.id) ?? 0;
 
                             return (
                               <li
                                 key={item.id}
-                                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                                className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
                               >
+                                <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                                  {seq}
+                                </span>
                                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
                                   {item.imageUrl ? (
                                     // eslint-disable-next-line @next/next/no-img-element
@@ -1030,15 +1178,12 @@ function StaffStockContent() {
                 </h3>
                 <p className="text-xs text-slate-500">เลือกไว้ {selectedItems.length} รายการ</p>
               </div>
-              <button
-                onClick={() => {
-                  setQtyByItemId({});
-                  clearIssueFields();
-                }}
-                className="text-sm font-semibold text-slate-500 underline"
-              >
-                ล้างข้อมูล
-              </button>
+              <div className="text-right">
+                <p className="text-[11px] font-semibold text-slate-500">จำนวนรวม</p>
+                <p className="text-xl font-black tabular-nums leading-none text-slate-900">
+                  {formatPrice(selectedTotalQty)}
+                </p>
+              </div>
             </div>
             {actionType === "issue" && (
               <div className="mb-4 space-y-3 border-t border-slate-100 pt-3">

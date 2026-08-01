@@ -221,7 +221,7 @@ export default function StaffHomePage() {
     },
     {
       onClick: () => setSummaryOpen(true),
-      label: "สรุปยอด / รอบ",
+      label: "สรุปยอดขายตามรอบ",
       description: "ดูรายงานรายได้ประจำรอบ",
       color: "#6366f1",
       icon: <IconMoney size={24} />,
@@ -232,7 +232,7 @@ export default function StaffHomePage() {
       ? [
           {
             onClick: () => setDailySalesOpen(true),
-            label: "สรุปยอดขายรายวัน",
+            label: "สรุปยอดสต๊อกและขายราย",
             description: "ดูสรุปรอบ / สร้างสรุปสิ้นวัน",
             color: "#2563eb",
             icon: <IconMoney size={24} />,

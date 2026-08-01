@@ -13,7 +13,10 @@ import { formatPrice } from "@/lib/constants";
 import type { MenuItemData } from "@/lib/customer-types";
 import { resolveSellPrice } from "@/lib/menu-pricing";
 import { isPromoMenuItem, isMenuItemSoldOut, isStockExemptMenuItem } from "@/lib/staff-key-order";
-import { sortByThaiName } from "@/lib/thai-sort";
+import {
+  assignStableMenuSequence,
+  sortMenuItemData,
+} from "@/lib/staff-menu-order";
 
 export default function StaffPromoKeyOrderIndexPage() {
   const router = useRouter();
@@ -44,7 +47,7 @@ export default function StaffPromoKeyOrderIndexPage() {
       setMenuItems(items);
       setLoading(false);
 
-      const promos = sortByThaiName(
+      const promos = sortMenuItemData(
         items.filter((item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item)),
       );
       if (promos.length === 1) {
@@ -58,10 +61,15 @@ export default function StaffPromoKeyOrderIndexPage() {
 
   const promoItems = useMemo(
     () =>
-      sortByThaiName(
+      sortMenuItemData(
         menuItems.filter((item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item)),
       ),
     [menuItems],
+  );
+
+  const promoSeqById = useMemo(
+    () => assignStableMenuSequence(promoItems),
+    [promoItems],
   );
 
   if (blocked || roundLoading || !roundState || loading) {
@@ -100,11 +108,12 @@ export default function StaffPromoKeyOrderIndexPage() {
             เลือกโปรโมชั่น
           </h2>
           <p className="mb-3 text-xs text-gray-500">
-            เรียงตามพยัญชนะไทย · มี {promoItems.length} รายการ
+            เรียงตามลำดับเมนู · มี {promoItems.length} รายการ
           </p>
           <ul className="divide-y divide-gray-100">
-            {promoItems.map((item, index) => {
+            {promoItems.map((item) => {
               const price = resolveSellPrice(item, "pickup").final;
+              const seq = promoSeqById.get(item.id) ?? 0;
               return (
                 <li key={item.id}>
                   <Link
@@ -112,7 +121,7 @@ export default function StaffPromoKeyOrderIndexPage() {
                     className="flex items-center gap-3 py-3"
                   >
                     <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                      {index + 1}
+                      {seq}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-gray-900">{item.name}</p>

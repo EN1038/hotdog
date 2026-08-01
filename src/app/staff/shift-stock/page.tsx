@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
+import {
+  assignStableMenuSequence,
+  sortStaffMenuItems,
+} from "@/lib/staff-menu-order";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -22,6 +26,7 @@ type AuditItem = {
     stockType: StockType;
     lowStockAlert: number | null;
     sellingPrice: number | null;
+    sortOrder?: number;
   };
   prevQty: number;
   addedQty: number;
@@ -98,8 +103,35 @@ export default function StaffShiftStockPage() {
       const t = item.product.stockType || "SALE_ITEM";
       groups[t].push(item);
     }
+    for (const type of Object.keys(groups) as StockType[]) {
+      groups[type] = sortStaffMenuItems(
+        groups[type].map((item) => ({
+          ...item,
+          id: item.product.id,
+          name: item.product.name,
+          sortOrder: item.product.sortOrder ?? 0,
+        })),
+      ).map((row) => {
+        const { id: _id, name: _name, sortOrder: _sortOrder, ...item } = row;
+        return item;
+      });
+    }
     return groups;
   }, [data?.items]);
+
+  const seqByType = useMemo(() => {
+    const maps: Record<StockType, Map<string, number>> = {
+      SALE_ITEM: new Map(),
+      CONSUMABLE: new Map(),
+      EQUIPMENT: new Map(),
+    };
+    for (const type of Object.keys(itemsByType) as StockType[]) {
+      maps[type] = assignStableMenuSequence(
+        itemsByType[type].map((item) => ({ id: item.product.id })),
+      );
+    }
+    return maps;
+  }, [itemsByType]);
 
   const updateCount = (id: string, deltaOrValue: number | string) => {
     setCountsMap((prev) => {
@@ -252,6 +284,7 @@ export default function StaffShiftStockPage() {
                           : 0;
 
                       const diff = countedVal - item.expectedQty;
+                      const seq = seqByType[type].get(item.product.id) ?? 0;
 
                       return (
                         <div
@@ -259,13 +292,18 @@ export default function StaffShiftStockPage() {
                           className="rounded-2xl bg-white p-4 shadow-sm border border-slate-200/80 transition-all hover:border-slate-300"
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h3 className="text-sm font-bold text-slate-900">
-                                {item.product.name}
-                              </h3>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                หน่วย: {item.product.unit}
-                              </p>
+                            <div className="flex min-w-0 items-start gap-2">
+                              <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-400 pt-0.5">
+                                {seq}
+                              </span>
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-900">
+                                  {item.product.name}
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  หน่วย: {item.product.unit}
+                                </p>
+                              </div>
                             </div>
 
                             {/* Diff Badge */}

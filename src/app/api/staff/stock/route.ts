@@ -355,6 +355,7 @@ export async function POST(request: Request) {
         name: string;
         systemQty: number;
         countedQty: number;
+        unitPrice: number;
       }> = [];
 
       await prisma.$transaction(async (tx) => {
@@ -363,6 +364,7 @@ export async function POST(request: Request) {
           const oldQty = menu.stock?.quantity ?? 0;
           const newQty = line.countedQty;
           const actualDiff = newQty - oldQty;
+          const unitPrice = Number(menu.price ?? 0);
 
           await tx.branchMenuItemStock.upsert({
             where: { menuItemId: menu.id },
@@ -396,6 +398,7 @@ export async function POST(request: Request) {
             name: menu.name,
             systemQty: oldQty,
             countedQty: newQty,
+            unitPrice,
           });
         }
       });

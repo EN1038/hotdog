@@ -22,7 +22,7 @@ import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummaryShee
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
-import { formatPrice } from "@/lib/constants";
+import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import {
   autoPrintQueueTickets,
   clampTicketCopies,
@@ -376,13 +376,13 @@ export default function StaffHomePage() {
         <StaffShiftSummarySheet
           open={summaryOpen}
           onClose={() => setSummaryOpen(false)}
-          initialDate={meta?.operatingDay ?? ""}
+          initialDate={bangkokDateKey()}
         />
 
         <StaffDailySalesSummarySheet
           open={dailySalesOpen}
           onClose={() => setDailySalesOpen(false)}
-          initialDate={meta?.operatingDay ?? ""}
+          initialDate={bangkokDateKey()}
         />
       </div>
     </StaffAppShell>

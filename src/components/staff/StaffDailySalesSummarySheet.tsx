@@ -184,11 +184,12 @@ export function StaffDailySalesSummarySheet({
 
   useEffect(() => {
     if (!open) return;
-    const next =
+    // Prefer explicit date; otherwise Bangkok calendar today (not shift operating day).
+    setDate(
       initialDate && isBangkokDateKey(initialDate)
         ? initialDate
-        : bangkokDateKey();
-    setDate(next);
+        : bangkokDateKey(),
+    );
   }, [open, initialDate]);
 
   useEffect(() => {

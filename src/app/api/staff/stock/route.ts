@@ -3,6 +3,31 @@ import { requireStaff } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { getActiveShift } from "@/lib/branch-shift";
+import {
+  bangkokDateKey,
+  startOfBangkokDayFromKey,
+} from "@/lib/constants";
+
+const WASTE_HISTORY_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
+
+function bangkokMonthBounds(now = new Date()) {
+  const todayKey = bangkokDateKey(now);
+  const [y, m] = todayKey.split("-").map(Number);
+  const monthStartKey = `${y}-${String(m).padStart(2, "0")}-01`;
+  const nextM = m === 12 ? 1 : m + 1;
+  const nextY = m === 12 ? y + 1 : y;
+  const nextMonthStartKey = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+  const label = new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    month: "short",
+    year: "numeric",
+  }).format(startOfBangkokDayFromKey(monthStartKey));
+  return {
+    start: startOfBangkokDayFromKey(monthStartKey),
+    end: startOfBangkokDayFromKey(nextMonthStartKey),
+    label,
+  };
+}
 
 const summaryLineSchema = z.object({
   brandProductId: z.string(), // BranchMenuItem.id
@@ -83,12 +108,17 @@ export async function GET() {
     const products: any[] = [];
     const balances: any[] = [];
 
+    const priceByProductId = new Map<string, number>();
+
     // Map Menu Items (skip promo packs + stock-exempt categories — no receive needed)
     for (const item of menuItems) {
       const isPromo = item.optionGroupLinks.some(
         (l) => l.group.mode === "FROM_MENU",
       );
       if (isPromo || item.category?.stockExempt) continue;
+
+      const price = Number(item.price ?? 0);
+      priceByProductId.set(item.id, price);
 
       products.push({
         id: item.id,
@@ -100,6 +130,7 @@ export async function GET() {
         trackStock: true,
         imageUrl: item.imageUrl,
         isMenu: true,
+        price,
       });
       balances.push({
         id: item.id, // Frontend uses product.id anyway
@@ -111,6 +142,7 @@ export async function GET() {
           stockType: "SALE_ITEM",
           category: item.category?.name ?? "เมนู",
           lowStockAlert: 0,
+          price,
         },
       });
     }
@@ -118,6 +150,9 @@ export async function GET() {
     // Map Non-Menu Items
     for (const item of nonMenuItems) {
       const typeLabel = item.stockType === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์";
+      const price = Number(item.price ?? 0);
+      priceByProductId.set(item.id, price);
+
       products.push({
         id: item.id,
         name: item.name,
@@ -128,6 +163,7 @@ export async function GET() {
         trackStock: true,
         imageUrl: item.imageUrl,
         isMenu: false,
+        price,
       });
       balances.push({
         id: item.id,
@@ -139,8 +175,74 @@ export async function GET() {
           stockType: item.stockType,
           category: typeLabel,
           lowStockAlert: 0,
+          price,
         },
       });
+    }
+
+    const emptyTypeSummary = () => ({ quantity: 0, valueBaht: 0 });
+    const currentByType: Record<
+      "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT",
+      { quantity: number; valueBaht: number }
+    > = {
+      SALE_ITEM: emptyTypeSummary(),
+      CONSUMABLE: emptyTypeSummary(),
+      EQUIPMENT: emptyTypeSummary(),
+    };
+    for (const bal of balances) {
+      const stockType = bal.product.stockType as keyof typeof currentByType;
+      if (!(stockType in currentByType)) continue;
+      const qty = Math.max(0, Number(bal.quantity) || 0);
+      const unitPrice = Number(bal.product.price) || 0;
+      currentByType[stockType].quantity += qty;
+      currentByType[stockType].valueBaht += qty * unitPrice;
+    }
+
+    const month = bangkokMonthBounds();
+    const wasteByType: typeof currentByType = {
+      SALE_ITEM: emptyTypeSummary(),
+      CONSUMABLE: emptyTypeSummary(),
+      EQUIPMENT: emptyTypeSummary(),
+    };
+
+    const [menuWaste, nonMenuWaste] = await Promise.all([
+      prisma.branchMenuItemStockHistory.findMany({
+        where: {
+          branchId: branch.id,
+          type: { in: [...WASTE_HISTORY_TYPES] },
+          createdAt: { gte: month.start, lt: month.end },
+        },
+        select: { menuItemId: true, quantity: true },
+      }),
+      prisma.branchNonMenuItemHistory.findMany({
+        where: {
+          item: { branchId: branch.id },
+          type: { in: [...WASTE_HISTORY_TYPES] },
+          createdAt: { gte: month.start, lt: month.end },
+        },
+        select: {
+          quantity: true,
+          item: { select: { id: true, stockType: true, price: true } },
+        },
+      }),
+    ]);
+
+    for (const row of menuWaste) {
+      const qty = Math.abs(row.quantity);
+      if (qty <= 0) continue;
+      const unitPrice = priceByProductId.get(row.menuItemId) ?? 0;
+      wasteByType.SALE_ITEM.quantity += qty;
+      wasteByType.SALE_ITEM.valueBaht += qty * unitPrice;
+    }
+    for (const row of nonMenuWaste) {
+      const qty = Math.abs(row.quantity);
+      if (qty <= 0) continue;
+      const stockType = row.item.stockType as keyof typeof wasteByType;
+      if (!(stockType in wasteByType)) continue;
+      const unitPrice =
+        priceByProductId.get(row.item.id) ?? Number(row.item.price ?? 0);
+      wasteByType[stockType].quantity += qty;
+      wasteByType[stockType].valueBaht += qty * unitPrice;
     }
 
     // Recent movements
@@ -201,6 +303,11 @@ export async function GET() {
       lowItems: balances.filter((b) => b.quantity <= 0),
       counts: [],
       recentMovements: mappedMovements,
+      summary: {
+        monthLabel: month.label,
+        currentByType,
+        wasteByType,
+      },
     });
   } catch (error) {
     return handleApiError(error);

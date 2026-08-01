@@ -37,6 +37,7 @@ import {
   isMenuItemSoldOut,
   isRegularMenuItem,
   optionIdsForMenuItem,
+  stockQuantityCap,
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
 import { readStaffOrderMode } from "@/lib/staff-order-mode";
@@ -505,7 +506,8 @@ export default function StaffRegularKeyOrderPage() {
                 {visibleItems.map((item) => {
                   const qty = qtyByItemId[item.id] ?? 0;
                   const price = resolveSellPrice(item, channel).final;
-                  const sq = item.stockQuantity ?? 0;
+                  const sq = stockQuantityCap(item);
+                  const tracked = item.stockQuantity != null;
                   const soldOut = isMenuItemSoldOut(item);
                   const seq = seqById.get(item.id) ?? 0;
                   return (
@@ -542,10 +544,15 @@ export default function StaffRegularKeyOrderPage() {
                           ) : (
                             <>
                               {item.category?.name ? `${item.category.name} · ` : ""}
-                              {formatPrice(price)}฿ ·{" "}
-                              <span className="font-bold text-gray-900">
-                                เหลือ {item.stockQuantity ?? 0}
-                              </span>
+                              {formatPrice(price)}฿
+                              {tracked ? (
+                                <>
+                                  {" · "}
+                                  <span className="font-bold text-gray-900">
+                                    เหลือ {item.stockQuantity}
+                                  </span>
+                                </>
+                              ) : null}
                             </>
                           )}
                         </p>

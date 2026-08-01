@@ -1318,7 +1318,10 @@ export async function deductBranchMenuStockForOrder(input: {
         throw new StockError(`ไม่พบเมนูสำหรับตัดสต๊อก`, 400);
       }
       need.name = item.name;
-      const have = item.stock?.quantity ?? 0;
+      // No BranchMenuItemStock row = not tracked yet (same as isMenuItemSoldOut).
+      // Do not treat missing rows as quantity 0.
+      if (!item.stock) continue;
+      const have = item.stock.quantity;
       if (have < need.qty) {
         throw new StockError(
           `สต๊อกไม่พอ: ${item.name} (เหลือ ${have} ต้องการ ${need.qty})`,
@@ -1330,17 +1333,13 @@ export async function deductBranchMenuStockForOrder(input: {
 
     for (const [menuItemId, need] of needs) {
       const item = namedMap.get(menuItemId)!;
-      const oldQty = item.stock?.quantity ?? 0;
+      if (!item.stock) continue;
+      const oldQty = item.stock.quantity;
       const newQty = oldQty - need.qty;
 
-      await client.branchMenuItemStock.upsert({
+      await client.branchMenuItemStock.update({
         where: { menuItemId },
-        update: { quantity: newQty },
-        create: {
-          branchId: input.branchId,
-          menuItemId,
-          quantity: newQty,
-        },
+        data: { quantity: newQty },
       });
 
       await client.branchMenuItem.update({

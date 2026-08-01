@@ -219,10 +219,15 @@ export function MenuOptionGroupPicker({
           {visibleOptions.map((opt, index) => {
             const qty = qtyMap[opt.id] ?? 0;
             // MANUAL options: no stock qty — only manual isOutOfStock.
-            // FROM_MENU (skewers): gate by stock quantity (null/0 = sold out).
-            const sq = fromMenu ? (opt.stockQuantity ?? 0) : Number.POSITIVE_INFINITY;
-            const disabled = Boolean(opt.isOutOfStock) || (fromMenu && sq <= 0);
-            const atMax = selectedCount >= group.maxSelect || (fromMenu && qty >= sq);
+            // FROM_MENU (skewers): gate by stock when tracked; null = untracked.
+            const tracked = fromMenu && opt.stockQuantity != null;
+            const sq = tracked
+              ? Math.max(0, opt.stockQuantity!)
+              : Number.POSITIVE_INFINITY;
+            const disabled =
+              Boolean(opt.isOutOfStock) || (tracked && sq <= 0);
+            const atMax =
+              selectedCount >= group.maxSelect || (tracked && qty >= sq);
             const showThumb = fromMenu || Boolean(opt.imageUrl);
             return (
               <li
@@ -256,9 +261,10 @@ export function MenuOptionGroupPicker({
                         +฿{formatPrice(opt.priceDelta)}
                       </span>
                     )}
-                    {fromMenu && (
+                    {tracked && (
                       <span className="font-bold text-gray-900">
-                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ {opt.stockQuantity ?? 0}
+                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ{" "}
+                        {opt.stockQuantity}
                       </span>
                     )}
                   </div>
@@ -352,9 +358,13 @@ export function MenuOptionGroupPicker({
         {visibleOptions.map((opt, index) => {
           const active = selectedIds.includes(opt.id);
           // MANUAL options: no stock qty — only manual isOutOfStock.
-          // FROM_MENU (skewers): gate by stock quantity (null/0 = sold out).
-          const sq = fromMenu ? (opt.stockQuantity ?? 0) : Number.POSITIVE_INFINITY;
-          const isSoldOut = Boolean(opt.isOutOfStock) || (fromMenu && sq <= 0);
+          // FROM_MENU (skewers): gate by stock when tracked; null = untracked.
+          const tracked = fromMenu && opt.stockQuantity != null;
+          const sq = tracked
+            ? Math.max(0, opt.stockQuantity!)
+            : Number.POSITIVE_INFINITY;
+          const isSoldOut =
+            Boolean(opt.isOutOfStock) || (tracked && sq <= 0);
           const atMax = !isSingle && !active && selectedCount >= group.maxSelect;
           const showThumb = fromMenu || Boolean(opt.imageUrl);
           return (
@@ -398,9 +408,10 @@ export function MenuOptionGroupPicker({
                         +฿{formatPrice(opt.priceDelta)}
                       </span>
                     )}
-                    {fromMenu && (
+                    {tracked && (
                       <span className="font-bold text-gray-900">
-                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ {opt.stockQuantity ?? 0}
+                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ{" "}
+                        {opt.stockQuantity}
                       </span>
                     )}
                   </div>

@@ -45,7 +45,15 @@ type Props = {
   open: boolean;
   onClose: () => void;
   initialDate?: string | null;
+  brandName?: string | null;
+  branchName?: string | null;
 };
+
+function formatBranchLabel(branchName: string) {
+  const trimmed = branchName.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/^สาขา\s*/i, "");
+}
 
 function formatHm(iso: string | null) {
   if (!iso) return "—";
@@ -167,6 +175,8 @@ export function StaffDailySalesSummarySheet({
   open,
   onClose,
   initialDate,
+  brandName: brandNameProp,
+  branchName: branchNameProp,
 }: Props) {
   const router = useRouter();
   const captureRef = useRef<HTMLDivElement>(null);
@@ -181,6 +191,8 @@ export function StaffDailySalesSummarySheet({
   const [error, setError] = useState("");
   const [exportBusy, setExportBusy] = useState<"save" | "share" | null>(null);
   const [exportMsg, setExportMsg] = useState("");
+  const [brandName, setBrandName] = useState(brandNameProp?.trim() || "");
+  const [branchName, setBranchName] = useState(branchNameProp?.trim() || "");
 
   useEffect(() => {
     if (!open) return;
@@ -191,6 +203,37 @@ export function StaffDailySalesSummarySheet({
         : bangkokDateKey(),
     );
   }, [open, initialDate]);
+
+  useEffect(() => {
+    if (brandNameProp?.trim()) setBrandName(brandNameProp.trim());
+    if (branchNameProp?.trim()) setBranchName(branchNameProp.trim());
+  }, [brandNameProp, branchNameProp]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (brandNameProp?.trim() && branchNameProp?.trim()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/staff/branding");
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        const nextBrand =
+          (typeof data.brand?.nameTh === "string" && data.brand.nameTh.trim()) ||
+          (typeof data.brand?.name === "string" && data.brand.name.trim()) ||
+          "";
+        const nextBranch =
+          typeof data.branchName === "string" ? data.branchName.trim() : "";
+        if (nextBrand) setBrandName(nextBrand);
+        if (nextBranch) setBranchName(nextBranch);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, brandNameProp, branchNameProp]);
 
   useEffect(() => {
     if (!open) return;
@@ -289,7 +332,9 @@ export function StaffDailySalesSummarySheet({
       ) {
         await navigator.share({
           files: [file],
-          title: "สรุปนับสต็อก",
+          title: [brandName, formatBranchLabel(branchName) ? `สาขา ${formatBranchLabel(branchName)}` : "", "สรุปนับสต็อก"]
+            .filter(Boolean)
+            .join(" · "),
           text: selected.name,
         });
         setExportMsg("แชร์รูปแล้ว");
@@ -399,6 +444,28 @@ export function StaffDailySalesSummarySheet({
                     ref={captureRef}
                     className="space-y-3 rounded-xl bg-white p-1"
                   >
+                    <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-center">
+                      {brandName ? (
+                        <p className="text-base font-bold text-gray-900">
+                          {brandName}
+                        </p>
+                      ) : null}
+                      {formatBranchLabel(branchName) ? (
+                        <p className="mt-0.5 text-sm font-semibold text-gray-800">
+                          สาขา {formatBranchLabel(branchName)}
+                        </p>
+                      ) : null}
+                      <p
+                        className={`text-xs font-medium text-gray-500 ${
+                          brandName || formatBranchLabel(branchName)
+                            ? "mt-1.5"
+                            : ""
+                        }`}
+                      >
+                        สรุปยอดสต๊อกและขายราย
+                      </p>
+                    </div>
+
                     <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
                       <SummaryRow label="ชื่อสรุป" value={selected.name} />
                       <SummaryRow

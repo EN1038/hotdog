@@ -31,10 +31,6 @@ import {
   IconVolumeOff,
 } from "@/components/icons";
 import { StaffRoundSelector } from "@/components/staff/StaffRoundSelector";
-import {
-  StaffShiftControls,
-  type ActiveShiftInfo,
-} from "@/components/staff/StaffShiftControls";
 import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 import type { MenuItemData } from "@/lib/customer-types";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
@@ -93,7 +89,6 @@ export default function StaffPage() {
   const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
   const [canToggleStore, setCanToggleStore] = useState(false);
   const [canSell, setCanSell] = useState(false);
-  const [activeShift, setActiveShift] = useState<ActiveShiftInfo | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [viewDate, setViewDate] = useState<string | null>(null);
   const [operatingDay, setOperatingDay] = useState("");
@@ -290,11 +285,6 @@ export default function StaffPage() {
     setCanEnter(data.canEnter !== false);
     setCanSell(Boolean(data.canSell ?? data.canEnter));
     setCanToggleStore(Boolean(data.canToggleStore));
-    if (data.activeShift && typeof data.activeShift === "object") {
-      setActiveShift(data.activeShift as ActiveShiftInfo);
-    } else {
-      setActiveShift(null);
-    }
     if (data.dayStats) setDayStats(data.dayStats);
 
     const nextIds = new Set(nextOrders.map((o) => o.id));
@@ -440,6 +430,21 @@ export default function StaffPage() {
     }, 5000);
     return () => clearInterval(interval);
   }, [fetchOrders, viewDate, operatingDay]);
+
+  useEffect(() => {
+    const onReload = () => {
+      void fetchOrders();
+    };
+    const onBeforeOpen = () => {
+      goToTodayQuiet();
+    };
+    window.addEventListener("staff-branding-reload", onReload);
+    window.addEventListener("staff-shift-before-open", onBeforeOpen);
+    return () => {
+      window.removeEventListener("staff-branding-reload", onReload);
+      window.removeEventListener("staff-shift-before-open", onBeforeOpen);
+    };
+  }, [fetchOrders]);
 
   useEffect(() => {
     if (viewDate != null && operatingDay && viewDate !== operatingDay) return;
@@ -806,7 +811,7 @@ export default function StaffPage() {
               onClick={() => setSummaryOpen(true)}
               className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-800 shadow-sm hover:bg-gray-50"
             >
-              สรุปยอด
+              สรุปยอดขายตามรอบ
             </button>
             <StaffRoundSelector
               viewRound={viewDate}
@@ -818,24 +823,6 @@ export default function StaffPage() {
           </div>
         </div>
       </header>
-
-      <div className="mb-3">
-        <StaffShiftControls
-          canToggleStore={canToggleStore}
-          canSell={canSell}
-          activeShift={activeShift}
-          onBeforeOpen={goToTodayQuiet}
-          onOpened={() => {
-            pushSuccessToast("เปิดรอบแล้ว", "พร้อมรับออเดอร์");
-            void fetchOrders();
-          }}
-          onClosed={(msg) => {
-            pushSuccessToast("ปิดรอบแล้ว", msg);
-            void fetchOrders();
-          }}
-          onError={(title, detail) => pushErrorToast(title, detail)}
-        />
-      </div>
 
       <StaffShiftSummarySheet
         open={summaryOpen}

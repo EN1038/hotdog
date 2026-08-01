@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { formatPrice } from "@/lib/constants";
 
 export type ActiveShiftInfo = {
@@ -130,6 +131,16 @@ function Row({
   );
 }
 
+/** Escape header stacking (`overflow` / `backdrop-blur`) so overlays cover the full app. */
+function ShiftOverlayPortal({ children }: { children: ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return null;
+  return createPortal(children, document.body);
+}
+
 export function StaffShiftControls({
   canToggleStore,
   canSell,
@@ -152,6 +163,7 @@ export function StaffShiftControls({
   const [closeSummaryError, setCloseSummaryError] = useState("");
 
   function startOpen() {
+    window.dispatchEvent(new Event("staff-shift-before-open"));
     onBeforeOpen?.();
     setOpenModal(true);
   }
@@ -368,9 +380,10 @@ export function StaffShiftControls({
         </p>
       )}
 
+      <ShiftOverlayPortal>
       {openModal ? (
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
           aria-label="เปิดร้าน"
@@ -435,7 +448,7 @@ export function StaffShiftControls({
 
       {detailModal ? (
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
           aria-label="รายละเอียดรอบขาย"
@@ -562,7 +575,7 @@ export function StaffShiftControls({
 
       {closeModal ? (
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 px-0 pb-0 sm:p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
           aria-label="ยืนยันปิดรอบ"
@@ -697,6 +710,7 @@ export function StaffShiftControls({
           </div>
         </div>
       ) : null}
+      </ShiftOverlayPortal>
     </>
   );
 }

@@ -42,7 +42,7 @@ import {
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
-import { sortByThaiName } from "@/lib/thai-sort";
+import { sortMenuItemData } from "@/lib/staff-menu-order";
 import {
   autoPrintQueueTickets,
   clampTicketCopies,
@@ -97,7 +97,7 @@ export default function StaffPromoKeyOrderDetailPage() {
       const items = Array.isArray(data.menuItems)
         ? (data.menuItems as MenuItemData[])
         : [];
-      const promos = sortByThaiName(
+      const promos = sortMenuItemData(
         items.filter((m) => isPromoMenuItem(m) && !isMenuItemSoldOut(m)),
       );
       const found = promos.find((m) => m.id === itemId) ?? null;

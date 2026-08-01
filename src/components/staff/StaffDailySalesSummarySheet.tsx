@@ -1,9 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toPng } from "html-to-image";
 import { bangkokDateKey, formatPrice, isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
+
+type StockLine = {
+  name: string;
+  systemQty: number;
+  countedQty: number;
+  unitPrice?: number;
+};
+
+type StockTotals = {
+  systemQty: number;
+  countedQty: number;
+  systemValueBaht: number;
+  countedValueBaht: number;
+};
 
 type DailySummary = {
   id: string;
@@ -21,7 +36,8 @@ type DailySummary = {
   transfer: number;
   change: number;
   customers: number;
-  lines: Array<{ name: string; systemQty: number; countedQty: number }>;
+  lines: StockLine[];
+  stockTotals?: StockTotals;
   rawNote: string | null;
 };
 
@@ -61,6 +77,26 @@ function formatShiftDateTime(iso: string | null) {
   }
 }
 
+function computeStockTotals(lines: StockLine[]): StockTotals {
+  return lines.reduce(
+    (acc, line) => {
+      const price = Number(line.unitPrice) || 0;
+      return {
+        systemQty: acc.systemQty + line.systemQty,
+        countedQty: acc.countedQty + line.countedQty,
+        systemValueBaht: acc.systemValueBaht + line.systemQty * price,
+        countedValueBaht: acc.countedValueBaht + line.countedQty * price,
+      };
+    },
+    {
+      systemQty: 0,
+      countedQty: 0,
+      systemValueBaht: 0,
+      countedValueBaht: 0,
+    },
+  );
+}
+
 function SummaryRow({
   label,
   value,
@@ -82,12 +118,58 @@ function SummaryRow({
   );
 }
 
+function StockTotalRow({
+  label,
+  qty,
+  valueBaht,
+  last = false,
+}: {
+  label: string;
+  qty: number;
+  valueBaht: number;
+  last?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-baseline justify-between gap-3 px-1 py-2.5 text-sm ${
+        last ? "" : "border-b border-gray-200"
+      }`}
+    >
+      <span className="min-w-0 shrink text-gray-700">{label}</span>
+      <div className="flex shrink-0 items-baseline gap-3 text-right">
+        <span className="tabular-nums font-bold text-gray-900">
+          {qty.toLocaleString("th-TH")}
+        </span>
+        <span className="min-w-[7.5rem] tabular-nums font-semibold text-gray-900">
+          มูลค่า {formatPrice(valueBaht)} บาท
+        </span>
+      </div>
+    </div>
+  );
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+function downloadDataUrl(dataUrl: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export function StaffDailySalesSummarySheet({
   open,
   onClose,
   initialDate,
 }: Props) {
   const router = useRouter();
+  const captureRef = useRef<HTMLDivElement>(null);
   const [date, setDate] = useState(() =>
     initialDate && isBangkokDateKey(initialDate)
       ? initialDate
@@ -97,6 +179,8 @@ export function StaffDailySalesSummarySheet({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [exportBusy, setExportBusy] = useState<"save" | "share" | null>(null);
+  const [exportMsg, setExportMsg] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -113,6 +197,7 @@ export function StaffDailySalesSummarySheet({
     (async () => {
       setLoading(true);
       setError("");
+      setExportMsg("");
       try {
         const res = await fetch(
           `/api/staff/stock/summaries?date=${encodeURIComponent(date)}`,
@@ -146,10 +231,81 @@ export function StaffDailySalesSummarySheet({
   }, [open, date]);
 
   const selected = summaries.find((s) => s.id === selectedId) ?? null;
+  const stockTotals =
+    selected?.stockTotals ??
+    (selected ? computeStockTotals(selected.lines) : null);
 
   function goCreate() {
     onClose();
     router.push("/staff/stock?action=summary");
+  }
+
+  async function captureSummaryPng(): Promise<string> {
+    const node = captureRef.current;
+    if (!node) throw new Error("ไม่พบเนื้อหาสรุป");
+    return toPng(node, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+    });
+  }
+
+  function exportFilename() {
+    const round = selected?.shift
+      ? `รอบ${selected.shift.roundNumber}`
+      : "สรุป";
+    return `สรุปนับสต็อก_${date}_${round}.png`;
+  }
+
+  async function handleSaveImage() {
+    if (!selected || exportBusy) return;
+    setExportBusy("save");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureSummaryPng();
+      downloadDataUrl(dataUrl, exportFilename());
+      setExportMsg("บันทึกรูปแล้ว");
+    } catch {
+      setExportMsg("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleShareImage() {
+    if (!selected || exportBusy) return;
+    setExportBusy("share");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureSummaryPng();
+      const blob = await dataUrlToBlob(dataUrl);
+      const file = new File([blob], exportFilename(), { type: "image/png" });
+
+      if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      ) {
+        await navigator.share({
+          files: [file],
+          title: "สรุปนับสต็อก",
+          text: selected.name,
+        });
+        setExportMsg("แชร์รูปแล้ว");
+        return;
+      }
+
+      downloadDataUrl(dataUrl, exportFilename());
+      setExportMsg("อุปกรณ์นี้แชร์ไม่ได้ — บันทึกรูปแทนแล้ว ส่งในไลน์จากแกลเลอรี");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setExportMsg("");
+        return;
+      }
+      setExportMsg("แชร์รูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
   }
 
   if (!open) return null;
@@ -168,7 +324,9 @@ export function StaffDailySalesSummarySheet({
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div>
-            <p className="text-base font-bold text-gray-900">สรุปยอดสต๊อกและขายราย</p>
+            <p className="text-base font-bold text-gray-900">
+              สรุปยอดสต๊อกและขายราย
+            </p>
             <p className="text-xs text-gray-500">
               เลือกวันเพื่อดูสรุป หรือสร้างสรุปใหม่
             </p>
@@ -235,70 +393,127 @@ export function StaffDailySalesSummarySheet({
               </div>
 
               {selected ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
-                    <SummaryRow label="ชื่อสรุป" value={selected.name} />
-                    <SummaryRow
-                      label="บันทึกเมื่อ"
-                      value={formatShiftDateTime(selected.completedAt)}
-                    />
-                    {selected.shift ? (
+                <div className="space-y-3">
+                  <div
+                    ref={captureRef}
+                    className="space-y-3 rounded-xl bg-white p-1"
+                  >
+                    <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
+                      <SummaryRow label="ชื่อสรุป" value={selected.name} />
                       <SummaryRow
-                        label="รอบขาย"
-                        value={`รอบที่ ${selected.shift.roundNumber}`}
+                        label="บันทึกเมื่อ"
+                        value={formatShiftDateTime(selected.completedAt)}
                       />
+                      {selected.shift ? (
+                        <SummaryRow
+                          label="รอบขาย"
+                          value={`รอบที่ ${selected.shift.roundNumber}`}
+                        />
+                      ) : null}
+                      <SummaryRow
+                        label="ผู้บันทึก"
+                        value={selected.createdByStaff?.name ?? "—"}
+                      />
+                      <SummaryRow
+                        label="ยอดเงินสด"
+                        value={`${formatPrice(selected.cash)} บาท`}
+                      />
+                      <SummaryRow
+                        label="ยอดเงินโอน"
+                        value={`${formatPrice(selected.transfer)} บาท`}
+                      />
+                      <SummaryRow
+                        label="เงินทอน"
+                        value={`${formatPrice(selected.change)} บาท`}
+                      />
+                      <SummaryRow
+                        label="จำนวนลูกค้า"
+                        value={`${selected.customers.toLocaleString("th-TH")} คิว`}
+                        last
+                      />
+                    </div>
+
+                    {selected.lines.length > 0 && stockTotals ? (
+                      <div>
+                        <p className="mb-1.5 text-xs font-semibold text-gray-700">
+                          สรุปสต็อก
+                        </p>
+                        <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
+                          <StockTotalRow
+                            label="จำนวนสต็อกในระบบ"
+                            qty={stockTotals.systemQty}
+                            valueBaht={stockTotals.systemValueBaht}
+                          />
+                          <StockTotalRow
+                            label="จำนวนสต็อกที่นับได้"
+                            qty={stockTotals.countedQty}
+                            valueBaht={stockTotals.countedValueBaht}
+                            last
+                          />
+                        </div>
+                      </div>
                     ) : null}
-                    <SummaryRow
-                      label="ผู้บันทึก"
-                      value={selected.createdByStaff?.name ?? "—"}
-                    />
-                    <SummaryRow
-                      label="ยอดเงินสด"
-                      value={`${formatPrice(selected.cash)} บาท`}
-                    />
-                    <SummaryRow
-                      label="ยอดเงินโอน"
-                      value={`${formatPrice(selected.transfer)} บาท`}
-                    />
-                    <SummaryRow
-                      label="เงินทอน"
-                      value={`${formatPrice(selected.change)} บาท`}
-                    />
-                    <SummaryRow
-                      label="จำนวนลูกค้า"
-                      value={`${selected.customers.toLocaleString("th-TH")} คิว`}
-                      last
-                    />
+
+                    {selected.lines.length > 0 ? (
+                      <div>
+                        <p className="mb-1.5 text-xs font-semibold text-gray-700">
+                          สต็อกที่นับ
+                        </p>
+                        <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                          {selected.lines.map((line) => (
+                            <li
+                              key={`${line.name}-${line.systemQty}-${line.countedQty}`}
+                              className="flex items-center justify-between gap-3 px-3 py-2.5"
+                            >
+                              <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+                                {line.name}
+                              </p>
+                              <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900">
+                                ระบบ {line.systemQty.toLocaleString("th-TH")} →
+                                นับได้{" "}
+                                {line.countedQty.toLocaleString("th-TH")}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : selected.rawNote ? (
+                      <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                        {selected.rawNote}
+                      </p>
+                    ) : null}
                   </div>
 
                   {selected.lines.length > 0 ? (
-                    <div>
-                      <p className="mb-1.5 text-xs font-semibold text-gray-700">
-                        สต็อกที่นับ
-                      </p>
-                      <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                        {selected.lines.map((line) => (
-                          <li
-                            key={`${line.name}-${line.countedQty}`}
-                            className="flex items-center justify-between gap-3 px-3 py-2"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-gray-900">
-                                {line.name}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                ระบบ {line.systemQty.toLocaleString("th-TH")} →
-                                นับได้ {line.countedQty.toLocaleString("th-TH")}
-                              </p>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={!!exportBusy}
+                          onClick={() => void handleSaveImage()}
+                          className="rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!exportBusy}
+                          onClick={() => void handleShareImage()}
+                          className="rounded-xl border border-green-600 bg-green-50 px-3 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
+                        >
+                          {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป (ไลน์)"}
+                        </button>
+                      </div>
+                      {exportMsg ? (
+                        <p className="text-center text-xs text-gray-600">
+                          {exportMsg}
+                        </p>
+                      ) : (
+                        <p className="text-center text-xs text-gray-400">
+                          แชร์รูปแล้วเลือกไลน์ได้จากเมนูแชร์ของเครื่อง
+                        </p>
+                      )}
                     </div>
-                  ) : selected.rawNote ? (
-                    <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                      {selected.rawNote}
-                    </p>
                   ) : null}
                 </div>
               ) : null}

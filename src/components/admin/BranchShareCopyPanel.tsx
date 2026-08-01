@@ -21,6 +21,9 @@ type Preview = {
     optionGroups: number;
     menuItems: number;
     locations: number;
+    consumables?: number;
+    equipment?: number;
+    nonMenuItems?: number;
   };
 };
 
@@ -32,6 +35,7 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [overwriteMenu, setOverwriteMenu] = useState(false);
   const [includeLocations, setIncludeLocations] = useState(false);
+  const [includeNonMenuItems, setIncludeNonMenuItems] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function loadMyCode() {
@@ -122,6 +126,7 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
           code: preview.code,
           overwriteMenu,
           includeLocations,
+          includeNonMenuItems,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -129,10 +134,19 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
         toast.error("นำเข้าไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
         return;
       }
-      toast.success(
-        "นำเข้าแล้ว",
-        `หมวดใหม่ ${data.categories} · ตัวเลือกใหม่ ${data.optionGroups} · เมนู ${data.menuItems}`,
-      );
+      const nonMenuCreated = Number(data.nonMenuItems?.created ?? 0);
+      const nonMenuUpdated = Number(data.nonMenuItems?.updated ?? 0);
+      const parts = [
+        `หมวดใหม่ ${data.categories}`,
+        `ตัวเลือกใหม่ ${data.optionGroups}`,
+        `เมนู ${data.menuItems}`,
+      ];
+      if (includeNonMenuItems) {
+        parts.push(
+          `ของสิ้นเปลือง/อุปกรณ์ สร้าง ${nonMenuCreated} อัปเดต ${nonMenuUpdated}`,
+        );
+      }
+      toast.success("นำเข้าแล้ว", parts.join(" · "));
       setPreview(null);
       setPasteCode("");
       onImported?.();
@@ -148,7 +162,8 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
           คัดลอกข้อมูลสาขา
         </h3>
         <p className="mt-0.5 text-sm text-gray-600">
-          แชร์โค้ดให้สาขาอื่น เพื่อนำเข้าหมวด ตัวเลือก และเมนูมาเป็นสำเนาในสาขานั้น
+          แชร์โค้ดให้สาขาอื่น เพื่อนำเข้าหมวด ตัวเลือก เมนู
+          รวมถึงของสิ้นเปลืองและอุปกรณ์มาเป็นสำเนาในสาขานั้น
         </p>
       </div>
 
@@ -217,6 +232,8 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
               <li>หัวข้อตัวเลือก {preview.counts.optionGroups} รายการ</li>
               <li>เมนู {preview.counts.menuItems} รายการ</li>
               <li>พื้นที่จัดส่ง {preview.counts.locations} รายการ</li>
+              <li>ของสิ้นเปลือง {preview.counts.consumables ?? 0} รายการ</li>
+              <li>อุปกรณ์ {preview.counts.equipment ?? 0} รายการ</li>
             </ul>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -233,6 +250,20 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
                 onChange={(e) => setIncludeLocations(e.target.checked)}
               />
               นำเข้าพื้นที่จัดส่งด้วย (ชื่อซ้ำจะข้าม)
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={includeNonMenuItems}
+                onChange={(e) => setIncludeNonMenuItems(e.target.checked)}
+              />
+              <span>
+                นำเข้าของสิ้นเปลืองและอุปกรณ์ด้วย
+                <span className="mt-0.5 block text-xs text-gray-500">
+                  ชื่อซ้ำจะอัปเดตข้อมูล แต่คงยอดสต็อกสาขานี้ — รายการใหม่เริ่มที่ยอด 0
+                </span>
+              </span>
             </label>
             <button
               type="button"

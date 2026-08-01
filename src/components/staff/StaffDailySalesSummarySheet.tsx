@@ -11,6 +11,7 @@ type StockLine = {
   systemQty: number;
   countedQty: number;
   unitPrice?: number;
+  seq?: number;
 };
 
 type StockTotals = {
@@ -528,21 +529,29 @@ export function StaffDailySalesSummarySheet({
                           สต็อกที่นับ
                         </p>
                         <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                          {selected.lines.map((line) => (
-                            <li
-                              key={`${line.name}-${line.systemQty}-${line.countedQty}`}
-                              className="flex items-center justify-between gap-3 px-3 py-2.5"
-                            >
-                              <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
-                                {line.name}
-                              </p>
-                              <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900">
-                                ระบบ {line.systemQty.toLocaleString("th-TH")} →
-                                นับได้{" "}
-                                {line.countedQty.toLocaleString("th-TH")}
-                              </p>
-                            </li>
-                          ))}
+                          {selected.lines.map((line, index) => {
+                            const seq = line.seq && line.seq > 0 ? line.seq : index + 1;
+                            return (
+                              <li
+                                key={`${seq}-${line.name}-${line.systemQty}-${line.countedQty}`}
+                                className="flex items-center justify-between gap-3 px-3 py-2.5"
+                              >
+                                <div className="flex min-w-0 flex-1 items-center gap-2">
+                                  <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
+                                    {seq}
+                                  </span>
+                                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+                                    {line.name}
+                                  </p>
+                                </div>
+                                <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900">
+                                  ระบบ {line.systemQty.toLocaleString("th-TH")} →
+                                  นับได้{" "}
+                                  {line.countedQty.toLocaleString("th-TH")}
+                                </p>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     ) : selected.rawNote ? (

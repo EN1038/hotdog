@@ -25,6 +25,16 @@ export function isMenuItemSoldOut(item: StockCheckItem): boolean {
   return Boolean(item.isOutOfStock);
 }
 
+/**
+ * Max qty staff can add for a tracked menu line.
+ * `null` stockQuantity = not tracked yet → no cap (matches API / isMenuItemSoldOut).
+ */
+export function stockQuantityCap(item: StockCheckItem): number {
+  if (isStockExemptMenuItem(item)) return Number.POSITIVE_INFINITY;
+  if (item.stockQuantity == null) return Number.POSITIVE_INFINITY;
+  return Math.max(0, item.stockQuantity);
+}
+
 export function isRegularMenuItem(item: StockCheckItem): boolean {
   return !isPromoMenuItem(item);
 }

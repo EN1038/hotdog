@@ -856,92 +856,11 @@ export async function deductStockForOrder(orderId: string, tx?: Tx) {
 
     for (const [brandProductId, { saleQty, freeQty }] of needs) {
       const totalSold = saleQty + freeQty;
-      if (saleQty > 0) {
-        const productMeta = await client.brandProduct.findUnique({
-          where: { id: brandProductId },
-          select: { trackLots: true },
-        });
-        if (productMeta?.trackLots) {
-          const { deductFromLotsFefo } = await import("@/lib/stock-advanced");
-          await deductFromLotsFefo(client, {
-            stockLocationId: location.id,
-            brandProductId,
-            quantity: saleQty,
-            allowNegative: allowNeg,
-          });
-        }
-        const { beforeQty, afterQty } = await changeBalance(client, {
-          stockLocationId: location.id,
-          brandProductId,
-          delta: -saleQty,
-          allowNegative: allowNeg,
-        });
-        await client.stockMovement.create({
-          data: {
-            brandId,
-            brandProductId,
-            type: StockMovementType.SALE,
-            quantity: saleQty,
-            beforeQty,
-            afterQty,
-            stockLocationId: location.id,
-            fromLocationId: location.id,
-            orderId: order.id,
-            referenceType: "ORDER",
-            referenceId: order.id,
-            note: `ขายออเดอร์ ${order.orderNumber}`,
-          },
-        });
-        await syncAfterBranchQtyChange(
-          client,
-          location,
-          brandProductId,
-          afterQty,
-        );
-      }
-      if (freeQty > 0) {
-        const productMeta = await client.brandProduct.findUnique({
-          where: { id: brandProductId },
-          select: { trackLots: true },
-        });
-        if (productMeta?.trackLots) {
-          const { deductFromLotsFefo } = await import("@/lib/stock-advanced");
-          await deductFromLotsFefo(client, {
-            stockLocationId: location.id,
-            brandProductId,
-            quantity: freeQty,
-            allowNegative: allowNeg,
-          });
-        }
-        const { beforeQty, afterQty } = await changeBalance(client, {
-          stockLocationId: location.id,
-          brandProductId,
-          delta: -freeQty,
-          allowNegative: allowNeg,
-        });
-        await client.stockMovement.create({
-          data: {
-            brandId,
-            brandProductId,
-            type: StockMovementType.FREE,
-            quantity: freeQty,
-            beforeQty,
-            afterQty,
-            stockLocationId: location.id,
-            fromLocationId: location.id,
-            orderId: order.id,
-            referenceType: "ORDER_GIFT",
-            referenceId: order.id,
-            note: `ของแถมออเดอร์ ${order.orderNumber}`,
-          },
-        });
-        await syncAfterBranchQtyChange(
-          client,
-          location,
-          brandProductId,
-          afterQty,
-        );
-      }
+      // Finished SALE_ITEM goods sold as branch menu lines are inventoried in
+      // BranchMenuItemStock (staff stock UI) and deducted by
+      // deductBranchMenuStockForOrder. StockBalance here is often empty and was
+      // blocking key-order even when menu stock had quantity.
+      // Only auto-deduct recipe/BOM components from StockBalance below.
 
       // BOM / recipe: auto-deduct components (usually consumables)
       if (totalSold > 0) {
@@ -1318,7 +1237,10 @@ export async function deductBranchMenuStockForOrder(input: {
         throw new StockError(`ไม่พบเมนูสำหรับตัดสต๊อก`, 400);
       }
       need.name = item.name;
-      const have = item.stock?.quantity ?? 0;
+      // No BranchMenuItemStock row = not tracked yet (same as isMenuItemSoldOut).
+      // Do not treat missing rows as quantity 0.
+      if (!item.stock) continue;
+      const have = item.stock.quantity;
       if (have < need.qty) {
         throw new StockError(
           `สต๊อกไม่พอ: ${item.name} (เหลือ ${have} ต้องการ ${need.qty})`,
@@ -1330,17 +1252,13 @@ export async function deductBranchMenuStockForOrder(input: {
 
     for (const [menuItemId, need] of needs) {
       const item = namedMap.get(menuItemId)!;
-      const oldQty = item.stock?.quantity ?? 0;
+      if (!item.stock) continue;
+      const oldQty = item.stock.quantity;
       const newQty = oldQty - need.qty;
 
-      await client.branchMenuItemStock.upsert({
+      await client.branchMenuItemStock.update({
         where: { menuItemId },
-        update: { quantity: newQty },
-        create: {
-          branchId: input.branchId,
-          menuItemId,
-          quantity: newQty,
-        },
+        data: { quantity: newQty },
       });
 
       await client.branchMenuItem.update({

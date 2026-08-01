@@ -578,7 +578,7 @@ export function StaffDailySalesSummarySheet({
                           onClick={() => void handleShareImage()}
                           className="rounded-xl border border-green-600 bg-green-50 px-3 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
                         >
-                          {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป (ไลน์)"}
+                          {exportBusy === "share" ? "กำลังแชร์…" : "LINE"}
                         </button>
                       </div>
                       {exportMsg ? (
@@ -587,7 +587,7 @@ export function StaffDailySalesSummarySheet({
                         </p>
                       ) : (
                         <p className="text-center text-xs text-gray-400">
-                          แชร์รูปแล้วเลือกไลน์ได้จากเมนูแชร์ของเครื่อง
+                          กด LINE แล้วเลือกแอปไลน์จากเมนูแชร์ของเครื่อง
                         </p>
                       )}
                     </div>

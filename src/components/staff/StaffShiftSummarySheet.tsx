@@ -338,18 +338,23 @@ export function StaffShiftSummarySheet({
                   <p className="text-sm text-gray-500">ยังไม่มีรายการที่นับยอด</p>
                 ) : (
                   <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                    {summary.menus.map((m) => (
+                    {summary.menus.map((m, index) => (
                       <li
                         key={m.name}
                         className="flex items-center justify-between gap-3 px-3 py-2.5"
                       >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-gray-900">
-                            {m.name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {m.quantity.toLocaleString("th-TH")} ชิ้น
-                          </p>
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-gray-900">
+                              {m.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {m.quantity.toLocaleString("th-TH")} ชิ้น
+                            </p>
+                          </div>
                         </div>
                         <p className="shrink-0 text-sm font-semibold text-gray-800">
                           {formatPrice(m.revenueBaht)}฿

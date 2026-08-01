@@ -3,12 +3,18 @@ import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { isBangkokDateKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { listShiftsForBranchDate } from "@/lib/branch-shift";
+import {
+  assignStableMenuSequence,
+  sortStaffMenuItems,
+  withMenuOrderFields,
+} from "@/lib/staff-menu-order";
 
 type NoteLine = {
   name: string;
   systemQty: number;
   countedQty: number;
   unitPrice?: number;
+  seq?: number;
 };
 
 type NotePayload = {
@@ -80,11 +86,49 @@ export async function GET(request: Request) {
       }),
       prisma.branchMenuItem.findMany({
         where: { branchId: session.branchId, isHidden: false },
-        select: { name: true, price: true },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          sortOrder: true,
+          category: { select: { sortOrder: true, stockExempt: true } },
+          optionGroupLinks: {
+            select: { group: { select: { mode: true } } },
+          },
+        },
       }),
     ]);
 
     const priceByName = new Map<string, number>();
+    const priceById = new Map(
+      menuItems.map((item) => [item.id, Number(item.price ?? 0)] as const),
+    );
+    const saleMenus = menuItems.filter((item) => {
+      const isPromo = item.optionGroupLinks.some(
+        (l) => l.group.mode === "FROM_MENU",
+      );
+      return !isPromo && !item.category?.stockExempt;
+    });
+    const sortedSaleMenus = sortStaffMenuItems(
+      saleMenus.map((item) =>
+        withMenuOrderFields({
+          id: item.id,
+          name: item.name,
+          sortOrder: item.sortOrder,
+          category: item.category,
+        }),
+      ),
+    );
+    const seqById = assignStableMenuSequence(sortedSaleMenus);
+    const seqByName = new Map<string, number>();
+    for (const item of sortedSaleMenus) {
+      if (!priceByName.has(item.name)) {
+        priceByName.set(item.name, priceById.get(item.id) ?? 0);
+      }
+      if (!seqByName.has(item.name)) {
+        seqByName.set(item.name, seqById.get(item.id) ?? 0);
+      }
+    }
     for (const item of menuItems) {
       if (!priceByName.has(item.name)) {
         priceByName.set(item.name, Number(item.price ?? 0));
@@ -94,20 +138,32 @@ export async function GET(request: Request) {
     const summaries = counts
       .map((c) => {
         const note = parseNote(c.note);
-        const lines = (Array.isArray(note.lines) ? note.lines : []).map(
-          (line) => {
+        const lines = (Array.isArray(note.lines) ? note.lines : [])
+          .map((line) => {
             const unitPrice =
               typeof line.unitPrice === "number" && Number.isFinite(line.unitPrice)
                 ? line.unitPrice
                 : (priceByName.get(line.name) ?? 0);
+            const seq =
+              typeof line.seq === "number" &&
+              Number.isFinite(line.seq) &&
+              line.seq > 0
+                ? line.seq
+                : (seqByName.get(line.name) ?? 0);
             return {
               name: line.name,
               systemQty: Number(line.systemQty) || 0,
               countedQty: Number(line.countedQty) || 0,
               unitPrice,
+              seq,
             };
-          },
-        );
+          })
+          .sort((a, b) => {
+            if (a.seq && b.seq && a.seq !== b.seq) return a.seq - b.seq;
+            if (a.seq && !b.seq) return -1;
+            if (!a.seq && b.seq) return 1;
+            return a.name.localeCompare(b.name, "th");
+          });
         const systemQtyTotal = lines.reduce((s, l) => s + l.systemQty, 0);
         const countedQtyTotal = lines.reduce((s, l) => s + l.countedQty, 0);
         const systemValueBaht = lines.reduce(

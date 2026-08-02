@@ -15,7 +15,7 @@ type HistoryLine = {
   note: string | null;
   imageUrl: string | null;
   batchId: string | null;
-  createdByStaff: { id: string; name: string } | null;
+  createdByStaff: { id: string; name: string | null } | null;
 };
 
 function bangkokDayRange(dateStr: string) {
@@ -115,7 +115,7 @@ export async function GET(request: Request) {
       createdAt: Date;
       note: string | null;
       imageUrl: string | null;
-      createdByStaff: { id: string; name: string } | null;
+      createdByStaff: { id: string; name: string | null } | null;
       lines: Array<{
         id: string;
         name: string;
@@ -176,7 +176,12 @@ export async function GET(request: Request) {
           createdAt: g.createdAt.toISOString(),
           note: g.note,
           imageUrl: g.imageUrl,
-          createdByStaff: g.createdByStaff,
+          createdByStaff: g.createdByStaff
+            ? {
+                id: g.createdByStaff.id,
+                name: g.createdByStaff.name?.trim() || "—",
+              }
+            : null,
           itemCount: lines.length,
           totalQty,
           lines: lines.map((l) => ({

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { logAdminActivity } from "@/lib/admin-activity";
@@ -50,7 +51,7 @@ export async function POST(
         name: body.name,
         description: body.description?.trim() || null,
         unit: body.unit,
-        price: priceNum,
+        price: priceNum != null ? new Prisma.Decimal(priceNum) : null,
         imageUrl: body.imageUrl?.trim() || null,
         stockType: body.stockType,
         quantity: 0,

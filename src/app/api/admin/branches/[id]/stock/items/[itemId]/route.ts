@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { logAdminActivity } from "@/lib/admin-activity";
@@ -38,7 +39,7 @@ export async function PATCH(
         : typeof body.imageUrl === "string"
           ? body.imageUrl.trim() || null
           : null;
-    let nextPrice: number | null | undefined = undefined;
+    let nextPrice: Prisma.Decimal | null | undefined = undefined;
     if (body.price !== undefined) {
       if (body.price === "" || body.price == null) {
         nextPrice = null;
@@ -47,7 +48,7 @@ export async function PATCH(
         if (!Number.isFinite(n) || n < 0) {
           return jsonError("ราคาไม่ถูกต้อง", 400);
         }
-        nextPrice = n;
+        nextPrice = new Prisma.Decimal(n);
       }
     }
 

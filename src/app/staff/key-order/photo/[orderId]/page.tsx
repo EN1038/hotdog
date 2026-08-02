@@ -58,6 +58,7 @@ import { saveStaffOrderFeedback } from "@/lib/staff-order-feedback";
 type MenuPayload = {
   branchName?: string;
   menuItems: MenuItemData[];
+  consumables?: StaffConsumableItem[];
   deliveryLocations: StaffDeliveryLocation[];
 };
 

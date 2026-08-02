@@ -38,16 +38,16 @@ export async function PATCH(
         : typeof body.imageUrl === "string"
           ? body.imageUrl.trim() || null
           : null;
-    let price = existing.price;
+    let nextPrice: number | null | undefined = undefined;
     if (body.price !== undefined) {
       if (body.price === "" || body.price == null) {
-        price = null;
+        nextPrice = null;
       } else {
         const n = Number(body.price);
         if (!Number.isFinite(n) || n < 0) {
           return jsonError("ราคาไม่ถูกต้อง", 400);
         }
-        price = n;
+        nextPrice = n;
       }
     }
 
@@ -68,7 +68,7 @@ export async function PATCH(
         unit,
         description,
         imageUrl,
-        price,
+        ...(nextPrice !== undefined ? { price: nextPrice } : {}),
       },
     });
 

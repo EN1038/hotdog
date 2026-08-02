@@ -140,7 +140,9 @@ export function StaffShiftSummarySheet({
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [error, setError] = useState("");
-  const [exportBusy, setExportBusy] = useState<"save" | "share" | null>(null);
+  const [exportBusy, setExportBusy] = useState<"save" | "share" | "copy" | null>(
+    null,
+  );
   const [exportMsg, setExportMsg] = useState("");
   const [brandName, setBrandName] = useState(brandNameProp?.trim() || "");
   const [branchName, setBranchName] = useState(branchNameProp?.trim() || "");
@@ -324,6 +326,93 @@ export function StaffShiftSummarySheet({
         return;
       }
       setExportMsg("แชร์รูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  function buildCopyText() {
+    if (!summary) return "";
+    const branchLabel = formatBranchLabel(branchName);
+    const lines: string[] = [];
+    if (brandName) lines.push(brandName);
+    if (branchLabel) lines.push(`สาขา ${branchLabel}`);
+    lines.push("สรุปยอดขายตามรอบ");
+    lines.push(`เลขที่รอบ: ${summary.shift.code}`);
+    lines.push(`รอบที่: ${summary.shift.roundNumber}`);
+    lines.push(`วันที่และเวลาเปิด: ${formatShiftDateTime(summary.shift.openedAt)}`);
+    lines.push(
+      `วันที่และเวลาปิด: ${
+        summary.shift.closedAt
+          ? formatShiftDateTime(summary.shift.closedAt)
+          : "ยังไม่ปิดรอบ"
+      }`,
+    );
+    lines.push(
+      `จำนวนออเดอร์: ${summary.orderCount.toLocaleString("th-TH")} ออเดอร์`,
+    );
+    if (summary.cancelledOrders > 0) {
+      lines.push(
+        `ยกเลิก: ${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`,
+      );
+    }
+    lines.push(
+      `เงินเริ่มต้น: ${formatPrice(summary.shift.openingCash)} บาท`,
+    );
+    if (summary.shift.note) lines.push(`หมายเหตุ: ${summary.shift.note}`);
+    lines.push(`ยอดเงินสด: ${formatPrice(summary.cashRevenueBaht)} บาท`);
+    lines.push(`ยอดเงินโอน: ${formatPrice(summary.transferRevenueBaht)} บาท`);
+    lines.push(`ยอดขายสุทธิ: ${formatPrice(summary.revenueBaht)} บาท`);
+    lines.push(
+      `ยอดรวมเงินเริ่มต้น: ${formatPrice(summary.totalWithOpeningCash)} บาท`,
+    );
+    lines.push(
+      `จำนวนของแถม: ${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`,
+    );
+    lines.push("");
+    lines.push("เมนูที่ขาย:");
+    if (summary.menus.length === 0) {
+      lines.push("- ยังไม่มีรายการที่นับยอด");
+    } else {
+      summary.menus.forEach((m, index) => {
+        lines.push(
+          `${index + 1}. ${m.name}: ${m.quantity.toLocaleString("th-TH")} ชิ้น · ${formatPrice(m.revenueBaht)}฿`,
+        );
+      });
+    }
+    return lines.join("\n");
+  }
+
+  async function copyTextToClipboard(text: string) {
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    if (!ok) throw new Error("copy failed");
+  }
+
+  async function handleCopyText() {
+    if (!summary || exportBusy) return;
+    setExportBusy("copy");
+    setExportMsg("");
+    try {
+      await copyTextToClipboard(buildCopyText());
+      setExportMsg("คัดลอกข้อความแล้ว — ไปวางในไลน์ได้เลย");
+    } catch {
+      setExportMsg("คัดลอกไม่สำเร็จ");
     } finally {
       setExportBusy(null);
     }
@@ -530,12 +619,12 @@ export function StaffShiftSummarySheet({
               </div>
 
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     disabled={!!exportBusy}
                     onClick={() => void handleSaveImage()}
-                    className="rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                    className="rounded-xl border border-gray-300 bg-white px-2 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
                   >
                     {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
                   </button>
@@ -543,16 +632,24 @@ export function StaffShiftSummarySheet({
                     type="button"
                     disabled={!!exportBusy}
                     onClick={() => void handleShareImage()}
-                    className="rounded-xl border border-green-600 bg-green-50 px-3 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
+                    className="rounded-xl border border-green-600 bg-green-50 px-2 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
                   >
-                    {exportBusy === "share" ? "กำลังแชร์…" : "LINE"}
+                    {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!exportBusy}
+                    onClick={() => void handleCopyText()}
+                    className="rounded-xl border border-blue-600 bg-blue-50 px-2 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
+                  >
+                    {exportBusy === "copy" ? "กำลังคัดลอก…" : "Copy"}
                   </button>
                 </div>
                 {exportMsg ? (
                   <p className="text-center text-xs text-gray-600">{exportMsg}</p>
                 ) : (
                   <p className="text-center text-xs text-gray-400">
-                    กด LINE แล้วเลือกแอปไลน์จากเมนูแชร์ของเครื่อง
+                    แชร์รูป หรือกด Copy แล้ววางข้อความในไลน์อีกช่องทาง
                   </p>
                 )}
               </div>

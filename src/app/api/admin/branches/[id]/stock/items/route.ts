@@ -14,6 +14,8 @@ const createSchema = z.object({
   stockType: z.enum(["CONSUMABLE", "EQUIPMENT"], {
     message: "ประเภทต้องเป็นของสิ้นเปลืองหรืออุปกรณ์",
   }),
+  showOnKeyOrder: z.boolean().optional(),
+  keyOrderSortOrder: z.coerce.number().int().min(0).max(9999).optional(),
 });
 
 export async function POST(
@@ -52,6 +54,11 @@ export async function POST(
         imageUrl: body.imageUrl?.trim() || null,
         stockType: body.stockType,
         quantity: 0,
+        showOnKeyOrder:
+          body.stockType === "CONSUMABLE"
+            ? Boolean(body.showOnKeyOrder)
+            : false,
+        keyOrderSortOrder: body.keyOrderSortOrder ?? 0,
       },
     });
 

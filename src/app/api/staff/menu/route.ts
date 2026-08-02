@@ -36,6 +36,17 @@ export async function GET(request: Request) {
             ...menuItemOptionGroupInclude,
           },
         },
+        branchNonMenuItems: {
+          where: { stockType: "CONSUMABLE", showOnKeyOrder: true },
+          orderBy: [{ keyOrderSortOrder: "asc" }, { name: "asc" }],
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            quantity: true,
+            imageUrl: true,
+          },
+        },
         deliveryLocations: { orderBy: { name: "asc" } },
       },
     });
@@ -43,6 +54,7 @@ export async function GET(request: Request) {
     if (!branch) {
       return jsonOk({
         menuItems: [],
+        consumables: [],
         deliveryLocations: [],
         channel,
       });
@@ -52,6 +64,7 @@ export async function GET(request: Request) {
       branchId: branch.id,
       branchName: branch.name,
       channel,
+      consumables: branch.branchNonMenuItems,
       menuItems: branch.menuItems.map((item) => {
         const flattened = flattenMenuItemOptionGroups(item);
         const stockQuantity = item.stock?.quantity ?? null;

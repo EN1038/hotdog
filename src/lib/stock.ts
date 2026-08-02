@@ -1007,11 +1007,13 @@ export async function restoreStockForOrder(orderId: string, tx?: Tx) {
   if (tx) {
     await run(tx);
     await restoreBranchMenuStockForOrder(orderId, tx);
+    await restoreBranchNonMenuStockForOrder(orderId, tx);
     return;
   }
   await prisma.$transaction(async (client) => {
     await run(client);
     await restoreBranchMenuStockForOrder(orderId, client);
+    await restoreBranchNonMenuStockForOrder(orderId, client);
   });
 }
 
@@ -1340,6 +1342,133 @@ export async function restoreBranchMenuStockForOrder(
   return prisma.$transaction(run);
 }
 
+/**
+ * Deduct CONSUMABLE quantities linked on OrderConsumableLine.
+ * Idempotent via history note prefix ORDER:{orderId}.
+ */
+export async function deductBranchNonMenuStockForOrder(input: {
+  orderId: string;
+  orderNumber: string;
+  branchId: string;
+  staffId?: string | null;
+  /** If omitted, load lines from OrderConsumableLine */
+  lines?: Array<{ branchNonMenuItemId: string; quantity: number }>;
+  tx?: Tx;
+}) {
+  const run = async (client: Tx) => {
+    const already = await client.branchNonMenuItemHistory.findFirst({
+      where: {
+        type: "ISSUE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${input.orderId}` },
+        item: { branchId: input.branchId },
+      },
+      select: { id: true },
+    });
+    if (already) return;
+
+    const lines =
+      input.lines ??
+      (
+        await client.orderConsumableLine.findMany({
+          where: { orderId: input.orderId },
+          select: { branchNonMenuItemId: true, quantity: true },
+        })
+      );
+
+    const needs = new Map<string, number>();
+    for (const line of lines) {
+      if (line.quantity <= 0) continue;
+      needs.set(
+        line.branchNonMenuItemId,
+        (needs.get(line.branchNonMenuItemId) ?? 0) + line.quantity,
+      );
+    }
+    if (needs.size === 0) return;
+
+    const items = await client.branchNonMenuItem.findMany({
+      where: {
+        id: { in: [...needs.keys()] },
+        branchId: input.branchId,
+        stockType: "CONSUMABLE",
+      },
+    });
+    const itemMap = new Map(items.map((i) => [i.id, i]));
+
+    for (const [itemId, qty] of needs) {
+      const item = itemMap.get(itemId);
+      if (!item) {
+        throw new StockError("ไม่พบสินค้าสิ้นเปลืองสำหรับตัดสต๊อก", 400);
+      }
+      if (item.quantity < qty) {
+        throw new StockError(
+          `สต๊อกไม่พอ: ${item.name} (เหลือ ${item.quantity} ต้องการ ${qty})`,
+        );
+      }
+    }
+
+    const note = branchMenuOrderNote(input.orderId, input.orderNumber);
+    for (const [itemId, qty] of needs) {
+      const item = itemMap.get(itemId)!;
+      const newQty = item.quantity - qty;
+      await client.branchNonMenuItem.update({
+        where: { id: itemId },
+        data: { quantity: newQty },
+      });
+      await client.branchNonMenuItemHistory.create({
+        data: {
+          branchNonMenuItemId: itemId,
+          quantity: -qty,
+          type: "ISSUE",
+          note,
+          createdByStaffId: input.staffId ?? null,
+        },
+      });
+    }
+  };
+
+  if (input.tx) return run(input.tx);
+  return prisma.$transaction(run);
+}
+
+export async function restoreBranchNonMenuStockForOrder(
+  orderId: string,
+  tx?: Tx,
+) {
+  const run = async (client: Tx) => {
+    const histories = await client.branchNonMenuItemHistory.findMany({
+      where: {
+        type: "ISSUE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
+      },
+      include: { item: { select: { id: true, quantity: true } } },
+    });
+    if (histories.length === 0) return;
+
+    for (const h of histories) {
+      // h.quantity is negative for ISSUE
+      const restoreQty = -h.quantity;
+      if (restoreQty <= 0) continue;
+      const newQty = h.item.quantity + restoreQty;
+      await client.branchNonMenuItem.update({
+        where: { id: h.branchNonMenuItemId },
+        data: { quantity: newQty },
+      });
+      await client.branchNonMenuItemHistory.create({
+        data: {
+          branchNonMenuItemId: h.branchNonMenuItemId,
+          quantity: restoreQty,
+          type: "ADJUST",
+          note: `คืนสต๊อกจากยกเลิกออเดอร์ ${orderId}`,
+          createdByStaffId: null,
+        },
+      });
+    }
+  };
+
+  if (tx) return run(tx);
+  return prisma.$transaction(run);
+}
+
 export async function maybeDeductOnAccept(input: {
   orderId: string;
   previousStatus: import("@prisma/client").OrderStatus;
@@ -1367,6 +1496,11 @@ export async function maybeDeductOnAccept(input: {
             quantity: i.quantity + (i.giftQuantity ?? 0),
             optionIds: [],
           })),
+      });
+      await deductBranchNonMenuStockForOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        branchId: order.branchId,
       });
     }
   }

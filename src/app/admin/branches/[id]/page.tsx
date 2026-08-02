@@ -17,6 +17,7 @@ import { ImageField } from "@/components/admin/ImageField";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { OrdersTable, type AdminOrderRow } from "@/components/admin/OrdersTable";
 import { RevenueBars } from "@/components/admin/RevenueBars";
+import { DateInput } from "@/components/DateInput";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -33,6 +34,7 @@ import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
 import { BranchOrdersPanel } from "@/components/admin/BranchOrdersPanel";
 import { BranchShiftsPanel } from "@/components/admin/BranchShiftsPanel";
 import { BranchStockPanel } from "@/components/admin/BranchStockPanel";
+import { BranchExpensesPanel } from "@/components/admin/BranchExpensesPanel";
 import { AdminCloseStoreModal } from "@/components/admin/AdminCloseStoreModal";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
@@ -51,6 +53,8 @@ import {
   IconUser,
 } from "@/components/icons";
 import {
+  bangkokDateKey,
+  bangkokMonthRangeToToday,
   formatThaiPhone,
   phoneDigits,
 } from "@/lib/constants";
@@ -184,6 +188,7 @@ type TabId =
   | "orders"
   | "shifts"
   | "stock"
+  | "expenses"
   | "staff"
   | "locations"
   | "settings";
@@ -193,6 +198,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "orders", label: "ออเดอร์" },
   { id: "shifts", label: "รอบขาย" },
   { id: "stock", label: "สต๊อกสาขา" },
+  { id: "expenses", label: "ค่าใช้จ่าย" },
   { id: "menu", label: "เมนู" },
   { id: "categories", label: "หมวดหมู่" },
   { id: "options", label: "ตัวเลือก" },
@@ -201,6 +207,40 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "settings", label: "ตั้งค่าสาขา" },
   { id: "copy", label: "คัดลอก" },
 ];
+
+type TabGroupId = "sales" | "menu" | "team" | "settings";
+
+const TAB_GROUPS: {
+  id: TabGroupId;
+  label: string;
+  tabIds: TabId[];
+}[] = [
+  {
+    id: "sales",
+    label: "ขาย",
+    tabIds: ["overview", "orders", "shifts", "stock", "expenses"],
+  },
+  {
+    id: "menu",
+    label: "เมนู",
+    tabIds: ["menu", "categories", "options"],
+  },
+  {
+    id: "team",
+    label: "ทีมและส่ง",
+    tabIds: ["staff", "locations"],
+  },
+  {
+    id: "settings",
+    label: "ตั้งค่า",
+    tabIds: ["settings", "copy"],
+  },
+];
+
+const TAB_BY_ID = Object.fromEntries(TABS.map((t) => [t.id, t])) as Record<
+  TabId,
+  (typeof TABS)[number]
+>;
 
 type TabAttention = {
   tone: "warn" | "info";
@@ -514,6 +554,27 @@ function BranchDetailContent() {
   const [restaurantTypes, setRestaurantTypes] = useState<
     { code: string; name: string }[]
   >([]);
+  const [overviewFrom, setOverviewFrom] = useState(
+    () => bangkokMonthRangeToToday().from,
+  );
+  const [overviewTo, setOverviewTo] = useState(
+    () => bangkokMonthRangeToToday().to,
+  );
+  const [overviewSummary, setOverviewSummary] = useState<{
+    completedRevenue: number;
+    cashRevenue: number;
+    transferRevenue: number;
+    completedOrderCount: number;
+    stockQty: number;
+    stockValue: number;
+    wasteQty: number;
+    wasteValue: number;
+    expenseTotal: number;
+    expenseCount: number;
+    netRevenue: number;
+    days: OrderStats["last7Days"];
+  } | null>(null);
+  const [overviewStatsLoading, setOverviewStatsLoading] = useState(false);
 
   function setTab(next: TabId) {
     const params = new URLSearchParams(searchParams.toString());
@@ -597,6 +658,34 @@ function BranchDetailContent() {
   useEffect(() => {
     load();
   }, [id, router]);
+
+  useEffect(() => {
+    if (activeTab !== "overview") return;
+    let cancelled = false;
+    setOverviewStatsLoading(true);
+    const from = overviewFrom <= overviewTo ? overviewFrom : overviewTo;
+    const to = overviewFrom <= overviewTo ? overviewTo : overviewFrom;
+    const params = new URLSearchParams({ from, to });
+    fetch(`/api/admin/branches/${id}/overview?${params}`)
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || "โหลดสรุปไม่สำเร็จ");
+        return body as NonNullable<typeof overviewSummary>;
+      })
+      .then((body) => {
+        if (cancelled) return;
+        setOverviewSummary(body);
+      })
+      .catch(() => {
+        if (!cancelled) setOverviewSummary(null);
+      })
+      .finally(() => {
+        if (!cancelled) setOverviewStatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, activeTab, overviewFrom, overviewTo]);
 
   useEffect(() => {
     if (!staffModalOpen) {
@@ -1181,7 +1270,7 @@ function BranchDetailContent() {
   }
 
   const activeStaff = (branch.staff ?? []).filter((s) => s.isActive).length;
-  const stats = branch.orderStats;
+  const stats = overviewSummary;
   const money = (n: number) =>
     n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
   const storefrontSchedule = ensureWeeklySchedule(
@@ -1256,21 +1345,7 @@ function BranchDetailContent() {
 
   return (
     <div>
-      <Link
-        href={
-          session?.isPlatformAdmin && branch.brandId
-            ? `/admin/brands/${branch.brandId}`
-            : "/admin"
-        }
-        className="inline-flex items-center gap-1 text-sm text-site-primary hover:underline"
-      >
-        <IconBack size={16} />
-        {session?.isPlatformAdmin && branch.brandId
-          ? "กลับไปสาขาของแบรนด์"
-          : "กลับ"}
-      </Link>
-
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-bold tracking-tight text-slate-900">
@@ -1288,137 +1363,281 @@ function BranchDetailContent() {
               </span>
             )}
           </div>
-          {branch.brand && branch.code && (
-            <p className="mt-0.5 text-sm text-slate-500">
-              /{branch.brand.code}/{branch.code}
-            </p>
-          )}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+            {branch.brand && branch.code ? (
+              <span>
+                /{branch.brand.code}/{branch.code}
+              </span>
+            ) : null}
+            <Link
+              href={
+                session?.isPlatformAdmin && branch.brandId
+                  ? `/admin/brands/${branch.brandId}`
+                  : "/admin"
+              }
+              className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition hover:text-site-primary"
+            >
+              <IconBack size={14} />
+              {session?.isPlatformAdmin && branch.brandId
+                ? "รายการสาขา"
+                : "รายการ"}
+            </Link>
+          </div>
         </div>
       </div>
 
-      <div className="sticky top-[3.25rem] z-20 -mx-1 mt-4 overflow-x-auto filter-scroll-row bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.75rem]">
-        <div className="flex min-w-max gap-0.5 rounded-2xl border border-slate-200 bg-white/90 p-1.5 shadow-sm">
-          {TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            const attention = getTabAttention(tab.id, branch);
-            const warn = attention?.tone === "warn";
-            const info = attention?.tone === "info";
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setTab(tab.id)}
-                title={attention?.title}
-                aria-label={
-                  attention
-                    ? `${tab.label} — ${attention.title}`
-                    : tab.label
-                }
-                className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition ${
-                  active
-                    ? "bg-site-primary font-semibold text-white shadow-sm shadow-slate-900/20"
-                    : warn
-                      ? "font-medium text-amber-800 ring-1 ring-inset ring-amber-200 hover:bg-amber-50"
-                      : info
-                        ? "font-medium text-sky-800 ring-1 ring-inset ring-sky-200 hover:bg-sky-50"
-                        : "font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-800"
-                }`}
-              >
-                <span>{tab.label}</span>
-                {attention &&
-                  (attention.badge ? (
-                    <span
-                      className={`inline-flex min-w-[1.15rem] items-center justify-center rounded-full px-1 py-0.5 text-[10px] font-bold leading-none tabular-nums ${
-                        active
-                          ? warn
-                            ? "bg-amber-300 text-amber-950"
-                            : "bg-white/95 text-site-primary"
-                          : warn
-                            ? "bg-amber-500 text-white"
-                            : "bg-sky-500 text-white"
-                      }`}
-                    >
-                      {attention.badge}
-                    </span>
-                  ) : (
-                    <span
-                      className={`tab-attention-dot inline-block size-2 shrink-0 rounded-full ${
-                        active
-                          ? "bg-amber-300"
-                          : warn
-                            ? "bg-amber-500"
-                            : "bg-sky-500"
-                      }`}
-                      aria-hidden
-                    />
-                  ))}
-              </button>
-            );
-          })}
+      <div className="sticky top-[3rem] z-20 -mx-1 mt-4 overflow-x-auto filter-scroll-row bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.25rem]">
+        <div className="flex min-w-max items-center gap-0.5 rounded-2xl border border-slate-200 bg-white/90 p-1.5 shadow-sm">
+          {TAB_GROUPS.map((group, groupIndex) => (
+            <div key={group.id} className="flex items-center gap-0.5">
+              {groupIndex > 0 ? (
+                <span
+                  className="mx-1 h-6 w-px shrink-0 bg-slate-200"
+                  aria-hidden
+                />
+              ) : null}
+              {group.tabIds.map((tabId) => {
+                const tab = TAB_BY_ID[tabId];
+                const active = activeTab === tab.id;
+                const attention = getTabAttention(tab.id, branch);
+                const warn = attention?.tone === "warn";
+                const info = attention?.tone === "info";
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setTab(tab.id)}
+                    title={attention?.title}
+                    aria-label={
+                      attention
+                        ? `${tab.label} — ${attention.title}`
+                        : tab.label
+                    }
+                    className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm transition ${
+                      active
+                        ? "bg-site-primary font-semibold text-white shadow-sm shadow-slate-900/20"
+                        : warn
+                          ? "font-medium text-amber-800 ring-1 ring-inset ring-amber-200 hover:bg-amber-50"
+                          : info
+                            ? "font-medium text-sky-800 ring-1 ring-inset ring-sky-200 hover:bg-sky-50"
+                            : "font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    {attention &&
+                      (attention.badge ? (
+                        <span
+                          className={`inline-flex min-w-[1.15rem] items-center justify-center rounded-full px-1 py-0.5 text-[10px] font-bold leading-none tabular-nums ${
+                            active
+                              ? warn
+                                ? "bg-amber-300 text-amber-950"
+                                : "bg-white/95 text-site-primary"
+                              : warn
+                                ? "bg-amber-500 text-white"
+                                : "bg-sky-500 text-white"
+                          }`}
+                        >
+                          {attention.badge}
+                        </span>
+                      ) : (
+                        <span
+                          className={`tab-attention-dot inline-block size-2 shrink-0 rounded-full ${
+                            active
+                              ? "bg-amber-300"
+                              : warn
+                                ? "bg-amber-500"
+                                : "bg-sky-500"
+                          }`}
+                          aria-hidden
+                        />
+                      ))}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
       <div className="mt-4">
         {activeTab === "overview" && (
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
-                <p className="text-sm text-emerald-700">รายได้ที่เสร็จสิ้น</p>
-                <p className="mt-1 text-2xl font-bold text-emerald-800">
-                  {money(stats?.completedRevenue ?? 0)} ฿
-                </p>
-                <p className="mt-1 text-xs text-emerald-600/80">
-                  {stats?.completedCount ?? 0} ออเดอร์ · ไม่นับที่ยกเลิก/ค้าง
-                </p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-base font-extrabold text-slate-900">
+                    สรุปภาพรวม
+                  </h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    สรุปรายได้ เงินสด/โอน สต๊อก ของเสีย และค่าใช้จ่ายตามช่วงวันที่เลือก
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="w-[10.5rem]">
+                    <label className={adminLabelClass}>วันที่เริ่ม</label>
+                    <DateInput
+                      className={adminInputClass}
+                      value={overviewFrom}
+                      max={overviewTo || bangkokDateKey()}
+                      onChange={(v) => {
+                        if (v) setOverviewFrom(v);
+                      }}
+                    />
+                  </div>
+                  <div className="w-[10.5rem]">
+                    <label className={adminLabelClass}>วันที่สิ้นสุด</label>
+                    <DateInput
+                      className={adminInputClass}
+                      value={overviewTo}
+                      min={overviewFrom}
+                      max={bangkokDateKey()}
+                      onChange={(v) => {
+                        if (v) setOverviewTo(v);
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 shadow-sm">
-                <p className="text-sm text-gray-600">ยอดที่ถูกยกเลิก</p>
-                <p className="mt-1 text-2xl font-bold text-gray-800">
-                  {money(stats?.cancelledRevenue ?? 0)} ฿
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  {stats?.cancelledCount ?? 0} ออเดอร์
-                </p>
+
+              <div
+                className={`mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 ${
+                  overviewStatsLoading ? "opacity-60" : ""
+                }`}
+              >
+                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
+                  <p className="text-sm text-emerald-700">รายได้ที่เสร็จสิ้น</p>
+                  <p className="mt-1 text-2xl font-bold text-emerald-800">
+                    {money(stats?.completedRevenue ?? 0)} ฿
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-600/80">
+                    ออเดอร์สำเร็จในช่วงที่เลือก
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
+                  <p className="text-sm text-sky-700">เงินโอน</p>
+                  <p className="mt-1 text-2xl font-bold text-sky-800">
+                    {money(stats?.transferRevenue ?? 0)} ฿
+                  </p>
+                  <p className="mt-1 text-xs text-sky-600/80">
+                    รายได้สำเร็จชำระโอน
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
+                  <p className="text-sm text-emerald-700">เงินสด</p>
+                  <p className="mt-1 text-2xl font-bold text-emerald-800">
+                    {money(stats?.cashRevenue ?? 0)} ฿
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-600/80">
+                    รายได้สำเร็จชำระเงินสด
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTab("orders")}
+                  className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
+                >
+                  <p className="text-sm text-amber-700">จำนวนออเดอร์</p>
+                  <p className="mt-1 text-2xl font-bold text-amber-800">
+                    {stats?.completedOrderCount ?? 0}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-600/80">
+                    ออเดอร์สำเร็จ · ดูแท็บออเดอร์
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("stock")}
+                  className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 text-left shadow-sm transition hover:border-violet-300"
+                >
+                  <p className="text-sm text-violet-700">จำนวนสต๊อก</p>
+                  <p className="mt-1 text-2xl font-bold text-violet-800">
+                    {money(stats?.stockQty ?? 0)}
+                  </p>
+                  <p className="mt-1 text-xs text-violet-600/80">
+                    คงเหลือปัจจุบัน · ดูแท็บสต๊อก
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("stock")}
+                  className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 text-left shadow-sm transition hover:border-violet-300"
+                >
+                  <p className="text-sm text-violet-700">มูลค่าสต๊อก</p>
+                  <p className="mt-1 text-2xl font-bold text-violet-800">
+                    {money(stats?.stockValue ?? 0)} ฿
+                  </p>
+                  <p className="mt-1 text-xs text-violet-600/80">
+                    คงเหลือปัจจุบัน · ดูแท็บสต๊อก
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("stock")}
+                  className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 text-left shadow-sm transition hover:border-orange-300"
+                >
+                  <p className="text-sm text-orange-700">จำนวนของเสียขาย</p>
+                  <p className="mt-1 text-2xl font-bold text-orange-800">
+                    {money(stats?.wasteQty ?? 0)}
+                  </p>
+                  <p className="mt-1 text-xs text-orange-600/80">
+                    ชิ้นเมนูขายที่ตัดของเสียในช่วงนี้
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("stock")}
+                  className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 text-left shadow-sm transition hover:border-orange-300"
+                >
+                  <p className="text-sm text-orange-700">มูลค่าของเสียขาย</p>
+                  <p className="mt-1 text-2xl font-bold text-orange-800">
+                    {money(stats?.wasteValue ?? 0)} ฿
+                  </p>
+                  <p className="mt-1 text-xs text-orange-600/80">
+                    คิดจากราคาเมนู × จำนวนของเสีย
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("expenses")}
+                  className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 text-left shadow-sm transition hover:border-rose-300"
+                >
+                  <p className="text-sm text-rose-700">ค่าใช้จ่ายรวม</p>
+                  <p className="mt-1 text-2xl font-bold text-rose-800">
+                    {money(stats?.expenseTotal ?? 0)} ฿
+                  </p>
+                  <p className="mt-1 text-xs text-rose-600/80">
+                    {stats?.expenseCount ?? 0} รายการ · ดูแท็บค่าใช้จ่าย
+                  </p>
+                </button>
+                <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
+                  <p className="text-sm text-indigo-700">รายได้ − ค่าใช้จ่าย</p>
+                  <p className="mt-1 text-2xl font-bold text-indigo-900">
+                    {money(stats?.netRevenue ?? 0)} ฿
+                  </p>
+                  <p className="mt-1 text-xs text-indigo-600/80">
+                    รายได้สำเร็จหักค่าใช้จ่ายช่วงนี้
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setTab("orders")}
-                className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
-              >
-                <p className="text-sm text-amber-700">ออเดอร์ระหว่างทาง</p>
-                <p className="mt-1 text-2xl font-bold text-amber-800">
-                  {stats?.openCount ?? 0}
-                </p>
-                <p className="mt-1 text-xs text-amber-600/80">
-                  ทั้งหมด {stats?.totalOrders ?? 0} ออเดอร์
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("menu")}
-                className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300"
-              >
-                <p className="text-sm text-gray-500">เมนู</p>
-                <p className="mt-1 text-2xl font-bold text-gray-900">
-                  {branch.menuItems.length}
-                </p>
-                <p className="mt-1 text-xs text-gray-400">
-                  {outOfStockCount || hiddenCount
-                    ? `หมด ${outOfStockCount} · ซ่อน ${hiddenCount}`
-                    : "รายการทั้งหมด"}
-                </p>
-              </button>
             </div>
 
-            <BranchMenuSalesPanel branchId={id} />
+            <BranchMenuSalesPanel
+              branchId={id}
+              dateFrom={overviewFrom}
+              dateTo={overviewTo}
+              showDatePicker={false}
+            />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className={panelClass}>
                 <h3 className="mb-3 font-semibold text-gray-900">
                   กราฟรายได้ / ยกเลิก
                 </h3>
-                {stats?.last7Days?.length ? (
-                  <RevenueBars days={stats.last7Days} />
+                {stats?.days?.length ? (
+                  <RevenueBars
+                    days={stats.days}
+                    revenueTitle="รายได้ที่เสร็จสิ้นในช่วงที่เลือก"
+                  />
                 ) : (
                   <p className="text-sm text-gray-500">ยังไม่มีข้อมูลพอสำหรับกราฟ</p>
                 )}
@@ -1886,6 +2105,8 @@ function BranchDetailContent() {
         {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
 
         {activeTab === "stock" && <BranchStockPanel branchId={id} />}
+
+        {activeTab === "expenses" && <BranchExpensesPanel branchId={id} />}
 
         {activeTab === "staff" && (
           <div className={panelClass}>

@@ -51,6 +51,15 @@ export async function PATCH(
       }
     }
 
+    const showOnKeyOrder =
+      body.showOnKeyOrder === undefined
+        ? undefined
+        : Boolean(body.showOnKeyOrder);
+    const keyOrderSortOrder =
+      body.keyOrderSortOrder === undefined
+        ? undefined
+        : Number(body.keyOrderSortOrder);
+
     if (!name || !unit) {
       return jsonError("กรุณาระบุชื่อและหน่วย", 400);
     }
@@ -69,6 +78,15 @@ export async function PATCH(
         description,
         imageUrl,
         ...(nextPrice !== undefined ? { price: nextPrice } : {}),
+        ...(showOnKeyOrder !== undefined &&
+        existing.stockType === "CONSUMABLE"
+          ? { showOnKeyOrder }
+          : {}),
+        ...(keyOrderSortOrder !== undefined &&
+        Number.isFinite(keyOrderSortOrder) &&
+        existing.stockType === "CONSUMABLE"
+          ? { keyOrderSortOrder: Math.max(0, Math.floor(keyOrderSortOrder)) }
+          : {}),
       },
     });
 

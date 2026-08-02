@@ -16,6 +16,11 @@ import {
   type StaffFulfillmentState,
 } from "@/components/staff/StaffQuickFulfillment";
 import {
+  StaffConsumablePicker,
+  selectedConsumableTotal,
+  type StaffConsumableItem,
+} from "@/components/staff/StaffConsumablePicker";
+import {
   StaffKeyOrderAlertModal,
   StaffKeyOrderSuccessModal,
   StaffOrderSummary,
@@ -73,6 +78,10 @@ export default function StaffPromoKeyOrderDetailPage() {
   const [deliveryLocations, setDeliveryLocations] = useState<
     StaffDeliveryLocation[]
   >([]);
+  const [consumables, setConsumables] = useState<StaffConsumableItem[]>([]);
+  const [qtyByConsumableId, setQtyByConsumableId] = useState<
+    Record<string, number>
+  >({});
   const [quantity, setQuantity] = useState(1);
   const [selectedByGroup, setSelectedByGroup] = useState<SelectedByGroup>({});
   const [optionErrorGroupId, setOptionErrorGroupId] = useState<string | null>(
@@ -106,6 +115,9 @@ export default function StaffPromoKeyOrderDetailPage() {
       setItem(found);
       setDeliveryLocations(
         Array.isArray(data.deliveryLocations) ? data.deliveryLocations : [],
+      );
+      setConsumables(
+        Array.isArray(data.consumables) ? data.consumables : [],
       );
       setLoading(false);
     })();
@@ -224,6 +236,15 @@ export default function StaffPromoKeyOrderDetailPage() {
       return;
     }
 
+    if (
+      fulfillment.salesChannel === "STOREFRONT" &&
+      consumables.length > 0 &&
+      selectedConsumableTotal(consumables, qtyByConsumableId) < 1
+    ) {
+      fail("กรุณาเลือกสินค้าสิ้นเปลืองอย่างน้อย 1 รายการ", "staff-consumables");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const optionIds = (item.optionGroups ?? []).flatMap(
@@ -242,6 +263,12 @@ export default function StaffPromoKeyOrderDetailPage() {
           },
         ],
         completeImmediately: readStaffOrderMode() === "instant",
+        consumables: Object.entries(qtyByConsumableId)
+          .filter(([, q]) => q > 0)
+          .map(([branchNonMenuItemId, quantity]) => ({
+            branchNonMenuItemId,
+            quantity,
+          })),
       };
       if (fulfillment.fulfillmentType === "DELIVERY") {
         body.deliveryLocationId = fulfillment.deliveryLocationId;
@@ -516,6 +543,21 @@ export default function StaffPromoKeyOrderDetailPage() {
           );
         })}
       </div>
+
+      <StaffConsumablePicker
+        items={consumables}
+        qtyByItemId={qtyByConsumableId}
+        onChangeQty={(itemId, next) => {
+          clearValidation();
+          setQtyByConsumableId((prev) => {
+            const q = Math.max(0, Math.min(99, Math.floor(next)));
+            const nextMap = { ...prev };
+            if (q <= 0) delete nextMap[itemId];
+            else nextMap[itemId] = q;
+            return nextMap;
+          });
+        }}
+      />
 
       <StaffQuickFulfillment
         value={fulfillment}

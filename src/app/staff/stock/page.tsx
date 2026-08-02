@@ -938,9 +938,11 @@ function StaffStockContent() {
         throw new Error(body.error || "บันทึกไม่สำเร็จ");
       }
       toast.success(
-        summaryIncludesSales
-          ? "บันทึกสรุปยอดสต๊อกและขายรายเรียบร้อย"
-          : `บันทึกสรุปยอดสต๊อก · ${summaryTypeLabel} เรียบร้อย`,
+        body.pendingAdminApply || body.status === "IN_PROGRESS"
+          ? "ส่งสรุปยอดเมนูขายแล้ว — รอแอดมินกดปรับสต๊อก"
+          : summaryIncludesSales
+            ? "บันทึกสรุปยอดสต๊อกและขายรายเรียบร้อย"
+            : `บันทึกสรุปยอดสต๊อก · ${summaryTypeLabel} เรียบร้อย`,
       );
       setShowSummaryModal(false);
       setCashVal("");
@@ -1459,28 +1461,31 @@ function StaffStockContent() {
                   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
                       <h3 className="text-xl font-black text-slate-900">ยืนยันบันทึกสรุปยอด</h3>
-                      <p className="mt-2 text-sm text-slate-500">
+                      <p className="mt-2 text-sm font-semibold text-slate-600">
                         {summaryIncludesSales ? (
                           <>
                             {summaryTypeLabel} · วันที่ {summaryTodayLabel} ·
-                            ยอดเงินสด <strong>{cashVal || 0}</strong> บ., ยอดโอน{" "}
-                            <strong>{transferVal || 0}</strong> บ. และ ยอดลูกค้า{" "}
-                            <strong>{customersVal || 0}</strong> คิว
-                            ถูกต้องแล้วใช่หรือไม่?
+                            ยอดเงินสด {formatPrice(Number(cashVal) || 0)} บ.,
+                            ยอดโอน {formatPrice(Number(transferVal) || 0)} บ.
+                            และ ยอดลูกค้า{" "}
+                            {(Number(customersVal) || 0).toLocaleString("th-TH")}{" "}
+                            คิว — ส่งให้แอดมินตรวจก่อน ระบบยังไม่ปรับสต๊อก
                           </>
                         ) : (
                           <>
                             สรุปยอดสต๊อก · {summaryTypeLabel} · วันที่{" "}
                             {summaryTodayLabel} ·{" "}
                             {summaryItems.length.toLocaleString("th-TH")} รายการ
-                            ถูกต้องแล้วใช่หรือไม่?
+                            — ระบบจะปรับยอดตามที่นับได้
                           </>
                         )}
                       </p>
                       {summaryDiffItems.length > 0 ? (
-                        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
+                        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
                           มี {summaryDiffItems.length} รายการที่ยอดนับได้ต่างจากสต๊อกปัจจุบัน
-                          — ระบบจะปรับยอดตามที่นับได้
+                          {summaryIncludesSales
+                            ? " — แอดมินจะปรับยอดเมื่อกด Convert"
+                            : " — ระบบจะปรับยอดตามที่นับได้"}
                         </p>
                       ) : null}
                       <div className="mt-6 flex gap-3">

@@ -33,7 +33,7 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
-import { deductStockForOrder, deductBranchMenuStockForOrder, StockError } from "@/lib/stock";
+import { deductStockForOrder, deductBranchMenuStockForOrder, deductBranchNonMenuStockForOrder, StockError } from "@/lib/stock";
 import { isMenuItemSoldOut, isPromoMenuItem } from "@/lib/staff-key-order";
 import {
   getBranchServiceStatus,
@@ -134,6 +134,18 @@ const createStaffOrderSchema = z.object({
   salesChannel: z
     .enum(["STOREFRONT", "FACEBOOK", "APP_DELIVERY", "OTHER"])
     .default("STOREFRONT"),
+  cupSizeOz: z.union([z.literal(22), z.literal(32)]).optional(),
+  cupCount: z.number().int().min(1).max(99).optional(),
+  bagCount: z.number().int().min(1).max(99).optional(),
+  consumables: z
+    .array(
+      z.object({
+        branchNonMenuItemId: z.string().min(1),
+        quantity: z.number().int().positive().max(99),
+      }),
+    )
+    .max(50)
+    .optional(),
   items: z.array(orderItemSchema).min(1),
   /** Skip queue — mark COMPLETED immediately (walk-in / instant mode) */
   completeImmediately: z.boolean().optional(),
@@ -207,6 +219,7 @@ export async function GET(request: Request) {
         customer: true,
         deliveryLocation: true,
         items: { include: { branchMenuItem: true } },
+        consumableLines: true,
       },
       orderBy: [{ status: "asc" }, { createdAt: "asc" }],
     });
@@ -396,6 +409,88 @@ export async function POST(request: Request) {
       });
     }
 
+    const consumableRequests = body.consumables ?? [];
+    const consumableIds = [
+      ...new Set(consumableRequests.map((c) => c.branchNonMenuItemId)),
+    ];
+    const consumableItems =
+      consumableIds.length > 0
+        ? await prisma.branchNonMenuItem.findMany({
+            where: {
+              id: { in: consumableIds },
+              branchId: session.branchId,
+              stockType: "CONSUMABLE",
+            },
+          })
+        : [];
+    const consumableMap = new Map(consumableItems.map((i) => [i.id, i]));
+    const resolvedConsumables: Array<{
+      branchNonMenuItemId: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+    }> = [];
+    for (const req of consumableRequests) {
+      const item = consumableMap.get(req.branchNonMenuItemId);
+      if (!item) {
+        return jsonError("มีสินค้าสิ้นเปลืองที่ไม่ถูกต้อง");
+      }
+      if (item.quantity < req.quantity) {
+        return jsonError(
+          `สต๊อกไม่พอ: ${item.name} (เหลือ ${item.quantity} ต้องการ ${req.quantity})`,
+        );
+      }
+      resolvedConsumables.push({
+        branchNonMenuItemId: item.id,
+        itemName: item.name,
+        unit: item.unit || "ใบ",
+        quantity: req.quantity,
+      });
+    }
+
+    if (body.salesChannel === "STOREFRONT") {
+      const keyOrderCount = await prisma.branchNonMenuItem.count({
+        where: {
+          branchId: session.branchId,
+          stockType: "CONSUMABLE",
+          showOnKeyOrder: true,
+        },
+      });
+      if (keyOrderCount > 0) {
+        const totalQty = resolvedConsumables.reduce(
+          (s, c) => s + c.quantity,
+          0,
+        );
+        if (totalQty < 1) {
+          return jsonError("กรุณาเลือกสินค้าสิ้นเปลืองอย่างน้อย 1 รายการ");
+        }
+      }
+      for (const req of consumableRequests) {
+        const item = consumableMap.get(req.branchNonMenuItemId);
+        if (item && !item.showOnKeyOrder) {
+          return jsonError(
+            `รายการ “${item.name}” ยังไม่ได้เปิดให้เลือกตอนคีย์ออเดอร์`,
+          );
+        }
+      }
+    }
+
+    const cupLines = resolvedConsumables.filter((c) => /แก้ว/i.test(c.itemName));
+    const bagLines = resolvedConsumables.filter((c) => /ถุง/i.test(c.itemName));
+    const derivedCupCount =
+      cupLines.reduce((s, c) => s + c.quantity, 0) ||
+      resolvedConsumables.reduce((s, c) => s + c.quantity, 0) ||
+      null;
+    const derivedBagCount =
+      bagLines.reduce((s, c) => s + c.quantity, 0) || derivedCupCount;
+    const primaryCup = [...cupLines].sort((a, b) => b.quantity - a.quantity)[0];
+    const derivedCupSizeOz = (() => {
+      const m = primaryCup?.itemName.match(/(\d+)\s*ออน/i);
+      if (!m) return body.cupSizeOz ?? null;
+      const n = Number(m[1]);
+      return Number.isFinite(n) ? n : body.cupSizeOz ?? null;
+    })();
+
     let deliveryFee = new Prisma.Decimal(0);
     if (body.fulfillmentType === "DELIVERY") {
       if (!body.deliveryLocationId) {
@@ -546,6 +641,9 @@ export async function POST(request: Request) {
               note: body.note?.trim() || null,
               paymentMethod: body.paymentMethod,
               salesChannel: body.salesChannel,
+              cupSizeOz: derivedCupSizeOz,
+              cupCount: derivedCupCount,
+              bagCount: derivedBagCount,
               deliveryFee: new Prisma.Decimal(deliveryFee),
               discountAmount: new Prisma.Decimal(0),
               promoSummary: null,
@@ -558,11 +656,23 @@ export async function POST(request: Request) {
               items: {
                 create: orderItems,
               },
+              consumableLines:
+                resolvedConsumables.length > 0
+                  ? {
+                      create: resolvedConsumables.map((c) => ({
+                        branchNonMenuItemId: c.branchNonMenuItemId,
+                        itemName: c.itemName,
+                        unit: c.unit,
+                        quantity: c.quantity,
+                      })),
+                    }
+                  : undefined,
             },
             include: {
               branch: true,
               deliveryLocation: true,
               items: true,
+              consumableLines: true,
               customer: true,
             },
           }),
@@ -597,6 +707,16 @@ export async function POST(request: Request) {
             branchMenuItemId: i.branchMenuItemId,
             quantity: i.quantity,
             optionIds: i.optionIds,
+          })),
+        });
+        await deductBranchNonMenuStockForOrder({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          branchId: session.branchId,
+          staffId: session.staffId,
+          lines: resolvedConsumables.map((c) => ({
+            branchNonMenuItemId: c.branchNonMenuItemId,
+            quantity: c.quantity,
           })),
         });
       } catch (e) {

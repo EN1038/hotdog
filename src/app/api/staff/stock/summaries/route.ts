@@ -23,6 +23,7 @@ type NotePayload = {
   transfer?: number;
   change?: number;
   customers?: number;
+  pendingAdminApply?: boolean;
   lines?: NoteLine[];
 };
 
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
       prisma.stockCount.findMany({
         where: {
           branchId: session.branchId,
-          status: "COMPLETED",
+          status: { in: ["IN_PROGRESS", "COMPLETED", "CANCELLED"] },
           OR: [
             {
               completedAt: {
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
             },
           ],
         },
-        orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
+        orderBy: [{ createdAt: "desc" }, { completedAt: "desc" }],
         include: {
           shift: {
             select: {
@@ -197,6 +198,10 @@ export async function GET(request: Request) {
         return {
           id: c.id,
           name: c.name,
+          status: c.status,
+          pendingAdminApply: Boolean(
+            note.pendingAdminApply || c.status === "IN_PROGRESS",
+          ),
           completedAt: (c.completedAt ?? c.createdAt).toISOString(),
           shiftId: c.shiftId,
           shift: c.shift

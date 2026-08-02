@@ -32,6 +32,8 @@ const STOCK_TYPE_LABEL: Record<StockType, string> = {
 type DailySummary = {
   id: string;
   name: string;
+  status?: string;
+  pendingAdminApply?: boolean;
   completedAt: string;
   shiftId: string | null;
   shift: {
@@ -550,6 +552,9 @@ export function StaffDailySalesSummarySheet({
                   const active = s.id === selectedId;
                   const typeLabel =
                     STOCK_TYPE_LABEL[s.stockType ?? "SALE_ITEM"];
+                  const pending =
+                    s.pendingAdminApply || s.status === "IN_PROGRESS";
+                  const cancelled = s.status === "CANCELLED";
                   return (
                     <button
                       key={s.id}
@@ -558,11 +563,20 @@ export function StaffDailySalesSummarySheet({
                       className={`rounded-xl border px-3 py-2 text-left text-xs ${
                         active
                           ? "border-blue-500 bg-blue-50 font-bold text-blue-700"
-                          : "border-gray-200 bg-white text-gray-700"
+                          : cancelled
+                            ? "border-slate-200 bg-slate-50 text-slate-500"
+                            : pending
+                              ? "border-amber-300 bg-amber-50 text-amber-900"
+                              : "border-gray-200 bg-white text-gray-700"
                       }`}
                     >
                       <span className="block">{typeLabel}</span>
                       <span className="mt-0.5 block opacity-80">
+                        {pending
+                          ? "รอแอดมินปรับสต๊อก · "
+                          : cancelled
+                            ? "ปฏิเสธแล้ว · "
+                            : ""}
                         {s.shift
                           ? `รอบที่ ${s.shift.roundNumber} · `
                           : ""}
@@ -606,6 +620,17 @@ export function StaffDailySalesSummarySheet({
                     <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
                       <SummaryRow label="ชื่อสรุป" value={selected.name} />
                       <SummaryRow label="ประเภท" value={selectedTypeLabel} />
+                      <SummaryRow
+                        label="สถานะ"
+                        value={
+                          selected.pendingAdminApply ||
+                          selected.status === "IN_PROGRESS"
+                            ? "รอแอดมินปรับสต๊อก"
+                            : selected.status === "CANCELLED"
+                              ? "ปฏิเสธแล้ว"
+                              : "ปรับสต๊อกแล้ว / บันทึกแล้ว"
+                        }
+                      />
                       <SummaryRow
                         label="บันทึกเมื่อ"
                         value={formatShiftDateTime(selected.completedAt)}

@@ -38,6 +38,8 @@ type Product = {
   price?: number;
   description?: string | null;
   isMenu?: boolean;
+  showOnKeyOrder?: boolean;
+  keyOrderSortOrder?: number;
 };
 
 type Balance = {
@@ -77,6 +79,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   const [activeTab, setActiveTab] = useState<
     "manage" | "counts" | "movements" | "usage"
   >("manage");
+  const [pendingCountBadge, setPendingCountBadge] = useState(0);
 
   // Dropdown for "สร้างรายการใหม่"
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
@@ -84,17 +87,41 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   // Modal state for non-menu items (create or edit)
   const [showCreateModal, setShowCreateModal] = useState<"CONSUMABLE" | "EQUIPMENT" | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [newItemData, setNewItemData] = useState({ name: "", description: "", unit: "ชิ้น", price: "", imageUrl: "" });
+  const [newItemData, setNewItemData] = useState({
+    name: "",
+    description: "",
+    unit: "ชิ้น",
+    price: "",
+    imageUrl: "",
+    showOnKeyOrder: false,
+    keyOrderSortOrder: "0",
+  });
 
   function closeItemModal() {
     setShowCreateModal(null);
     setEditingItemId(null);
-    setNewItemData({ name: "", description: "", unit: "ชิ้น", price: "", imageUrl: "" });
+    setNewItemData({
+      name: "",
+      description: "",
+      unit: "ชิ้น",
+      price: "",
+      imageUrl: "",
+      showOnKeyOrder: false,
+      keyOrderSortOrder: "0",
+    });
   }
 
   function openCreateItem(type: "CONSUMABLE" | "EQUIPMENT") {
     setEditingItemId(null);
-    setNewItemData({ name: "", description: "", unit: "ชิ้น", price: "", imageUrl: "" });
+    setNewItemData({
+      name: "",
+      description: "",
+      unit: "ชิ้น",
+      price: "",
+      imageUrl: "",
+      showOnKeyOrder: false,
+      keyOrderSortOrder: "0",
+    });
     setShowCreateModal(type);
     setShowCreateDropdown(false);
   }
@@ -111,6 +138,8 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           ? String(item.price)
           : "",
       imageUrl: item.imageUrl ?? "",
+      showOnKeyOrder: Boolean(item.showOnKeyOrder),
+      keyOrderSortOrder: String(item.keyOrderSortOrder ?? 0),
     });
     setShowCreateModal(item.stockType);
   }
@@ -142,6 +171,32 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPendingBadge() {
+      try {
+        const date = new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Bangkok",
+        });
+        const res = await fetch(
+          `/api/admin/branches/${branchId}/stock/counts?date=${encodeURIComponent(date)}`,
+        );
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        const pending = (json.counts || []).filter(
+          (c: { status?: string }) => c.status === "IN_PROGRESS",
+        ).length;
+        if (!cancelled) setPendingCountBadge(pending);
+      } catch {
+        /* ignore badge errors */
+      }
+    }
+    void loadPendingBadge();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
 
   const categories = useMemo(() => {
     if (!data) return [];
@@ -405,6 +460,14 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           body: JSON.stringify({
             ...newItemData,
             stockType: showCreateModal,
+            showOnKeyOrder:
+              showCreateModal === "CONSUMABLE"
+                ? Boolean(newItemData.showOnKeyOrder)
+                : false,
+            keyOrderSortOrder:
+              showCreateModal === "CONSUMABLE"
+                ? Number(newItemData.keyOrderSortOrder) || 0
+                : 0,
           }),
         },
       );
@@ -501,49 +564,62 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex border-b border-slate-200">
-        <button
-          onClick={() => setActiveTab("manage")}
-          className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors ${
-            activeTab === "manage" ? "border-site-primary text-site-primary" : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          จัดการสต๊อก
-        </button>
-        <button
-          onClick={() => setActiveTab("movements")}
-          className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors ${
-            activeTab === "movements" ? "border-site-primary text-site-primary" : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          ประวัติเคลื่อนไหว
-        </button>
-        <button
-          onClick={() => setActiveTab("counts")}
-          className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors ${
-            activeTab === "counts" ? "border-site-primary text-site-primary" : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          สรุปยอดที่บันทึก
-        </button>
-        <button
-          onClick={() => setActiveTab("usage")}
-          className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors ${
-            activeTab === "usage" ? "border-site-primary text-site-primary" : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          สรุปการใช้ / ต้นทุน
-        </button>
+      <div className="-mx-1 overflow-x-auto px-1">
+        <div className="flex min-w-max border-b border-slate-200">
+          {(
+            [
+              { id: "manage" as const, label: "จัดการสต๊อก" },
+              { id: "counts" as const, label: "สรุปยอด / Convert" },
+              { id: "movements" as const, label: "ประวัติเคลื่อนไหว" },
+              { id: "usage" as const, label: "การใช้ / ต้นทุน" },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`relative flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-bold border-b-2 transition-colors sm:px-5 ${
+                activeTab === tab.id
+                  ? "border-site-primary text-site-primary"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {tab.label}
+              {tab.id === "counts" && pendingCountBadge > 0 ? (
+                <span className="rounded-md bg-amber-500 px-1.5 py-0.5 text-[10px] font-black tabular-nums text-white">
+                  {pendingCountBadge}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
       </div>
 
       {activeTab === "counts" ? (
-        <BranchStockCountsView branchId={branchId} />
+        <BranchStockCountsView
+          branchId={branchId}
+          onPendingChange={setPendingCountBadge}
+        />
       ) : activeTab === "movements" ? (
         <BranchStockMovementsView branchId={branchId} />
       ) : activeTab === "usage" ? (
         <BranchStockUsageView branchId={branchId} />
       ) : (
         <>
+          {pendingCountBadge > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-900">
+                มีเอกสารยอดนับรอ Convert {pendingCountBadge} รายการวันนี้
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab("counts")}
+                className="rounded-xl bg-amber-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-amber-500"
+              >
+                ไปสรุปยอด / Convert
+              </button>
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-white p-5 shadow-sm border border-slate-200">
             <div>
               <h2 className="text-base font-extrabold text-slate-900">จัดการสต๊อกสาขา</h2>
@@ -840,6 +916,12 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                                     {item.stockType === "SALE_ITEM" ? "เมนูขาย" : item.stockType === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์"}
                                     {" · "}
                                     หน่วย {item.unit}
+                                    {item.stockType === "CONSUMABLE" &&
+                                    item.showOnKeyOrder ? (
+                                      <span className="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
+                                        คีย์ออเดอร์
+                                      </span>
+                                    ) : null}
                                   </div>
                                 </div>
                               </div>
@@ -1297,6 +1379,55 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                   </p>
                 ) : null}
               </div>
+
+              {showCreateModal === "CONSUMABLE" ? (
+                <div className="space-y-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                      checked={newItemData.showOnKeyOrder}
+                      onChange={(e) =>
+                        setNewItemData((prev) => ({
+                          ...prev,
+                          showOnKeyOrder: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-800">
+                        แสดงตอนคีย์ออเดอร์พนักงาน
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        เปิดแล้วจะอยู่ในหน้า “เลือกสินค้าสิ้นเปลือง” ของคีย์ออเดอร์หน้าร้าน
+                      </span>
+                    </span>
+                  </label>
+                  {newItemData.showOnKeyOrder ? (
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">
+                        ลำดับแสดงบนคีย์ออเดอร์
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={9999}
+                        value={newItemData.keyOrderSortOrder}
+                        onChange={(e) =>
+                          setNewItemData((prev) => ({
+                            ...prev,
+                            keyOrderSortOrder: e.target.value,
+                          }))
+                        }
+                        className={adminInputClass}
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        เลขน้อยแสดงก่อน
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="pt-4 flex gap-3">
                 <button

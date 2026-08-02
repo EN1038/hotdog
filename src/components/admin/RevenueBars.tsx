@@ -9,6 +9,7 @@ type DayPoint = {
 
 type Props = {
   days: DayPoint[];
+  revenueTitle?: string;
 };
 
 function formatMoney(n: number) {
@@ -17,16 +18,17 @@ function formatMoney(n: number) {
   });
 }
 
-export function RevenueBars({ days }: Props) {
+export function RevenueBars({
+  days,
+  revenueTitle = "รายได้ที่เสร็จสิ้น (7 วันล่าสุด)",
+}: Props) {
   const maxRevenue = Math.max(1, ...days.map((d) => d.revenue));
   const maxCancelled = Math.max(1, ...days.map((d) => d.cancelled));
 
   return (
     <div className="space-y-5">
       <div>
-        <p className="mb-2 text-sm font-medium text-gray-700">
-          รายได้ที่เสร็จสิ้น (7 วันล่าสุด)
-        </p>
+        <p className="mb-2 text-sm font-medium text-gray-700">{revenueTitle}</p>
         <div className="flex h-36 items-end gap-1.5 sm:gap-2">
           {days.map((d) => (
             <div

@@ -16,6 +16,11 @@ import {
   type StaffFulfillmentState,
 } from "@/components/staff/StaffQuickFulfillment";
 import {
+  StaffConsumablePicker,
+  selectedConsumableTotal,
+  type StaffConsumableItem,
+} from "@/components/staff/StaffConsumablePicker";
+import {
   StaffKeyOrderAlertModal,
   StaffKeyOrderSuccessModal,
   StaffOrderSummary,
@@ -60,6 +65,7 @@ import {
 type MenuPayload = {
   branchName?: string;
   menuItems: MenuItemData[];
+  consumables?: StaffConsumableItem[];
   deliveryLocations: StaffDeliveryLocation[];
 };
 
@@ -82,6 +88,10 @@ export default function StaffRegularKeyOrderPage() {
   } | null>(null);
   const [branchName, setBranchName] = useState("");
   const [menuItems, setMenuItems] = useState<MenuItemData[]>([]);
+  const [consumables, setConsumables] = useState<StaffConsumableItem[]>([]);
+  const [qtyByConsumableId, setQtyByConsumableId] = useState<
+    Record<string, number>
+  >({});
   const [deliveryLocations, setDeliveryLocations] = useState<
     StaffDeliveryLocation[]
   >([]);
@@ -109,6 +119,7 @@ export default function StaffRegularKeyOrderPage() {
       if (cancelled) return;
       setBranchName(data.branchName ?? "");
       setMenuItems(Array.isArray(data.menuItems) ? data.menuItems : []);
+      setConsumables(Array.isArray(data.consumables) ? data.consumables : []);
       setDeliveryLocations(
         Array.isArray(data.deliveryLocations) ? data.deliveryLocations : [],
       );
@@ -155,7 +166,10 @@ export default function StaffRegularKeyOrderPage() {
   }, [regularItems, categoryFilter]);
 
   const sharedGroups = useMemo(
-    () => collectSharedOptionGroups(regularItems, qtyByItemId),
+    () =>
+      collectSharedOptionGroups(regularItems, qtyByItemId, {
+        onlySelected: false,
+      }),
     [regularItems, qtyByItemId],
   );
 
@@ -254,6 +268,17 @@ export default function StaffRegularKeyOrderPage() {
     });
   }
 
+  function setConsumableQty(itemId: string, next: number) {
+    clearValidation();
+    setQtyByConsumableId((prev) => {
+      const q = Math.max(0, Math.min(99, Math.floor(next)));
+      const nextMap = { ...prev };
+      if (q <= 0) delete nextMap[itemId];
+      else nextMap[itemId] = q;
+      return nextMap;
+    });
+  }
+
   async function submit() {
     clearValidation();
 
@@ -282,6 +307,15 @@ export default function StaffRegularKeyOrderPage() {
       return;
     }
 
+    if (
+      fulfillment.salesChannel === "STOREFRONT" &&
+      consumables.length > 0 &&
+      selectedConsumableTotal(consumables, qtyByConsumableId) < 1
+    ) {
+      fail("กรุณาเลือกสินค้าสิ้นเปลืองอย่างน้อย 1 รายการ", "staff-consumables");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const items = lines.map((item) => ({
@@ -297,6 +331,12 @@ export default function StaffRegularKeyOrderPage() {
         note: fulfillment.note.trim() || undefined,
         items,
         completeImmediately: readStaffOrderMode() === "instant",
+        consumables: Object.entries(qtyByConsumableId)
+          .filter(([, q]) => q > 0)
+          .map(([branchNonMenuItemId, quantity]) => ({
+            branchNonMenuItemId,
+            quantity,
+          })),
       };
       if (fulfillment.fulfillmentType === "DELIVERY") {
         body.deliveryLocationId = fulfillment.deliveryLocationId;
@@ -596,7 +636,10 @@ export default function StaffRegularKeyOrderPage() {
               ตัวเลือกร่วม
             </h2>
             <p className="text-xs text-gray-600">
-              เลือกครั้งเดียว ใช้กับทุกเมนูที่เลือกไว้ซึ่งมีหัวข้อเดียวกัน
+              เช่น ระดับความเผ็ด — เลือกครั้งเดียว ใช้กับทุกเมนูที่มีหัวข้อนี้
+              {selectedCount === 0
+                ? " (เลือกเมนูด้านบนก่อน แล้วค่อยบันทึก)"
+                : ""}
             </p>
           </div>
           {sharedGroups.map((group) => (
@@ -606,6 +649,11 @@ export default function StaffRegularKeyOrderPage() {
             >
               <p className="mb-1 text-sm font-semibold text-gray-900">
                 {group.name}
+                {group.required ? (
+                  <span className="ml-1 text-xs font-medium text-red-500">
+                    *จำเป็น
+                  </span>
+                ) : null}
               </p>
               <MenuOptionGroupPicker
                 group={group}
@@ -624,6 +672,12 @@ export default function StaffRegularKeyOrderPage() {
           ))}
         </section>
       ) : null}
+
+      <StaffConsumablePicker
+        items={consumables}
+        qtyByItemId={qtyByConsumableId}
+        onChangeQty={setConsumableQty}
+      />
 
       <StaffQuickFulfillment
         value={fulfillment}

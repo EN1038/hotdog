@@ -139,6 +139,8 @@ export async function GET(_request: Request, { params }: Params) {
         isMenu: false,
         price: Number(item.price ?? 0),
         description: item.description ?? "",
+        showOnKeyOrder: Boolean(item.showOnKeyOrder),
+        keyOrderSortOrder: item.keyOrderSortOrder ?? 0,
       });
       balances.push({
         id: item.id,

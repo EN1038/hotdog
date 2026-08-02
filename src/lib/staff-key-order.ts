@@ -39,14 +39,19 @@ export function isRegularMenuItem(item: StockCheckItem): boolean {
   return !isPromoMenuItem(item);
 }
 
-/** Unique MANUAL option groups across items with qty > 0 (shared once). */
+/** Unique MANUAL option groups across items.
+ * When `onlySelected` is true (default), only items with qty > 0 contribute.
+ * Pass `onlySelected: false` to show all groups linked to the item list (e.g. spice level before qty).
+ */
 export function collectSharedOptionGroups(
   items: MenuItemData[],
   qtyByItemId: Record<string, number>,
+  options?: { onlySelected?: boolean },
 ): MenuOptionGroupData[] {
+  const onlySelected = options?.onlySelected !== false;
   const map = new Map<string, MenuOptionGroupData>();
   for (const item of items) {
-    if ((qtyByItemId[item.id] ?? 0) <= 0) continue;
+    if (onlySelected && (qtyByItemId[item.id] ?? 0) <= 0) continue;
     for (const group of item.optionGroups ?? []) {
       if (group.mode === "FROM_MENU") continue;
       if (!map.has(group.id)) map.set(group.id, group);

@@ -449,14 +449,15 @@ export async function POST(request: Request) {
     }
 
     if (body.salesChannel === "STOREFRONT") {
-      const keyOrderCount = await prisma.branchNonMenuItem.count({
+      const keyOrderInStock = await prisma.branchNonMenuItem.count({
         where: {
           branchId: session.branchId,
           stockType: "CONSUMABLE",
           showOnKeyOrder: true,
+          quantity: { gt: 0 },
         },
       });
-      if (keyOrderCount > 0) {
+      if (keyOrderInStock > 0) {
         const totalQty = resolvedConsumables.reduce(
           (s, c) => s + c.quantity,
           0,

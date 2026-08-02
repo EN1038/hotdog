@@ -53,6 +53,16 @@ export function selectedConsumableTotal(
   );
 }
 
+/** Items that can still be picked (have stock). */
+export function inStockConsumables(items: StaffConsumableItem[]) {
+  return items.filter((i) => i.quantity > 0);
+}
+
+/** Require pick only when at least one key-order consumable still has stock. */
+export function requiresConsumableSelection(items: StaffConsumableItem[]) {
+  return inStockConsumables(items).length > 0;
+}
+
 function ConsumableRow({
   item,
   index,
@@ -184,8 +194,16 @@ export function StaffConsumablePicker({
           เลือกสินค้าสิ้นเปลือง
         </h2>
         <p className="mt-0.5 text-xs text-gray-600">
-          รายการตั้งค่าจากหลังบ้าน — ระบบตัดสต๊อกเมื่อบันทึกออเดอร์
-          {bagItems.length > 0 ? " · เลือกขนาดถุงที่ใช้กับออเดอร์นี้" : ""}
+          เลือกแก้ว/ของสิ้นเปลืองที่ใช้จริง — ตัดสต๊อกเมื่อบันทึก
+          {bagItems.length > 0 && bagItems.every((i) => i.quantity <= 0)
+            ? " · ถุงหมดสต๊อก เลือกแค่แก้วได้"
+            : bagItems.length > 0
+              ? " · เลือกขนาดถุงที่ใช้กับออเดอร์นี้"
+              : ""}
+          {primaryItems.every((i) => i.quantity <= 0) &&
+          bagItems.every((i) => i.quantity <= 0)
+            ? " · ของสิ้นเปลืองหมดครบ บันทึกออเดอร์ได้โดยไม่ต้องเลือก"
+            : ""}
         </p>
       </div>
 

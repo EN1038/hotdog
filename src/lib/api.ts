@@ -85,13 +85,13 @@ export function handleApiError(error: unknown) {
 
   if (error instanceof Error) {
     if (error.message === "UNAUTHORIZED") {
-      return jsonError("ไม่มีสิทธิ์เข้าถึง", 401);
+      return jsonError("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่", 401);
     }
     if (error.message === "NOT_FOUND") {
       return jsonError("ไม่พบข้อมูล", 404);
     }
     if (error.message === "FORBIDDEN") {
-      return jsonError("ไม่มีสิทธิ์เข้าถึง", 403);
+      return jsonError("ไม่มีสิทธิ์ทำรายการนี้", 403);
     }
     const raw = error.message;
     if (

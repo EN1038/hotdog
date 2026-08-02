@@ -17,6 +17,7 @@ import {
 } from "@/components/staff/StaffQuickFulfillment";
 import {
   StaffConsumablePicker,
+  requiresConsumableSelection,
   selectedConsumableTotal,
   type StaffConsumableItem,
 } from "@/components/staff/StaffConsumablePicker";
@@ -48,6 +49,7 @@ import {
 import { readStaffOrderMode } from "@/lib/staff-order-mode";
 import {
   computeSelectedOptions,
+  effectiveMinSelect,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
@@ -80,6 +82,7 @@ export default function StaffRegularKeyOrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [alertTitle, setAlertTitle] = useState("กรอกข้อมูลไม่ครบ");
   const [successInfo, setSuccessInfo] = useState<{
     queueNumber: number | null;
     orderNumber: string | null;
@@ -243,11 +246,18 @@ export default function StaffRegularKeyOrderPage() {
   function clearValidation() {
     setError("");
     setAlertMessage(null);
+    setAlertTitle("กรอกข้อมูลไม่ครบ");
     setOptionErrorGroupId(null);
   }
 
-  function fail(message: string, anchorId?: string, groupId?: string | null) {
+  function fail(
+    message: string,
+    anchorId?: string,
+    groupId?: string | null,
+    title?: string,
+  ) {
     setError(message);
+    setAlertTitle(title ?? "กรอกข้อมูลไม่ครบ");
     setAlertMessage(message);
     setOptionErrorGroupId(groupId ?? null);
     if (anchorId) {
@@ -309,7 +319,7 @@ export default function StaffRegularKeyOrderPage() {
 
     if (
       fulfillment.salesChannel === "STOREFRONT" &&
-      consumables.length > 0 &&
+      requiresConsumableSelection(consumables) &&
       selectedConsumableTotal(consumables, qtyByConsumableId) < 1
     ) {
       fail("กรุณาเลือกสินค้าสิ้นเปลืองอย่างน้อย 1 รายการ", "staff-consumables");
@@ -355,6 +365,16 @@ export default function StaffRegularKeyOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401) {
+        fail(
+          "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่",
+          undefined,
+          null,
+          "ต้องเข้าสู่ระบบใหม่",
+        );
+        router.replace("/staff/login");
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const unavailable = Array.isArray(data.unavailableItems)
@@ -367,7 +387,12 @@ export default function StaffRegularKeyOrderPage() {
                 .join(" · ")
             : null;
         const message = detail || data.error || "บันทึกไม่สำเร็จ";
-        fail(message);
+        fail(
+          message,
+          undefined,
+          null,
+          res.status === 403 ? "ไม่สามารถบันทึกได้" : "บันทึกไม่สำเร็จ",
+        );
         return;
       }
 
@@ -630,26 +655,36 @@ export default function StaffRegularKeyOrderPage() {
       </section>
 
       {sharedGroups.length > 0 ? (
-        <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+        <section
+          id="staff-shared-options"
+          tabIndex={-1}
+          className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 outline-none"
+        >
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
               ตัวเลือกร่วม
             </h2>
             <p className="text-xs text-gray-600">
-              เช่น ระดับความเผ็ด — เลือกครั้งเดียว ใช้กับทุกเมนูที่มีหัวข้อนี้
-              {selectedCount === 0
-                ? " (เลือกเมนูด้านบนก่อน แล้วค่อยบันทึก)"
-                : ""}
+              รายการที่มีเครื่องหมาย *จำเป็น ต้องเลือกก่อนบันทึกออเดอร์
             </p>
           </div>
           {sharedGroups.map((group) => (
             <div
               key={group.id}
-              className="min-w-0 rounded-xl border border-white bg-white p-3"
+              id={`staff-opt-group-${group.id}`}
+              className={`min-w-0 rounded-xl border bg-white p-3 ${
+                group.required
+                  ? "border-amber-300 ring-1 ring-amber-200"
+                  : "border-white"
+              } ${
+                optionErrorGroupId === group.id
+                  ? "border-red-400 ring-2 ring-red-200"
+                  : ""
+              }`}
             >
               <p className="mb-1 text-sm font-semibold text-gray-900">
                 {group.name}
-                {group.required ? (
+                {group.required || effectiveMinSelect(group) > 0 ? (
                   <span className="ml-1 text-xs font-medium text-red-500">
                     *จำเป็น
                   </span>
@@ -698,6 +733,7 @@ export default function StaffRegularKeyOrderPage() {
 
       <StaffKeyOrderAlertModal
         open={Boolean(alertMessage)}
+        title={alertTitle}
         message={alertMessage ?? ""}
         onClose={() => setAlertMessage(null)}
       />

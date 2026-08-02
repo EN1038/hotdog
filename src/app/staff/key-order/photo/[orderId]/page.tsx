@@ -17,6 +17,7 @@ import {
 } from "@/components/staff/StaffQuickFulfillment";
 import {
   StaffConsumablePicker,
+  requiresConsumableSelection,
   selectedConsumableTotal,
   type StaffConsumableItem,
 } from "@/components/staff/StaffConsumablePicker";
@@ -316,7 +317,7 @@ export default function StaffPhotoKeyOrderPage() {
 
     if (
       fulfillment.salesChannel === "STOREFRONT" &&
-      consumables.length > 0 &&
+      requiresConsumableSelection(consumables) &&
       selectedConsumableTotal(consumables, qtyByConsumableId) < 1
     ) {
       fail("กรุณาเลือกสินค้าสิ้นเปลืองอย่างน้อย 1 รายการ", "staff-consumables");
@@ -360,6 +361,11 @@ export default function StaffPhotoKeyOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401) {
+        fail("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+        router.replace("/staff/login");
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         saveStaffOrderFeedback({

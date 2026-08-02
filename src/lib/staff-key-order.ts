@@ -57,11 +57,14 @@ export function collectSharedOptionGroups(
       if (!map.has(group.id)) map.set(group.id, group);
     }
   }
-  return [...map.values()].sort(
-    (a, b) =>
+  return [...map.values()].sort((a, b) => {
+    const req = Number(Boolean(b.required)) - Number(Boolean(a.required));
+    if (req !== 0) return req;
+    return (
       (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
-      a.name.localeCompare(b.name, "th"),
-  );
+      a.name.localeCompare(b.name, "th")
+    );
+  });
 }
 
 export function optionIdsForMenuItem(

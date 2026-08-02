@@ -498,6 +498,8 @@ model BranchMenuItemStockHistory {
   type             String // "ADJUST", "SALE", "RESTOCK", "ISSUE"
   note             String?
   imageUrl         String?
+  /// Groups lines from one staff submit (รับเข้า / จ่ายออก)
+  batchId          String?
   createdAt        DateTime @default(now())
   createdByStaffId String?
 
@@ -507,6 +509,8 @@ model BranchMenuItemStockHistory {
 
   @@index([branchId])
   @@index([menuItemId])
+  @@index([batchId])
+  @@index([branchId, type, createdAt])
 }
 
 model MenuCategory {
@@ -1022,6 +1026,8 @@ model BranchNonMenuItemHistory {
   type                String   // "ADJUST", "STOCK_IN", "ISSUE"
   note                String?
   imageUrl            String?
+  /// Groups lines from one staff submit (รับเข้า / จ่ายออก)
+  batchId             String?
   createdAt           DateTime @default(now())
   createdByStaffId    String?
 
@@ -1029,4 +1035,6 @@ model BranchNonMenuItemHistory {
   createdByStaff      Staff?            @relation(fields: [createdByStaffId], references: [id], onDelete: SetNull)
 
   @@index([branchNonMenuItemId])
+  @@index([batchId])
+  @@index([type, createdAt])
 }

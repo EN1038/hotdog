@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toPng } from "html-to-image";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
+import { StaffStockMovementHistorySheet } from "@/components/staff/StaffStockMovementHistorySheet";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { compareThaiText } from "@/lib/thai-sort";
@@ -170,6 +171,9 @@ function StaffStockContent() {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [attemptedSummary, setAttemptedSummary] = useState(false);
+  const [historyKind, setHistoryKind] = useState<"stock_in" | "issue" | null>(
+    null,
+  );
 
   const stockCaptureRef = useRef<HTMLDivElement>(null);
   const [exportBusy, setExportBusy] = useState<"save" | "share" | "copy" | null>(
@@ -468,12 +472,25 @@ function StaffStockContent() {
       setAttemptedSummary(false);
       return;
     }
+    if (action === "stock_in" || action === "issue") {
+      setHistoryKind(action);
+      return;
+    }
     setActionType(action);
     setMode("select_type");
     setQtyByItemId({});
     setCategoryFilter("ALL");
     clearIssueFields();
   };
+
+  function startCreateFromHistory(kind: "stock_in" | "issue") {
+    setHistoryKind(null);
+    setActionType(kind);
+    setMode("select_type");
+    setQtyByItemId({});
+    setCategoryFilter("ALL");
+    clearIssueFields();
+  }
 
   const handleTypeSelectClick = (type: StockType) => {
     setTypeFilter(type);
@@ -820,13 +837,19 @@ function StaffStockContent() {
         uploadedUrl = json.url;
       }
 
+      const batchId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `batch-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
       let hasError = false;
       for (const item of selectedItems) {
-        const payload: any = {
+        const payload: Record<string, unknown> = {
           action: actionType,
           brandProductId: item.id,
           quantity: item.quantity,
           note: actionType === "stock_in" ? "เพิ่มผ่านระบบมือถือ" : issueNote,
+          batchId,
         };
         if (actionType === "issue" && uploadedUrl) {
           payload.imageUrl = uploadedUrl;
@@ -1890,6 +1913,17 @@ function StaffStockContent() {
           </div>
         </div>
       )}
+
+      <StaffStockMovementHistorySheet
+        open={historyKind !== null}
+        kind={historyKind ?? "stock_in"}
+        onClose={() => setHistoryKind(null)}
+        onCreateNew={() => {
+          if (historyKind) startCreateFromHistory(historyKind);
+        }}
+        brandName={brandName}
+        branchName={branchName}
+      />
 
       {cameraOpen ? (
         <div

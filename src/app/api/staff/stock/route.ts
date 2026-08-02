@@ -39,6 +39,14 @@ const summaryLineSchema = z.object({
   countedQty: z.number().int().min(0),
 });
 
+const batchIdSchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(64)
+  .regex(/^[a-zA-Z0-9_-]+$/)
+  .optional();
+
 const postSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("stock_in"),
@@ -47,6 +55,7 @@ const postSchema = z.discriminatedUnion("action", [
     unitCost: z.number().min(0).nullable().optional(),
     supplier: z.string().trim().max(120).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
+    batchId: batchIdSchema,
   }),
   z.object({
     action: z.literal("damage"),
@@ -68,6 +77,7 @@ const postSchema = z.discriminatedUnion("action", [
     quantity: z.number().int().positive(),
     note: z.string().trim().min(1, "กรุณากรอกรายละเอียด").max(300),
     imageUrl: z.string().trim().min(1, "กรุณาแนบรูปถ่าย"),
+    batchId: batchIdSchema,
   }),
   z.object({
     action: z.literal("adjust"),
@@ -528,6 +538,10 @@ export async function POST(request: Request) {
         });
 
         if (actualDiff !== 0) {
+          const batchId =
+            body.action === "stock_in" || body.action === "issue"
+              ? (body.batchId ?? null)
+              : null;
           await prisma.branchNonMenuItemHistory.create({
             data: {
               branchNonMenuItemId: targetId,
@@ -535,6 +549,7 @@ export async function POST(request: Request) {
               type: body.action.toUpperCase(),
               note: body.note ?? null,
               imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
+              batchId,
               createdByStaffId: session.staffId,
             },
           });
@@ -579,6 +594,10 @@ export async function POST(request: Request) {
           });
 
           if (actualDiff !== 0) {
+            const batchId =
+              body.action === "stock_in" || body.action === "issue"
+                ? (body.batchId ?? null)
+                : null;
             await tx.branchMenuItemStockHistory.create({
               data: {
                 branchId: session.branchId,
@@ -587,6 +606,7 @@ export async function POST(request: Request) {
                 type: body.action.toUpperCase(),
                 note: body.note ?? null,
                 imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
+                batchId,
                 createdByStaffId: session.staffId,
               },
             });

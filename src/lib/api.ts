@@ -104,6 +104,13 @@ export function handleApiError(error: unknown) {
         503,
       );
     }
+    if (raw.includes("expired transaction") || raw.includes("interactive transaction timeout")) {
+      console.error("[api] Prisma transaction timeout", raw);
+      return jsonError(
+        "บันทึกใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง",
+        408,
+      );
+    }
     if (raw.includes("Invalid `") || raw.length > 180) {
       console.error("[api] Prisma/runtime", raw);
       return jsonError("บันทึกไม่สำเร็จ กรุณาลองใหม่", 400);

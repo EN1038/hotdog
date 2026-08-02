@@ -18,12 +18,29 @@ type NoteLine = {
 };
 
 type NotePayload = {
+  stockType?: "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
   cash?: number;
   transfer?: number;
   change?: number;
   customers?: number;
   lines?: NoteLine[];
 };
+
+function inferStockType(
+  name: string,
+  note: NotePayload,
+): "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT" {
+  if (
+    note.stockType === "SALE_ITEM" ||
+    note.stockType === "CONSUMABLE" ||
+    note.stockType === "EQUIPMENT"
+  ) {
+    return note.stockType;
+  }
+  if (name.includes("ของสิ้นเปลือง")) return "CONSUMABLE";
+  if (name.includes("อุปกรณ์")) return "EQUIPMENT";
+  return "SALE_ITEM";
+}
 
 function parseNote(note: string | null): NotePayload {
   if (!note) return {};
@@ -175,6 +192,8 @@ export async function GET(request: Request) {
           0,
         );
 
+        const stockType = inferStockType(c.name, note);
+
         return {
           id: c.id,
           name: c.name,
@@ -189,6 +208,7 @@ export async function GET(request: Request) {
               }
             : null,
           createdByStaff: c.createdByStaff,
+          stockType,
           cash: Number(note.cash) || 0,
           transfer: Number(note.transfer) || 0,
           change: Number(note.change) || 0,

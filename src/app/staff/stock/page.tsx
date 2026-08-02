@@ -150,7 +150,9 @@ function StaffStockContent() {
   const [data, setData] = useState<Payload | null>(null);
 
   const [mode, setMode] = useState<"menu" | "select_type" | "items" | "summary">("menu");
-  const [actionType, setActionType] = useState<"stock_in" | "issue" | "pending" | "view" | null>(null);
+  const [actionType, setActionType] = useState<
+    "stock_in" | "issue" | "pending" | "view" | "summary" | null
+  >(null);
 
   const [typeFilter, setTypeFilter] = useState<"ALL" | StockType>("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -253,7 +255,9 @@ function StaffStockContent() {
 
   useEffect(() => {
     if (!openAsDailySummary || loading || !data?.stockActive) return;
-    setMode("summary");
+    setActionType("summary");
+    setMode("select_type");
+    setTypeFilter("ALL");
     setQtyByItemId({});
     setCashVal("");
     setTransferVal("");
@@ -344,16 +348,21 @@ function StaffStockContent() {
     [selectedItems],
   );
 
-  const summarySaleItems = useMemo(() => {
-    if (!data) return [];
+  const summaryStockType: StockType =
+    typeFilter !== "ALL" ? typeFilter : "SALE_ITEM";
+  const summaryTypeLabel = STOCK_TYPE_LABEL[summaryStockType];
+  const summaryIncludesSales = summaryStockType === "SALE_ITEM";
+
+  const summaryItems = useMemo(() => {
+    if (!data || typeFilter === "ALL") return [];
     return sortStaffMenuItems(
-      data.products.filter((p) => p.stockType === "SALE_ITEM"),
+      data.products.filter((p) => p.stockType === typeFilter),
     );
-  }, [data]);
+  }, [data, typeFilter]);
 
   const summarySeqById = useMemo(
-    () => assignStableMenuSequence(summarySaleItems),
-    [summarySaleItems],
+    () => assignStableMenuSequence(summaryItems),
+    [summaryItems],
   );
 
   const summaryTodayLabel = useMemo(() => {
@@ -366,24 +375,27 @@ function StaffStockContent() {
     }).format(new Date());
   }, []);
 
+  /** Untouched / blank counted qty = 0 */
+  function summaryCountedQty(itemId: string): number {
+    const raw = qtyByItemId[itemId];
+    if (raw === undefined || (raw as unknown) === "") return 0;
+    const n = Math.floor(Number(raw));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  }
+
   const summaryEnteredStats = useMemo(() => {
-    let filledItems = 0;
     let totalQty = 0;
-    for (const item of summarySaleItems) {
-      const raw = qtyByItemId[item.id];
-      if (raw === undefined || (raw as unknown) === "") continue;
-      const n = Number(raw);
-      if (!Number.isFinite(n) || n < 0) continue;
-      filledItems += 1;
-      totalQty += Math.floor(n);
+    for (const item of summaryItems) {
+      totalQty += summaryCountedQty(item.id);
     }
     return {
-      itemCount: summarySaleItems.length,
-      filledItems,
+      itemCount: summaryItems.length,
+      filledItems: summaryItems.length,
       totalQty,
       todayKey: bangkokDateKey(),
     };
-  }, [summarySaleItems, qtyByItemId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- summaryCountedQty closes over qtyByItemId
+  }, [summaryItems, qtyByItemId]);
 
   const summaryDiffItems = useMemo(() => {
     if (!data) return [];
@@ -397,11 +409,8 @@ function StaffStockContent() {
       systemQty: number;
       countedQty: number;
     }> = [];
-    for (const item of summarySaleItems) {
-      const raw = qtyByItemId[item.id];
-      if (raw === undefined || (raw as unknown) === "") continue;
-      const counted = Math.floor(Number(raw));
-      if (!Number.isFinite(counted) || counted < 0) continue;
+    for (const item of summaryItems) {
+      const counted = summaryCountedQty(item.id);
       const systemQty = balanceById.get(item.id) ?? 0;
       if (counted === systemQty) continue;
       diffs.push({
@@ -416,33 +425,33 @@ function StaffStockContent() {
       (a, b) =>
         (a.seq || 0) - (b.seq || 0) || a.name.localeCompare(b.name, "th"),
     );
-  }, [data, summarySaleItems, qtyByItemId, summarySeqById]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- summaryCountedQty closes over qtyByItemId
+  }, [data, summaryItems, qtyByItemId, summarySeqById]);
 
   function validateSummaryForm(): boolean {
     setAttemptedSummary(true);
-    const saleItems =
-      data?.products.filter((p) => p.stockType === "SALE_ITEM") || [];
-    const isAnyQtyMissing = saleItems.some((item) => {
-      const val = qtyByItemId[item.id];
-      return (val as unknown) === "";
-    });
-    const isCashInvalid = cashVal.trim() === "";
-    const isTransferInvalid = transferVal.trim() === "";
-    const isChangeInvalid = changeVal.trim() === "";
-    const isCustomersInvalid = customersVal.trim() === "";
+    if (summaryItems.length === 0) {
+      toast.error(`ไม่มีรายการ${summaryTypeLabel}ให้นับสต๊อก`);
+      return false;
+    }
+    // Stock qty: untouched / blank = 0 (allowed). Only finance is required for SALE_ITEM.
+    const missingFinance: string[] = [];
+    if (summaryIncludesSales) {
+      if (cashVal.trim() === "") missingFinance.push("เงินสด");
+      if (transferVal.trim() === "") missingFinance.push("เงินโอน");
+      if (changeVal.trim() === "") missingFinance.push("เงินทอน");
+      if (customersVal.trim() === "") missingFinance.push("จำนวนลูกค้า");
+    }
 
-    if (
-      isCashInvalid ||
-      isTransferInvalid ||
-      isChangeInvalid ||
-      isCustomersInvalid ||
-      isAnyQtyMissing
-    ) {
-      toast.error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+    if (missingFinance.length > 0) {
+      toast.error(
+        `ยังไม่ได้กรอก: ${missingFinance.join(", ")} — เลื่อนลงไปส่วน 2–3`,
+      );
       setTimeout(() => {
-        document
-          .querySelector(".border-red-500")
-          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const target =
+          document.querySelector<HTMLElement>("[data-summary-missing]") ||
+          document.querySelector<HTMLElement>("#summary-finance-section");
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
       return false;
     }
@@ -462,18 +471,23 @@ function StaffStockContent() {
   }
 
   const handleActionClick = (action: "stock_in" | "issue" | "pending" | "summary" | "view") => {
+    if (action === "stock_in" || action === "issue") {
+      setHistoryKind(action);
+      return;
+    }
     if (action === "summary") {
-      setMode("summary");
+      setActionType("summary");
+      setMode("select_type");
+      setTypeFilter("ALL");
       setQtyByItemId({});
+      setCategoryFilter("ALL");
       setCashVal("");
       setTransferVal("");
       setChangeVal("");
       setCustomersVal("");
       setAttemptedSummary(false);
-      return;
-    }
-    if (action === "stock_in" || action === "issue") {
-      setHistoryKind(action);
+      setShowSummaryModal(false);
+      setShowReviewModal(false);
       return;
     }
     setActionType(action);
@@ -495,6 +509,16 @@ function StaffStockContent() {
   const handleTypeSelectClick = (type: StockType) => {
     setTypeFilter(type);
     setCategoryFilter("ALL");
+    setQtyByItemId({});
+    if (actionType === "summary") {
+      setMode("summary");
+      setCashVal("");
+      setTransferVal("");
+      setChangeVal("");
+      setCustomersVal("");
+      setAttemptedSummary(false);
+      return;
+    }
     setMode("items");
   };
 
@@ -672,11 +696,7 @@ function StaffStockContent() {
       clearIssueFields();
       closeIssueCamera();
     } else if (mode === "summary") {
-      if (openAsDailySummary) {
-        router.replace("/staff");
-        return;
-      }
-      setMode("menu");
+      setMode("select_type");
       setQtyByItemId({});
       setCashVal("");
       setTransferVal("");
@@ -684,6 +704,9 @@ function StaffStockContent() {
       setCustomersVal("");
       setAttemptedSummary(false);
       setShowSummaryModal(false);
+      setShowReviewModal(false);
+    } else if (mode === "select_type" && actionType === "summary" && openAsDailySummary) {
+      router.replace("/staff");
     } else {
       setMode("menu");
       setActionType(null);
@@ -885,19 +908,13 @@ function StaffStockContent() {
   }
 
   async function submitSummary() {
-    const lines = data?.products
-      .filter(p => p.stockType === "SALE_ITEM")
-      .map(p => {
-        const raw = qtyByItemId[p.id];
-        const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
-        return {
-          brandProductId: p.id,
-          countedQty: Number.isFinite(parsed) && parsed >= 0 ? parsed : 0,
-        };
-      }) || [];
+    const lines = summaryItems.map((p) => ({
+      brandProductId: p.id,
+      countedQty: summaryCountedQty(p.id),
+    }));
 
     if (lines.length === 0) {
-      toast.error("ไม่มีเมนูขายให้นับสต๊อก");
+      toast.error(`ไม่มีรายการ${summaryTypeLabel}ให้นับสต๊อก`);
       return;
     }
 
@@ -908,18 +925,23 @@ function StaffStockContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "summary",
+          stockType: summaryStockType,
           lines,
-          cash: Number(cashVal) || 0,
-          transfer: Number(transferVal) || 0,
-          change: Number(changeVal) || 0,
-          customers: Number(customersVal) || 0,
+          cash: summaryIncludesSales ? Number(cashVal) || 0 : 0,
+          transfer: summaryIncludesSales ? Number(transferVal) || 0 : 0,
+          change: summaryIncludesSales ? Number(changeVal) || 0 : 0,
+          customers: summaryIncludesSales ? Number(customersVal) || 0 : 0,
         }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(body.error || "บันทึกไม่สำเร็จ");
       }
-      toast.success("บันทึกสรุปยอดสต๊อกและขายรายเรียบร้อย");
+      toast.success(
+        summaryIncludesSales
+          ? "บันทึกสรุปยอดสต๊อกและขายรายเรียบร้อย"
+          : `บันทึกสรุปยอดสต๊อก · ${summaryTypeLabel} เรียบร้อย`,
+      );
       setShowSummaryModal(false);
       setCashVal("");
       setTransferVal("");
@@ -931,6 +953,7 @@ function StaffStockContent() {
         router.replace("/staff");
         return;
       }
+      setActionType(null);
       setMode("menu");
       await load();
     } catch (e: any) {
@@ -1005,10 +1028,12 @@ function StaffStockContent() {
                   </button>
                   <div className="min-w-0">
                     <h2 className="text-lg font-extrabold text-slate-900">
-                      สรุปยอดสต๊อกและขายราย
+                      {summaryIncludesSales
+                        ? "สรุปยอดสต๊อกและขายราย"
+                        : "สรุปยอดสต๊อก"}
                     </h2>
                     <p className="text-xs font-semibold text-slate-700">
-                      วันที่ {summaryTodayLabel}
+                      {summaryTypeLabel} · วันที่ {summaryTodayLabel}
                       <span className="ml-1 font-medium text-slate-500">
                         (วันนี้เสมอ)
                       </span>
@@ -1020,7 +1045,7 @@ function StaffStockContent() {
                   <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
                     <div className="mb-4 flex items-end justify-between gap-3 border-b pb-2">
                       <h3 className="font-bold text-slate-900">
-                        1. กรอกยอดคงเหลือ (เมนูขาย)
+                        1. กรอกยอดคงเหลือ ({summaryTypeLabel})
                       </h3>
                       <div className="text-right text-xs font-semibold text-slate-800">
                         <p>
@@ -1033,7 +1058,7 @@ function StaffStockContent() {
                           รวมสต๊อกปัจจุบัน{" "}
                           <span className="tabular-nums font-black text-slate-900">
                             {formatPrice(
-                              summarySaleItems.reduce((sum, item) => {
+                              summaryItems.reduce((sum, item) => {
                                 const bal =
                                   data.balances.find(
                                     (b) => b.product.id === item.id,
@@ -1051,6 +1076,12 @@ function StaffStockContent() {
                         </p>
                       </div>
                     </div>
+                    <p className="mb-3 text-xs font-medium text-slate-500">
+                      ช่องที่ไม่กรอกถือเป็น 0
+                      {summaryIncludesSales
+                        ? " — เมนูขายต้องเลื่อนลงกรอกเงินสด / โอน / ทอน / จำนวนลูกค้าด้วย"
+                        : " — นับของจริงท้ายวัน (เช่น น้ำแข็งเหลือกี่กระสอบ แก้วเหลือกี่ใบ) เพื่อให้หลังบ้านสรุปการใช้/ต้นทุนได้"}
+                    </p>
                     {summaryDiffItems.length > 0 ? (
                       <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
                         พบ {summaryDiffItems.length} รายการที่ยอดกรอกต่างจากสต๊อกปัจจุบัน
@@ -1062,23 +1093,23 @@ function StaffStockContent() {
                       <span className="text-center">ปัจจุบัน</span>
                       <span className="text-center">นับได้</span>
                     </div>
+                    {summaryItems.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                        ไม่มีรายการ{summaryTypeLabel}ให้นับสต๊อก
+                      </p>
+                    ) : null}
                     <ul className="divide-y divide-gray-100">
-                      {summarySaleItems.map((item) => {
-                        const qty = qtyByItemId[item.id] ?? 0;
-                        const isMissing =
-                          attemptedSummary &&
-                          ((qty as unknown) === "" || qty == null);
+                      {summaryItems.map((item) => {
+                        const rawQty = qtyByItemId[item.id];
+                        const qty =
+                          rawQty === undefined || (rawQty as unknown) === ""
+                            ? 0
+                            : rawQty;
                         const dbBalance =
                           data.balances.find((b) => b.product.id === item.id)
                             ?.quantity ?? 0;
-                        const counted =
-                          (qty as unknown) === "" || qty == null
-                            ? null
-                            : Math.floor(Number(qty));
-                        const isDiff =
-                          counted != null &&
-                          Number.isFinite(counted) &&
-                          counted !== dbBalance;
+                        const counted = summaryCountedQty(item.id);
+                        const isDiff = counted !== dbBalance;
                         const seq = summarySeqById.get(item.id) ?? 0;
                         return (
                           <li
@@ -1098,13 +1129,17 @@ function StaffStockContent() {
                                 {seq}
                               </span>
                               <div className="min-w-0 flex-1">
-                                <p
-                                  className={`truncate text-sm font-bold leading-tight ${
-                                    isDiff ? "text-red-800" : "text-gray-900"
-                                  }`}
+                                <div
+                                  className={
+                                    isDiff ? "[&_p]:text-red-800" : undefined
+                                  }
                                 >
-                                  {item.name}
-                                </p>
+                                  <StockItemName
+                                    name={item.name}
+                                    unit={item.unit}
+                                    stockType={item.stockType}
+                                  />
+                                </div>
                                 {isDiff ? (
                                   <p className="mt-0.5 text-[11px] font-bold text-red-600">
                                     ต่างจากสต๊อกปัจจุบัน
@@ -1136,9 +1171,7 @@ function StaffStockContent() {
                             <div className="text-center">
                               <p
                                 className={`mb-0.5 text-[10px] font-semibold ${
-                                  isDiff || isMissing
-                                    ? "text-red-600"
-                                    : "text-slate-500"
+                                  isDiff ? "text-red-600" : "text-slate-500"
                                 }`}
                               >
                                 นับได้
@@ -1159,7 +1192,7 @@ function StaffStockContent() {
                                   }))
                                 }
                                 className={`w-full rounded-lg border-2 px-2 py-2 text-center text-sm font-bold tabular-nums focus:outline-none focus:ring-1 ${
-                                  isMissing || isDiff
+                                  isDiff
                                     ? "border-red-500 bg-red-50 text-red-800 focus:border-red-500 focus:ring-red-500"
                                     : "border-slate-300 bg-white text-black focus:border-site-primary focus:ring-site-primary"
                                 }`}
@@ -1171,78 +1204,100 @@ function StaffStockContent() {
                     </ul>
                   </section>
 
-                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100 space-y-4">
-                    <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">2. สรุปการเงิน</h3>
+                  {summaryIncludesSales ? (
+                    <>
+                      <section
+                        id="summary-finance-section"
+                        className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100 space-y-4"
+                      >
+                        <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">2. สรุปการเงิน (ต้องกรอก)</h3>
 
-                    {/* 1. เงินสด */}
-                    <div>
-                      <label className="mb-1 block text-sm font-bold text-slate-700">เงินสด (บาท) <span className="text-red-500">*</span></label>
-                      <input
-                        type="number"
-                        value={cashVal}
-                        onChange={e => setCashVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && cashVal.trim() === ""
-                            ? "border-red-500 bg-red-50 focus:border-red-500"
-                            : "border-slate-300 bg-white focus:border-site-primary"
-                          }`}
-                        placeholder="0"
-                      />
-                    </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-bold text-slate-700">เงินสด (บาท) <span className="text-red-500">*</span></label>
+                          <input
+                            type="number"
+                            value={cashVal}
+                            onChange={e => setCashVal(e.target.value)}
+                            data-summary-missing={
+                              attemptedSummary && cashVal.trim() === ""
+                                ? "true"
+                                : undefined
+                            }
+                            className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && cashVal.trim() === ""
+                                ? "border-red-500 bg-red-50 focus:border-red-500"
+                                : "border-slate-300 bg-white focus:border-site-primary"
+                              }`}
+                            placeholder="0"
+                          />
+                        </div>
 
-                    {/* 2. เงินโอน */}
-                    <div>
-                      <label className="mb-1 block text-sm font-bold text-slate-700">เงินโอน (บาท) <span className="text-red-500">*</span></label>
-                      <input
-                        type="number"
-                        value={transferVal}
-                        onChange={e => setTransferVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && transferVal.trim() === ""
-                            ? "border-red-500 bg-red-50 focus:border-red-500"
-                            : "border-slate-300 bg-white focus:border-site-primary"
-                          }`}
-                        placeholder="0"
-                      />
-                    </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-bold text-slate-700">เงินโอน (บาท) <span className="text-red-500">*</span></label>
+                          <input
+                            type="number"
+                            value={transferVal}
+                            onChange={e => setTransferVal(e.target.value)}
+                            data-summary-missing={
+                              attemptedSummary && transferVal.trim() === ""
+                                ? "true"
+                                : undefined
+                            }
+                            className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && transferVal.trim() === ""
+                                ? "border-red-500 bg-red-50 focus:border-red-500"
+                                : "border-slate-300 bg-white focus:border-site-primary"
+                              }`}
+                            placeholder="0"
+                          />
+                        </div>
 
-                    {/* 3. เงินทอน */}
-                    <div>
-                      <label className="mb-1 block text-sm font-bold text-slate-700">เงินทอน (บาท) <span className="text-red-500">*</span></label>
-                      <input
-                        type="number"
-                        value={changeVal}
-                        onChange={e => setChangeVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && changeVal.trim() === ""
-                            ? "border-red-500 bg-red-50 focus:border-red-500"
-                            : "border-slate-300 bg-white focus:border-site-primary"
-                          }`}
-                        placeholder="0"
-                      />
-                    </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-bold text-slate-700">เงินทอน (บาท) <span className="text-red-500">*</span></label>
+                          <input
+                            type="number"
+                            value={changeVal}
+                            onChange={e => setChangeVal(e.target.value)}
+                            data-summary-missing={
+                              attemptedSummary && changeVal.trim() === ""
+                                ? "true"
+                                : undefined
+                            }
+                            className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && changeVal.trim() === ""
+                                ? "border-red-500 bg-red-50 focus:border-red-500"
+                                : "border-slate-300 bg-white focus:border-site-primary"
+                              }`}
+                            placeholder="0"
+                          />
+                        </div>
 
-                    <div className="pt-2">
-                      <label className="mb-1 block text-sm font-bold text-slate-700">รวมเงินทั้งหมด</label>
-                      <input type="text" readOnly value={(Number(cashVal || 0) + Number(transferVal || 0)).toLocaleString()} className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 bg-slate-100 font-bold text-lg tabular-nums text-black focus:outline-none" />
-                    </div>
-                  </section>
+                        <div className="pt-2">
+                          <label className="mb-1 block text-sm font-bold text-slate-700">รวมเงินทั้งหมด</label>
+                          <input type="text" readOnly value={(Number(cashVal || 0) + Number(transferVal || 0)).toLocaleString()} className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 bg-slate-100 font-bold text-lg tabular-nums text-black focus:outline-none" />
+                        </div>
+                      </section>
 
-                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
-                    <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">3. สถิติ</h3>
-
-                    {/* 4. จำนวนลูกค้า */}
-                    <div>
-                      <label className="mb-1 block text-sm font-bold text-slate-700">จำนวนลูกค้า (คิว) <span className="text-red-500">*</span></label>
-                      <input
-                        type="number"
-                        value={customersVal}
-                        onChange={e => setCustomersVal(e.target.value)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && customersVal.trim() === ""
-                            ? "border-red-500 bg-red-50 focus:border-red-500"
-                            : "border-slate-300 bg-white focus:border-site-primary"
-                          }`}
-                        placeholder="0"
-                      />
-                    </div>
-                  </section>
+                      <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
+                        <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">3. สถิติ</h3>
+                        <div>
+                          <label className="mb-1 block text-sm font-bold text-slate-700">จำนวนลูกค้า (คิว) <span className="text-red-500">*</span></label>
+                          <input
+                            type="number"
+                            value={customersVal}
+                            onChange={e => setCustomersVal(e.target.value)}
+                            data-summary-missing={
+                              attemptedSummary && customersVal.trim() === ""
+                                ? "true"
+                                : undefined
+                            }
+                            className={`w-full rounded-xl border-2 px-4 py-3 font-bold tabular-nums text-black focus:bg-white focus:outline-none ${attemptedSummary && customersVal.trim() === ""
+                                ? "border-red-500 bg-red-50 focus:border-red-500"
+                                : "border-slate-300 bg-white focus:border-site-primary"
+                              }`}
+                            placeholder="0"
+                          />
+                        </div>
+                      </section>
+                    </>
+                  ) : null}
 
 
                 </div>
@@ -1256,7 +1311,7 @@ function StaffStockContent() {
                         </p>
                         <p className="text-lg font-black tabular-nums leading-none text-black">
                           {formatPrice(
-                            summarySaleItems.reduce((sum, item) => {
+                            summaryItems.reduce((sum, item) => {
                               const bal =
                                 data?.balances.find(
                                   (b) => b.product.id === item.id,
@@ -1291,21 +1346,23 @@ function StaffStockContent() {
                     <div className="flex gap-2">
                       <button
                         type="button"
+                        disabled={summaryItems.length === 0}
                         onClick={() => {
                           if (!validateSummaryForm()) return;
                           setShowReviewModal(true);
                         }}
-                        className="flex-1 rounded-xl border-2 border-slate-300 bg-white py-3.5 text-center text-base font-bold text-slate-800 shadow-sm active:scale-[0.98] transition-transform"
+                        className="flex-1 rounded-xl border-2 border-slate-300 bg-white py-3.5 text-center text-base font-bold text-slate-800 shadow-sm active:scale-[0.98] transition-transform disabled:opacity-50"
                       >
                         ตรวจสอบก่อน
                       </button>
                       <button
                         type="button"
+                        disabled={summaryItems.length === 0}
                         onClick={() => {
                           if (!validateSummaryForm()) return;
                           setShowSummaryModal(true);
                         }}
-                        className="flex-1 rounded-xl py-3.5 text-center text-base font-bold text-white shadow-md active:scale-[0.98] transition-transform bg-blue-600"
+                        className="flex-1 rounded-xl py-3.5 text-center text-base font-bold text-white shadow-md active:scale-[0.98] transition-transform bg-blue-600 disabled:opacity-50"
                       >
                         บันทึกสรุปยอด
                       </button>
@@ -1321,11 +1378,22 @@ function StaffStockContent() {
                           ตรวจสอบก่อนบันทึก
                         </h3>
                         <p className="mt-1 text-sm text-slate-500">
-                          วันที่ {summaryTodayLabel} · เงินสด{" "}
-                          <strong>{cashVal || 0}</strong> · โอน{" "}
-                          <strong>{transferVal || 0}</strong> · ทอน{" "}
-                          <strong>{changeVal || 0}</strong> · ลูกค้า{" "}
-                          <strong>{customersVal || 0}</strong> คิว
+                          {summaryTypeLabel} · วันที่ {summaryTodayLabel}
+                          {summaryIncludesSales ? (
+                            <>
+                              {" "}
+                              · เงินสด <strong>{cashVal || 0}</strong> · โอน{" "}
+                              <strong>{transferVal || 0}</strong> · ทอน{" "}
+                              <strong>{changeVal || 0}</strong> · ลูกค้า{" "}
+                              <strong>{customersVal || 0}</strong> คิว
+                            </>
+                          ) : (
+                            <>
+                              {" "}
+                              · {summaryItems.length.toLocaleString("th-TH")}{" "}
+                              รายการ
+                            </>
+                          )}
                         </p>
                       </div>
                       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
@@ -1392,9 +1460,22 @@ function StaffStockContent() {
                     <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
                       <h3 className="text-xl font-black text-slate-900">ยืนยันบันทึกสรุปยอด</h3>
                       <p className="mt-2 text-sm text-slate-500">
-                        วันที่ {summaryTodayLabel} · ยอดเงินสด <strong>{cashVal || 0}</strong> บ.,
-                        ยอดโอน <strong>{transferVal || 0}</strong> บ. และ
-                        ยอดลูกค้า <strong>{customersVal || 0}</strong> คิว ถูกต้องแล้วใช่หรือไม่?
+                        {summaryIncludesSales ? (
+                          <>
+                            {summaryTypeLabel} · วันที่ {summaryTodayLabel} ·
+                            ยอดเงินสด <strong>{cashVal || 0}</strong> บ., ยอดโอน{" "}
+                            <strong>{transferVal || 0}</strong> บ. และ ยอดลูกค้า{" "}
+                            <strong>{customersVal || 0}</strong> คิว
+                            ถูกต้องแล้วใช่หรือไม่?
+                          </>
+                        ) : (
+                          <>
+                            สรุปยอดสต๊อก · {summaryTypeLabel} · วันที่{" "}
+                            {summaryTodayLabel} ·{" "}
+                            {summaryItems.length.toLocaleString("th-TH")} รายการ
+                            ถูกต้องแล้วใช่หรือไม่?
+                          </>
+                        )}
                       </p>
                       {summaryDiffItems.length > 0 ? (
                         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
@@ -1428,11 +1509,25 @@ function StaffStockContent() {
                         ? "เลือกประเภทรับเข้า"
                         : actionType === "issue"
                           ? "เลือกประเภทจ่ายออก"
-                          : ""}
+                          : actionType === "summary"
+                            ? "เลือกประเภทสรุปยอดสต๊อก"
+                            : ""}
                   </h2>
                 </div>
 
-                <div className="grid gap-4 mt-6">
+                {(actionType === "stock_in" ||
+                  actionType === "issue" ||
+                  actionType === "summary") && (
+                  <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600">
+                    {actionType === "stock_in"
+                      ? "ของสิ้นเปลือง (น้ำแข็ง/แก้ว/ถุง/แก๊ส/น้ำจิ้ม): รับเข้าเมื่อของมาส่ง"
+                      : actionType === "issue"
+                        ? "จ่ายออกเมื่อเบิกใช้ชัดเจน เช่น เปลี่ยนแก๊ส 1 ถัง — รายวันทั่วไปใช้สรุปยอดท้ายวันก็ได้"
+                        : "ท้ายวันสรุปยอดของสิ้นเปลือง: นับคงเหลือจริง ระบบจะคำนวณว่าใช้ไปเท่าไรให้หลังบ้าน"}
+                  </div>
+                )}
+
+                <div className="grid gap-4 mt-4">
                   <button
                     onClick={() => handleTypeSelectClick("SALE_ITEM")}
                     className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
@@ -1442,10 +1537,15 @@ function StaffStockContent() {
                   </button>
                   <button
                     onClick={() => handleTypeSelectClick("CONSUMABLE")}
-                    className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                    className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
                   >
-                    <div className="text-3xl">📦</div>
-                    <h3 className="text-xl font-bold">ของสิ้นเปลือง</h3>
+                    <div className="flex items-center gap-3">
+                      <div className="text-3xl">📦</div>
+                      <h3 className="text-xl font-bold">ของสิ้นเปลือง</h3>
+                    </div>
+                    <p className="text-xs font-medium text-slate-500">
+                      น้ำแข็ง · แก๊ส · แก้ว · ถุง · น้ำจิ้ม
+                    </p>
                   </button>
                   <button
                     onClick={() => handleTypeSelectClick("EQUIPMENT")}

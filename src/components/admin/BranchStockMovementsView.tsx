@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AdminLoadingState,
@@ -16,10 +16,36 @@ type Movement = {
   type: string;
   quantity: number;
   note: string | null;
+  imageUrl: string | null;
+  batchId: string | null;
   createdAt: string;
+  stockType: "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+  unit: string;
+  source: "menu" | "non_menu";
   menuItem: { id: string; name: string };
   createdByStaff: { id: string; name: string } | null;
   order: { id: string; orderNumber: string } | null;
+};
+
+type Batch = {
+  id: string;
+  type: string;
+  createdAt: string;
+  note: string | null;
+  imageUrl: string | null;
+  createdByStaff: { id: string; name: string } | null;
+  itemCount: number;
+  totalQty: number;
+  stockTypes: string[];
+  lines: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    signedQuantity: number;
+    unit: string;
+    stockType: "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+    source: "menu" | "non_menu";
+  }>;
 };
 
 type ShiftOpt = {
@@ -38,6 +64,12 @@ const TYPE_FILTERS: Array<{ id: string; label: string }> = [
   { id: "DAMAGE", label: "เสียหาย" },
   { id: "LOST", label: "สูญหาย" },
 ];
+
+const STOCK_TYPE_LABEL: Record<string, string> = {
+  SALE_ITEM: "เมนูขาย",
+  CONSUMABLE: "ของสิ้นเปลือง",
+  EQUIPMENT: "อุปกรณ์",
+};
 
 function typeLabel(type: string) {
   switch (type) {
@@ -86,13 +118,25 @@ function formatHm(iso: string) {
   }
 }
 
+function stockTypesLabel(types: string[]) {
+  if (!types.length) return "—";
+  return types.map((t) => STOCK_TYPE_LABEL[t] ?? t).join(" · ");
+}
+
 export function BranchStockMovementsView({ branchId }: { branchId: string }) {
   const toast = useToast();
   const [date, setDate] = useState(() => bangkokDateKey());
   const [type, setType] = useState("ALL");
+  const [stockType, setStockType] = useState<
+    "ALL" | "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT"
+  >("ALL");
   const [shiftId, setShiftId] = useState("");
+  const [qInput, setQInput] = useState("");
+  const [q, setQ] = useState("");
   const [shifts, setShifts] = useState<ShiftOpt[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [batches, setBatches] = useState<Batch[] | null>(null);
+  const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -121,11 +165,17 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
     };
   }, [branchId, date]);
 
+  useEffect(() => {
+    const t = window.setTimeout(() => setQ(qInput.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [qInput]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ date, type });
       if (shiftId) qs.set("shiftId", shiftId);
+      if (q) qs.set("q", q);
       const res = await fetch(
         `/api/admin/branches/${branchId}/stock/history?${qs}`,
       );
@@ -133,31 +183,64 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
       if (!res.ok) {
         toast.error("โหลดไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
         setMovements([]);
+        setBatches(null);
         return;
       }
       setMovements(Array.isArray(data.movements) ? data.movements : []);
+      setBatches(Array.isArray(data.batches) ? data.batches : null);
+      setExpandedBatchId(null);
     } finally {
       setLoading(false);
     }
-  }, [branchId, date, type, shiftId]); // eslint-disable-line react-hooks/exhaustive-deps -- toast stable enough
+  }, [branchId, date, type, shiftId, q]); // eslint-disable-line react-hooks/exhaustive-deps -- toast stable enough
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const filteredMovements = useMemo(() => {
+    if (stockType === "ALL") return movements;
+    return movements.filter((m) => m.stockType === stockType);
+  }, [movements, stockType]);
+
+  const filteredBatches = useMemo(() => {
+    if (!batches) return null;
+    if (stockType === "ALL") return batches;
+    return batches
+      .map((b) => {
+        const lines = b.lines.filter((l) => l.stockType === stockType);
+        if (lines.length === 0) return null;
+        const totalQty = lines.reduce((s, l) => s + Math.abs(l.signedQuantity), 0);
+        return {
+          ...b,
+          lines,
+          itemCount: lines.length,
+          totalQty,
+          stockTypes: Array.from(new Set(lines.map((l) => l.stockType))),
+        };
+      })
+      .filter(Boolean) as Batch[];
+  }, [batches, stockType]);
+
+  const showBatches =
+    (type === "STOCK_IN" || type === "ISSUE") &&
+    Array.isArray(filteredBatches) &&
+    filteredBatches.length > 0;
 
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4">
           <h2 className="text-base font-extrabold text-slate-900">
-            เคลื่อนไหวสต็อก
+            ประวัติเคลื่อนไหวสต็อก
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            ดูรับเข้า จ่ายออก ขาย ปรับยอด ตามวัน และกรองตามรอบขายได้
+            ดูรับเข้า จ่ายออก ขาย ปรับยอด ตามวัน ค้นหาชื่อรายการ/พนักงาน
+            และกรองตามประเภทสินค้า/รอบขายได้ — การทำรายการอยู่แท็บจัดการสต๊อก
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div>
             <label className={adminLabelClass} htmlFor="stock-move-date">
               วันที่
@@ -193,7 +276,7 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
           </div>
           <div>
             <label className={adminLabelClass} htmlFor="stock-move-type">
-              ประเภท
+              ประเภทรายการ
             </label>
             <select
               id="stock-move-type"
@@ -208,19 +291,157 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
               ))}
             </select>
           </div>
+          <div>
+            <label className={adminLabelClass} htmlFor="stock-move-stock-type">
+              ประเภทสินค้า
+            </label>
+            <select
+              id="stock-move-stock-type"
+              className={adminInputClass}
+              value={stockType}
+              onChange={(e) =>
+                setStockType(
+                  e.target.value as
+                    | "ALL"
+                    | "SALE_ITEM"
+                    | "CONSUMABLE"
+                    | "EQUIPMENT",
+                )
+              }
+            >
+              <option value="ALL">ทั้งหมด</option>
+              <option value="SALE_ITEM">เมนูขาย</option>
+              <option value="CONSUMABLE">ของสิ้นเปลือง</option>
+              <option value="EQUIPMENT">อุปกรณ์</option>
+            </select>
+          </div>
+          <div>
+            <label className={adminLabelClass} htmlFor="stock-move-q">
+              ค้นหา
+            </label>
+            <input
+              id="stock-move-q"
+              type="search"
+              className={adminInputClass}
+              placeholder="ชื่อรายการ, พนักงาน, หมายเหตุ…"
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
       {loading ? (
         <AdminLoadingState className="py-8" />
-      ) : movements.length === 0 ? (
+      ) : showBatches ? (
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-slate-600">
+            พบ {filteredBatches!.length} ครั้ง · รวม{" "}
+            {filteredMovements.length} รายการ
+          </p>
+          {filteredBatches!.map((b) => {
+            const open = expandedBatchId === b.id;
+            return (
+              <div
+                key={b.id}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+              >
+                <button
+                  type="button"
+                  onClick={() => setExpandedBatchId(open ? null : b.id)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-slate-50"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-md border px-2 py-0.5 text-[11px] font-bold ${typeTone(b.type)}`}
+                      >
+                        {typeLabel(b.type)}
+                      </span>
+                      <span className="text-sm font-bold text-slate-900">
+                        {stockTypesLabel(b.stockTypes)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatHm(b.createdAt)} น.
+                      {b.createdByStaff
+                        ? ` · ${b.createdByStaff.name}`
+                        : " · ระบบ/แอดมิน"}
+                      {" · "}
+                      {b.itemCount.toLocaleString("th-TH")} รายการ · รวม{" "}
+                      {b.totalQty.toLocaleString("th-TH")}
+                      {b.note ? ` · ${b.note}` : ""}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-slate-400">
+                    {open ? "▲" : "▼"}
+                  </span>
+                </button>
+                {open ? (
+                  <div className="border-t border-slate-100 bg-slate-50 px-4 py-3">
+                    {b.imageUrl ? (
+                      <div className="mb-3">
+                        <p className="mb-1.5 text-xs font-semibold text-slate-500">
+                          รูปประกอบ
+                        </p>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={b.imageUrl}
+                          alt="รูปประกอบ"
+                          className="max-h-48 rounded-xl object-contain ring-1 ring-slate-200"
+                        />
+                      </div>
+                    ) : null}
+                    <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      {b.lines.map((line, index) => (
+                        <li
+                          key={line.id}
+                          className="flex items-center justify-between gap-3 px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {index + 1}. {line.name}
+                              {line.stockType !== "SALE_ITEM" &&
+                              line.unit?.trim() ? (
+                                <span className="font-bold text-red-600">
+                                  {" "}
+                                  ({line.unit.trim()})
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="text-[11px] font-semibold text-slate-500">
+                              {STOCK_TYPE_LABEL[line.stockType] ??
+                                line.stockType}
+                            </p>
+                          </div>
+                          <p
+                            className={`shrink-0 text-sm font-extrabold tabular-nums ${
+                              line.signedQuantity < 0
+                                ? "text-red-700"
+                                : "text-emerald-700"
+                            }`}
+                          >
+                            {line.signedQuantity > 0 ? "+" : ""}
+                            {line.signedQuantity.toLocaleString("th-TH")}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : filteredMovements.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
           ไม่พบการเคลื่อนไหวในช่วงที่เลือก
+          {q ? ` ที่ตรงกับ “${q}”` : ""}
         </p>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <ul className="divide-y divide-slate-100">
-            {movements.map((m) => (
+            {filteredMovements.map((m) => (
               <li
                 key={m.id}
                 className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -234,8 +455,27 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
                     </span>
                     <p className="truncate text-sm font-semibold text-slate-900">
                       {m.menuItem.name}
+                      {m.stockType !== "SALE_ITEM" && m.unit?.trim() ? (
+                        <span className="font-bold text-red-600">
+                          {" "}
+                          ({m.unit.trim()})
+                        </span>
+                      ) : null}
                     </p>
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {STOCK_TYPE_LABEL[m.stockType] ?? m.stockType}
+                    </span>
                   </div>
+                  {m.imageUrl ? (
+                    <div className="mt-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={m.imageUrl}
+                        alt="รูปประกอบ"
+                        className="max-h-28 rounded-lg object-contain ring-1 ring-slate-200"
+                      />
+                    </div>
+                  ) : null}
                   <p className="mt-1 text-xs text-slate-500">
                     {formatHm(m.createdAt)} น.
                     {m.createdByStaff

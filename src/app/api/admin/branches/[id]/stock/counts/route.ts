@@ -13,18 +13,28 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const dateStr = searchParams.get("date"); // YYYY-MM-DD
 
-    let dateFilter = {};
+    let dateFilter: Record<string, unknown> = {};
     if (dateStr) {
-      // parse YYYY-MM-DD and create a UTC range for that date in local time
-      // Assume Thai time (+07:00) for simpler query
+      // Bangkok calendar day (+07:00)
       const startOfDay = new Date(`${dateStr}T00:00:00+07:00`);
       const endOfDay = new Date(`${dateStr}T23:59:59.999+07:00`);
       if (!isNaN(startOfDay.getTime())) {
         dateFilter = {
-          completedAt: {
-            gte: startOfDay,
-            lte: endOfDay,
-          },
+          OR: [
+            {
+              completedAt: {
+                gte: startOfDay,
+                lte: endOfDay,
+              },
+            },
+            {
+              completedAt: null,
+              createdAt: {
+                gte: startOfDay,
+                lte: endOfDay,
+              },
+            },
+          ],
         };
       }
     }

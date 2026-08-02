@@ -38,16 +38,21 @@ export async function PATCH(
         : typeof body.imageUrl === "string"
           ? body.imageUrl.trim() || null
           : null;
-    const price =
-      body.price === undefined || body.price === "" || body.price == null
-        ? existing.price
-        : Number(body.price);
+    let price = existing.price;
+    if (body.price !== undefined) {
+      if (body.price === "" || body.price == null) {
+        price = null;
+      } else {
+        const n = Number(body.price);
+        if (!Number.isFinite(n) || n < 0) {
+          return jsonError("ราคาไม่ถูกต้อง", 400);
+        }
+        price = n;
+      }
+    }
 
     if (!name || !unit) {
       return jsonError("กรุณาระบุชื่อและหน่วย", 400);
-    }
-    if (body.price !== undefined && body.price !== "" && !Number.isFinite(price)) {
-      return jsonError("ราคาไม่ถูกต้อง", 400);
     }
 
     const branch = await prisma.branch.findUnique({
@@ -63,7 +68,7 @@ export async function PATCH(
         unit,
         description,
         imageUrl,
-        price: price == null ? null : Number(price),
+        price,
       },
     });
 

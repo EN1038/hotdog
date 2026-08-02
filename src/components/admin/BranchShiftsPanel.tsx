@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -115,6 +115,7 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuQuery, setMenuQuery] = useState("");
 
   useEffect(() => {
     if (isBangkokDateKey(dateFromUrl)) setDate(dateFromUrl);
@@ -188,8 +189,27 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
     };
   }, [branchId, selectedId]);
 
+  useEffect(() => {
+    setMenuQuery("");
+  }, [selectedId]);
+
   const stockDeductions = summary?.stockDeductions ?? [];
-  const stockTotalQty = stockDeductions.reduce((n, r) => n + r.quantity, 0);
+  const needle = menuQuery.trim().toLowerCase();
+  const filteredMenus = useMemo(() => {
+    const menus = summary?.menus ?? [];
+    if (!needle) return menus;
+    return menus.filter((m) => m.name.toLowerCase().includes(needle));
+  }, [summary?.menus, needle]);
+  const filteredStockDeductions = useMemo(() => {
+    if (!needle) return stockDeductions;
+    return stockDeductions.filter((r) =>
+      r.name.toLowerCase().includes(needle),
+    );
+  }, [stockDeductions, needle]);
+  const stockTotalQty = filteredStockDeductions.reduce(
+    (n, r) => n + r.quantity,
+    0,
+  );
 
   return (
     <div className="space-y-4">
@@ -201,22 +221,38 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
             </h3>
             <p className="mt-0.5 text-sm text-slate-600">
               เลือกวันและรอบเพื่อดูยอดขาย เงินเริ่มต้น ของแถม สต็อกที่หัก
-              และเมนูที่ขาย
+              และเมนูที่ขาย — ค้นหาชื่อเมนูได้
             </p>
           </div>
-          <div className="w-full max-w-xs sm:w-44">
-            <label className={adminLabelClass} htmlFor="shift-summary-date">
-              วันที่
-            </label>
-            <DateInput
-              id="shift-summary-date"
-              className={adminInputClass}
-              value={date}
-              max={bangkokDateKey()}
-              onChange={(v) => {
-                if (v) setDate(v);
-              }}
-            />
+          <div className="grid w-full max-w-md gap-3 sm:grid-cols-2">
+            <div>
+              <label className={adminLabelClass} htmlFor="shift-summary-date">
+                วันที่
+              </label>
+              <DateInput
+                id="shift-summary-date"
+                className={adminInputClass}
+                value={date}
+                max={bangkokDateKey()}
+                onChange={(v) => {
+                  if (v) setDate(v);
+                }}
+              />
+            </div>
+            <div>
+              <label className={adminLabelClass} htmlFor="shift-summary-q">
+                ค้นหาเมนู
+              </label>
+              <input
+                id="shift-summary-q"
+                type="search"
+                className={adminInputClass}
+                placeholder="ชื่อเมนู…"
+                value={menuQuery}
+                onChange={(e) => setMenuQuery(e.target.value)}
+                disabled={!summary}
+              />
+            </div>
           </div>
         </div>
 
@@ -324,9 +360,13 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
               <p className="mb-2 text-sm font-bold text-slate-900">เมนูที่ขาย</p>
               {summary.menus.length === 0 ? (
                 <p className="text-sm text-slate-500">ยังไม่มีรายการที่นับยอด</p>
+              ) : filteredMenus.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  ไม่พบเมนูที่ตรงกับ “{menuQuery.trim()}”
+                </p>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {summary.menus.map((m) => (
+                  {filteredMenus.map((m) => (
                     <li
                       key={m.name}
                       className="flex items-center justify-between gap-3 py-2.5"
@@ -359,7 +399,7 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
                   รวมตามเมนูจากออเดอร์ที่ตัดสต็อกแล้วในรอบนี้
                 </p>
               </div>
-              {stockDeductions.length > 0 ? (
+              {filteredStockDeductions.length > 0 ? (
                 <p className="text-xs font-semibold text-slate-600">
                   รวม {stockTotalQty.toLocaleString("th-TH")} ชิ้น
                 </p>
@@ -369,9 +409,13 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
               <p className="text-sm text-slate-500">
                 ยังไม่มีรายการหักสต็อกในรอบนี้
               </p>
+            ) : filteredStockDeductions.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                ไม่พบรายการที่ตรงกับ “{menuQuery.trim()}”
+              </p>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {stockDeductions.map((row) => (
+                {filteredStockDeductions.map((row) => (
                   <li
                     key={row.menuItemId}
                     className="flex flex-col gap-1.5 py-3 sm:flex-row sm:items-start sm:justify-between"

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useId, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   AdminEmptyState,
@@ -31,6 +31,8 @@ import {
   type WeeklySchedule,
 } from "@/lib/branch-hours";
 import { BRANCH_IMAGE_SIZE_HINT } from "@/lib/image-guides";
+import { BrandOverviewPanel } from "@/components/admin/BrandOverviewPanel";
+import { parseBrandHqSection } from "@/lib/brand-hq-nav";
 
 export type DashboardBrand = {
   id: string;
@@ -92,7 +94,15 @@ type BranchListDashboardProps = {
   headerActions?: React.ReactNode;
 };
 
-export function BranchListDashboard({
+export function BranchListDashboard(props: BranchListDashboardProps) {
+  return (
+    <Suspense fallback={<AdminLoadingState />}>
+      <BranchListDashboardInner {...props} />
+    </Suspense>
+  );
+}
+
+function BranchListDashboardInner({
   lockedBrandId,
   brandMeta = null,
   title = "แดชบอร์ดสาขา",
@@ -102,6 +112,8 @@ export function BranchListDashboard({
   headerActions,
 }: BranchListDashboardProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const hqSection = parseBrandHqSection(searchParams.get("section"));
   const toast = useToast();
   const { session } = useAdminSession();
   const titleId = useId();
@@ -298,6 +310,14 @@ export function BranchListDashboard({
         }
       />
 
+      {effectiveLockedBrandId ? (
+        <BrandOverviewPanel
+          brandId={effectiveLockedBrandId}
+          section={hqSection}
+        />
+      ) : null}
+
+      {hqSection === "home" ? (
       <section className="mt-6">
         {branches.length === 0 ? (
           <AdminEmptyState
@@ -406,6 +426,7 @@ export function BranchListDashboard({
           </div>
         )}
       </section>
+      ) : null}
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">

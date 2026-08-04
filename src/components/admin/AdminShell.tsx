@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/components/LoginForm";
 import { PlatformMark } from "@/components/PlatformMark";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
@@ -13,12 +13,19 @@ import {
 import {
   IconClose,
   IconHome,
+  IconMoney,
+  IconPackage,
   IconReceipt,
   IconStore,
   IconUser,
-  IconPackage,
 } from "@/components/icons";
 import { getBrandProfileGaps } from "@/lib/brand-profile";
+import {
+  brandHqHref,
+  parseBrandHqSection,
+  resolveBrandHqBasePath,
+  type BrandHqSection,
+} from "@/lib/brand-hq-nav";
 
 export {
   adminInputClass,
@@ -46,7 +53,7 @@ type NavItem = {
   href: string;
   label: string;
   exact?: boolean;
-  match?: (pathname: string) => boolean;
+  match?: (pathname: string, searchParams: URLSearchParams) => boolean;
   platformOnly?: boolean;
   /** Hide from platform admins (brand operator pages) */
   brandAdminOnly?: boolean;
@@ -144,20 +151,67 @@ const NAV_GROUPS: NavGroup[] = [
         platformOnly: true,
         icon: IconSettings,
       },
-      {
-        href: "/admin/line",
-        label: "LINE แจ้งเตือน",
-        platformOnly: true,
-        icon: IconChat,
-      },
-      {
-        href: "/admin/line-connect",
-        label: "เชื่อม LINE",
-        icon: IconChat,
-      },
     ],
   },
 ];
+
+function brandHqNavItems(basePath: string): NavItem[] {
+  const sections: {
+    section: BrandHqSection;
+    label: string;
+    icon: NavItem["icon"];
+  }[] = [
+    { section: "home", label: "หน้าแรก", icon: IconHome },
+    { section: "stock_now", label: "สต๊อกปัจจุบัน", icon: IconPackage },
+    { section: "restock", label: "เติม", icon: IconPlusNav },
+    { section: "issue", label: "จ่าย", icon: IconMoney },
+  ];
+  return sections.map(({ section, label, icon }) => ({
+    href: brandHqHref(basePath, section),
+    label,
+    exact: true,
+    icon,
+    match: (pathname, searchParams) => {
+      if (pathname !== basePath) return false;
+      return parseBrandHqSection(searchParams.get("section")) === section;
+    },
+  }));
+}
+
+function IconPlusNav({
+  size = 20,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className ? `block shrink-0 ${className}` : "block shrink-0"}
+      aria-hidden
+    >
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <rect
+        x="3"
+        y="3"
+        width="18"
+        height="18"
+        rx="4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
 
 function IconTag({
   size = 20,
@@ -250,33 +304,6 @@ function IconSettings({
   );
 }
 
-function IconChat({
-  size = 20,
-  className,
-}: {
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className ? `block shrink-0 ${className}` : "block shrink-0"}
-      aria-hidden
-    >
-      <path
-        d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function IconMenu({
   size = 20,
   className,
@@ -303,28 +330,50 @@ function IconMenu({
   );
 }
 
-function isActive(pathname: string, item: NavItem) {
-  if (item.match) return item.match(pathname);
+function isActive(
+  pathname: string,
+  searchParams: URLSearchParams,
+  item: NavItem,
+) {
+  if (item.match) return item.match(pathname, searchParams);
   if (item.exact) return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function filterNavGroups(isPlatformAdmin: boolean): NavGroup[] {
-  return NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items
-      .map((item) => {
-        if (item.href === "/admin" && isPlatformAdmin) {
-          return { ...item, label: "แบรนด์" };
-        }
-        return item;
-      })
-      .filter((item) => {
+function filterNavGroups(
+  isPlatformAdmin: boolean,
+  pathname: string,
+  soleBrandId?: string | null,
+): NavGroup[] {
+  const hqBase = resolveBrandHqBasePath(pathname, {
+    isPlatformAdmin,
+    soleBrandId,
+  });
+
+  return NAV_GROUPS.map((group) => {
+    if (group.title === "ภาพรวม") {
+      if (hqBase) {
+        return { ...group, items: brandHqNavItems(hqBase) };
+      }
+      return {
+        ...group,
+        items: group.items.map((item) => {
+          if (item.href === "/admin" && isPlatformAdmin) {
+            return { ...item, label: "แบรนด์" };
+          }
+          return item;
+        }),
+      };
+    }
+    return {
+      ...group,
+      items: group.items.filter((item) => {
         if (item.platformOnly && !isPlatformAdmin) return false;
         if (item.brandAdminOnly && isPlatformAdmin) return false;
         return true;
       }),
-  })).filter((group) => group.items.length > 0);
+    };
+  }).filter((group) => group.items.length > 0);
 }
 
 function RoleBadge({ isPlatformAdmin }: { isPlatformAdmin: boolean }) {
@@ -343,10 +392,12 @@ function RoleBadge({ isPlatformAdmin }: { isPlatformAdmin: boolean }) {
 
 function SidebarNav({
   pathname,
+  searchParams,
   navGroups,
   onNavigate,
 }: {
   pathname: string;
+  searchParams: URLSearchParams;
   navGroups: NavGroup[];
   onNavigate?: () => void;
 }) {
@@ -359,11 +410,11 @@ function SidebarNav({
           </p>
           <ul className="space-y-0.5">
             {group.items.map((item) => {
-              const active = isActive(pathname, item);
+              const active = isActive(pathname, searchParams, item);
               const Icon = item.icon;
               const warn = item.badgeTone === "warn" && item.badge;
               return (
-                <li key={item.href}>
+                <li key={`${item.href}:${item.label}`}>
                   <Link
                     href={item.href}
                     onClick={onNavigate}
@@ -423,6 +474,7 @@ function ShellHeader() {
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { session } = useAdminSession();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandProfileGapCount, setBrandProfileGapCount] = useState(0);
@@ -432,10 +484,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   } | null>(null);
 
   const isPlatformAdmin = session?.isPlatformAdmin ?? false;
+  const soleBrandId =
+    !isPlatformAdmin && session?.brandIds.length === 1
+      ? session.brandIds[0]
+      : null;
   const onBranchPage = isAdminBranchPath(pathname);
   const navGroups = useMemo(
-    () => filterNavGroups(isPlatformAdmin),
-    [isPlatformAdmin],
+    () => filterNavGroups(isPlatformAdmin, pathname, soleBrandId),
+    [isPlatformAdmin, pathname, soleBrandId],
   );
 
   const handleBranchMeta = useCallback(
@@ -513,7 +569,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const currentLabel =
     navGroupsWithBadges
       .flatMap((g) => g.items)
-      .find((item) => isActive(pathname, item))?.label ?? "หลังบ้าน";
+      .find((item) => isActive(pathname, searchParams, item))?.label ??
+    "หลังบ้าน";
 
   const headerTitle = onBranchPage
     ? branchMeta?.name ?? "สาขา"
@@ -531,7 +588,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
         <ShellHeader />
 
-        <SidebarNav pathname={pathname} navGroups={navGroupsWithBadges} />
+        <SidebarNav
+          pathname={pathname}
+          searchParams={searchParams}
+          navGroups={navGroupsWithBadges}
+        />
 
         <div className="border-t border-slate-200 p-2.5">
           <button
@@ -568,6 +629,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarNav
               pathname={pathname}
+              searchParams={searchParams}
               navGroups={navGroupsWithBadges}
               onNavigate={() => setMobileOpen(false)}
             />

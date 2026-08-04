@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminSessionProvider } from "@/components/admin/AdminSessionProvider";
 import { ToastProvider } from "@/components/admin/Toast";
@@ -14,7 +15,9 @@ export default function AdminLayout({
       <ToastProvider>
         <ConfirmProvider>
           <AdminSessionProvider>
-            <AdminShell>{children}</AdminShell>
+            <Suspense fallback={null}>
+              <AdminShell>{children}</AdminShell>
+            </Suspense>
           </AdminSessionProvider>
         </ConfirmProvider>
       </ToastProvider>

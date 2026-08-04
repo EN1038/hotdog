@@ -38,6 +38,7 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "menu.create": "เพิ่มเมนู",
   "menu.update": "แก้ไขเมนู",
   "menu.delete": "ลบเมนู",
+  "menu.reorder": "จัดลำดับเมนู",
   "category.create": "เพิ่มหมวดหมู่",
   "category.update": "แก้ไขหมวดหมู่",
   "category.delete": "ลบหมวดหมู่",

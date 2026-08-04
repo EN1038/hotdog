@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -58,6 +58,10 @@ import {
   formatThaiPhone,
   phoneDigits,
 } from "@/lib/constants";
+import {
+  assignStableMenuSequence,
+  sortMenuItemData,
+} from "@/lib/staff-menu-order";
 import {
   ensureWeeklySchedule,
   formatTodayHoursSummary,
@@ -157,14 +161,14 @@ type BranchDetail = {
     sellPickup?: boolean;
     sellStorefront?: boolean;
     description: string | null;
-    category: { id: string; name: string } | null;
+    category: { id: string; name: string; sortOrder?: number } | null;
     imageUrl: string | null;
     isHidden: boolean;
     isOutOfStock: boolean;
     sortOrder: number;
     isBestSeller?: boolean;
   }[];
-  menuCategories?: { id: string; name: string }[];
+  menuCategories?: { id: string; name: string; sortOrder?: number }[];
   optionGroups?: { id: string; name: string; options?: unknown[] }[];
   deliveryLocations: {
     id: string;
@@ -549,6 +553,11 @@ function BranchDetailContent() {
   const [menuStatusFilter, setMenuStatusFilter] = useState<
     "ALL" | "OUT_OF_STOCK" | "HIDDEN"
   >("ALL");
+  const [menuDraggingId, setMenuDraggingId] = useState<string | null>(null);
+  const [menuDragOverId, setMenuDragOverId] = useState<string | null>(null);
+  const [menuReorderSaving, setMenuReorderSaving] = useState(false);
+  const menuDragStartOrderRef = useRef<string[]>([]);
+  const menuItemsOrderRef = useRef<string[]>([]);
   const [codeManual, setCodeManual] = useState(false);
   const [codeFieldOpen, setCodeFieldOpen] = useState(false);
   const [restaurantTypes, setRestaurantTypes] = useState<
@@ -1245,9 +1254,24 @@ function BranchDetailContent() {
       .sort((a, b) => a.name.localeCompare(b.name, "th"));
   }, [branch?.menuCategories, branch?.menuItems]);
 
+  const sortedMenuItems = useMemo(() => {
+    return sortMenuItemData(branch?.menuItems ?? []);
+  }, [branch?.menuItems]);
+
+  const menuSeqById = useMemo(
+    () => assignStableMenuSequence(sortedMenuItems),
+    [sortedMenuItems],
+  );
+
+  const canReorderMenu =
+    !menuSearch.trim() &&
+    menuCategoryFilter === "ALL" &&
+    menuStatusFilter === "ALL" &&
+    !menuReorderSaving;
+
   const filteredMenuItems = useMemo(() => {
     const q = menuSearch.trim().toLowerCase();
-    return (branch?.menuItems ?? []).filter((m) => {
+    return sortedMenuItems.filter((m) => {
       if (q && !m.name.toLowerCase().includes(q)) return false;
       if (menuCategoryFilter === "NONE") {
         if (m.category) return false;
@@ -1259,11 +1283,101 @@ function BranchDetailContent() {
       return true;
     });
   }, [
-    branch?.menuItems,
+    sortedMenuItems,
     menuSearch,
     menuCategoryFilter,
     menuStatusFilter,
   ]);
+
+  useEffect(() => {
+    menuItemsOrderRef.current = sortedMenuItems.map((m) => m.id);
+  }, [sortedMenuItems]);
+
+  function reorderMenuIds(list: string[], activeId: string, overId: string) {
+    const fromIndex = list.findIndex((id) => id === activeId);
+    const toIndex = list.findIndex((id) => id === overId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return list;
+    const next = [...list];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  }
+
+  async function persistMenuOrder(orderedIds: string[]) {
+    setMenuReorderSaving(true);
+    try {
+      const res = await fetch(`/api/admin/branches/${id}/menu-items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error("บันทึกลำดับไม่สำเร็จ", data?.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      if (Array.isArray(data)) {
+        setBranch((prev) => (prev ? { ...prev, menuItems: data } : prev));
+      }
+      toast.success("บันทึกลำดับเมนูแล้ว");
+    } finally {
+      setMenuReorderSaving(false);
+      setMenuDraggingId(null);
+      setMenuDragOverId(null);
+    }
+  }
+
+  function onMenuDragStart(itemId: string) {
+    if (!canReorderMenu) return;
+    menuDragStartOrderRef.current = [...menuItemsOrderRef.current];
+    setMenuDraggingId(itemId);
+    setMenuDragOverId(itemId);
+  }
+
+  function onMenuDragOver(e: DragEvent, itemId: string) {
+    if (!canReorderMenu || !menuDraggingId) return;
+    e.preventDefault();
+    if (menuDragOverId === itemId) return;
+    setMenuDragOverId(itemId);
+    const next = reorderMenuIds(menuItemsOrderRef.current, menuDraggingId, itemId);
+    menuItemsOrderRef.current = next;
+    setBranch((prev) => {
+      if (!prev) return prev;
+      const byId = new Map(prev.menuItems.map((m) => [m.id, m]));
+      const nextItems = next
+        .map((mid, index) => {
+          const item = byId.get(mid);
+          return item ? { ...item, sortOrder: index } : null;
+        })
+        .filter(Boolean) as BranchDetail["menuItems"];
+      return { ...prev, menuItems: nextItems };
+    });
+  }
+
+  async function onMenuDrop(itemId: string) {
+    if (!canReorderMenu || !menuDraggingId) return;
+    const orderedIds = reorderMenuIds(
+      menuItemsOrderRef.current,
+      menuDraggingId,
+      itemId,
+    );
+    menuItemsOrderRef.current = orderedIds;
+    const unchanged =
+      orderedIds.length === menuDragStartOrderRef.current.length &&
+      orderedIds.every((mid, i) => mid === menuDragStartOrderRef.current[i]);
+    if (unchanged) {
+      setMenuDraggingId(null);
+      setMenuDragOverId(null);
+      return;
+    }
+    await persistMenuOrder(orderedIds);
+  }
+
+  function onMenuDragEnd() {
+    if (menuReorderSaving) return;
+    setMenuDraggingId(null);
+    setMenuDragOverId(null);
+  }
 
   if (!branch) {
     return <AdminLoadingState />;
@@ -1850,6 +1964,9 @@ function BranchDetailContent() {
                     {filteredMenuItems.length === branch.menuItems.length
                       ? `${branch.menuItems.length} รายการ`
                       : `แสดง ${filteredMenuItems.length} จาก ${branch.menuItems.length} รายการ`}
+                    {canReorderMenu
+                      ? " · ลากรายการเพื่อจัดลำดับแสดงผลหน้าร้าน"
+                      : " · ล้างตัวกรองเพื่อจัดลำดับ"}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2007,8 +2124,32 @@ function BranchDetailContent() {
               {filteredMenuItems.map((m) => (
                 <li
                   key={m.id}
-                  className="flex flex-wrap items-stretch gap-3 rounded-lg border border-gray-200 px-3 py-2.5"
+                  draggable={canReorderMenu}
+                  onDragStart={() => onMenuDragStart(m.id)}
+                  onDragOver={(e) => onMenuDragOver(e, m.id)}
+                  onDragEnd={onMenuDragEnd}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    void onMenuDrop(m.id);
+                  }}
+                  className={`flex flex-wrap items-stretch gap-3 rounded-lg border px-3 py-2.5 transition ${
+                    menuDraggingId === m.id
+                      ? "border-slate-300 opacity-60 shadow-sm"
+                      : menuDragOverId === m.id
+                        ? "border-amber-300 bg-amber-50/70"
+                        : "border-gray-200"
+                  } ${canReorderMenu ? "cursor-move" : ""}`}
                 >
+                  <div className="flex w-8 shrink-0 flex-col items-center justify-center gap-1 self-center">
+                    {canReorderMenu ? (
+                      <span className="select-none text-slate-400" aria-hidden>
+                        ::
+                      </span>
+                    ) : null}
+                    <span className="text-xs font-bold tabular-nums text-slate-400">
+                      {menuSeqById.get(m.id) ?? "—"}
+                    </span>
+                  </div>
                   {m.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img

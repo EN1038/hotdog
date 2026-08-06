@@ -11,6 +11,15 @@ import {
   orderGrandTotal,
 } from "@/lib/order-totals";
 
+const COUNTABLE_STATUSES: OrderStatus[] = [
+  OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+  OrderStatus.PREPARING,
+  OrderStatus.READY_FOR_PICKUP,
+  OrderStatus.READY_FOR_DELIVERY,
+  OrderStatus.DELIVERING,
+  OrderStatus.COMPLETED,
+];
+
 /** GET — ธีมแบรนด์ + สถานะรอบทำงาน + badge สำหรับ shell */
 export async function GET() {
   try {
@@ -49,37 +58,48 @@ export async function GET() {
       : day.operatingDay;
     const businessDate = queueBusinessDateFromKey(operatingDay);
 
-    const todayOrders = await prisma.order.findMany({
-      where: {
-        branchId: session.branchId,
-        queueBusinessDate: businessDate,
-      },
-      select: {
-        status: true,
-        awaitingPhotoKey: true,
-        deliveryFee: true,
-        discountAmount: true,
-        items: {
-          select: {
-            quantity: true,
-            unitPrice: true,
-            optionsPrice: true,
+    // Bounded scan — avoid loading unbounded/cancelled orders as a full day bloates branding.
+    let todayRevenueBaht = 0;
+    try {
+      const todayOrders = await prisma.order.findMany({
+        where: {
+          branchId: session.branchId,
+          queueBusinessDate: businessDate,
+          status: { in: COUNTABLE_STATUSES },
+        },
+        select: {
+          status: true,
+          awaitingPhotoKey: true,
+          deliveryFee: true,
+          discountAmount: true,
+          items: {
+            select: {
+              quantity: true,
+              unitPrice: true,
+              optionsPrice: true,
+            },
           },
         },
-      },
-    });
+        take: 1500,
+        orderBy: { createdAt: "desc" },
+      });
 
-    let todayRevenueBaht = 0;
-    for (const o of todayOrders) {
-      if (!isOrderCountableRevenue(o)) continue;
-      todayRevenueBaht += orderGrandTotal(
-        o.items.map((i) => ({
-          quantity: i.quantity,
-          unitPrice: Number(i.unitPrice),
-          optionsPrice: Number(i.optionsPrice),
-        })),
-        Number(o.deliveryFee),
-        Number(o.discountAmount),
+      for (const o of todayOrders) {
+        if (!isOrderCountableRevenue(o)) continue;
+        todayRevenueBaht += orderGrandTotal(
+          o.items.map((i) => ({
+            quantity: i.quantity,
+            unitPrice: Number(i.unitPrice),
+            optionsPrice: Number(i.optionsPrice),
+          })),
+          Number(o.deliveryFee),
+          Number(o.discountAmount),
+        );
+      }
+    } catch (e) {
+      console.error(
+        "[staff/branding] today revenue skipped",
+        e instanceof Error ? e.message : e,
       );
     }
 

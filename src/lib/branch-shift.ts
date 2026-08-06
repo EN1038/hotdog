@@ -322,6 +322,10 @@ export async function openShift(params: {
 }): Promise<ActiveShift> {
   const at = params.at ?? new Date();
   const note = params.note?.trim() || null;
+  const openingCash = Number(params.openingCash);
+  if (!Number.isFinite(openingCash) || openingCash < 0) {
+    throw new ShiftGateError("ตังทอนไม่ถูกต้อง — กรอกจำนวนเงินตั้งแต่ 0 ขึ้นไป", 400);
+  }
 
   const branch = await prisma.branch.findUnique({
     where: { id: params.branchId },
@@ -331,47 +335,111 @@ export async function openShift(params: {
     throw new ShiftGateError("ไม่พบสาขา", 404);
   }
 
-  const calendarDate = queueBusinessDateFromKey(bangkokDateKey(at));
-
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.branchShift.findFirst({
-      where: { branchId: params.branchId, closedAt: null },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new ShiftGateError("มีรอบเปิดอยู่แล้ว — ปิดรอบก่อนเปิดใหม่", 409);
+  // Heal cancel leftovers: cancelled but closedAt still null (UI thinks store closed).
+  const danglingOpen = await prisma.branchShift.findMany({
+    where: { branchId: params.branchId, closedAt: null },
+    select: baseShiftSelect,
+  });
+  if (danglingOpen.length > 0) {
+    const withMeta = await attachCancelMeta(danglingOpen);
+    for (const row of withMeta) {
+      if (row.cancelledAt) {
+        await prisma.branchShift.update({
+          where: { id: row.id },
+          data: { closedAt: row.cancelledAt },
+        });
+      }
     }
+  }
 
-    const maxRound = await tx.branchShift.aggregate({
-      where: { branchId: params.branchId, calendarDate },
-      _max: { roundNumber: true },
-    });
-    const roundNumber = (maxRound._max.roundNumber ?? 0) + 1;
-
-    const shift = await tx.branchShift.create({
-      data: {
-        branchId: params.branchId,
-        calendarDate,
-        roundNumber,
-        openedAt: at,
-        openedByStaffId: params.openedByStaffId ?? null,
-        openingCash: params.openingCash,
-        note,
-      },
-      select: baseShiftSelect,
-    });
-
-    await tx.branch.update({
+  // Already open (e.g. double-tap or stale UI) — return current round instead of hard fail.
+  const alreadyOpen = await getActiveShift(params.branchId);
+  if (alreadyOpen) {
+    await prisma.branch.update({
       where: { id: params.branchId },
       data: { isOpen: true },
     });
+    return alreadyOpen;
+  }
 
-    return {
-      ...shift,
-      cancelledAt: null,
-      cancelNote: null,
-    } satisfies ActiveShift;
-  });
+  const calendarDate = queueBusinessDateFromKey(bangkokDateKey(at));
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // Serialize opens per branch (prevents same-round unique conflicts on double-tap)
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtext(${`branch-shift-open:${params.branchId}`}))
+      `;
+
+      const existing = await tx.branchShift.findFirst({
+        where: { branchId: params.branchId, closedAt: null },
+        select: baseShiftSelect,
+      });
+      if (existing) {
+        const [meta] = await attachCancelMeta([existing]);
+        if (meta?.cancelledAt) {
+          await tx.branchShift.update({
+            where: { id: existing.id },
+            data: { closedAt: meta.cancelledAt },
+          });
+        } else {
+          await tx.branch.update({
+            where: { id: params.branchId },
+            data: { isOpen: true },
+          });
+          return {
+            ...existing,
+            cancelledAt: null,
+            cancelNote: null,
+          } satisfies ActiveShift;
+        }
+      }
+
+      const maxRound = await tx.branchShift.aggregate({
+        where: { branchId: params.branchId, calendarDate },
+        _max: { roundNumber: true },
+      });
+      const roundNumber = (maxRound._max.roundNumber ?? 0) + 1;
+
+      const shift = await tx.branchShift.create({
+        data: {
+          branchId: params.branchId,
+          calendarDate,
+          roundNumber,
+          openedAt: at,
+          openedByStaffId: params.openedByStaffId ?? null,
+          openingCash,
+          note,
+        },
+        select: baseShiftSelect,
+      });
+
+      await tx.branch.update({
+        where: { id: params.branchId },
+        data: { isOpen: true },
+      });
+
+      return {
+        ...shift,
+        cancelledAt: null,
+        cancelNote: null,
+      } satisfies ActiveShift;
+    });
+  } catch (e) {
+    if (e instanceof ShiftGateError) throw e;
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
+      const recovered = await getActiveShift(params.branchId);
+      if (recovered) return recovered;
+      throw new ShiftGateError(
+        "เปิดร้านไม่สำเร็จ (ชนกับรอบอื่น) — ลองใหม่อีกครั้ง",
+        409,
+      );
+    }
+    throw e;
+  }
 }
 
 export async function closeActiveShift(params: {

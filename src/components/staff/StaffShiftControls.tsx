@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatPrice } from "@/lib/constants";
 
@@ -164,6 +164,8 @@ export function StaffShiftControls({
   const [openingCashInput, setOpeningCashInput] = useState("0");
   const [noteInput, setNoteInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const openSubmittingRef = useRef(false);
+  const closeSubmittingRef = useRef(false);
   const [closeSummary, setCloseSummary] = useState<CloseSummary | null>(null);
   const [closeSummaryLoading, setCloseSummaryLoading] = useState(false);
   const [closeSummaryError, setCloseSummaryError] = useState("");
@@ -220,12 +222,29 @@ export function StaffShiftControls({
     };
   }, [summaryModalOpen, activeShift?.id]);
 
+  function apiErrorDetail(data: unknown, fallback: string, status?: number) {
+    if (data && typeof data === "object") {
+      const rec = data as Record<string, unknown>;
+      if (typeof rec.error === "string" && rec.error.trim()) return rec.error.trim();
+      if (typeof rec.message === "string" && rec.message.trim()) {
+        return rec.message.trim();
+      }
+    }
+    if (status && status >= 500) {
+      return `เซิร์ฟเวอร์มีปัญหา (${status}) — ลองใหม่ในอีกสักครู่`;
+    }
+    if (status) return `${fallback} (${status})`;
+    return fallback;
+  }
+
   async function submitOpen() {
+    if (openSubmittingRef.current) return;
     const openingCash = Number(openingCashInput.replace(/,/g, ""));
     if (!Number.isFinite(openingCash) || openingCash < 0) {
       onError("ตังทอนไม่ถูกต้อง", "กรุณากรอกจำนวนเงิน ≥ 0");
       return;
     }
+    openSubmittingRef.current = true;
     setSubmitting(true);
     try {
       const note = noteInput.trim();
@@ -239,7 +258,14 @@ export function StaffShiftControls({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        onError("เปิดร้านไม่สำเร็จ", data.error ?? "ลองใหม่");
+        onError(
+          "เปิดร้านไม่สำเร็จ",
+          apiErrorDetail(data, "ลองใหม่", res.status),
+        );
+        // Stale UI: server already has open shift — refresh shell state
+        if (res.status === 409) {
+          window.dispatchEvent(new Event("staff-branding-reload"));
+        }
         return;
       }
       setOpenModal(false);
@@ -247,13 +273,16 @@ export function StaffShiftControls({
       setNoteInput("");
       onOpened();
     } catch {
-      onError("เปิดร้านไม่สำเร็จ", "ลองใหม่อีกครั้ง");
+      onError("เปิดร้านไม่สำเร็จ", "เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่");
     } finally {
+      openSubmittingRef.current = false;
       setSubmitting(false);
     }
   }
 
   async function submitClose() {
+    if (closeSubmittingRef.current) return;
+    closeSubmittingRef.current = true;
     setSubmitting(true);
     try {
       const res = await fetch("/api/staff/shifts/current/close", {
@@ -261,7 +290,10 @@ export function StaffShiftControls({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        onError("ปิดร้านไม่สำเร็จ", data.error ?? "ลองใหม่");
+        onError(
+          "ปิดร้านไม่สำเร็จ",
+          apiErrorDetail(data, "ลองใหม่", res.status),
+        );
         return;
       }
       const summary = (data.summary as CloseSummary | undefined) ?? closeSummary;
@@ -284,8 +316,9 @@ export function StaffShiftControls({
       setCloseSummary(null);
       onClosed(msg || "ปิดรอบแล้ว");
     } catch {
-      onError("ปิดร้านไม่สำเร็จ", "ลองใหม่อีกครั้ง");
+      onError("ปิดร้านไม่สำเร็จ", "เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่");
     } finally {
+      closeSubmittingRef.current = false;
       setSubmitting(false);
     }
   }

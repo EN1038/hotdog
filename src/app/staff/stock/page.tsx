@@ -146,6 +146,7 @@ function StaffStockContent() {
   const openAsDailySummary = searchParams.get("action") === "summary";
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<Payload | null>(null);
 
@@ -189,20 +190,52 @@ function StaffStockContent() {
   );
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/staff/stock");
-    if (res.status === 401) {
-      router.replace("/staff/login");
-      return;
-    }
-    if (res.status === 403 || res.status === 404) {
-      setData({ stockActive: false, locationId: null, balances: [], products: [], lowItems: [], pending: [] });
-      setLoading(false);
-      return;
-    }
-    if (res.ok) {
+    setLoadError(null);
+    setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
+    try {
+      const res = await fetch("/api/staff/stock", {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (res.status === 401) {
+        router.replace("/staff/login");
+        return;
+      }
+      if (res.status === 403 || res.status === 404) {
+        setData({
+          stockActive: false,
+          locationId: null,
+          balances: [],
+          products: [],
+          lowItems: [],
+          pending: [],
+        });
+        return;
+      }
+      if (!res.ok) {
+        setLoadError(
+          res.status >= 500
+            ? "เซิร์ฟเวอร์สต๊อกตอบช้า — ลองใหม่อีกครั้ง"
+            : "โหลดสต๊อกไม่สำเร็จ",
+        );
+        return;
+      }
       setData((await res.json()) as Payload);
+    } catch (e) {
+      const aborted =
+        (e instanceof DOMException && e.name === "AbortError") ||
+        (e instanceof Error && e.name === "AbortError");
+      setLoadError(
+        aborted
+          ? "โหลดสต๊อกนานเกินไป — ลองใหม่"
+          : "เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่",
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+      setLoading(false);
     }
-    setLoading(false);
   }, [router]);
 
   useEffect(() => { void load(); }, [load]);
@@ -965,8 +998,49 @@ function StaffStockContent() {
     }
   }
 
-  if (loading || !data) {
-    return <main className="flex min-h-screen items-center justify-center px-4"><LoadingState className="w-full max-w-sm" /></main>;
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <LoadingState className="w-full max-w-sm" recoveryAfterMs={8000} />
+      </main>
+    );
+  }
+
+  if (loadError && !data) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="w-full max-w-sm rounded-2xl border border-slate-100 bg-white px-6 py-10 text-center shadow-sm">
+          <p className="text-[15px] font-semibold text-slate-800">
+            โหลดหน้าสต๊อกไม่สำเร็จ
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-6 w-full rounded-xl bg-site-primary px-4 py-3 text-sm font-semibold text-white"
+          >
+            ลองใหม่
+          </button>
+          <button
+            type="button"
+            onClick={() => router.replace("/staff")}
+            className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600"
+          >
+            กลับหน้าหลัก
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (!data) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <LoadingState className="w-full max-w-sm" />
+      </main>
+    );
   }
 
   return (

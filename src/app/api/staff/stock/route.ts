@@ -99,18 +99,35 @@ const postSchema = z.discriminatedUnion("action", [
 export async function GET() {
   try {
     const session = await requireStaff();
+    // Always select scalars — do not load full Branch (isTest etc. may lag migrate on prod).
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
+      select: {
+        id: true,
+        brandId: true,
+        stockEnabled: true,
+      },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
     const menuItems = await prisma.branchMenuItem.findMany({
       where: { branchId: branch.id, isHidden: false },
-      include: {
-        category: true,
-        stock: true,
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        sortOrder: true,
+        imageUrl: true,
+        category: {
+          select: {
+            name: true,
+            sortOrder: true,
+            stockExempt: true,
+          },
+        },
+        stock: { select: { quantity: true } },
         optionGroupLinks: {
-          include: { group: { select: { mode: true } } },
+          select: { group: { select: { mode: true } } },
         },
       },
       orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
@@ -118,11 +135,20 @@ export async function GET() {
 
     const nonMenuItems = await prisma.branchNonMenuItem.findMany({
       where: { branchId: branch.id },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        stockType: true,
+        quantity: true,
+        price: true,
+        imageUrl: true,
+      },
       orderBy: { name: "asc" },
     });
 
-    const products: any[] = [];
-    const balances: any[] = [];
+    const products: Array<Record<string, unknown>> = [];
+    const balances: Array<Record<string, unknown>> = [];
 
     const priceByProductId = new Map<string, number>();
 
@@ -214,10 +240,13 @@ export async function GET() {
       EQUIPMENT: emptyTypeSummary(),
     };
     for (const bal of balances) {
-      const stockType = bal.product.stockType as keyof typeof currentByType;
-      if (!(stockType in currentByType)) continue;
+      const stockType = (bal.product as { stockType?: string }).stockType as
+        | keyof typeof currentByType
+        | undefined;
+      if (!stockType || !(stockType in currentByType)) continue;
       const qty = Math.max(0, Number(bal.quantity) || 0);
-      const unitPrice = Number(bal.product.price) || 0;
+      const unitPrice =
+        Number((bal.product as { price?: number }).price) || 0;
       currentByType[stockType].quantity += qty;
       currentByType[stockType].valueBaht += qty * unitPrice;
     }
@@ -229,92 +258,131 @@ export async function GET() {
       EQUIPMENT: emptyTypeSummary(),
     };
 
-    const [menuWaste, nonMenuWaste] = await Promise.all([
-      prisma.branchMenuItemStockHistory.findMany({
-        where: {
-          branchId: branch.id,
-          type: { in: [...WASTE_HISTORY_TYPES] },
-          createdAt: { gte: month.start, lt: month.end },
-        },
-        select: { menuItemId: true, quantity: true },
-      }),
-      prisma.branchNonMenuItemHistory.findMany({
-        where: {
-          item: { branchId: branch.id },
-          type: { in: [...WASTE_HISTORY_TYPES] },
-          createdAt: { gte: month.start, lt: month.end },
-        },
-        select: {
-          quantity: true,
-          item: { select: { id: true, stockType: true, price: true } },
-        },
-      }),
-    ]);
+    // History may miss cancel columns if migrate lag — use select without them.
+    try {
+      const [menuWaste, nonMenuWaste] = await Promise.all([
+        prisma.branchMenuItemStockHistory.findMany({
+          where: {
+            branchId: branch.id,
+            type: { in: [...WASTE_HISTORY_TYPES] },
+            createdAt: { gte: month.start, lt: month.end },
+          },
+          select: { menuItemId: true, quantity: true },
+        }),
+        prisma.branchNonMenuItemHistory.findMany({
+          where: {
+            item: { branchId: branch.id },
+            type: { in: [...WASTE_HISTORY_TYPES] },
+            createdAt: { gte: month.start, lt: month.end },
+          },
+          select: {
+            quantity: true,
+            item: { select: { id: true, stockType: true, price: true } },
+          },
+        }),
+      ]);
 
-    for (const row of menuWaste) {
-      const qty = Math.abs(row.quantity);
-      if (qty <= 0) continue;
-      const unitPrice = priceByProductId.get(row.menuItemId) ?? 0;
-      wasteByType.SALE_ITEM.quantity += qty;
-      wasteByType.SALE_ITEM.valueBaht += qty * unitPrice;
+      for (const row of menuWaste) {
+        const qty = Math.abs(row.quantity);
+        if (qty <= 0) continue;
+        const unitPrice = priceByProductId.get(row.menuItemId) ?? 0;
+        wasteByType.SALE_ITEM.quantity += qty;
+        wasteByType.SALE_ITEM.valueBaht += qty * unitPrice;
+      }
+      for (const row of nonMenuWaste) {
+        const qty = Math.abs(row.quantity);
+        if (qty <= 0) continue;
+        const stockType = row.item.stockType as keyof typeof wasteByType;
+        if (!(stockType in wasteByType)) continue;
+        const unitPrice =
+          priceByProductId.get(row.item.id) ?? Number(row.item.price ?? 0);
+        wasteByType[stockType].quantity += qty;
+        wasteByType[stockType].valueBaht += qty * unitPrice;
+      }
+    } catch (e) {
+      console.error(
+        "[staff/stock] waste summary skipped",
+        e instanceof Error ? e.message : e,
+      );
     }
-    for (const row of nonMenuWaste) {
-      const qty = Math.abs(row.quantity);
-      if (qty <= 0) continue;
-      const stockType = row.item.stockType as keyof typeof wasteByType;
-      if (!(stockType in wasteByType)) continue;
-      const unitPrice =
-        priceByProductId.get(row.item.id) ?? Number(row.item.price ?? 0);
-      wasteByType[stockType].quantity += qty;
-      wasteByType[stockType].valueBaht += qty * unitPrice;
+
+    let mappedMovements: Array<Record<string, unknown>> = [];
+    try {
+      // Select scalars only — avoid Prisma selecting cancel columns if DB lags.
+      const [recentMenuMovements, recentNonMenuMovements] = await Promise.all([
+        prisma.branchMenuItemStockHistory.findMany({
+          where: { branchId: branch.id },
+          select: {
+            id: true,
+            type: true,
+            quantity: true,
+            createdAt: true,
+            note: true,
+            menuItemId: true,
+            menuItem: { select: { name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 25,
+        }),
+        prisma.branchNonMenuItemHistory.findMany({
+          where: { item: { branchId: branch.id } },
+          select: {
+            id: true,
+            type: true,
+            quantity: true,
+            createdAt: true,
+            note: true,
+            branchNonMenuItemId: true,
+            item: {
+              select: { name: true, unit: true, stockType: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 25,
+        }),
+      ]);
+
+      mappedMovements = [
+        ...recentMenuMovements.map((m) => ({
+          id: m.id,
+          type: m.type,
+          quantity: m.quantity,
+          createdAt: m.createdAt.toISOString(),
+          note: m.note,
+          product: {
+            id: m.menuItemId,
+            name: m.menuItem.name,
+            unit: "รายการ",
+            stockType: "SALE_ITEM",
+          },
+        })),
+        ...recentNonMenuMovements.map((m) => ({
+          id: m.id,
+          type: m.type,
+          quantity: m.quantity,
+          createdAt: m.createdAt.toISOString(),
+          note: m.note,
+          product: {
+            id: m.branchNonMenuItemId,
+            name: m.item.name,
+            unit: m.item.unit,
+            stockType: m.item.stockType,
+          },
+        })),
+      ];
+
+      mappedMovements.sort(
+        (a, b) =>
+          new Date(String(b.createdAt)).getTime() -
+          new Date(String(a.createdAt)).getTime(),
+      );
+      mappedMovements = mappedMovements.slice(0, 50);
+    } catch (e) {
+      console.error(
+        "[staff/stock] recent movements skipped",
+        e instanceof Error ? e.message : e,
+      );
     }
-
-    // Recent movements
-    const recentMenuMovements = await prisma.branchMenuItemStockHistory.findMany({
-      where: { branchId: branch.id },
-      include: { menuItem: true },
-      orderBy: { createdAt: "desc" },
-      take: 25,
-    });
-    
-    const recentNonMenuMovements = await prisma.branchNonMenuItemHistory.findMany({
-      where: { item: { branchId: branch.id } },
-      include: { item: true },
-      orderBy: { createdAt: "desc" },
-      take: 25,
-    });
-
-    let mappedMovements = [
-      ...recentMenuMovements.map((m) => ({
-        id: m.id,
-        type: m.type,
-        quantity: m.quantity,
-        createdAt: m.createdAt.toISOString(),
-        note: m.note,
-        product: {
-          id: m.menuItemId,
-          name: m.menuItem.name,
-          unit: "รายการ",
-          stockType: "SALE_ITEM",
-        },
-      })),
-      ...recentNonMenuMovements.map((m) => ({
-        id: m.id,
-        type: m.type,
-        quantity: m.quantity,
-        createdAt: m.createdAt.toISOString(),
-        note: m.note,
-        product: {
-          id: m.branchNonMenuItemId,
-          name: m.item.name,
-          unit: m.item.unit,
-          stockType: m.item.stockType,
-        },
-      }))
-    ];
-
-    mappedMovements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    mappedMovements = mappedMovements.slice(0, 50);
 
     return jsonOk({
       stockActive: true,
@@ -324,7 +392,7 @@ export async function GET() {
       pending: [],
       balances,
       products,
-      lowItems: balances.filter((b) => b.quantity <= 0),
+      lowItems: balances.filter((b) => Number(b.quantity) <= 0),
       counts: [],
       recentMovements: mappedMovements,
       summary: {
@@ -334,6 +402,10 @@ export async function GET() {
       },
     });
   } catch (error) {
+    console.error(
+      "[staff/stock GET]",
+      error instanceof Error ? error.message : error,
+    );
     return handleApiError(error);
   }
 }
@@ -346,6 +418,12 @@ export async function POST(request: Request) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
+      select: {
+        id: true,
+        brandId: true,
+        stockEnabled: true,
+        name: true,
+      },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 

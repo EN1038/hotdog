@@ -358,6 +358,7 @@ export async function openShift(params: {
     await prisma.branch.update({
       where: { id: params.branchId },
       data: { isOpen: true },
+      select: { id: true },
     });
     return alreadyOpen;
   }
@@ -386,6 +387,7 @@ export async function openShift(params: {
           await tx.branch.update({
             where: { id: params.branchId },
             data: { isOpen: true },
+            select: { id: true },
           });
           return {
             ...existing,
@@ -417,6 +419,7 @@ export async function openShift(params: {
       await tx.branch.update({
         where: { id: params.branchId },
         data: { isOpen: true },
+        select: { id: true },
       });
 
       return {
@@ -467,9 +470,11 @@ export async function closeActiveShift(params: {
       select: baseShiftSelect,
     });
 
+    // select only id — avoid RETURNING every Branch column (isTest etc.)
     await tx.branch.update({
       where: { id: params.branchId },
       data: { isOpen: false },
+      select: { id: true },
     });
 
     return {
@@ -479,20 +484,76 @@ export async function closeActiveShift(params: {
     } satisfies ActiveShift;
   });
 
-  const summary = await buildShiftSummary(closed.id);
+  // Summary/LINE must never fail the close (DB already committed).
+  // Awaiting external LINE or heavy stock summary used to 504 the gateway
+  // while the shop was already closed — staff saw "ปิดไม่สำเร็จ" and stuck UI.
+  let summary: ShiftSummary;
   try {
-    const { sendShiftCloseLineSummary } = await import(
-      "@/lib/line-shift-summary"
-    );
-    await sendShiftCloseLineSummary(summary);
+    summary = await buildShiftSummary(closed.id);
   } catch (e) {
     console.error(
-      "[branch-shift] LINE shift summary failed",
+      "[branch-shift] buildShiftSummary after close failed",
       closed.id,
       e instanceof Error ? e.message : e,
     );
+    summary = fallbackShiftSummary(closed);
   }
+
+  void import("@/lib/line-shift-summary")
+    .then(({ sendShiftCloseLineSummary }) =>
+      sendShiftCloseLineSummary(summary),
+    )
+    .catch((e) => {
+      console.error(
+        "[branch-shift] LINE shift summary failed",
+        closed.id,
+        e instanceof Error ? e.message : e,
+      );
+    });
+
   return { shift: closed, summary };
+}
+
+/** Minimal summary when full build fails after a successful close. */
+function fallbackShiftSummary(shift: ActiveShift): ShiftSummary {
+  const calendarDate = shiftCalendarDateKey(shift);
+  const openingCash = Number(shift.openingCash);
+  return {
+    shift: {
+      id: shift.id,
+      calendarDate,
+      roundNumber: shift.roundNumber,
+      openedAt: shift.openedAt.toISOString(),
+      closedAt: shift.closedAt?.toISOString() ?? null,
+      openingCash,
+      note: shift.note?.trim() || null,
+      code: formatShiftCode({
+        calendarDate,
+        roundNumber: shift.roundNumber,
+      }),
+      cancelledAt: null,
+      cancelNote: null,
+      isCancelled: false,
+    },
+    totalOrders: 0,
+    cancelledOrders: 0,
+    orderCount: 0,
+    completedOrders: 0,
+    revenueBaht: 0,
+    cashRevenueBaht: 0,
+    transferRevenueBaht: 0,
+    cardRevenueBaht: 0,
+    expectedCash: openingCash,
+    totalWithOpeningCash: openingCash,
+    giftQuantity: 0,
+    cancelledRevenueBaht: 0,
+    cancelledItemQuantity: 0,
+    stockRestoredQuantity: 0,
+    stockRestored: [],
+    menus: [],
+    channels: [],
+    stockDeductions: [],
+  };
 }
 
 /**
@@ -519,6 +580,7 @@ export async function syncShiftWithAdminIsOpen(params: {
     await prisma.branch.update({
       where: { id: params.branchId },
       data: { isOpen: false },
+      select: { id: true },
     });
     return null;
   }
@@ -889,6 +951,7 @@ export async function cancelShift(params: {
         await tx.branch.update({
           where: { id: params.branchId },
           data: { isOpen: false },
+          select: { id: true },
         });
       }
 

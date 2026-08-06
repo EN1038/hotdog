@@ -290,6 +290,29 @@ export function StaffShiftControls({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // Server may have closed the shift but timed out on LINE/summary (504),
+        // or second press after successful close returns 409 "ไม่มีรอบ".
+        const noOpenMsg =
+          typeof (data as { error?: string }).error === "string" &&
+          (data as { error: string }).error.includes("ไม่มีรอบ");
+        if (res.status === 409 && noOpenMsg) {
+          setCloseModal(false);
+          setCloseSummary(null);
+          onClosed("ปิดรอบแล้ว");
+          return;
+        }
+        try {
+          const check = await fetch("/api/staff/shifts/current");
+          const cur = await check.json().catch(() => ({}));
+          if (check.ok && !cur.activeShift) {
+            setCloseModal(false);
+            setCloseSummary(null);
+            onClosed("ปิดรอบแล้ว");
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
         onError(
           "ปิดร้านไม่สำเร็จ",
           apiErrorDetail(data, "ลองใหม่", res.status),
@@ -316,6 +339,19 @@ export function StaffShiftControls({
       setCloseSummary(null);
       onClosed(msg || "ปิดรอบแล้ว");
     } catch {
+      // Network blip after close — still verify
+      try {
+        const check = await fetch("/api/staff/shifts/current");
+        const cur = await check.json().catch(() => ({}));
+        if (check.ok && !cur.activeShift) {
+          setCloseModal(false);
+          setCloseSummary(null);
+          onClosed("ปิดรอบแล้ว");
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
       onError("ปิดร้านไม่สำเร็จ", "เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่");
     } finally {
       closeSubmittingRef.current = false;

@@ -20,6 +20,7 @@ import { useToast } from "@/components/admin/Toast";
 import { type ActiveShiftInfo, StaffShiftControls } from "@/components/staff/StaffShiftControls";
 import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
+import { StaffExpensesSheet } from "@/components/staff/StaffExpensesSheet";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
@@ -85,6 +86,15 @@ export default function StaffHomePage() {
   const [promoDescription, setPromoDescription] = useState("เลือกเมนูเซ็ตโปร");
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [dailySalesOpen, setDailySalesOpen] = useState(false);
+  const [expensesOpen, setExpensesOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("expenses") === "1") {
+      setExpensesOpen(true);
+      router.replace("/staff", { scroll: false });
+    }
+  }, [router]);
 
   const reloadMeta = async () => {
     const res = await fetch("/api/staff/branding");
@@ -249,18 +259,17 @@ export default function StaffHomePage() {
             requiresShift: false,
             kind: "stock" as const,
           },
-          // ซ่อนชั่วคราว: ขอของจากครัว
-          // {
-          //   href: "/staff/stock/request",
-          //   label: "ขอของจากครัว",
-          //   description: "แจ้งยอดที่ต้องการให้บ้านกลาง",
-          //   color: "#0d9488",
-          //   icon: <IconPackage size={24} />,
-          //   requiresShift: false,
-          //   kind: "stock-request" as const,
-          // },
         ]
       : []),
+    {
+      onClick: () => setExpensesOpen(true),
+      label: "ค่าใช้จ่าย",
+      description: "บันทึก · ดูประวัติ · ดูยอด",
+      color: "#e11d48",
+      icon: <IconMoney size={24} />,
+      requiresShift: false,
+      kind: "expenses" as const,
+    },
   ];
 
   function cardEmoji(kind: string) {
@@ -268,6 +277,7 @@ export default function StaffHomePage() {
     if (kind === "key") return "🛒";
     if (kind === "promo") return "🌟";
     if (kind === "summary") return "📊";
+    if (kind === "expenses") return "🧾";
     if (kind === "daily-sales") return "💰";
     if (kind === "stock") return "📦";
     return "🔹";
@@ -397,6 +407,12 @@ export default function StaffHomePage() {
           initialDate={bangkokDateKey()}
           brandName={meta?.brand?.name ?? ""}
           branchName={meta?.branchName ?? ""}
+        />
+
+        <StaffExpensesSheet
+          open={expensesOpen}
+          onClose={() => setExpensesOpen(false)}
+          initialDate={bangkokDateKey()}
         />
       </div>
     </StaffAppShell>

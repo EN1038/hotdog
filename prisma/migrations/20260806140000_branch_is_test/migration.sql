@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Branch" ADD COLUMN IF NOT EXISTS "isTest" BOOLEAN NOT NULL DEFAULT false;

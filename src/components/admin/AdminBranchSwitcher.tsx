@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { isTestBranch } from "@/lib/branch-test";
 
 type BranchOption = {
   id: string;
   name: string;
   code: string | null;
   brandId: string | null;
+  isTest?: boolean;
   brand: { id: string; name: string; code: string } | null;
 };
 
@@ -186,7 +188,14 @@ export function AdminBranchSwitcher({
                           : "text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      <span className="truncate">{b.name}</span>
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span className="truncate">{b.name}</span>
+                        {isTestBranch(b) ? (
+                          <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-800">
+                            ทดลอง
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="truncate text-[11px] font-normal text-slate-400">
                         {[b.brand?.name, b.code ? `/${b.code}` : null]
                           .filter(Boolean)

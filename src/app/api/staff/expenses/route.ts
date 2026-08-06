@@ -13,26 +13,42 @@ import {
   summarizeExpenses,
 } from "@/lib/branch-expense";
 
-/** GET — list branch expenses for a Bangkok date (default today). */
+/** GET — list branch expenses for a date range (default today → today). */
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get("date");
-    const dateKey =
-      dateParam && isBangkokDateKey(dateParam)
-        ? dateParam
-        : bangkokDateKey();
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
     const channel = searchParams.get("payChannel");
     const q = searchParams.get("q")?.trim().toLowerCase() ?? "";
+    const today = bangkokDateKey();
 
-    const dayStart = expenseDateFromKey(dateKey);
-    const dayEnd = new Date(`${dateKey}T23:59:59.999+07:00`);
+    let fromKey = today;
+    let toKey = today;
+    if (
+      fromParam &&
+      isBangkokDateKey(fromParam) &&
+      toParam &&
+      isBangkokDateKey(toParam)
+    ) {
+      fromKey = fromParam <= toParam ? fromParam : toParam;
+      toKey = fromParam <= toParam ? toParam : fromParam;
+    } else if (dateParam && isBangkokDateKey(dateParam)) {
+      fromKey = dateParam;
+      toKey = dateParam;
+    }
+
+    const dateFilter = {
+      gte: expenseDateFromKey(fromKey),
+      lte: new Date(`${toKey}T23:59:59.999+07:00`),
+    };
 
     const rows = await prisma.branchExpense.findMany({
       where: {
         branchId: session.branchId,
-        expenseDate: { gte: dayStart, lte: dayEnd },
+        expenseDate: dateFilter,
         ...(channel === "CASH" || channel === "TRANSFER"
           ? { payChannel: channel }
           : {}),
@@ -45,7 +61,7 @@ export async function GET(request: Request) {
             }
           : {}),
       },
-      orderBy: [{ createdAt: "desc" }],
+      orderBy: [{ expenseDate: "desc" }, { createdAt: "desc" }],
       include: {
         createdByStaff: { select: { name: true } },
         createdByAdmin: { select: { username: true } },
@@ -54,7 +70,9 @@ export async function GET(request: Request) {
 
     const expenses = rows.map(serializeExpense);
     return jsonOk({
-      date: dateKey,
+      from: fromKey,
+      to: toKey,
+      date: fromKey === toKey ? fromKey : undefined,
       expenses,
       summary: summarizeExpenses(expenses),
     });

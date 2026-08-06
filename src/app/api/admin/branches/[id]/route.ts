@@ -50,6 +50,7 @@ const updateSchema = z.object({
   extraMessage: z.string().nullable().optional(),
   isOpen: z.boolean().optional(),
   isHidden: z.boolean().optional(),
+  isTest: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
@@ -273,6 +274,7 @@ export async function PATCH(request: Request, { params }: Params) {
         }),
         ...(body.isOpen !== undefined && { isOpen: body.isOpen }),
         ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
+        ...(body.isTest !== undefined && { isTest: body.isTest }),
         ...(body.allowAdvanceOrder !== undefined && {
           allowAdvanceOrder: body.allowAdvanceOrder,
         }),

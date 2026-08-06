@@ -97,6 +97,9 @@ export function summarizeBranchPatch(
   if (typeof body.isHidden === "boolean") {
     parts.push(body.isHidden ? "ซ่อนสาขา" : "แสดงสาขา");
   }
+  if (typeof body.isTest === "boolean") {
+    parts.push(body.isTest ? "ตั้งเป็นสาขาทดลอง" : "ยกเลิกสาขาทดลอง");
+  }
   if (typeof body.allowAdvanceOrder === "boolean") {
     parts.push(
       body.allowAdvanceOrder ? "เปิดรับสั่งล่วงหน้า" : "ปิดรับสั่งล่วงหน้า",

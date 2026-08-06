@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { toPng } from "html-to-image";
 import { DateInput } from "@/components/DateInput";
 import {
@@ -15,10 +14,7 @@ import {
   bangkokMonthRangeToToday,
   formatPrice,
 } from "@/lib/constants";
-import {
-  brandHqHref,
-  type BrandHqSection,
-} from "@/lib/brand-hq-nav";
+import type { BrandHqSection } from "@/lib/brand-hq-nav";
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const res = await fetch(dataUrl);
@@ -130,14 +126,6 @@ async function copyTextToClipboard(text: string) {
   document.body.removeChild(ta);
 }
 
-const SECTION_TABS: { id: BrandHqSection; label: string }[] = [
-  { id: "home", label: "ภาพรวม" },
-  { id: "sales", label: "ขาย" },
-  { id: "stock_now", label: "สต๊อกปัจจุบัน" },
-  { id: "restock", label: "เติม" },
-  { id: "issue", label: "จ่าย" },
-];
-
 const SECTION_COPY: Record<
   BrandHqSection,
   { title: string; description: string }
@@ -176,7 +164,6 @@ export function BrandOverviewPanel({
   brandId?: string;
   section?: BrandHqSection;
 }) {
-  const pathname = usePathname();
   const initial = bangkokMonthRangeToToday();
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
@@ -210,14 +197,6 @@ export function BrandOverviewPanel({
   const showDateFilter = !isStockNow;
   const showExpand = isHome || isStockNow || isRestock || isIssue || isSales;
   const copy = SECTION_COPY[section];
-  const tabBasePath =
-    pathname && /^\/admin\/brands\/[^/]+$/.test(pathname)
-      ? pathname
-      : pathname === "/admin"
-        ? "/admin"
-        : brandId
-          ? `/admin/brands/${brandId}`
-          : "/admin";
 
   const showBrandCol = (() => {
     if (brandId) return false;
@@ -568,10 +547,10 @@ export function BrandOverviewPanel({
   }
 
   function expandLabel(open: boolean) {
-    if (isRestock) return open ? "ซ่อน" : "ดูรายการเติม";
-    if (isIssue) return open ? "ซ่อน" : "ดูรายการจ่าย";
-    if (isSales) return open ? "ซ่อน" : "ดูรายการขาย";
-    return open ? "ซ่อน" : "ดูสต๊อกเมนู";
+    if (isRestock) return open ? "ปิดรายการเติม" : "ดูรายการเติม";
+    if (isIssue) return open ? "ปิดรายการจ่าย" : "ดูรายการจ่าย";
+    if (isSales) return open ? "ปิดรายการขาย" : "ดูรายการขาย";
+    return open ? "ปิดสต๊อกเมนู" : "ดูสต๊อกเมนู";
   }
 
   function itemQty(item: StockItem) {
@@ -750,31 +729,6 @@ export function BrandOverviewPanel({
         ) : (
           <p className="text-xs text-slate-500">ยอดคงเหลือ ณ ตอนนี้</p>
         )}
-      </div>
-
-      <div
-        className="flex flex-wrap gap-1.5 border-b border-slate-100 pb-3"
-        role="tablist"
-        aria-label="เมนูสรุปแบรนด์"
-      >
-        {SECTION_TABS.map((tab) => {
-          const active = section === tab.id;
-          return (
-            <Link
-              key={tab.id}
-              href={brandHqHref(tabBasePath, tab.id)}
-              role="tab"
-              aria-selected={active}
-              className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                active
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
-              }`}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
       </div>
 
       {error ? (

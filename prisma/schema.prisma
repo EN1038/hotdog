@@ -365,6 +365,8 @@ model Branch {
   isOpen                       Boolean                      @default(true)
   /// Hidden from customer storefront; still visible in admin
   isHidden                     Boolean                      @default(false)
+  /// Sandbox / QA branch for the brand — show “ทดลอง” badge; not production ops
+  isTest                       Boolean                      @default(false)
   /**
    * @deprecated Prefer storefrontHours / deliveryHours
    */

@@ -33,6 +33,7 @@ import {
 import { BRANCH_IMAGE_SIZE_HINT } from "@/lib/image-guides";
 import { BrandOverviewPanel } from "@/components/admin/BrandOverviewPanel";
 import { parseBrandHqSection } from "@/lib/brand-hq-nav";
+import { isTestBranch } from "@/lib/branch-test";
 
 export type DashboardBrand = {
   id: string;
@@ -48,6 +49,7 @@ type Branch = {
   imageUrl: string | null;
   isOpen?: boolean;
   isHidden?: boolean;
+  isTest?: boolean;
   brand: DashboardBrand | null;
   _count?: {
     staff: number;
@@ -342,10 +344,18 @@ function BranchListDashboardInner({
                 <Link
                   key={branch.id}
                   href={`/admin/branches/${branch.id}`}
-                  className="group overflow-hidden rounded-2xl border border-slate-200 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  className={`group overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                    isTestBranch(branch)
+                      ? "border-violet-300 ring-1 ring-violet-200/80"
+                      : "border-slate-200"
+                  }`}
                   style={{
-                    borderColor: rgba(brandColor, 0.35),
-                    background: `linear-gradient(to bottom right, ${rgba(brandColor, 0.12)}, #ffffff)`,
+                    borderColor: isTestBranch(branch)
+                      ? undefined
+                      : rgba(brandColor, 0.35),
+                    background: isTestBranch(branch)
+                      ? "linear-gradient(to bottom right, rgba(124,58,237,0.08), #ffffff)"
+                      : `linear-gradient(to bottom right, ${rgba(brandColor, 0.12)}, #ffffff)`,
                   }}
                 >
                   <div className="relative aspect-[16/10] bg-white/60">
@@ -371,6 +381,14 @@ function BranchListDashboardInner({
                       </div>
                     )}
                     <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+                      {isTestBranch(branch) ? (
+                        <span
+                          title="สาขาทดลอง / ทดสอบระบบ — ไม่ใช่สาขาเปิดขายจริง"
+                          className="rounded-full bg-violet-600/95 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white shadow-sm"
+                        >
+                          ⚗ ทดลอง
+                        </span>
+                      ) : null}
                       {branch.isHidden ? (
                         <span className="rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
                           ซ่อน
@@ -386,6 +404,11 @@ function BranchListDashboardInner({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
                         {branch.name}
+                        {isTestBranch(branch) ? (
+                          <span className="ml-1.5 align-middle text-[10px] font-bold text-violet-600">
+                            ทดลอง
+                          </span>
+                        ) : null}
                       </p>
                       <p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">
                         {branch.brand?.name ?? selectedBrand?.name ?? "ไม่มีแบรนด์"}

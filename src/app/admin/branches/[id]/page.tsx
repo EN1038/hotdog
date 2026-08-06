@@ -131,6 +131,7 @@ type BranchDetail = {
   extraMessage: string | null;
   isOpen: boolean;
   isHidden: boolean;
+  isTest?: boolean;
   opensAt: string | null;
   closesAt: string | null;
   storefrontHours: unknown;
@@ -493,6 +494,7 @@ function BranchDetailContent() {
     extraMessage: "",
     isOpen: true,
     isHidden: false,
+    isTest: false,
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
     stockEnabled: false,
@@ -647,6 +649,7 @@ function BranchDetailContent() {
       extraMessage: data.extraMessage ?? "",
       isOpen: data.isOpen,
       isHidden: data.isHidden ?? false,
+      isTest: data.isTest ?? false,
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
       stockEnabled: data.stockEnabled ?? false,
@@ -1474,6 +1477,14 @@ function BranchDetailContent() {
             {branch.isHidden && (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                 ซ่อนจากลูกค้า
+              </span>
+            )}
+            {(branch.isTest || /ทดสอบ|test\b/i.test(branch.name)) && (
+              <span
+                title="สาขาทดลอง — ใช้ทดสอบระบบขาย ไม่ใช่สาขาเปิดจริง"
+                className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-800"
+              >
+                ⚗ ทดลอง
               </span>
             )}
           </div>
@@ -3736,6 +3747,55 @@ function BranchDetailContent() {
                 </button>
               </div>
             </form>
+
+            <div className="mt-8 space-y-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-4 sm:p-5">
+              <div>
+                <p className="text-sm font-semibold text-violet-950">
+                  สาขาทดลอง
+                </p>
+                <p className="mt-0.5 text-xs text-violet-900/70">
+                  ติดป้าย “ทดลอง” ในรายการสาขา — ใช้แยกจากสาขาเปิดขายจริงตอนทำระบบขาย
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {settings.isTest
+                      ? "ติดป้ายสาขาทดลองอยู่"
+                      : "ทำเครื่องหมายเป็นสาขาทดลอง"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {settings.isTest
+                      ? "แอดมินจะเห็นป้ายม่วง “⚗ ทดลอง” บนการ์ดและหัวหน้าสาขา"
+                      : "แนะนำตั้ง 1 สาขาต่อแบรนด์ สำหรับเทรนพนักงาน / ทดลอง stock และออเดอร์"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={`${
+                    settings.isTest ? btnOutline : btnPrimary
+                  } shrink-0`}
+                  onClick={() =>
+                    patchBranchSetting(
+                      { isTest: !settings.isTest },
+                      {
+                        successMessage: settings.isTest
+                          ? "ยกเลิกป้ายทดลองแล้ว"
+                          : "ตั้งเป็นสาขาทดลองแล้ว",
+                        errorTitle: "บันทึกไม่สำเร็จ",
+                        onSuccessLocal: () =>
+                          setSettings((s) => ({
+                            ...s,
+                            isTest: !s.isTest,
+                          })),
+                      },
+                    )
+                  }
+                >
+                  {settings.isTest ? "ยกเลิกป้ายทดลอง" : "ตั้งเป็นสาขาทดลอง"}
+                </button>
+              </div>
+            </div>
 
             <div className="mt-8 space-y-3 rounded-2xl border border-red-200 bg-red-50/40 p-4 sm:p-5">
               <div>

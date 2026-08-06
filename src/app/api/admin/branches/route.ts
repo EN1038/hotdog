@@ -17,6 +17,7 @@ import {
 import { PRICE_RANGE_IDS } from "@/lib/localized";
 import { assertValidRestaurantCategories } from "@/lib/restaurant-type-access";
 import { logAdminActivity } from "@/lib/admin-activity";
+import { nameLooksLikeTestBranch } from "@/lib/branch-test";
 
 const branchSchema = z.object({
   name: z.string().min(1),
@@ -35,6 +36,7 @@ const branchSchema = z.object({
   ownerMessage: z.string().nullable().optional(),
   extraMessage: z.string().nullable().optional(),
   isOpen: z.boolean().optional(),
+  isTest: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
@@ -139,6 +141,8 @@ export async function POST(request: Request) {
         ownerMessage: body.ownerMessage?.trim() || null,
         extraMessage: body.extraMessage?.trim() || null,
         isOpen: body.isOpen ?? true,
+        isTest:
+          body.isTest ?? nameLooksLikeTestBranch(body.name),
         allowAdvanceOrder: body.allowAdvanceOrder ?? true,
         autoAcceptOrders: body.autoAcceptOrders ?? false,
         storefrontHours: storefrontHours as unknown as Prisma.InputJsonValue,

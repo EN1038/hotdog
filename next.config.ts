@@ -1,15 +1,12 @@
 import type { NextConfig } from "next";
 import path from "path";
-import { fileURLToPath } from "url";
 
-// Absolute project dir even when a parent lockfile exists under $HOME
-const projectRoot =
-  typeof __dirname !== "undefined"
-    ? __dirname
-    : path.dirname(fileURLToPath(import.meta.url));
+// Always the app root at runtime (works on DigitalOcean / CI / local).
+// Avoid __dirname / import.meta — next may load this config from a temp path.
+const projectRoot = path.resolve(process.cwd());
 
 const nextConfig: NextConfig = {
-  // Pin tooling to this app (not sibling lockfiles under home)
+  // Pin tooling to this app when a parent folder also has a lockfile
   outputFileTracingRoot: projectRoot,
   turbopack: {
     root: projectRoot,

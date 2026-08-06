@@ -27,7 +27,21 @@ export function StaffLoginScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: { error?: string; brand?: Parameters<typeof syncStaffBrandFromLogin>[0] } =
+        {};
+      try {
+        data = text ? (JSON.parse(text) as typeof data) : {};
+      } catch {
+        if (res.status === 502 || res.status === 503 || res.status === 504) {
+          setError(
+            "ระบบล็อกอินขัดข้องชั่วคราว — ลองใหม่ในอีกสักครู่ หรือแจ้งแอดมิน",
+          );
+        } else {
+          setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
+        }
+        return;
+      }
       if (!res.ok) {
         setError(data.error ?? "เข้าสู่ระบบไม่สำเร็จ");
         return;
@@ -35,7 +49,7 @@ export function StaffLoginScreen() {
       syncStaffBrandFromLogin(data.brand);
       window.location.assign("/staff");
     } catch {
-      setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
+      setError("เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่");
     } finally {
       setLoading(false);
     }

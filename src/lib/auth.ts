@@ -1,9 +1,10 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
 import type { StaffRole } from "./constants";
 import { prisma } from "./db";
 
-const COOKIE_NAME = "skillsale_session";
+export const SESSION_COOKIE_NAME = "skillsale_session";
 
 function resolveJwtSecret(): Uint8Array {
   const raw = process.env.JWT_SECRET?.trim();
@@ -46,26 +47,53 @@ export type SessionPayload = {
   customerName?: string;
 };
 
-export async function createSession(payload: SessionPayload) {
-  const token = await new SignJWT({ ...payload })
+export function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  };
+}
+
+/** Sign JWT only (set cookie via cookies() or NextResponse). */
+export async function signSessionToken(
+  payload: SessionPayload,
+): Promise<string> {
+  // Keep payload small/serializable — avoid embedding large strings in JWT
+  const safe: SessionPayload = {
+    ...payload,
+    branchName: payload.branchName?.slice(0, 120),
+    customerName: payload.customerName?.slice(0, 120),
+    username: payload.username?.slice(0, 80),
+  };
+  return new SignJWT({ ...safe })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
     .sign(getJwtSecret());
+}
 
+export async function createSession(payload: SessionPayload) {
+  const token = await signSessionToken(payload);
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
+  cookieStore.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
+}
+
+/** Prefer this in Route Handlers — attaches Set-Cookie on the response object. */
+export async function attachSessionCookie(
+  response: NextResponse,
+  payload: SessionPayload,
+): Promise<NextResponse> {
+  const token = await signSessionToken(payload);
+  response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
+  return response;
 }
 
 export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
   try {
@@ -78,7 +106,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 
 export async function clearSession() {
   const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+  cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
 export async function requireAdmin() {

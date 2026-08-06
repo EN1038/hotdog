@@ -110,6 +110,9 @@ async function loadCancelMeta(
 /** GET — staff stock_in / issue history batches for a Bangkok calendar day */
 export async function GET(request: Request) {
   try {
+    const { ensureProdSchemaCompat } = await import("@/lib/schema-compat");
+    void ensureProdSchemaCompat();
+
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
     const dateStr = searchParams.get("date")?.trim() ?? "";
@@ -133,7 +136,13 @@ export async function GET(request: Request) {
           createdAt: { gte: start, lte: end },
         },
         orderBy: { createdAt: "desc" },
-        include: {
+        select: {
+          id: true,
+          quantity: true,
+          createdAt: true,
+          note: true,
+          imageUrl: true,
+          batchId: true,
           menuItem: { select: { name: true } },
           createdByStaff: { select: { id: true, name: true } },
         },
@@ -145,7 +154,13 @@ export async function GET(request: Request) {
           item: { branchId: session.branchId },
         },
         orderBy: { createdAt: "desc" },
-        include: {
+        select: {
+          id: true,
+          quantity: true,
+          createdAt: true,
+          note: true,
+          imageUrl: true,
+          batchId: true,
           item: { select: { name: true, unit: true, stockType: true } },
           createdByStaff: { select: { id: true, name: true } },
         },

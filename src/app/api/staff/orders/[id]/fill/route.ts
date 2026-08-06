@@ -101,6 +101,10 @@ export async function PUT(request: Request, { params }: Params) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
+      select: {
+        id: true,
+        autoAcceptOrders: true,
+      },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
 

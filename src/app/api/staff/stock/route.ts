@@ -98,6 +98,9 @@ const postSchema = z.discriminatedUnion("action", [
 
 export async function GET() {
   try {
+    const { ensureProdSchemaCompat } = await import("@/lib/schema-compat");
+    await ensureProdSchemaCompat();
+
     const session = await requireStaff();
     // Always select scalars — do not load full Branch (isTest etc. may lag migrate on prod).
     const branch = await prisma.branch.findUnique({

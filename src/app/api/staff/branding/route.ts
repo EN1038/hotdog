@@ -23,6 +23,9 @@ const COUNTABLE_STATUSES: OrderStatus[] = [
 /** GET — ธีมแบรนด์ + สถานะรอบทำงาน + badge สำหรับ shell */
 export async function GET() {
   try {
+    const { ensureProdSchemaCompat } = await import("@/lib/schema-compat");
+    void ensureProdSchemaCompat();
+
     const session = await requireStaff();
     const [branch, activeShift, pendingOrderCount, pendingStockCount] =
       await Promise.all([

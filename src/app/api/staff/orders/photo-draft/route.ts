@@ -40,6 +40,7 @@ export async function POST(request: Request) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
+      select: { id: true },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
 

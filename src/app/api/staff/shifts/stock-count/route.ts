@@ -22,7 +22,12 @@ export async function GET() {
     const session = await requireStaff();
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
-      include: { brand: { select: { id: true, stockEnabled: true } } },
+      select: {
+        id: true,
+        brandId: true,
+        stockEnabled: true,
+        brand: { select: { id: true, stockEnabled: true } },
+      },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
@@ -196,7 +201,12 @@ export async function POST(request: Request) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
-      include: { brand: { select: { id: true, stockEnabled: true } } },
+      select: {
+        id: true,
+        brandId: true,
+        stockEnabled: true,
+        brand: { select: { id: true, stockEnabled: true } },
+      },
     });
     if (!branch?.brandId) return jsonError("สาขาไม่มีแบรนด์", 400);
 

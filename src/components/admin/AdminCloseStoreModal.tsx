@@ -24,6 +24,12 @@ type ShiftSummary = {
   totalWithOpeningCash: number;
   giftQuantity: number;
   menus: Array<{ name: string; quantity: number; revenueBaht: number }>;
+  channels?: Array<{
+    channel: string;
+    label: string;
+    orderCount: number;
+    revenueBaht: number;
+  }>;
 };
 
 type Props = {
@@ -220,6 +226,34 @@ export function AdminCloseStoreModal({
                 last
               />
             </div>
+
+            {(summary.channels ?? []).length > 0 ? (
+              <div>
+                <p className="mb-1.5 text-xs font-semibold text-slate-700">
+                  สรุปช่องทาง
+                </p>
+                <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                  {(summary.channels ?? []).map((c) => (
+                    <li
+                      key={c.channel}
+                      className="flex items-center justify-between gap-3 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {c.label}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {c.orderCount.toLocaleString("th-TH")} ออเดอร์
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-sm font-semibold text-slate-800">
+                        {formatPrice(c.revenueBaht)}฿
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {summary.menus.length > 0 ? (
               <div>

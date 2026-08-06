@@ -13,6 +13,9 @@ type ShiftListItem = {
   closedAt: string | null;
   openingCash: number;
   note?: string | null;
+  cancelledAt?: string | null;
+  cancelNote?: string | null;
+  isCancelled?: boolean;
 };
 
 type ShiftSummary = {
@@ -25,6 +28,9 @@ type ShiftSummary = {
     openingCash: number;
     note: string | null;
     code: string;
+    cancelledAt?: string | null;
+    cancelNote?: string | null;
+    isCancelled?: boolean;
   };
   totalOrders: number;
   cancelledOrders: number;
@@ -36,7 +42,21 @@ type ShiftSummary = {
   expectedCash: number;
   totalWithOpeningCash: number;
   giftQuantity: number;
+  cancelledRevenueBaht?: number;
+  cancelledItemQuantity?: number;
+  stockRestoredQuantity?: number;
+  stockRestored?: Array<{
+    menuItemId: string;
+    name: string;
+    quantity: number;
+  }>;
   menus: Array<{ name: string; quantity: number; revenueBaht: number }>;
+  channels?: Array<{
+    channel: string;
+    label: string;
+    orderCount: number;
+    revenueBaht: number;
+  }>;
 };
 
 type Props = {
@@ -88,10 +108,14 @@ function SummaryRow({
   label,
   value,
   last = false,
+  valueClassName,
+  labelClassName,
 }: {
   label: string;
   value: string;
   last?: boolean;
+  valueClassName?: string;
+  labelClassName?: string;
 }) {
   return (
     <div
@@ -99,8 +123,14 @@ function SummaryRow({
         last ? "" : "border-b border-gray-200"
       }`}
     >
-      <span className="text-gray-600">{label}</span>
-      <span className="text-right font-semibold text-gray-900">{value}</span>
+      <span className={labelClassName ?? "text-gray-600"}>{label}</span>
+      <span
+        className={`text-right font-semibold ${
+          valueClassName ?? "text-gray-900"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -338,6 +368,17 @@ export function StaffShiftSummarySheet({
     if (brandName) lines.push(brandName);
     if (branchLabel) lines.push(`สาขา ${branchLabel}`);
     lines.push("สรุปยอดขายตามรอบ");
+    if (summary.shift.isCancelled) {
+      lines.push("สถานะรอบ: ยกเลิก");
+      if (summary.shift.cancelNote) {
+        lines.push(`เหตุผล: ${summary.shift.cancelNote}`);
+      }
+      if (summary.shift.cancelledAt) {
+        lines.push(
+          `ยกเลิกเมื่อ: ${formatShiftDateTime(summary.shift.cancelledAt)}`,
+        );
+      }
+    }
     lines.push(`เลขที่รอบ: ${summary.shift.code}`);
     lines.push(`รอบที่: ${summary.shift.roundNumber}`);
     lines.push(`วันที่และเวลาเปิด: ${formatShiftDateTime(summary.shift.openedAt)}`);
@@ -351,9 +392,17 @@ export function StaffShiftSummarySheet({
     lines.push(
       `จำนวนออเดอร์: ${summary.orderCount.toLocaleString("th-TH")} ออเดอร์`,
     );
-    if (summary.cancelledOrders > 0) {
+    if (summary.cancelledOrders > 0 || summary.shift.isCancelled) {
       lines.push(
-        `ยกเลิก: ${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`,
+        `ออเดอร์ยกเลิก: ${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`,
+      );
+      lines.push(
+        `ยอดเงินที่ยกเลิก: ${formatPrice(summary.cancelledRevenueBaht ?? 0)} บาท`,
+      );
+      const restored =
+        summary.stockRestoredQuantity ?? summary.cancelledItemQuantity ?? 0;
+      lines.push(
+        `สต๊อกที่คืน: ${restored.toLocaleString("th-TH")} ชิ้น`,
       );
     }
     lines.push(
@@ -369,6 +418,18 @@ export function StaffShiftSummarySheet({
     lines.push(
       `จำนวนของแถม: ${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`,
     );
+    lines.push("");
+    lines.push("สรุปช่องทาง:");
+    const channels = summary.channels ?? [];
+    if (channels.length === 0) {
+      lines.push("- ยังไม่มีออเดอร์ที่นับยอด");
+    } else {
+      channels.forEach((c, index) => {
+        lines.push(
+          `${index + 1}. ${c.label}: ${c.orderCount.toLocaleString("th-TH")} ออเดอร์ · ${formatPrice(c.revenueBaht)}฿`,
+        );
+      });
+    }
     lines.push("");
     lines.push("เมนูที่ขาย:");
     if (summary.menus.length === 0) {
@@ -474,6 +535,7 @@ export function StaffShiftSummarySheet({
             <div className="flex flex-wrap gap-2">
               {shifts.map((s) => {
                 const selected = s.id === selectedId;
+                const cancelled = Boolean(s.isCancelled || s.cancelledAt);
                 return (
                   <button
                     key={s.id}
@@ -481,11 +543,18 @@ export function StaffShiftSummarySheet({
                     onClick={() => setSelectedId(s.id)}
                     className={`rounded-xl border px-3 py-2 text-left text-xs ${
                       selected
-                        ? "border-site-primary bg-site-primary-soft font-bold text-site-primary"
-                        : "border-gray-200 bg-white text-gray-700"
+                        ? cancelled
+                          ? "border-red-500 bg-red-50 font-bold text-red-700"
+                          : "border-site-primary bg-site-primary-soft font-bold text-site-primary"
+                        : cancelled
+                          ? "border-red-200 bg-red-50/80 text-red-700"
+                          : "border-gray-200 bg-white text-gray-700"
                     }`}
                   >
-                    <span className="block">รอบที่ {s.roundNumber}</span>
+                    <span className="block">
+                      รอบที่ {s.roundNumber}
+                      {cancelled ? " · ยกเลิก" : ""}
+                    </span>
                     <span className="mt-0.5 block opacity-80">
                       {formatHm(s.openedAt)}
                       {s.closedAt ? `–${formatHm(s.closedAt)}` : "–เปิดอยู่"}
@@ -518,16 +587,84 @@ export function StaffShiftSummarySheet({
                     </p>
                   ) : null}
                   <p
-                    className={`text-xs font-medium text-gray-500 ${
-                      brandName || branchLabel ? "mt-1.5" : ""
-                    }`}
+                    className={`text-xs font-medium ${
+                      summary.shift.isCancelled
+                        ? "text-red-600"
+                        : "text-gray-500"
+                    } ${brandName || branchLabel ? "mt-1.5" : ""}`}
                   >
                     สรุปยอดขายตามรอบ
+                    {summary.shift.isCancelled ? " · ยกเลิก" : ""}
                   </p>
                 </div>
 
+                {summary.shift.isCancelled || summary.cancelledOrders > 0 ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-1">
+                    <SummaryRow
+                      label="สถานะรอบ"
+                      value={
+                        summary.shift.isCancelled
+                          ? "ยกเลิก"
+                          : summary.shift.closedAt
+                            ? "ปิดรอบแล้ว"
+                            : "เปิดอยู่"
+                      }
+                      labelClassName="font-medium text-red-800"
+                      valueClassName="text-red-700"
+                    />
+                    {summary.shift.isCancelled && summary.shift.cancelNote ? (
+                      <SummaryRow
+                        label="เหตุผลการยกเลิก"
+                        value={summary.shift.cancelNote}
+                        labelClassName="text-red-800"
+                        valueClassName="text-red-800"
+                      />
+                    ) : null}
+                    {summary.shift.isCancelled && summary.shift.cancelledAt ? (
+                      <SummaryRow
+                        label="ยกเลิกเมื่อ"
+                        value={formatShiftDateTime(summary.shift.cancelledAt)}
+                        labelClassName="text-red-800"
+                        valueClassName="text-red-800"
+                      />
+                    ) : null}
+                    <SummaryRow
+                      label="ออเดอร์ที่ยกเลิก"
+                      value={`${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`}
+                      labelClassName="text-red-800"
+                      valueClassName="text-red-700"
+                    />
+                    <SummaryRow
+                      label="ยอดเงินที่ยกเลิก"
+                      value={`${formatPrice(summary.cancelledRevenueBaht ?? 0)} บาท`}
+                      labelClassName="text-red-800"
+                      valueClassName="text-red-700"
+                    />
+                    <SummaryRow
+                      label="สต๊อกที่คืน"
+                      value={`${(
+                        summary.stockRestoredQuantity &&
+                        summary.stockRestoredQuantity > 0
+                          ? summary.stockRestoredQuantity
+                          : (summary.cancelledItemQuantity ?? 0)
+                      ).toLocaleString("th-TH")} ชิ้น`}
+                      labelClassName="text-red-800"
+                      valueClassName="text-red-700"
+                      last
+                    />
+                  </div>
+                ) : null}
+
                 <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
                   <SummaryRow label="เลขที่รอบ" value={summary.shift.code} />
+                  {!summary.shift.isCancelled && summary.cancelledOrders === 0 ? (
+                    <SummaryRow
+                      label="สถานะรอบ"
+                      value={
+                        summary.shift.closedAt ? "ปิดรอบแล้ว" : "เปิดอยู่"
+                      }
+                    />
+                  ) : null}
                   <SummaryRow
                     label="วันที่และเวลาเปิด"
                     value={formatShiftDateTime(summary.shift.openedAt)}
@@ -541,15 +678,9 @@ export function StaffShiftSummarySheet({
                     }
                   />
                   <SummaryRow
-                    label="จำนวนออเดอร์"
+                    label="จำนวนออเดอร์ (นับยอด)"
                     value={`${summary.orderCount.toLocaleString("th-TH")} ออเดอร์`}
                   />
-                  {summary.cancelledOrders > 0 ? (
-                    <SummaryRow
-                      label="ยกเลิก"
-                      value={`${summary.cancelledOrders.toLocaleString("th-TH")} ออเดอร์`}
-                    />
-                  ) : null}
                   <SummaryRow
                     label="เงินเริ่มต้น"
                     value={`${formatPrice(summary.shift.openingCash)} บาท`}
@@ -578,6 +709,66 @@ export function StaffShiftSummarySheet({
                     value={`${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`}
                     last
                   />
+                </div>
+
+                {(summary.stockRestored?.length ?? 0) > 0 ? (
+                  <div>
+                    <p className="mb-2 text-sm font-bold text-red-800">
+                      รายการสต๊อกที่คืน
+                    </p>
+                    <ul className="divide-y divide-red-100 rounded-xl border border-red-200 bg-red-50/40">
+                      {summary.stockRestored!.map((m) => (
+                        <li
+                          key={m.menuItemId}
+                          className="flex items-center justify-between gap-3 px-3 py-2.5"
+                        >
+                          <p className="min-w-0 truncate text-sm font-medium text-gray-900">
+                            {m.name}
+                          </p>
+                          <p className="shrink-0 text-sm font-semibold text-red-700">
+                            +{m.quantity.toLocaleString("th-TH")} ชิ้น
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                <div>
+                  <p className="mb-2 text-sm font-bold text-gray-900">
+                    สรุปช่องทาง
+                  </p>
+                  {(summary.channels ?? []).length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      ยังไม่มีออเดอร์ที่นับยอด
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                      {(summary.channels ?? []).map((c, index) => (
+                        <li
+                          key={c.channel}
+                          className="flex items-center justify-between gap-3 px-3 py-2.5"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-gray-900">
+                                {c.label}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {c.orderCount.toLocaleString("th-TH")} ออเดอร์
+                              </p>
+                            </div>
+                          </div>
+                          <p className="shrink-0 text-sm font-semibold text-gray-800">
+                            {formatPrice(c.revenueBaht)}฿
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div>

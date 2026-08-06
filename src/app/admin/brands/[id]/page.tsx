@@ -74,6 +74,12 @@ export default function BrandBranchesPage() {
       headerActions={
         <div className="flex flex-wrap gap-2">
           <Link
+            href={`/admin/brands/${brand.id}/kitchen`}
+            className={btnOutline}
+          >
+            ครัว / ผลิต
+          </Link>
+          <Link
             href={`/admin/brands/${brand.id}/stock`}
             className={btnOutline}
           >

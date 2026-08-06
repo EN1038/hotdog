@@ -162,6 +162,7 @@ function brandHqNavItems(basePath: string): NavItem[] {
     icon: NavItem["icon"];
   }[] = [
     { section: "home", label: "หน้าแรก", icon: IconHome },
+    { section: "sales", label: "ขาย", icon: IconReceipt },
     { section: "stock_now", label: "สต๊อกปัจจุบัน", icon: IconPackage },
     { section: "restock", label: "เติม", icon: IconPlusNav },
     { section: "issue", label: "จ่าย", icon: IconMoney },

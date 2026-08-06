@@ -1,10 +1,23 @@
-export type BrandHqSection = "home" | "stock_now" | "restock" | "issue";
+export type BrandHqSection =
+  | "home"
+  | "sales"
+  | "stock_now"
+  | "restock"
+  | "issue";
 
 export function parseBrandHqSection(
   raw: string | null | undefined,
 ): BrandHqSection {
-  if (raw === "stock_now" || raw === "restock" || raw === "issue") return raw;
+  if (
+    raw === "sales" ||
+    raw === "stock_now" ||
+    raw === "restock" ||
+    raw === "issue"
+  ) {
+    return raw;
+  }
   if (raw === "stock") return "stock_now";
+  if (raw === "sell" || raw === "sale") return "sales";
   return "home";
 }
 

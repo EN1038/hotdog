@@ -33,6 +33,12 @@ type CloseSummary = {
   totalWithOpeningCash: number;
   giftQuantity: number;
   menus: Array<{ name: string; quantity: number; revenueBaht: number }>;
+  channels?: Array<{
+    channel: string;
+    label: string;
+    orderCount: number;
+    revenueBaht: number;
+  }>;
 };
 
 type Props = {
@@ -524,6 +530,34 @@ export function StaffShiftControls({
                     />
                   </div>
 
+                  {(closeSummary.channels ?? []).length > 0 ? (
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold text-gray-700">
+                        สรุปช่องทาง
+                      </p>
+                      <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                        {(closeSummary.channels ?? []).map((c) => (
+                          <li
+                            key={c.channel}
+                            className="flex items-center justify-between gap-3 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-gray-900">
+                                {c.label}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {c.orderCount.toLocaleString("th-TH")} ออเดอร์
+                              </p>
+                            </div>
+                            <p className="shrink-0 text-sm font-semibold text-gray-800">
+                              {formatPrice(c.revenueBaht)}฿
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   {closeSummary.menus.length > 0 ? (
                     <div>
                       <p className="mb-1.5 text-xs font-semibold text-gray-700">
@@ -648,6 +682,34 @@ export function StaffShiftControls({
                       last
                     />
                   </div>
+
+                  {(closeSummary.channels ?? []).length > 0 ? (
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold text-gray-700">
+                        สรุปช่องทาง
+                      </p>
+                      <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                        {(closeSummary.channels ?? []).map((c) => (
+                          <li
+                            key={c.channel}
+                            className="flex items-center justify-between gap-3 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-gray-900">
+                                {c.label}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {c.orderCount.toLocaleString("th-TH")} ออเดอร์
+                              </p>
+                            </div>
+                            <p className="shrink-0 text-sm font-semibold text-gray-800">
+                              {formatPrice(c.revenueBaht)}฿
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
 
                   {closeSummary.menus.length > 0 ? (
                     <div>

@@ -14,6 +14,7 @@ type BatchLine = {
   signedQuantity: number;
   unit: string;
   stockType: "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+  isCancelled?: boolean;
 };
 
 type Batch = {
@@ -25,6 +26,9 @@ type Batch = {
   createdByStaff: { id: string; name: string } | null;
   itemCount: number;
   totalQty: number;
+  isCancelled?: boolean;
+  cancelledAt?: string | null;
+  cancelNote?: string | null;
   lines: BatchLine[];
 };
 
@@ -78,10 +82,14 @@ function SummaryRow({
   label,
   value,
   last = false,
+  valueClassName,
+  labelClassName,
 }: {
   label: string;
   value: string;
   last?: boolean;
+  valueClassName?: string;
+  labelClassName?: string;
 }) {
   return (
     <div
@@ -89,8 +97,14 @@ function SummaryRow({
         last ? "" : "border-b border-gray-200"
       }`}
     >
-      <span className="text-gray-600">{label}</span>
-      <span className="text-right font-semibold text-gray-900">{value}</span>
+      <span className={labelClassName ?? "text-gray-600"}>{label}</span>
+      <span
+        className={`text-right font-semibold ${
+          valueClassName ?? "text-gray-900"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -328,6 +342,13 @@ export function StaffStockMovementHistorySheet({
     if (brandName) lines.push(brandName);
     if (branchLabel) lines.push(`สาขา ${branchLabel}`);
     lines.push(`ประวัติ${title}`);
+    if (selected.isCancelled) {
+      lines.push("สถานะ: ยกเลิก");
+      if (selected.cancelNote) lines.push(`เหตุผล: ${selected.cancelNote}`);
+      if (selected.cancelledAt) {
+        lines.push(`ยกเลิกเมื่อ: ${formatDateTime(selected.cancelledAt)}`);
+      }
+    }
     lines.push(`บันทึกเมื่อ: ${formatDateTime(selected.createdAt)}`);
     lines.push(`ผู้บันทึก: ${selected.createdByStaff?.name ?? "—"}`);
     lines.push(`ประเภท: ${batchTypeLabel(selected)}`);
@@ -343,8 +364,9 @@ export function StaffStockMovementHistorySheet({
           ? ` (${line.unit.trim()})`
           : "";
       const typeLabel = STOCK_TYPE_LABEL[line.stockType];
+      const cancelTag = line.isCancelled ? " [ยกเลิก]" : "";
       lines.push(
-        `${index + 1}. [${typeLabel}] ${line.name}${unit}: ${line.quantity.toLocaleString("th-TH")}`,
+        `${index + 1}. [${typeLabel}] ${line.name}${unit}: ${line.quantity.toLocaleString("th-TH")}${cancelTag}`,
       );
     });
     return lines.join("\n");
@@ -430,6 +452,7 @@ export function StaffStockMovementHistorySheet({
                 {batches.map((b) => {
                   const active = b.id === selectedId;
                   const typeLabel = batchTypeLabel(b);
+                  const cancelled = Boolean(b.isCancelled);
                   return (
                     <button
                       key={b.id}
@@ -437,13 +460,20 @@ export function StaffStockMovementHistorySheet({
                       onClick={() => setSelectedId(b.id)}
                       className={`rounded-xl border px-3 py-2 text-left text-xs ${
                         active
-                          ? kind === "stock_in"
-                            ? "border-emerald-500 bg-emerald-50 font-bold text-emerald-800"
-                            : "border-amber-500 bg-amber-50 font-bold text-amber-800"
-                          : "border-gray-200 bg-white text-gray-700"
+                          ? cancelled
+                            ? "border-red-500 bg-red-50 font-bold text-red-800"
+                            : kind === "stock_in"
+                              ? "border-emerald-500 bg-emerald-50 font-bold text-emerald-800"
+                              : "border-amber-500 bg-amber-50 font-bold text-amber-800"
+                          : cancelled
+                            ? "border-red-200 bg-red-50/70 text-red-700"
+                            : "border-gray-200 bg-white text-gray-700"
                       }`}
                     >
-                      <span className="block font-semibold">{typeLabel}</span>
+                      <span className="block font-semibold">
+                        {typeLabel}
+                        {cancelled ? " · ยกเลิก" : ""}
+                      </span>
                       <span className="mt-0.5 block">
                         {b.itemCount.toLocaleString("th-TH")} รายการ · รวม{" "}
                         {b.totalQty.toLocaleString("th-TH")}
@@ -474,15 +504,58 @@ export function StaffStockMovementHistorySheet({
                         </p>
                       ) : null}
                       <p
-                        className={`text-xs font-medium text-gray-500 ${
-                          brandName || branchLabel ? "mt-1.5" : ""
-                        }`}
+                        className={`text-xs font-medium ${
+                          selected.isCancelled ? "text-red-600" : "text-gray-500"
+                        } ${brandName || branchLabel ? "mt-1.5" : ""}`}
                       >
                         ประวัติ{title}
+                        {selected.isCancelled ? " · ยกเลิก" : ""}
                       </p>
                     </div>
 
-                    <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
+                    {selected.isCancelled ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-1">
+                        <SummaryRow
+                          label="สถานะ"
+                          value="ยกเลิก"
+                          labelClassName="font-medium text-red-800"
+                          valueClassName="text-red-700"
+                        />
+                        {selected.cancelNote ? (
+                          <SummaryRow
+                            label="เหตุผล"
+                            value={selected.cancelNote}
+                            labelClassName="text-red-800"
+                            valueClassName="text-red-800"
+                          />
+                        ) : null}
+                        {selected.cancelledAt ? (
+                          <SummaryRow
+                            label="ยกเลิกเมื่อ"
+                            value={formatDateTime(selected.cancelledAt)}
+                            labelClassName="text-red-800"
+                            valueClassName="text-red-800"
+                            last
+                          />
+                        ) : (
+                          <SummaryRow
+                            label="หมายเหตุ"
+                            value="ถูกยกเลิกจากแอดมิน — ยอดสต๊อกถูกคืนแล้ว"
+                            labelClassName="text-red-800"
+                            valueClassName="text-red-700"
+                            last
+                          />
+                        )}
+                      </div>
+                    ) : null}
+
+                    <div
+                      className={`rounded-xl border bg-white px-3 py-1 ${
+                        selected.isCancelled
+                          ? "border-red-200 opacity-90"
+                          : "border-gray-200"
+                      }`}
+                    >
                       <SummaryRow
                         label="บันทึกเมื่อ"
                         value={formatDateTime(selected.createdAt)}
@@ -506,6 +579,11 @@ export function StaffStockMovementHistorySheet({
                         label="จำนวนรวม"
                         value={selected.totalQty.toLocaleString("th-TH")}
                         last={!selected.imageUrl}
+                        valueClassName={
+                          selected.isCancelled
+                            ? "text-slate-400 line-through"
+                            : undefined
+                        }
                       />
                       {selected.imageUrl ? (
                         <div className="px-1 py-2.5">
@@ -513,7 +591,7 @@ export function StaffStockMovementHistorySheet({
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={selected.imageUrl}
-                            alt="รูปประกอบจ่ายออก"
+                            alt="รูปประกอบ"
                             className="mx-auto max-h-48 rounded-xl object-contain ring-1 ring-gray-200"
                           />
                         </div>
@@ -525,36 +603,54 @@ export function StaffStockMovementHistorySheet({
                         รายการ{title}
                       </p>
                       <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200">
-                        {selected.lines.map((line, index) => (
-                          <li
-                            key={line.id}
-                            className="flex items-center justify-between gap-3 bg-white px-3 py-2.5"
-                          >
-                            <div className="flex min-w-0 flex-1 items-center gap-2">
-                              <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
-                                {index + 1}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-gray-900">
-                                  {line.name}
-                                  {line.stockType !== "SALE_ITEM" &&
-                                  line.unit?.trim() ? (
-                                    <span className="font-bold text-red-600">
-                                      {" "}
-                                      ({line.unit.trim()})
-                                    </span>
-                                  ) : null}
-                                </p>
-                                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                                  {STOCK_TYPE_LABEL[line.stockType]}
-                                </p>
+                        {selected.lines.map((line, index) => {
+                          const lineCancelled = Boolean(
+                            line.isCancelled || selected.isCancelled,
+                          );
+                          return (
+                            <li
+                              key={line.id}
+                              className={`flex items-center justify-between gap-3 px-3 py-2.5 ${
+                                lineCancelled ? "bg-red-50/50" : "bg-white"
+                              }`}
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-2">
+                                <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
+                                  {index + 1}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-gray-900">
+                                    {line.name}
+                                    {lineCancelled ? (
+                                      <span className="ml-1 text-xs font-bold text-red-600">
+                                        (ยกเลิก)
+                                      </span>
+                                    ) : null}
+                                    {line.stockType !== "SALE_ITEM" &&
+                                    line.unit?.trim() ? (
+                                      <span className="font-bold text-red-600">
+                                        {" "}
+                                        ({line.unit.trim()})
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                                    {STOCK_TYPE_LABEL[line.stockType]}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                            <p className="shrink-0 text-sm font-bold tabular-nums text-gray-900">
-                              {line.quantity.toLocaleString("th-TH")}
-                            </p>
-                          </li>
-                        ))}
+                              <p
+                                className={`shrink-0 text-sm font-bold tabular-nums ${
+                                  lineCancelled
+                                    ? "text-slate-400 line-through"
+                                    : "text-gray-900"
+                                }`}
+                              >
+                                {line.quantity.toLocaleString("th-TH")}
+                              </p>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   </div>

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { toPng } from "html-to-image";
 import { DateInput } from "@/components/DateInput";
 import {
   adminInputClass,
@@ -18,6 +20,33 @@ import {
   type BrandHqSection,
 } from "@/lib/brand-hq-nav";
 
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+function downloadDataUrl(dataUrl: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function formatBangkokDateTime(date = new Date()) {
+  return new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 type StockItem = {
   branchMenuItemId: string;
   name: string;
@@ -28,6 +57,7 @@ type StockItem = {
   issueQty: number;
   soldQty: number;
   value: number;
+  unitPrice?: number;
 };
 
 type BranchRow = {
@@ -102,6 +132,7 @@ async function copyTextToClipboard(text: string) {
 
 const SECTION_TABS: { id: BrandHqSection; label: string }[] = [
   { id: "home", label: "ภาพรวม" },
+  { id: "sales", label: "ขาย" },
   { id: "stock_now", label: "สต๊อกปัจจุบัน" },
   { id: "restock", label: "เติม" },
   { id: "issue", label: "จ่าย" },
@@ -116,18 +147,25 @@ const SECTION_COPY: Record<
     description:
       "ยอดขาย ค่าใช้จ่าย และสต๊อกขาย รวมทุกสาขาของแบรนด์นี้",
   },
+  sales: {
+    title: "สรุปยอดขาย",
+    description:
+      "จำนวนขายตัดสต๊อกและรายได้ตามช่วงวันที่ — เทียบทุกสาขาหรือแยกสาขา",
+  },
   stock_now: {
     title: "สต๊อกขายปัจจุบัน",
-    description: "คงเหลือเมนูขายตอนนี้ แยกตามสาขา — กดดูรายการเมนูได้",
+    description:
+      "คงเหลือเมนูขายตอนนี้ — เทียบทุกสาขาหรือแยกสาขา กดดูรายการเมนูได้",
   },
   restock: {
     title: "สรุปการเติมสต๊อก",
-    description: "ยอดรับเข้า (STOCK_IN) ตามช่วงวันที่ แยกตามสาขา",
+    description:
+      "ยอดรับเข้า (STOCK_IN) ตามช่วงวันที่ — เทียบทุกสาขาหรือแยกสาขา",
   },
   issue: {
     title: "สรุปการจ่ายออก",
     description:
-      "ยอดจ่ายออกจากหน้าร้าน (ISSUE) ตามช่วงวันที่ — พร้อมยอดขายตัดสต๊อก",
+      "ยอดจ่ายออกจากหน้าร้าน (ISSUE) ตามช่วงวันที่ — เทียบทุกสาขาหรือแยกสาขา",
   },
 };
 
@@ -150,13 +188,27 @@ export function BrandOverviewPanel({
     Record<string, string>
   >({});
   const [copyBusyBranchId, setCopyBusyBranchId] = useState<string | null>(null);
+  /** stock_now / restock / issue / sales: แยกสาขา vs เทียบเมนูทุกสาขา */
+  const [stockViewMode, setStockViewMode] = useState<"by_branch" | "compare">(
+    "compare",
+  );
+  const [compareBranchIds, setCompareBranchIds] = useState<string[]>([]);
+  const [compareHideZero, setCompareHideZero] = useState(false);
+  const [compareCopyMsg, setCompareCopyMsg] = useState<string | null>(null);
+  const [compareExportBusy, setCompareExportBusy] = useState<
+    "save" | "share" | "copy" | null
+  >(null);
+  const compareCaptureRef = useRef<HTMLDivElement | null>(null);
+  const [compareCaptureStamp, setCompareCaptureStamp] = useState("");
 
   const isHome = section === "home";
+  const isSales = section === "sales";
   const isStockNow = section === "stock_now";
   const isRestock = section === "restock";
   const isIssue = section === "issue";
+  const canCompareView = isStockNow || isRestock || isIssue || isSales;
   const showDateFilter = !isStockNow;
-  const showExpand = isHome || isStockNow || isRestock || isIssue;
+  const showExpand = isHome || isStockNow || isRestock || isIssue || isSales;
   const copy = SECTION_COPY[section];
   const tabBasePath =
     pathname && /^\/admin\/brands\/[^/]+$/.test(pathname)
@@ -216,22 +268,321 @@ export function BrandOverviewPanel({
   useEffect(() => {
     setExpandedBranchId(null);
     setCopyMsgByBranch({});
+    setStockViewMode(
+      section === "stock_now" ||
+        section === "restock" ||
+        section === "issue" ||
+        section === "sales"
+        ? "compare"
+        : "by_branch",
+    );
+    setCompareCopyMsg(null);
+    setCompareCaptureStamp("");
   }, [section]);
+
+  useEffect(() => {
+    if (!data?.branches?.length) {
+      setCompareBranchIds([]);
+      return;
+    }
+    setCompareBranchIds((prev) => {
+      const ids = data.branches.map((b) => b.branchId);
+      if (prev.length === 0) return ids;
+      const kept = prev.filter((id) => ids.includes(id));
+      return kept.length > 0 ? kept : ids;
+    });
+  }, [data]);
+
+  const compareBranches = useMemo(() => {
+    if (!data?.branches) return [];
+    const selected = new Set(compareBranchIds);
+    return data.branches.filter((b) => selected.has(b.branchId));
+  }, [data, compareBranchIds]);
+
+  const compareMeta = useMemo(() => {
+    if (isRestock) {
+      return {
+        title: "เทียบการเติมทุกสาขา",
+        fileSlug: "เทียบเติม",
+        qtyHint: "เติม",
+        hideZeroLabel: "ซ่อนเมนูที่รวมเป็น 0",
+      };
+    }
+    if (isIssue) {
+      return {
+        title: "เทียบการจ่ายทุกสาขา",
+        fileSlug: "เทียบจ่าย",
+        qtyHint: "จ่ายออก",
+        hideZeroLabel: "ซ่อนเมนูที่รวมเป็น 0",
+      };
+    }
+    if (isSales) {
+      return {
+        title: "เทียบยอดขายทุกสาขา",
+        fileSlug: "เทียบขาย",
+        qtyHint: "ขาย",
+        hideZeroLabel: "ซ่อนเมนูที่รวมเป็น 0",
+      };
+    }
+    return {
+      title: "เทียบสต๊อกทุกสาขา",
+      fileSlug: "เทียบสต๊อก",
+      qtyHint: "คงเหลือ",
+      hideZeroLabel: "ซ่อนเมนูที่รวมเป็น 0",
+    };
+  }, [isRestock, isIssue, isSales]);
+
+  function branchCompareBadgeQty(b: BranchRow) {
+    if (isRestock) return b.restockQty ?? 0;
+    if (isIssue) return b.issueQty ?? 0;
+    if (isSales) return b.soldQty ?? 0;
+    return b.saleStockQty ?? 0;
+  }
+
+  const stockCompareRows = useMemo(() => {
+    if (!canCompareView || compareBranches.length === 0) return [];
+
+    type Cell = { qty: number; value: number };
+    const map = new Map<
+      string,
+      {
+        name: string;
+        sequence: number;
+        byBranch: Record<string, Cell>;
+      }
+    >();
+
+    for (const b of compareBranches) {
+      for (const item of b.stockItems ?? []) {
+        const key = item.name.trim();
+        if (!key) continue;
+        const cur = map.get(key) ?? {
+          name: key,
+          sequence: item.sequence || 9999,
+          byBranch: {},
+        };
+        if (item.sequence > 0) {
+          cur.sequence = Math.min(cur.sequence, item.sequence);
+        }
+
+        const qty = isRestock
+          ? (item.restockQty ?? 0)
+          : isIssue
+            ? (item.issueQty ?? 0)
+            : isSales
+              ? (item.soldQty ?? 0)
+              : (item.quantity ?? 0);
+        const unitPrice =
+          typeof item.unitPrice === "number" && Number.isFinite(item.unitPrice)
+            ? item.unitPrice
+            : (item.quantity ?? 0) > 0
+              ? (item.value ?? 0) / (item.quantity ?? 1)
+              : 0;
+        const value = isStockNow
+          ? (item.value ?? 0)
+          : Math.round(qty * unitPrice * 100) / 100;
+
+        cur.byBranch[b.branchId] = { qty, value };
+        map.set(key, cur);
+      }
+    }
+
+    return [...map.values()]
+      .map((row) => {
+        let totalQty = 0;
+        let totalValue = 0;
+        for (const b of compareBranches) {
+          const cell = row.byBranch[b.branchId];
+          totalQty += cell?.qty ?? 0;
+          totalValue += cell?.value ?? 0;
+        }
+        return {
+          ...row,
+          totalQty,
+          totalValue: Math.round(totalValue * 100) / 100,
+        };
+      })
+      .filter((row) => !compareHideZero || row.totalQty > 0)
+      .sort(
+        (a, b) =>
+          a.sequence - b.sequence || a.name.localeCompare(b.name, "th"),
+      );
+  }, [
+    canCompareView,
+    isRestock,
+    isIssue,
+    isSales,
+    isStockNow,
+    compareBranches,
+    compareHideZero,
+  ]);
+
+  function toggleCompareBranch(branchId: string) {
+    setCompareBranchIds((prev) => {
+      if (prev.includes(branchId)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((id) => id !== branchId);
+      }
+      return [...prev, branchId];
+    });
+  }
+
+  function selectAllCompareBranches() {
+    if (!data?.branches) return;
+    setCompareBranchIds(data.branches.map((b) => b.branchId));
+  }
+
+  function buildStockCompareCopyText() {
+    const lines: string[] = [];
+    lines.push(copy.title);
+    lines.push(compareMeta.title);
+    lines.push(
+      `สาขา: ${compareBranches.map((b) => b.branchName).join(" · ")}`,
+    );
+    if (showDateFilter) {
+      const rangeFrom = from <= to ? from : to;
+      const rangeTo = from <= to ? to : from;
+      lines.push(
+        `ช่วง ${formatDateKeyTh(rangeFrom)} – ${formatDateKeyTh(rangeTo)}`,
+      );
+    }
+    lines.push("");
+    const header = [
+      "ลำดับ",
+      "เมนู",
+      ...compareBranches.map((b) => b.branchName),
+      "รวม",
+      "มูลค่ารวม",
+    ];
+    lines.push(header.join("\t"));
+    stockCompareRows.forEach((row, i) => {
+      const cells = [
+        String(row.sequence || i + 1),
+        row.name,
+        ...compareBranches.map((b) =>
+          String(row.byBranch[b.branchId]?.qty ?? 0),
+        ),
+        String(row.totalQty),
+        `${money(row.totalValue)}`,
+      ];
+      lines.push(cells.join("\t"));
+    });
+    lines.push("");
+    lines.push(
+      `รวมทั้งหมด ${money(stockCompareRows.reduce((s, r) => s + r.totalQty, 0))} ชิ้น · มูลค่า ${money(stockCompareRows.reduce((s, r) => s + r.totalValue, 0))} ฿`,
+    );
+    return lines.join("\n");
+  }
+
+  async function handleCopyStockCompare() {
+    setCompareExportBusy("copy");
+    try {
+      await copyTextToClipboard(buildStockCompareCopyText());
+      setCompareCopyMsg("คัดลอกข้อความแล้ว — ไปวางในไลน์ได้เลย");
+    } catch {
+      setCompareCopyMsg("คัดลอกไม่สำเร็จ");
+    } finally {
+      setCompareExportBusy(null);
+      window.setTimeout(() => setCompareCopyMsg(null), 2500);
+    }
+  }
+
+  async function captureStockComparePng(): Promise<string> {
+    flushSync(() => {
+      setCompareCaptureStamp(formatBangkokDateTime());
+    });
+    const node = compareCaptureRef.current;
+    if (!node) throw new Error("ไม่พบตาราง");
+    return toPng(node, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+    });
+  }
+
+  function stockCompareFilename() {
+    const range =
+      showDateFilter && from && to
+        ? `_${from <= to ? from : to}_${from <= to ? to : from}`
+        : `_${bangkokDateKey()}`;
+    return `${compareMeta.fileSlug}_ทุกสาขา${range}.png`;
+  }
+
+  async function handleSaveStockCompareImage() {
+    if (compareExportBusy || stockCompareRows.length === 0) return;
+    setCompareExportBusy("save");
+    setCompareCopyMsg("");
+    try {
+      const dataUrl = await captureStockComparePng();
+      downloadDataUrl(dataUrl, stockCompareFilename());
+      setCompareCopyMsg("บันทึกรูปแล้ว");
+    } catch {
+      setCompareCopyMsg("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setCompareExportBusy(null);
+      window.setTimeout(() => setCompareCopyMsg(null), 2500);
+    }
+  }
+
+  async function handleShareStockCompareImage() {
+    if (compareExportBusy || stockCompareRows.length === 0) return;
+    setCompareExportBusy("share");
+    setCompareCopyMsg("");
+    try {
+      const dataUrl = await captureStockComparePng();
+      const blob = await dataUrlToBlob(dataUrl);
+      const file = new File([blob], stockCompareFilename(), {
+        type: "image/png",
+      });
+      const branchLabel = compareBranches.map((b) => b.branchName).join(" · ");
+      const title = [compareMeta.title, branchLabel].filter(Boolean).join(" · ");
+
+      if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      ) {
+        await navigator.share({
+          files: [file],
+          title,
+          text: title,
+        });
+        setCompareCopyMsg("แชร์รูปแล้ว");
+        return;
+      }
+
+      downloadDataUrl(dataUrl, stockCompareFilename());
+      setCompareCopyMsg(
+        "อุปกรณ์นี้แชร์ไม่ได้ — บันทึกรูปแทนแล้ว ส่งในไลน์จากแกลเลอรี",
+      );
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setCompareCopyMsg(null);
+        return;
+      }
+      setCompareCopyMsg("แชร์รูปไม่สำเร็จ");
+    } finally {
+      setCompareExportBusy(null);
+      window.setTimeout(() => setCompareCopyMsg(null), 3000);
+    }
+  }
 
   function expandLabel(open: boolean) {
     if (isRestock) return open ? "ซ่อน" : "ดูรายการเติม";
     if (isIssue) return open ? "ซ่อน" : "ดูรายการจ่าย";
+    if (isSales) return open ? "ซ่อน" : "ดูรายการขาย";
     return open ? "ซ่อน" : "ดูสต๊อกเมนู";
   }
 
   function itemQty(item: StockItem) {
     if (isRestock) return item.restockQty ?? 0;
     if (isIssue) return item.issueQty ?? 0;
+    if (isSales) return item.soldQty ?? 0;
     return item.quantity;
   }
 
   function itemSecondary(item: StockItem) {
-    if (isRestock) return null;
+    if (isRestock || isSales) return null;
     if (isIssue) return item.soldQty ?? 0;
     return item.wasteQty ?? 0;
   }
@@ -239,6 +590,7 @@ export function BrandOverviewPanel({
   function detailItemsForBranch(b: BranchRow) {
     return (b.stockItems ?? []).filter((item) => {
       if (isRestock) return (item.restockQty ?? 0) > 0;
+      if (isSales) return (item.soldQty ?? 0) > 0;
       if (isIssue)
         return (
           (item.issueQty ?? 0) > 0 ||
@@ -270,6 +622,10 @@ export function BrandOverviewPanel({
       lines.push(
         `ขายได้ ${money(b.completedRevenue)} ฿ · ค่าใช้จ่าย ${money(b.expenseTotal)} ฿ · ขายไป ${money(b.soldQty)} · สต๊อก ${money(b.saleStockQty)} · ของเสีย ${money(b.wasteQty)}`,
       );
+    } else if (isSales) {
+      lines.push(
+        `ขาย ${money(b.soldQty)} ชิ้น · รายได้ ${money(b.completedRevenue)} ฿`,
+      );
     } else if (isStockNow) {
       lines.push(
         `คงเหลือ ${money(b.saleStockQty)} · มูลค่า ${money(b.saleStockValue)} ฿ · ของเสีย ${money(b.wasteQty)}`,
@@ -294,6 +650,18 @@ export function BrandOverviewPanel({
         if (isRestock) {
           lines.push(
             `${seq}. ${item.name}: เติม ${money(item.restockQty ?? 0)}`,
+          );
+        } else if (isSales) {
+          const unit =
+            typeof item.unitPrice === "number"
+              ? item.unitPrice
+              : item.quantity > 0
+                ? item.value / item.quantity
+                : 0;
+          const val =
+            Math.round((item.soldQty ?? 0) * unit * 100) / 100;
+          lines.push(
+            `${seq}. ${item.name}: ขาย ${money(item.soldQty ?? 0)} · มูลค่า ~${money(val)} ฿`,
           );
         } else if (isIssue) {
           lines.push(
@@ -338,6 +706,7 @@ export function BrandOverviewPanel({
     1 +
     (showBrandCol ? 1 : 0) +
     (isHome ? 5 : 0) +
+    (isSales ? 2 : 0) +
     (isStockNow ? 2 : 0) +
     (isRestock ? 2 : 0) +
     (isIssue ? 3 : 0) +
@@ -467,6 +836,28 @@ export function BrandOverviewPanel({
             </div>
           </>
         ) : null}
+        {isSales ? (
+          <>
+            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
+              <p className="text-sm text-emerald-700">ขายได้ (รายได้)</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-800">
+                {money(data?.completedRevenue ?? 0)} ฿
+              </p>
+              <p className="mt-1 text-xs text-emerald-600/80">
+                จากออเดอร์สำเร็จ · ช่วงที่เลือก
+              </p>
+            </div>
+            <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
+              <p className="text-sm text-sky-700">ขายตัดสต๊อก</p>
+              <p className="mt-1 text-2xl font-bold text-sky-800">
+                {money(data?.soldQty ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-sky-600/80">
+                ชิ้นจากออเดอร์ · ช่วงที่เลือก
+              </p>
+            </div>
+          </>
+        ) : null}
         {isRestock ? (
           <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm sm:col-span-2 xl:col-span-1">
             <p className="text-sm text-emerald-700">เติมเข้าแล้ว</p>
@@ -520,7 +911,287 @@ export function BrandOverviewPanel({
         ) : null}
       </div>
 
-      {(data?.branches?.length ?? 0) > 0 ? (
+      {canCompareView && (data?.branches?.length ?? 0) > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="tablist"
+            aria-label="มุมมองตาราง"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={stockViewMode === "by_branch"}
+              onClick={() => setStockViewMode("by_branch")}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                stockViewMode === "by_branch"
+                  ? "bg-violet-700 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              แยกสาขา
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={stockViewMode === "compare"}
+              onClick={() => setStockViewMode("compare")}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                stockViewMode === "compare"
+                  ? "bg-violet-700 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              เทียบทุกสาขา
+            </button>
+          </div>
+          {stockViewMode === "compare" ? (
+            <p className="text-xs text-slate-500">
+              เมนู × สาขา · ยอด{compareMeta.qtyHint}รวมทุกสาขาที่เลือก
+              {showDateFilter ? " · ตามช่วงวันที่" : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canCompareView &&
+      stockViewMode === "compare" &&
+      (data?.branches?.length ?? 0) > 0 ? (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-700">
+                เลือกสาขาที่ต้องการเทียบ
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-sky-700 hover:underline"
+                  onClick={selectAllCompareBranches}
+                >
+                  เลือกทั้งหมด
+                </button>
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={compareHideZero}
+                    onChange={(e) => setCompareHideZero(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  {compareMeta.hideZeroLabel}
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    !!compareExportBusy || stockCompareRows.length === 0
+                  }
+                  onClick={() => void handleSaveStockCompareImage()}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {compareExportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !!compareExportBusy || stockCompareRows.length === 0
+                  }
+                  onClick={() => void handleShareStockCompareImage()}
+                  className="rounded-lg border border-emerald-600 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+                >
+                  {compareExportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !!compareExportBusy || stockCompareRows.length === 0
+                  }
+                  onClick={() => void handleCopyStockCompare()}
+                  className="rounded-lg border border-blue-600 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
+                >
+                  {compareExportBusy === "copy"
+                    ? "กำลังคัดลอก…"
+                    : "คัดลอกข้อความ"}
+                </button>
+                {compareCopyMsg ? (
+                  <span className="text-xs text-slate-600">{compareCopyMsg}</span>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(data?.branches ?? []).map((b) => {
+                const active = compareBranchIds.includes(b.branchId);
+                return (
+                  <label
+                    key={b.branchId}
+                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                      active
+                        ? "border-violet-300 bg-violet-50 text-violet-900"
+                        : "border-slate-200 bg-white text-slate-500"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border-slate-300"
+                      checked={active}
+                      onChange={() => toggleCompareBranch(b.branchId)}
+                    />
+                    {b.branchName}
+                    <span className="tabular-nums text-slate-400">
+                      ({money(branchCompareBadgeQty(b))})
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {compareBranches.length === 0 ? (
+            <p className="text-sm text-slate-500">เลือกอย่างน้อย 1 สาขา</p>
+          ) : stockCompareRows.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              {compareHideZero
+                ? "ไม่มีรายการที่มียอดรวม (ลองปิดซ่อนเมนูที่รวมเป็น 0)"
+                : "ไม่มีรายการเมนูให้เทียบ"}
+            </p>
+          ) : (
+            <div
+              ref={compareCaptureRef}
+              className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-3"
+            >
+              <div className="mb-3 border-b border-slate-100 pb-2">
+                <p className="text-sm font-extrabold text-slate-900">
+                  {compareMeta.title}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {compareBranches.map((b) => b.branchName).join(" · ")}
+                </p>
+                {showDateFilter ? (
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    ช่วง {formatDateKeyTh(from <= to ? from : to)} –{" "}
+                    {formatDateKeyTh(from <= to ? to : from)}
+                  </p>
+                ) : null}
+                {compareCaptureStamp ? (
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {compareCaptureStamp}
+                  </p>
+                ) : null}
+              </div>
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
+                  <tr>
+                    <th className="sticky left-0 z-10 bg-slate-50 px-3 py-2.5 text-right">
+                      ลำดับ
+                    </th>
+                    <th className="sticky left-10 z-10 min-w-[8rem] bg-slate-50 px-3 py-2.5">
+                      เมนู
+                    </th>
+                    {compareBranches.map((b) => (
+                      <th
+                        key={b.branchId}
+                        className="whitespace-nowrap px-3 py-2.5 text-right"
+                        title={b.branchName}
+                      >
+                        {b.branchName.length > 14
+                          ? `${b.branchName.slice(0, 12)}…`
+                          : b.branchName}
+                      </th>
+                    ))}
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right font-bold text-violet-800">
+                      รวม
+                    </th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right font-bold text-violet-800">
+                      มูลค่ารวม
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {stockCompareRows.map((row, idx) => (
+                    <tr
+                      key={row.name}
+                      className="bg-white hover:bg-violet-50/40"
+                    >
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 text-right tabular-nums text-slate-500">
+                        {row.sequence || idx + 1}
+                      </td>
+                      <td className="sticky left-10 z-10 bg-white px-3 py-2 font-medium text-slate-800">
+                        {row.name}
+                      </td>
+                      {compareBranches.map((b) => {
+                        const qty = row.byBranch[b.branchId]?.qty ?? 0;
+                        return (
+                          <td
+                            key={b.branchId}
+                            className={`px-3 py-2 text-right tabular-nums ${
+                              qty === 0
+                                ? "text-slate-300"
+                                : isStockNow && qty <= 3
+                                  ? "font-semibold text-amber-700"
+                                  : isRestock
+                                    ? "font-semibold text-emerald-800"
+                                    : isIssue
+                                      ? "font-semibold text-amber-900"
+                                      : isSales
+                                        ? "font-semibold text-sky-800"
+                                        : "text-slate-800"
+                            }`}
+                          >
+                            {money(qty)}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-2 text-right tabular-nums font-bold text-violet-900">
+                        {money(row.totalQty)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                        {money(row.totalValue)} ฿
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-violet-50/60 text-sm font-bold">
+                    <td
+                      colSpan={2}
+                      className="sticky left-0 z-10 bg-violet-50 px-3 py-2.5 text-slate-800"
+                    >
+                      รวมทุกเมนู
+                    </td>
+                    {compareBranches.map((b) => {
+                      const sum = stockCompareRows.reduce(
+                        (s, r) => s + (r.byBranch[b.branchId]?.qty ?? 0),
+                        0,
+                      );
+                      return (
+                        <td
+                          key={b.branchId}
+                          className="px-3 py-2.5 text-right tabular-nums text-violet-900"
+                        >
+                          {money(sum)}
+                        </td>
+                      );
+                    })}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-violet-900">
+                      {money(
+                        stockCompareRows.reduce((s, r) => s + r.totalQty, 0),
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-violet-900">
+                      {money(
+                        stockCompareRows.reduce((s, r) => s + r.totalValue, 0),
+                      )}{" "}
+                      ฿
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {(data?.branches?.length ?? 0) > 0 &&
+      !(canCompareView && stockViewMode === "compare") ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
@@ -542,6 +1213,12 @@ export function BrandOverviewPanel({
                   <>
                     <th className="px-3 py-2.5 text-right">คงเหลือ</th>
                     <th className="px-3 py-2.5 text-right">มูลค่า</th>
+                  </>
+                ) : null}
+                {isSales ? (
+                  <>
+                    <th className="px-3 py-2.5 text-right">ขาย (ชิ้น)</th>
+                    <th className="px-3 py-2.5 text-right">รายได้</th>
                   </>
                 ) : null}
                 {isRestock ? (
@@ -606,6 +1283,16 @@ export function BrandOverviewPanel({
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums">
                             {money(b.saleStockValue)} ฿
+                          </td>
+                        </>
+                      ) : null}
+                      {isSales ? (
+                        <>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-sky-800">
+                            {money(b.soldQty)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-800">
+                            {money(b.completedRevenue)} ฿
                           </td>
                         </>
                       ) : null}
@@ -690,18 +1377,24 @@ export function BrandOverviewPanel({
                                         ? "เติม"
                                         : isIssue
                                           ? "จ่ายออก"
-                                          : "คงเหลือ"}
+                                          : isSales
+                                            ? "ขาย"
+                                            : "คงเหลือ"}
                                     </th>
                                     {isIssue ? (
                                       <th className="px-2.5 py-2 text-right">
                                         ขายตัด
+                                      </th>
+                                    ) : isSales ? (
+                                      <th className="px-2.5 py-2 text-right">
+                                        มูลค่า ~
                                       </th>
                                     ) : (
                                       <th className="px-2.5 py-2 text-right">
                                         {isRestock ? "—" : "ของเสีย"}
                                       </th>
                                     )}
-                                    {!isRestock && !isIssue ? (
+                                    {!isRestock && !isIssue && !isSales ? (
                                       <th className="px-2.5 py-2 text-right">
                                         มูลค่า
                                       </th>
@@ -709,7 +1402,18 @@ export function BrandOverviewPanel({
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                  {detailItems.map((item) => (
+                                  {detailItems.map((item) => {
+                                    const unit =
+                                      typeof item.unitPrice === "number"
+                                        ? item.unitPrice
+                                        : item.quantity > 0
+                                          ? item.value / item.quantity
+                                          : 0;
+                                    const soldValue =
+                                      Math.round(
+                                        (item.soldQty ?? 0) * unit * 100,
+                                      ) / 100;
+                                    return (
                                     <tr key={item.branchMenuItemId}>
                                       <td className="px-2.5 py-1.5 text-right tabular-nums text-slate-500">
                                         {item.sequence || "—"}
@@ -720,18 +1424,27 @@ export function BrandOverviewPanel({
                                       <td className="px-2.5 py-1.5 text-right tabular-nums">
                                         {money(itemQty(item))}
                                       </td>
-                                      <td className="px-2.5 py-1.5 text-right tabular-nums text-rose-700">
+                                      <td
+                                        className={`px-2.5 py-1.5 text-right tabular-nums ${
+                                          isSales
+                                            ? "text-slate-700"
+                                            : "text-rose-700"
+                                        }`}
+                                      >
                                         {isRestock
                                           ? "—"
-                                          : money(itemSecondary(item) ?? 0)}
+                                          : isSales
+                                            ? `${money(soldValue)} ฿`
+                                            : money(itemSecondary(item) ?? 0)}
                                       </td>
-                                      {!isRestock && !isIssue ? (
+                                      {!isRestock && !isIssue && !isSales ? (
                                         <td className="px-2.5 py-1.5 text-right tabular-nums">
                                           {money(item.value)} ฿
                                         </td>
                                       ) : null}
                                     </tr>
-                                  ))}
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>

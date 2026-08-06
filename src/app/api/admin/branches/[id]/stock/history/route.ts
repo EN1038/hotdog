@@ -30,6 +30,8 @@ type FlatMovement = {
   imageUrl: string | null;
   batchId: string | null;
   createdAt: Date;
+  cancelledAt: Date | null;
+  cancelNote: string | null;
   stockType: StockType;
   unit: string;
   source: "menu" | "non_menu";
@@ -137,9 +139,71 @@ export async function GET(request: Request, { params }: Params) {
       }),
     ]);
 
+    // Cancel meta may be missing on old DBs — ensure columns then load via SQL
+    const menuIds = menuRows.map((r) => r.id);
+    const nonMenuIds = nonMenuRows.map((r) => r.id);
+    const cancelMeta = new Map<
+      string,
+      { cancelledAt: Date | null; cancelNote: string | null }
+    >();
+    const schema = (process.env.DATABASE_SCHEMA ?? "public").replace(/"/g, "");
+    try {
+      const { ensureStockHistoryCancelColumns } = await import(
+        "@/lib/stock-history-cancel"
+      );
+      await ensureStockHistoryCancelColumns();
+    } catch (e) {
+      console.error("[stock/history] ensure cancel columns", e);
+    }
+    try {
+      if (menuIds.length > 0) {
+        const { Prisma } = await import("@prisma/client");
+        const rows = await prisma.$queryRaw<
+          Array<{
+            id: string;
+            cancelledAt: Date | null;
+            cancelNote: string | null;
+          }>
+        >`
+          SELECT id, "cancelledAt", "cancelNote"
+          FROM ${Prisma.raw(`"${schema}"."BranchMenuItemStockHistory"`)}
+          WHERE id IN (${Prisma.join(menuIds)})
+        `;
+        for (const r of rows) {
+          cancelMeta.set(r.id, {
+            cancelledAt: r.cancelledAt ?? null,
+            cancelNote: r.cancelNote ?? null,
+          });
+        }
+      }
+      if (nonMenuIds.length > 0) {
+        const { Prisma } = await import("@prisma/client");
+        const rows = await prisma.$queryRaw<
+          Array<{
+            id: string;
+            cancelledAt: Date | null;
+            cancelNote: string | null;
+          }>
+        >`
+          SELECT id, "cancelledAt", "cancelNote"
+          FROM ${Prisma.raw(`"${schema}"."BranchNonMenuItemHistory"`)}
+          WHERE id IN (${Prisma.join(nonMenuIds)})
+        `;
+        for (const r of rows) {
+          cancelMeta.set(r.id, {
+            cancelledAt: r.cancelledAt ?? null,
+            cancelNote: r.cancelNote ?? null,
+          });
+        }
+      }
+    } catch (e) {
+      console.error("[stock/history] load cancel meta failed", e);
+    }
+
     const flat: FlatMovement[] = [
       ...menuRows.map((r) => {
         const parsed = parseBranchMenuOrderNote(r.note);
+        const meta = cancelMeta.get(r.id);
         return {
           id: r.id,
           type: r.type,
@@ -148,6 +212,8 @@ export async function GET(request: Request, { params }: Params) {
           imageUrl: r.imageUrl,
           batchId: r.batchId,
           createdAt: r.createdAt,
+          cancelledAt: meta?.cancelledAt ?? null,
+          cancelNote: meta?.cancelNote ?? null,
           stockType: "SALE_ITEM" as const,
           unit: "รายการ",
           source: "menu" as const,
@@ -158,21 +224,26 @@ export async function GET(request: Request, { params }: Params) {
             : null,
         };
       }),
-      ...nonMenuRows.map((r) => ({
-        id: r.id,
-        type: r.type,
-        quantity: r.quantity,
-        note: r.note,
-        imageUrl: r.imageUrl,
-        batchId: r.batchId,
-        createdAt: r.createdAt,
-        stockType: r.item.stockType as StockType,
-        unit: r.item.unit,
-        source: "non_menu" as const,
-        menuItem: { id: r.item.id, name: r.item.name },
-        createdByStaff: r.createdByStaff,
-        order: null,
-      })),
+      ...nonMenuRows.map((r) => {
+        const meta = cancelMeta.get(r.id);
+        return {
+          id: r.id,
+          type: r.type,
+          quantity: r.quantity,
+          note: r.note,
+          imageUrl: r.imageUrl,
+          batchId: r.batchId,
+          createdAt: r.createdAt,
+          cancelledAt: meta?.cancelledAt ?? null,
+          cancelNote: meta?.cancelNote ?? null,
+          stockType: r.item.stockType as StockType,
+          unit: r.item.unit,
+          source: "non_menu" as const,
+          menuItem: { id: r.item.id, name: r.item.name },
+          createdByStaff: r.createdByStaff,
+          order: null,
+        };
+      }),
     ];
 
     const filtered = flat
@@ -196,6 +267,9 @@ export async function GET(request: Request, { params }: Params) {
       imageUrl: m.imageUrl,
       batchId: m.batchId,
       createdAt: m.createdAt.toISOString(),
+      cancelledAt: m.cancelledAt?.toISOString() ?? null,
+      cancelNote: m.cancelNote,
+      isCancelled: Boolean(m.cancelledAt),
       stockType: m.stockType,
       unit: m.unit,
       source: m.source,
@@ -222,6 +296,9 @@ export async function GET(request: Request, { params }: Params) {
       itemCount: number;
       totalQty: number;
       stockTypes: string[];
+      isCancelled: boolean;
+      cancelledAt: string | null;
+      cancelNote: string | null;
       lines: Array<{
         id: string;
         name: string;
@@ -230,6 +307,7 @@ export async function GET(request: Request, { params }: Params) {
         unit: string;
         stockType: StockType;
         source: "menu" | "non_menu";
+        isCancelled: boolean;
       }>;
     }> | null = null;
 
@@ -285,6 +363,18 @@ export async function GET(request: Request, { params }: Params) {
           const stockTypes = Array.from(
             new Set(lines.map((l) => l.stockType)),
           );
+          const cancelledLines = lines.filter((l) => l.cancelledAt);
+          const isCancelled =
+            lines.length > 0 && cancelledLines.length === lines.length;
+          const cancelTimes = cancelledLines
+            .map((l) => l.cancelledAt?.getTime() ?? 0)
+            .filter((n) => n > 0);
+          const cancelledAt =
+            cancelTimes.length > 0
+              ? new Date(Math.max(...cancelTimes)).toISOString()
+              : null;
+          const cancelNote =
+            cancelledLines.find((l) => l.cancelNote)?.cancelNote ?? null;
           return {
             id: g.id,
             type: g.type,
@@ -300,6 +390,9 @@ export async function GET(request: Request, { params }: Params) {
             itemCount: lines.length,
             totalQty,
             stockTypes,
+            isCancelled,
+            cancelledAt,
+            cancelNote,
             lines: lines.map((l) => ({
               id: l.id,
               name: l.menuItem.name,
@@ -308,6 +401,7 @@ export async function GET(request: Request, { params }: Params) {
               unit: l.unit,
               stockType: l.stockType,
               source: l.source,
+              isCancelled: Boolean(l.cancelledAt),
             })),
           };
         })

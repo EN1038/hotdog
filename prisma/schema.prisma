@@ -144,6 +144,18 @@ enum StockTransferKind {
   BRANCH_TO_BRANCH
 }
 
+enum KitchenProductionStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum BranchStockRequestStatus {
+  PENDING
+  FULFILLED
+  REJECTED
+  CANCELLED
+}
+
 model Admin {
   id                     String             @id @default(cuid())
   username               String             @unique
@@ -167,6 +179,8 @@ model Admin {
   stockCounts            StockCount[]
   purchaseOrders         PurchaseOrder[]
   branchExpenses         BranchExpense[]
+  kitchenProductions     KitchenProduction[]
+  stockRequestsHandled   BranchStockRequest[] @relation("StockRequestFulfilledBy")
 
   @@index([lineLinkCode])
 }
@@ -204,9 +218,11 @@ model Brand {
   stockMovements     StockMovement[]
   stockTransfers     StockTransfer[]
   stockCounts        StockCount[]
-  suppliers          Supplier[]
-  purchaseOrders     PurchaseOrder[]
-  stockLots          StockLot[]
+  suppliers            Supplier[]
+  purchaseOrders       PurchaseOrder[]
+  stockLots            StockLot[]
+  kitchenProductions   KitchenProduction[]
+  branchStockRequests  BranchStockRequest[]
 }
 
 /**
@@ -386,6 +402,7 @@ model Branch {
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
   branchNonMenuItems           BranchNonMenuItem[]
   expenses                     BranchExpense[]
+  stockRequests                BranchStockRequest[]
 
   @@unique([brandId, code])
   @@index([alertSoundId])
@@ -406,6 +423,10 @@ model BranchShift {
   openingCash     Decimal      @db.Decimal(10, 2)
   /// Optional note when opening the round (e.g. เงินทอนสำหรับเปิดร้าน)
   note            String?
+  /// Admin cancelled this shift (void/mistake) — still shown in history, not active
+  cancelledAt     DateTime?
+  /// Optional reason when admin cancels the shift
+  cancelNote      String?
   branch          Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   openedByStaff   Staff?       @relation("ShiftOpenedByStaff", fields: [openedByStaffId], references: [id], onDelete: SetNull)
   closedByStaff   Staff?       @relation("ShiftClosedByStaff", fields: [closedByStaffId], references: [id], onDelete: SetNull)
@@ -442,6 +463,7 @@ model Staff {
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
   branchNonMenuItemHistories   BranchNonMenuItemHistory[]
   expenses                     BranchExpense[]
+  stockRequests                BranchStockRequest[]
 }
 
 model StaffRoleAssignment {
@@ -519,6 +541,9 @@ model BranchMenuItemStockHistory {
   imageUrl         String?
   /// Groups lines from one staff submit (รับเข้า / จ่ายออก)
   batchId          String?
+  /// When set, this line was cancelled (stock effect reversed)
+  cancelledAt      DateTime?
+  cancelNote       String?
   createdAt        DateTime @default(now())
   createdByStaffId String?
 
@@ -762,8 +787,11 @@ model BrandProduct {
   countLines         StockCountLine[]
   lots               StockLot[]
   purchaseOrderLines PurchaseOrderLine[]
-  recipeLines        ProductRecipeLine[] @relation("RecipeParent")
-  usedInRecipes      ProductRecipeLine[] @relation("RecipeComponent")
+  recipeLines          ProductRecipeLine[] @relation("RecipeParent")
+  usedInRecipes        ProductRecipeLine[] @relation("RecipeComponent")
+  kitchenProductions   KitchenProduction[]
+  kitchenComponents    KitchenProductionComponent[]
+  branchStockRequests  BranchStockRequest[]
 
   @@unique([brandId, name])
   @@index([brandId, stockType])
@@ -787,6 +815,7 @@ model StockLocation {
   counts         StockCount[]
   lots           StockLot[]
   purchaseOrders PurchaseOrder[]
+  kitchenProductions KitchenProduction[]
 
   @@unique([branchId])
   @@index([brandId, type])
@@ -1026,6 +1055,76 @@ model ProductRecipeLine {
   @@index([componentProductId])
 }
 
+/// Kitchen prep run: raw materials → finished skewers/sale items at warehouse
+model KitchenProduction {
+  id                  String                   @id @default(cuid())
+  brandId             String
+  stockLocationId     String
+  finishedProductId   String
+  /// Usable finished units added to warehouse stock
+  quantityProduced    Int
+  /// Finished units damaged during prep (not stocked)
+  quantityWasted      Int                      @default(0)
+  status              KitchenProductionStatus  @default(COMPLETED)
+  note                String?
+  lotNumber           String?
+  completedAt         DateTime                 @default(now())
+  createdByAdminId    String?
+  createdAt           DateTime                 @default(now())
+  brand               Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  location            StockLocation            @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
+  finishedProduct     BrandProduct             @relation(fields: [finishedProductId], references: [id], onDelete: Restrict)
+  createdByAdmin      Admin?                   @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  components          KitchenProductionComponent[]
+
+  @@index([brandId, completedAt])
+  @@index([finishedProductId, completedAt])
+  @@index([status, completedAt])
+}
+
+model KitchenProductionComponent {
+  id               String             @id @default(cuid())
+  productionId     String
+  brandProductId   String
+  /// Planned from recipe × (produced + waste)
+  quantityPlanned  Int
+  /// Actually deducted
+  quantityUsed     Int
+  production       KitchenProduction  @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  product          BrandProduct       @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
+
+  @@unique([productionId, brandProductId])
+  @@index([brandProductId])
+}
+
+/// Branch asks kitchen/HQ for finished goods before production/shipping
+model BranchStockRequest {
+  id                 String                   @id @default(cuid())
+  brandId            String
+  branchId           String
+  brandProductId     String
+  quantityRequested  Int
+  quantityFulfilled  Int                      @default(0)
+  status             BranchStockRequestStatus @default(PENDING)
+  note               String?
+  adminNote          String?
+  requestedByStaffId String?
+  fulfilledByAdminId String?
+  transferId         String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  fulfilledAt        DateTime?
+  brand              Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  branch             Branch                   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product            BrandProduct             @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
+  requestedByStaff   Staff?                   @relation(fields: [requestedByStaffId], references: [id], onDelete: SetNull)
+  fulfilledByAdmin   Admin?                   @relation("StockRequestFulfilledBy", fields: [fulfilledByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([brandId, status, createdAt])
+  @@index([branchId, status, createdAt])
+  @@index([brandProductId])
+}
+
 model BranchNonMenuItem {
   id          String   @id @default(cuid())
   branchId    String
@@ -1076,6 +1175,8 @@ model BranchNonMenuItemHistory {
   imageUrl            String?
   /// Groups lines from one staff submit (รับเข้า / จ่ายออก)
   batchId             String?
+  cancelledAt         DateTime?
+  cancelNote          String?
   createdAt           DateTime @default(now())
   createdByStaffId    String?
 

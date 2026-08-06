@@ -69,6 +69,12 @@ export function handleApiError(error: unknown) {
         503,
       );
     }
+    if (error.code === "P2022") {
+      return jsonError(
+        "โครงสร้างฐานข้อมูลยังไม่อัปเดต — รัน prisma migrate deploy แล้วรีสตาร์ท dev server",
+        503,
+      );
+    }
   }
 
   if (error instanceof Prisma.PrismaClientValidationError) {
@@ -109,6 +115,24 @@ export function handleApiError(error: unknown) {
       return jsonError(
         "บันทึกใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง",
         408,
+      );
+    }
+    if (raw.includes("Can't reach database server") || raw.includes("ECONNREFUSED") || raw.includes("P1001")) {
+      console.error("[api] database unreachable", raw);
+      return jsonError(
+        "เชื่อมต่อฐานข้อมูลไม่ได้ — ตรวจเครือข่าย / DATABASE_URL แล้วรีสตาร์ท dev server",
+        503,
+      );
+    }
+    if (
+      (raw.includes("column") && raw.includes("does not exist")) ||
+      raw.includes("cancelledAt") ||
+      raw.includes("cancelNote")
+    ) {
+      console.error("[api] stock history schema", raw);
+      return jsonError(
+        "โครงสร้างประวัติสต๊อกยังไม่อัปเดต — รีเฟรชหน้าแล้วลองใหม่ (ระบบจะเพิ่มคอลัมน์ให้อัตโนมัติ)",
+        503,
       );
     }
     if (raw.includes("Invalid `") || raw.length > 180) {

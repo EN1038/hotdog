@@ -3,6 +3,12 @@ import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { logAdminActivity } from "@/lib/admin-activity";
+import {
+  bangkokDateKey,
+  isBangkokDateKey,
+  queueBusinessDateFromKey,
+} from "@/lib/constants";
+import { isOrderCountableRevenue } from "@/lib/order-totals";
 
 const createLineSchema = z.object({
   itemId: z.string().min(1),
@@ -22,6 +28,137 @@ const createSchema = z.object({
   lines: z.array(createLineSchema).min(1),
 });
 
+type DayItemActivity = {
+  name: string;
+  soldQty: number;
+  restockQty: number;
+  wasteQty: number;
+  issueQty: number;
+};
+
+async function loadDayMenuActivity(
+  branchId: string,
+  dateStr: string,
+): Promise<DayItemActivity[]> {
+  if (!isBangkokDateKey(dateStr)) return [];
+
+  const createdAtRange = {
+    gte: new Date(`${dateStr}T00:00:00+07:00`),
+    lte: new Date(`${dateStr}T23:59:59.999+07:00`),
+  };
+
+  const menuItems = await prisma.branchMenuItem.findMany({
+    where: { branchId, isHidden: false },
+    select: { id: true, name: true },
+  });
+  if (menuItems.length === 0) return [];
+
+  const nameById = new Map(menuItems.map((m) => [m.id, m.name.trim()]));
+  const byName = new Map<
+    string,
+    {
+      soldQty: number;
+      restockQty: number;
+      wasteQty: number;
+      issueQty: number;
+    }
+  >();
+
+  const ensure = (name: string) => {
+    const key = name.trim();
+    if (!key) return null;
+    const cur = byName.get(key) ?? {
+      soldQty: 0,
+      restockQty: 0,
+      wasteQty: 0,
+      issueQty: 0,
+    };
+    byName.set(key, cur);
+    return cur;
+  };
+
+  for (const m of menuItems) ensure(m.name);
+
+  const [orders, history] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        branchId,
+        queueBusinessDate: queueBusinessDateFromKey(dateStr),
+      },
+      select: {
+        status: true,
+        awaitingPhotoKey: true,
+        items: {
+          select: {
+            branchMenuItemId: true,
+            quantity: true,
+            giftQuantity: true,
+            itemName: true,
+          },
+        },
+      },
+    }),
+    prisma.branchMenuItemStockHistory.findMany({
+      where: {
+        branchId,
+        type: { in: ["STOCK_IN", "ISSUE", "DAMAGE", "LOST"] },
+        createdAt: createdAtRange,
+      },
+      select: {
+        menuItemId: true,
+        quantity: true,
+        type: true,
+      },
+    }),
+  ]);
+
+  for (const order of orders) {
+    const countable = isOrderCountableRevenue({
+      status: order.status,
+      awaitingPhotoKey: order.awaitingPhotoKey,
+    });
+    if (!countable) continue;
+    for (const it of order.items) {
+      const soldUnits = Math.max(0, it.quantity - (it.giftQuantity ?? 0));
+      if (soldUnits <= 0) continue;
+      const name =
+        (it.branchMenuItemId
+          ? nameById.get(it.branchMenuItemId)
+          : null) ||
+        (it.itemName ?? "").trim();
+      const row = ensure(name);
+      if (row) row.soldQty += soldUnits;
+    }
+  }
+
+  for (const row of history) {
+    const qty = Math.abs(row.quantity);
+    if (qty <= 0) continue;
+    const name = nameById.get(row.menuItemId);
+    if (!name) continue;
+    const acc = ensure(name);
+    if (!acc) continue;
+    if (row.type === "STOCK_IN") acc.restockQty += qty;
+    else if (row.type === "ISSUE") {
+      acc.issueQty += qty;
+      acc.wasteQty += qty;
+    } else {
+      acc.wasteQty += qty;
+    }
+  }
+
+  return [...byName.entries()]
+    .map(([name, v]) => ({ name, ...v }))
+    .filter(
+      (r) =>
+        r.soldQty > 0 ||
+        r.restockQty > 0 ||
+        r.wasteQty > 0 ||
+        r.issueQty > 0,
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, "th"));
+}
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -31,10 +168,10 @@ export async function GET(
     await requireBranchAccess(branchId);
 
     const { searchParams } = new URL(request.url);
-    const dateStr = searchParams.get("date"); // YYYY-MM-DD
+    const dateStr = searchParams.get("date") || bangkokDateKey();
 
     let dateFilter: Record<string, unknown> = {};
-    if (dateStr) {
+    if (dateStr && isBangkokDateKey(dateStr)) {
       // Bangkok calendar day (+07:00)
       const startOfDay = new Date(`${dateStr}T00:00:00+07:00`);
       const endOfDay = new Date(`${dateStr}T23:59:59.999+07:00`);
@@ -59,25 +196,28 @@ export async function GET(
       }
     }
 
-    const counts = await prisma.stockCount.findMany({
-      where: {
-        branchId: branchId,
-        status: { in: ["IN_PROGRESS", "COMPLETED", "CANCELLED"] },
-        ...dateFilter,
-      },
-      orderBy: [{ createdAt: "desc" }, { completedAt: "desc" }],
-      include: {
-        createdByStaff: { select: { name: true } },
-        createdByAdmin: { select: { username: true } },
-        lines: {
-          include: {
-            product: {
-              select: { name: true, stockType: true, unit: true },
+    const [counts, dayActivityItems] = await Promise.all([
+      prisma.stockCount.findMany({
+        where: {
+          branchId: branchId,
+          status: { in: ["IN_PROGRESS", "COMPLETED", "CANCELLED"] },
+          ...dateFilter,
+        },
+        orderBy: [{ createdAt: "desc" }, { completedAt: "desc" }],
+        include: {
+          createdByStaff: { select: { name: true } },
+          createdByAdmin: { select: { username: true } },
+          lines: {
+            include: {
+              product: {
+                select: { name: true, stockType: true, unit: true },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      loadDayMenuActivity(branchId, dateStr),
+    ]);
 
     return jsonOk({
       counts: counts.map((c) => ({
@@ -85,6 +225,10 @@ export async function GET(
         completedAt: c.completedAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),
       })),
+      dayActivity: {
+        date: dateStr,
+        items: dayActivityItems,
+      },
     });
   } catch (error) {
     return handleApiError(error);

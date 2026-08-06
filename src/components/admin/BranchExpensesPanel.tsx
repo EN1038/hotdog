@@ -44,6 +44,31 @@ const emptyForm = () => ({
   note: "",
 });
 
+function formatExpenseDateTh(key: string) {
+  // expenseDate จาก API เป็น YYYY-MM-DD ของวันที่รายการ (ไม่ใช่วันที่สร้าง)
+  const m = key.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return key;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const buddhistY = y + 543;
+  const months = [
+    "ม.ค.",
+    "ก.พ.",
+    "มี.ค.",
+    "เม.ย.",
+    "พ.ค.",
+    "มิ.ย.",
+    "ก.ค.",
+    "ส.ค.",
+    "ก.ย.",
+    "ต.ค.",
+    "พ.ย.",
+    "ธ.ค.",
+  ];
+  return `${d} ${months[mo - 1]} ${buddhistY}`;
+}
+
 export function BranchExpensesPanel({ branchId }: { branchId: string }) {
   const toast = useToast();
   const { confirm } = useConfirm();
@@ -425,6 +450,7 @@ export function BranchExpensesPanel({ branchId }: { branchId: string }) {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs text-slate-500">
                   <tr>
+                    <th className="px-3 py-2.5 font-semibold">วันที่รายการ</th>
                     <th className="px-3 py-2.5 font-semibold">รายการ</th>
                     <th className="px-3 py-2.5 font-semibold">ช่องทาง</th>
                     <th className="px-3 py-2.5 text-right font-semibold">
@@ -444,6 +470,12 @@ export function BranchExpensesPanel({ branchId }: { branchId: string }) {
                       "—";
                     return (
                       <tr key={row.id} className="bg-white">
+                        <td
+                          className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-700"
+                          title={`วันที่รายการ ${row.expenseDate}`}
+                        >
+                          {formatExpenseDateTh(row.expenseDate)}
+                        </td>
                         <td className="px-3 py-2.5">
                           <p className="font-semibold text-slate-900">
                             {row.title}

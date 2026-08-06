@@ -249,6 +249,16 @@ export default function StaffHomePage() {
             requiresShift: false,
             kind: "stock" as const,
           },
+          // ซ่อนชั่วคราว: ขอของจากครัว
+          // {
+          //   href: "/staff/stock/request",
+          //   label: "ขอของจากครัว",
+          //   description: "แจ้งยอดที่ต้องการให้บ้านกลาง",
+          //   color: "#0d9488",
+          //   icon: <IconPackage size={24} />,
+          //   requiresShift: false,
+          //   kind: "stock-request" as const,
+          // },
         ]
       : []),
   ];

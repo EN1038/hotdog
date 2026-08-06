@@ -35,7 +35,9 @@ export type HqStockItem = {
   restockQty: number;
   issueQty: number;
   soldQty: number;
+  /** Current on-hand stock value (quantity × unitPrice) */
   value: number;
+  unitPrice: number;
 };
 
 export type HqBranchRow = {
@@ -234,7 +236,6 @@ export async function buildHqOverview(
   const wasteByMenuId = new Map<string, number>();
   const restockByMenuId = new Map<string, number>();
   const issueByMenuId = new Map<string, number>();
-  const soldByMenuId = new Map<string, number>();
 
   for (const item of menuItems) {
     priceByMenuId.set(item.id, Number(item.price ?? 0));
@@ -256,10 +257,7 @@ export async function buildHqOverview(
       agg.restockQty += qty;
       agg.restockValue += value;
     } else if (row.type === "SALE") {
-      soldByMenuId.set(
-        row.menuItemId,
-        (soldByMenuId.get(row.menuItemId) ?? 0) + qty,
-      );
+      // Menu sold qty comes from completed orders below (more accurate for “ขาย”)
     } else if (WASTE_TYPES.has(row.type)) {
       // ISSUE is both "จ่ายออก" and ของเสีย (staff records waste as ISSUE)
       if (row.type === "ISSUE") {
@@ -309,7 +307,6 @@ export async function buildHqOverview(
     const wasteQty = wasteByMenuId.get(item.id) ?? 0;
     const restockQty = restockByMenuId.get(item.id) ?? 0;
     const issueQty = issueByMenuId.get(item.id) ?? 0;
-    const soldQty = soldByMenuId.get(item.id) ?? 0;
     const value = Math.round(quantity * price * 100) / 100;
     const agg = byBranch.get(item.branchId);
     if (!agg) continue;
@@ -323,8 +320,9 @@ export async function buildHqOverview(
       wasteQty,
       restockQty,
       issueQty,
-      soldQty,
+      soldQty: 0,
       value,
+      unitPrice: price,
     });
   }
 
@@ -336,6 +334,8 @@ export async function buildHqOverview(
       row.sequence = seqById.get(row.branchMenuItemId) ?? 0;
     }
   }
+
+  const soldFromOrdersByMenuId = new Map<string, number>();
 
   for (const order of orders) {
     const countable = isOrderCountableRevenue({
@@ -361,6 +361,16 @@ export async function buildHqOverview(
       const soldUnits = Math.max(0, it.quantity - (it.giftQuantity ?? 0));
       if (soldUnits <= 0) continue;
       if (agg) agg.soldQty += soldUnits;
+      soldFromOrdersByMenuId.set(
+        it.branchMenuItemId,
+        (soldFromOrdersByMenuId.get(it.branchMenuItemId) ?? 0) + soldUnits,
+      );
+    }
+  }
+
+  for (const agg of byBranch.values()) {
+    for (const row of agg.stockItems) {
+      row.soldQty = soldFromOrdersByMenuId.get(row.branchMenuItemId) ?? 0;
     }
   }
 

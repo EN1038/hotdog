@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { requireStaff } from "@/lib/auth";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { isBangkokDateKey } from "@/lib/constants";
@@ -15,6 +16,8 @@ type HistoryLine = {
   note: string | null;
   imageUrl: string | null;
   batchId: string | null;
+  cancelledAt: Date | null;
+  cancelNote: string | null;
   createdByStaff: { id: string; name: string | null } | null;
 };
 
@@ -36,6 +39,72 @@ function fallbackGroupKey(row: HistoryLine, type: string) {
     row.imageUrl ?? "",
     minuteKey.toISOString(),
   ].join("|");
+}
+
+function schemaTable(name: string) {
+  const schema = (process.env.DATABASE_SCHEMA ?? "public").replace(/"/g, "");
+  return Prisma.raw(`"${schema}"."${name}"`);
+}
+
+async function loadCancelMeta(
+  menuIds: string[],
+  nonMenuIds: string[],
+): Promise<Map<string, { cancelledAt: Date | null; cancelNote: string | null }>> {
+  const map = new Map<
+    string,
+    { cancelledAt: Date | null; cancelNote: string | null }
+  >();
+  try {
+    const { ensureStockHistoryCancelColumns } = await import(
+      "@/lib/stock-history-cancel"
+    );
+    await ensureStockHistoryCancelColumns();
+  } catch {
+    /* columns may already exist */
+  }
+  try {
+    if (menuIds.length > 0) {
+      const rows = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          cancelledAt: Date | null;
+          cancelNote: string | null;
+        }>
+      >`
+        SELECT id, "cancelledAt", "cancelNote"
+        FROM ${schemaTable("BranchMenuItemStockHistory")}
+        WHERE id IN (${Prisma.join(menuIds)})
+      `;
+      for (const r of rows) {
+        map.set(r.id, {
+          cancelledAt: r.cancelledAt ?? null,
+          cancelNote: r.cancelNote ?? null,
+        });
+      }
+    }
+    if (nonMenuIds.length > 0) {
+      const rows = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          cancelledAt: Date | null;
+          cancelNote: string | null;
+        }>
+      >`
+        SELECT id, "cancelledAt", "cancelNote"
+        FROM ${schemaTable("BranchNonMenuItemHistory")}
+        WHERE id IN (${Prisma.join(nonMenuIds)})
+      `;
+      for (const r of rows) {
+        map.set(r.id, {
+          cancelledAt: r.cancelledAt ?? null,
+          cancelNote: r.cancelNote ?? null,
+        });
+      }
+    }
+  } catch (e) {
+    console.error("[staff/stock/movements] cancel meta", e);
+  }
+  return map;
 }
 
 /** GET — staff stock_in / issue history batches for a Bangkok calendar day */
@@ -83,31 +152,46 @@ export async function GET(request: Request) {
       }),
     ]);
 
+    const cancelMeta = await loadCancelMeta(
+      menuRows.map((m) => m.id),
+      nonMenuRows.map((m) => m.id),
+    );
+
     const flat: HistoryLine[] = [
-      ...menuRows.map((m) => ({
-        id: m.id,
-        name: m.menuItem.name,
-        quantity: m.quantity,
-        unit: "รายการ",
-        stockType: "SALE_ITEM" as const,
-        createdAt: m.createdAt,
-        note: m.note,
-        imageUrl: m.imageUrl,
-        batchId: m.batchId,
-        createdByStaff: m.createdByStaff,
-      })),
-      ...nonMenuRows.map((m) => ({
-        id: m.id,
-        name: m.item.name,
-        quantity: m.quantity,
-        unit: m.item.unit,
-        stockType: m.item.stockType as HistoryLine["stockType"],
-        createdAt: m.createdAt,
-        note: m.note,
-        imageUrl: m.imageUrl,
-        batchId: m.batchId,
-        createdByStaff: m.createdByStaff,
-      })),
+      ...menuRows.map((m) => {
+        const meta = cancelMeta.get(m.id);
+        return {
+          id: m.id,
+          name: m.menuItem.name,
+          quantity: m.quantity,
+          unit: "รายการ",
+          stockType: "SALE_ITEM" as const,
+          createdAt: m.createdAt,
+          note: m.note,
+          imageUrl: m.imageUrl,
+          batchId: m.batchId,
+          cancelledAt: meta?.cancelledAt ?? null,
+          cancelNote: meta?.cancelNote ?? null,
+          createdByStaff: m.createdByStaff,
+        };
+      }),
+      ...nonMenuRows.map((m) => {
+        const meta = cancelMeta.get(m.id);
+        return {
+          id: m.id,
+          name: m.item.name,
+          quantity: m.quantity,
+          unit: m.item.unit,
+          stockType: m.item.stockType as HistoryLine["stockType"],
+          createdAt: m.createdAt,
+          note: m.note,
+          imageUrl: m.imageUrl,
+          batchId: m.batchId,
+          cancelledAt: meta?.cancelledAt ?? null,
+          cancelNote: meta?.cancelNote ?? null,
+          createdByStaff: m.createdByStaff,
+        };
+      }),
     ];
 
     type Acc = {
@@ -123,6 +207,9 @@ export async function GET(request: Request) {
         displayQty: number;
         unit: string;
         stockType: HistoryLine["stockType"];
+        isCancelled: boolean;
+        cancelledAt: Date | null;
+        cancelNote: string | null;
       }>;
     };
 
@@ -141,6 +228,9 @@ export async function GET(request: Request) {
         displayQty,
         unit: row.unit,
         stockType: row.stockType,
+        isCancelled: Boolean(row.cancelledAt),
+        cancelledAt: row.cancelledAt,
+        cancelNote: row.cancelNote,
       };
       if (!existing) {
         groups.set(key, {
@@ -170,6 +260,18 @@ export async function GET(request: Request) {
           .slice()
           .sort((a, b) => a.name.localeCompare(b.name, "th"));
         const totalQty = lines.reduce((s, l) => s + l.displayQty, 0);
+        const cancelledLines = lines.filter((l) => l.isCancelled);
+        const isCancelled =
+          lines.length > 0 && cancelledLines.length === lines.length;
+        const cancelTimes = cancelledLines
+          .map((l) => l.cancelledAt?.getTime() ?? 0)
+          .filter((n) => n > 0);
+        const cancelledAt =
+          cancelTimes.length > 0
+            ? new Date(Math.max(...cancelTimes)).toISOString()
+            : null;
+        const cancelNote =
+          cancelledLines.find((l) => l.cancelNote)?.cancelNote ?? null;
         return {
           id: g.id,
           kind,
@@ -184,6 +286,9 @@ export async function GET(request: Request) {
             : null,
           itemCount: lines.length,
           totalQty,
+          isCancelled,
+          cancelledAt,
+          cancelNote,
           lines: lines.map((l) => ({
             id: l.id,
             name: l.name,
@@ -191,6 +296,7 @@ export async function GET(request: Request) {
             signedQuantity: l.quantity,
             unit: l.unit,
             stockType: l.stockType,
+            isCancelled: l.isCancelled,
           })),
         };
       })

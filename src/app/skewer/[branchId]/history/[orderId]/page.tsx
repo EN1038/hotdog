@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   SkewerAppShell,
@@ -50,6 +50,28 @@ function formatDateLabel(ymd: string) {
   }
 }
 
+function formatDateTimeLabel(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("th-TH", {
+      timeZone: "Asia/Bangkok",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function formatBranchLabel(name: string | undefined) {
+  if (!name?.trim()) return "";
+  const t = name.trim();
+  return t.replace(/^สาขา\s*/i, "");
+}
+
 export default function SkewerHistoryDetailPage({ params }: PageProps) {
   const { branchId, orderId } = use(params);
   const meta = useSkewerBranchMeta(branchId);
@@ -77,46 +99,203 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     };
   }, [orderId]);
 
+  const summary = useMemo(() => {
+    if (!order) return null;
+    const itemCount = order.items.length;
+    const requestedTotal = order.items.reduce(
+      (sum, i) => sum + i.requestedQuantity,
+      0,
+    );
+    const confirmedTotal = order.items.reduce(
+      (sum, i) => sum + (i.confirmedQuantity ?? 0),
+      0,
+    );
+    return { itemCount, requestedTotal, confirmedTotal };
+  }, [order]);
+
+  const brandName = meta.brandName || "";
+  const branchLabel = formatBranchLabel(meta.name);
+
   return (
     <SkewerAppShell branchId={branchId} active="history" meta={meta}>
       <div className="space-y-4 px-4 pb-6 pt-4">
         {loading ? (
           <LoadingState className="border-0 bg-transparent shadow-none" />
-        ) : error || !order ? (
+        ) : error || !order || !summary ? (
           <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">
             {error || "ไม่พบออเดอร์"}
           </p>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-gray-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-xs text-gray-500">#{order.orderNumber}</p>
-                  <h1 className="mt-1 text-xl font-semibold text-gray-900">
+            <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-3">
+              <div className="border-b border-gray-100 pb-2.5">
+                {brandName ? (
+                  <p className="text-sm font-extrabold text-gray-900">
+                    {brandName}
+                  </p>
+                ) : null}
+                {branchLabel ? (
+                  <p className="text-xs font-semibold text-gray-600">
+                    สาขา {branchLabel}
+                  </p>
+                ) : null}
+                <div className="mt-1 flex items-baseline justify-between gap-2">
+                  <p className="min-w-0 text-xs font-bold text-gray-800">
+                    #{order.orderNumber} ·{" "}
                     {SKEWER_ORDER_STATUS_LABELS[order.status]}
-                  </h1>
+                  </p>
+                  <p className="shrink-0 text-right text-[11px] text-gray-500">
+                    {formatDateTimeLabel(
+                      order.confirmedAt || order.createdAt,
+                    )}
+                  </p>
                 </div>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  ต้องการ {formatDateLabel(order.requestedDate)}
+                </p>
               </div>
-              <p className="mt-3 text-sm text-gray-700">
-                วันที่ต้องการ:{" "}
-                <strong>{formatDateLabel(order.requestedDate)}</strong>
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
-                ที่อยู่: {order.addressText}
-              </p>
-              {order.note && (
-                <p className="mt-2 text-sm text-gray-600">โน้ต: {order.note}</p>
-              )}
-              {order.status === "PENDING_CONFIRM" && (
-                <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  รอแอดมินโทรยืนยัน — ไม่ต้องกดยืนยันเพิ่ม
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white px-3.5 py-3 shadow-sm">
+                  <p className="text-[11px] font-bold tracking-wide text-emerald-700/80">
+                    จำนวนที่สั่ง
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold text-emerald-800/70">
+                    รวมไม้
+                  </p>
+                  <div className="mt-2.5 space-y-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] font-medium text-slate-500">
+                        รวม
+                      </span>
+                      <span className="text-lg font-black tabular-nums leading-none text-slate-900">
+                        {summary.requestedTotal}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] font-medium text-slate-500">
+                        รายการ
+                      </span>
+                      <span className="text-sm font-extrabold tabular-nums text-emerald-700">
+                        {summary.itemCount}{" "}
+                        <span className="text-[10px] font-bold">ชนิด</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {order.status === "CONFIRMED" ? (
+                  <div className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-3.5 py-3 shadow-sm">
+                    <p className="text-[11px] font-bold tracking-wide text-sky-700/80">
+                      จำนวนที่ได้
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-sky-800/70">
+                      หลังยืนยัน
+                    </p>
+                    <div className="mt-2.5 space-y-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">
+                          รวม
+                        </span>
+                        <span className="text-lg font-black tabular-nums leading-none text-slate-900">
+                          {summary.confirmedTotal}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">
+                          ต่างจากสั่ง
+                        </span>
+                        <span
+                          className={`text-sm font-extrabold tabular-nums ${
+                            summary.confirmedTotal < summary.requestedTotal
+                              ? "text-amber-700"
+                              : "text-sky-700"
+                          }`}
+                        >
+                          {summary.confirmedTotal - summary.requestedTotal === 0
+                            ? "เท่ากัน"
+                            : summary.confirmedTotal - summary.requestedTotal}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : order.status === "CANCELLED" ? (
+                  <div className="rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white px-3.5 py-3 shadow-sm">
+                    <p className="text-[11px] font-bold tracking-wide text-rose-700/80">
+                      สถานะ
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-rose-800/70">
+                      ยกเลิกแล้ว
+                    </p>
+                    <div className="mt-2.5 space-y-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">
+                          รวม
+                        </span>
+                        <span className="text-lg font-black tabular-nums leading-none text-slate-900">
+                          0
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">
+                          รายการ
+                        </span>
+                        <span className="text-sm font-extrabold tabular-nums text-rose-700">
+                          {summary.itemCount}{" "}
+                          <span className="text-[10px] font-bold">ชนิด</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white px-3.5 py-3 shadow-sm">
+                    <p className="text-[11px] font-bold tracking-wide text-amber-700/80">
+                      สถานะ
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-amber-800/70">
+                      รอยืนยัน
+                    </p>
+                    <div className="mt-2.5 space-y-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">
+                          สั่งไว้
+                        </span>
+                        <span className="text-lg font-black tabular-nums leading-none text-slate-900">
+                          {summary.requestedTotal}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">
+                          รายการ
+                        </span>
+                        <span className="text-sm font-extrabold tabular-nums text-amber-700">
+                          {summary.itemCount}{" "}
+                          <span className="text-[10px] font-bold">ชนิด</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5 px-0.5 pt-1">
+                <p className="whitespace-pre-wrap text-sm text-gray-700">
+                  ที่อยู่: {order.addressText}
                 </p>
-              )}
-              {order.status === "CANCELLED" && order.cancelReason && (
-                <p className="mt-3 rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-700">
-                  เหตุผลยกเลิก: {order.cancelReason}
-                </p>
-              )}
+                {order.note ? (
+                  <p className="text-sm text-gray-600">โน้ต: {order.note}</p>
+                ) : null}
+                {order.status === "PENDING_CONFIRM" ? (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    รอแอดมินโทรยืนยัน — ไม่ต้องกดยืนยันเพิ่ม
+                  </p>
+                ) : null}
+                {order.status === "CANCELLED" && order.cancelReason ? (
+                  <p className="rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                    เหตุผลยกเลิก: {order.cancelReason}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-3">
@@ -166,7 +345,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-gray-900 leading-tight">
+                        <p className="truncate text-sm font-bold leading-tight text-gray-900">
                           {item.itemName}
                         </p>
                         {order.status === "CONFIRMED" ? (

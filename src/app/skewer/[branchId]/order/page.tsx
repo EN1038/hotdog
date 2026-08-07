@@ -151,33 +151,22 @@ function SkewerOrderPageInner({ params }: PageProps) {
     }
   }
 
-  // Prefill from reorder id, or last order at this branch
+  // Prefill only when opening via reorder from history
   useEffect(() => {
-    if (loading || menuItems.length === 0) return;
-    const key = `${branchId}:${reorderId || "latest"}`;
+    if (!reorderId || loading || menuItems.length === 0) return;
+    const key = `${branchId}:${reorderId}`;
     if (prefillsDoneKey.current === key) return;
 
     let cancelled = false;
     (async () => {
       try {
-        if (reorderId) {
-          const res = await fetch(
-            `/api/skewer/orders/${encodeURIComponent(reorderId)}`,
-          );
-          const data = await res.json().catch(() => null);
-          if (!res.ok || !data || cancelled) return;
-          applyPrefill(data as PrefillOrder, { clearDate: true });
-          setPrefillHint("เติมรายการจากออเดอร์ที่เลือกแล้ว — กรุณาเลือกวันที่ต้องการ");
-        } else {
-          const res = await fetch(
-            `/api/skewer/orders?branchId=${encodeURIComponent(branchId)}`,
-          );
-          const data = await res.json().catch(() => []);
-          const latest = Array.isArray(data) ? data[0] : null;
-          if (!latest || cancelled) return;
-          applyPrefill(latest as PrefillOrder, { clearDate: false });
-          setPrefillHint("เติมรายการตามออเดอร์ล่าสุดของคุณแล้ว ปรับได้ก่อนส่ง");
-        }
+        const res = await fetch(
+          `/api/skewer/orders/${encodeURIComponent(reorderId)}`,
+        );
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || cancelled) return;
+        applyPrefill(data as PrefillOrder, { clearDate: true });
+        setPrefillHint("เติมรายการจากออเดอร์ที่เลือกแล้ว — กรุณาเลือกวันที่ต้องการ");
       } catch {
         /* ignore prefill failures */
       } finally {

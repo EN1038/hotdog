@@ -39,6 +39,7 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "branch.shift.restore": "กู้คืนรอบขายที่ยกเลิก",
   "branch.stock.history.cancel": "ยกเลิกรายการเคลื่อนไหวสต๊อก",
   "branch.stock.history.restore": "กู้คืนรายการเคลื่อนไหวสต๊อก",
+  "order.delete": "ลบออเดอร์ถาวร",
   "staff.create": "เพิ่มพนักงาน",
   "staff.update": "แก้ไขพนักงาน",
   "staff.delete": "ลบพนักงาน",

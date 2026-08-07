@@ -1674,12 +1674,12 @@ function BranchDetailContent() {
                   onClick={() => setTab("stock")}
                   className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 text-left shadow-sm transition hover:border-violet-300"
                 >
-                  <p className="text-sm text-violet-700">จำนวนสต๊อก</p>
+                  <p className="text-sm text-violet-700">จำนวนสต๊อกขาย</p>
                   <p className="mt-1 text-2xl font-bold text-violet-800">
                     {money(stats?.stockQty ?? 0)}
                   </p>
                   <p className="mt-1 text-xs text-violet-600/80">
-                    คงเหลือปัจจุบัน · ดูแท็บสต๊อก
+                    เมนูขายคงเหลือ · ดูแท็บสต๊อก
                   </p>
                 </button>
                 <button
@@ -1687,12 +1687,12 @@ function BranchDetailContent() {
                   onClick={() => setTab("stock")}
                   className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 text-left shadow-sm transition hover:border-violet-300"
                 >
-                  <p className="text-sm text-violet-700">มูลค่าสต๊อก</p>
+                  <p className="text-sm text-violet-700">มูลค่าสต๊อกขาย</p>
                   <p className="mt-1 text-2xl font-bold text-violet-800">
                     {money(stats?.stockValue ?? 0)} ฿
                   </p>
                   <p className="mt-1 text-xs text-violet-600/80">
-                    คงเหลือปัจจุบัน · ดูแท็บสต๊อก
+                    เมนูขายคงเหลือ · ดูแท็บสต๊อก
                   </p>
                 </button>
                 <button

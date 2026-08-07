@@ -92,13 +92,7 @@ export async function GET(request: Request, { params }: Params) {
     const { from, to } = normalizeRange(fromParam, toParam);
     const createdAtRange = rangeCreatedAt(from, to);
 
-    const [
-      orders,
-      expenses,
-      menuItems,
-      nonMenuItems,
-      menuWaste,
-    ] = await Promise.all([
+    const [orders, expenses, menuItems, menuWaste] = await Promise.all([
       prisma.order.findMany({
         where: {
           branchId,
@@ -140,10 +134,6 @@ export async function GET(request: Request, { params }: Params) {
             select: { group: { select: { mode: true } } },
           },
         },
-      }),
-      prisma.branchNonMenuItem.findMany({
-        where: { branchId },
-        select: { id: true, price: true, quantity: true },
       }),
       prisma.branchMenuItemStockHistory.findMany({
         where: {
@@ -201,6 +191,7 @@ export async function GET(request: Request, { params }: Params) {
       })),
     );
 
+    // สต๊อกขาย (เมนู SALE_ITEM) เท่านั้น — ไม่รวมสิ้นเปลือง/อุปกรณ์ (ถุง แก้ว ซอส ฯลฯ)
     let stockValue = 0;
     let stockQty = 0;
     const priceByMenuId = new Map<string, number>();
@@ -212,12 +203,6 @@ export async function GET(request: Request, { params }: Params) {
       );
       if (isPromo || item.category?.stockExempt) continue;
       const qty = Math.max(0, Number(item.stock?.quantity ?? 0));
-      stockQty += qty;
-      stockValue += qty * price;
-    }
-    for (const item of nonMenuItems) {
-      const price = Number(item.price ?? 0);
-      const qty = Math.max(0, Number(item.quantity ?? 0));
       stockQty += qty;
       stockValue += qty * price;
     }

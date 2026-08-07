@@ -1,4 +1,5 @@
 import {
+  BranchOperatingMode,
   FulfillmentType,
   OrderStatus,
   PaymentMethod,
@@ -93,6 +94,9 @@ export async function POST(request: Request) {
     if (!branch) return jsonError("ไม่พบสาขา");
     if (branch.isHidden) {
       return jsonError("สาขานี้ไม่พร้อมให้บริการในขณะนี้");
+    }
+    if (branch.operatingMode === BranchOperatingMode.SKEWER) {
+      return jsonError("สาขานี้รับออเดอร์เสียบไม้ผ่านหน้าสั่งไม้เท่านั้น");
     }
 
     const service = getBranchServiceStatus(branch, body.fulfillmentType);

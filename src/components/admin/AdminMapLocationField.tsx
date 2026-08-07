@@ -67,6 +67,8 @@ type Props = {
   enableMyLocation?: boolean;
   /** Request GPS once on mount when there is no pin yet */
   autoLocateOnMount?: boolean;
+  /** Show “ใช้ตำแหน่งร้าน” when referencePin is set (default true) */
+  showUseReferencePin?: boolean;
 };
 
 type GeocodeHit = {
@@ -119,6 +121,7 @@ export function AdminMapLocationField({
   hideAddressField = false,
   enableMyLocation = false,
   autoLocateOnMount = false,
+  showUseReferencePin = true,
 }: Props) {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<GeocodeHit[]>([]);
@@ -465,7 +468,7 @@ export function AdminMapLocationField({
               {locating ? "กำลังหาตำแหน่ง…" : "ตำแหน่งปัจจุบัน"}
             </button>
           ) : null}
-          {hasReference && (
+          {hasReference && showUseReferencePin ? (
             <button
               type="button"
               className={btnOutline}
@@ -475,7 +478,7 @@ export function AdminMapLocationField({
             >
               ใช้ตำแหน่งร้าน
             </button>
-          )}
+          ) : null}
           {!hasPin && !hasReference && !enableMyLocation && (
             <button
               type="button"

@@ -110,6 +110,11 @@ export function summarizeBranchPatch(
       body.autoAcceptOrders ? "เปิดรับออเดอร์อัตโนมัติ" : "ปิดรับออเดอร์อัตโนมัติ",
     );
   }
+  if (body.operatingMode === "SKEWER") {
+    parts.push("ตั้งโหมดเสียบไม้");
+  } else if (body.operatingMode === "NORMAL") {
+    parts.push("ตั้งโหมดหมาล่าปกติ");
+  }
   if (body.storefrontHours !== undefined) parts.push("แก้เวลาหน้าร้าน");
   if (body.deliveryHours !== undefined) parts.push("แก้เวลาเดลิเวอรี");
   if (body.name !== undefined) parts.push("แก้ชื่อ");

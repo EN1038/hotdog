@@ -53,6 +53,7 @@ const updateSchema = z.object({
   isTest: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
+  operatingMode: z.enum(["NORMAL", "SKEWER"]).optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
   deliveryHours: weeklyScheduleSchema.optional(),
 });
@@ -280,6 +281,9 @@ export async function PATCH(request: Request, { params }: Params) {
         }),
         ...(body.autoAcceptOrders !== undefined && {
           autoAcceptOrders: body.autoAcceptOrders,
+        }),
+        ...(body.operatingMode !== undefined && {
+          operatingMode: body.operatingMode,
         }),
         ...(body.storefrontHours !== undefined && {
           storefrontHours:

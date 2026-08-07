@@ -47,13 +47,18 @@ export type SessionPayload = {
   customerName?: string;
 };
 
-export function sessionCookieOptions() {
+export function sessionCookieOptions(type?: SessionPayload["type"]) {
+  // Customers stay signed in longer so returning to the same site rarely needs OTP again.
+  const maxAge =
+    type === "customer"
+      ? 60 * 60 * 24 * 90 // 90 days
+      : 60 * 60 * 24 * 7;
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge,
   };
 }
 
@@ -68,17 +73,22 @@ export async function signSessionToken(
     customerName: payload.customerName?.slice(0, 120),
     username: payload.username?.slice(0, 80),
   };
+  const expiration = payload.type === "customer" ? "90d" : "7d";
   return new SignJWT({ ...safe })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime(expiration)
     .sign(getJwtSecret());
 }
 
 export async function createSession(payload: SessionPayload) {
   const token = await signSessionToken(payload);
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
+  cookieStore.set(
+    SESSION_COOKIE_NAME,
+    token,
+    sessionCookieOptions(payload.type),
+  );
 }
 
 /** Prefer this in Route Handlers — attaches Set-Cookie on the response object. */
@@ -87,7 +97,11 @@ export async function attachSessionCookie(
   payload: SessionPayload,
 ): Promise<NextResponse> {
   const token = await signSessionToken(payload);
-  response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
+  response.cookies.set(
+    SESSION_COOKIE_NAME,
+    token,
+    sessionCookieOptions(payload.type),
+  );
   return response;
 }
 

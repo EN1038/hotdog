@@ -79,6 +79,18 @@ enum OptionGroupMode {
   FROM_MENU
 }
 
+/// NORMAL = mala / queue storefront; SKEWER = skewer-prep orders only
+enum BranchOperatingMode {
+  NORMAL
+  SKEWER
+}
+
+enum SkewerOrderStatus {
+  PENDING_CONFIRM
+  CONFIRMED
+  CANCELLED
+}
+
 enum StockLocationType {
   WAREHOUSE
   BRANCH
@@ -181,6 +193,7 @@ model Admin {
   branchExpenses         BranchExpense[]
   kitchenProductions     KitchenProduction[]
   stockRequestsHandled   BranchStockRequest[] @relation("StockRequestFulfilledBy")
+  confirmedSkewerOrders  SkewerOrder[]      @relation("SkewerOrderConfirmedByAdmin")
 
   @@index([lineLinkCode])
 }
@@ -381,6 +394,8 @@ model Branch {
   autoAcceptOrders             Boolean                      @default(false)
   /// Opt-in stock for this branch (requires brand.stockEnabled + brandId)
   stockEnabled                 Boolean                      @default(false)
+  /// NORMAL = mala queue storefront; SKEWER = skewer-prep ordering only
+  operatingMode                BranchOperatingMode          @default(NORMAL)
   /// Staff new-order alert sound (from platform library)
   alertSoundId                 String?
   createdAt                    DateTime                     @default(now())
@@ -392,6 +407,7 @@ model Branch {
   optionGroups                 BranchOptionGroup[]
   deliveryLocations            DeliveryLocation[]
   orders                       Order[]
+  skewerOrders                 SkewerOrder[]
   shifts                       BranchShift[]
   shareCodes                   BranchShareCode[]
   lineDailySummaries           LineDailySummaryLog[]
@@ -514,6 +530,7 @@ model BranchMenuItem {
   optionGroupLinks             BranchMenuItemOptionGroup[]
   optionGroupMenuSources       BranchOptionGroupMenuItem[]
   orderItems                   OrderItem[]
+  skewerOrderItems             SkewerOrderItem[]
   stock                        BranchMenuItemStock?
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
 
@@ -656,11 +673,12 @@ model DeliveryLocation {
 }
 
 model Customer {
-  id        String   @id @default(cuid())
-  phone     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  orders    Order[]
+  id           String        @id @default(cuid())
+  phone        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  orders       Order[]
+  skewerOrders SkewerOrder[]
 }
 
 /// Pending Taximail OTP challenge for customer phone login
@@ -741,6 +759,50 @@ model Order {
   @@index([branchId, queueBusinessDate])
   @@index([branchId, awaitingPhotoKey])
   @@index([shiftId])
+}
+
+/// Customer skewer-prep request (branch operatingMode = SKEWER); no queue/shift/price in v1
+model SkewerOrder {
+  id                   String            @id @default(cuid())
+  orderNumber          String            @unique
+  branchId             String
+  customerId           String
+  customerPhone        String            @default("")
+  customerName         String            @default("")
+  /// Calendar date the customer wants the skewers (Bangkok date stored as Date)
+  requestedDate        DateTime          @db.Date
+  addressText          String
+  latitude             Float?
+  longitude            Float?
+  note                 String?
+  status               SkewerOrderStatus @default(PENDING_CONFIRM)
+  adminNote            String?
+  confirmedAt          DateTime?
+  confirmedByAdminId   String?
+  cancelReason         String?
+  cancelledAt          DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  branch               Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer             Customer          @relation(fields: [customerId], references: [id])
+  confirmedByAdmin     Admin?            @relation("SkewerOrderConfirmedByAdmin", fields: [confirmedByAdminId], references: [id], onDelete: SetNull)
+  items                SkewerOrderItem[]
+
+  @@index([branchId, status, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model SkewerOrderItem {
+  id                 String          @id @default(cuid())
+  skewerOrderId      String
+  branchMenuItemId   String?
+  itemName           String
+  requestedQuantity  Int
+  confirmedQuantity  Int?
+  skewerOrder        SkewerOrder     @relation(fields: [skewerOrderId], references: [id], onDelete: Cascade)
+  branchMenuItem     BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
+
+  @@index([skewerOrderId])
 }
 
 model OrderItem {

@@ -1,4 +1,5 @@
 import {
+  BranchOperatingMode,
   FulfillmentType,
   OrderStatus,
   PaymentMethod,
@@ -285,9 +286,15 @@ export async function POST(request: Request) {
         address: true,
         autoAcceptOrders: true,
         name: true,
+        operatingMode: true,
       },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
+    if (branch.operatingMode === BranchOperatingMode.SKEWER) {
+      return jsonError(
+        "สาขานี้เป็นโหมดเสียบไม้ — ใช้แดชบอร์ดแอดมินยืนยันออเดอร์ลูกค้าแทนการคีย์ออเดอร์",
+      );
+    }
 
     let activeShift;
     try {

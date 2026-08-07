@@ -32,6 +32,7 @@ import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
 import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
 import { BranchOrdersPanel } from "@/components/admin/BranchOrdersPanel";
+import { BranchSkewerOrdersPanel } from "@/components/admin/BranchSkewerOrdersPanel";
 import { BranchShiftsPanel } from "@/components/admin/BranchShiftsPanel";
 import { BranchStockPanel } from "@/components/admin/BranchStockPanel";
 import { BranchExpensesPanel } from "@/components/admin/BranchExpensesPanel";
@@ -139,6 +140,7 @@ type BranchDetail = {
   allowAdvanceOrder: boolean;
   autoAcceptOrders: boolean;
   stockEnabled: boolean;
+  operatingMode?: "NORMAL" | "SKEWER";
   brand: Brand | null;
   staff: {
     id: string;
@@ -191,6 +193,7 @@ type TabId =
   | "options"
   | "copy"
   | "orders"
+  | "skewer-orders"
   | "shifts"
   | "stock"
   | "expenses"
@@ -201,6 +204,7 @@ type TabId =
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "ภาพรวม" },
   { id: "orders", label: "ออเดอร์" },
+  { id: "skewer-orders", label: "ออเดอร์เสียบไม้" },
   { id: "shifts", label: "รอบขาย" },
   { id: "stock", label: "สต๊อกสาขา" },
   { id: "expenses", label: "ค่าใช้จ่าย" },
@@ -223,7 +227,7 @@ const TAB_GROUPS: {
   {
     id: "sales",
     label: "ขาย",
-    tabIds: ["overview", "orders", "shifts", "stock", "expenses"],
+    tabIds: ["overview", "orders", "skewer-orders", "shifts", "stock", "expenses"],
   },
   {
     id: "menu",
@@ -246,6 +250,18 @@ const TAB_BY_ID = Object.fromEntries(TABS.map((t) => [t.id, t])) as Record<
   TabId,
   (typeof TABS)[number]
 >;
+
+const SKEWER_HIDDEN_TABS = new Set<TabId>([
+  "orders",
+  "shifts",
+  "stock",
+  "expenses",
+  "staff",
+  "locations",
+  "options",
+]);
+
+const NORMAL_HIDDEN_TABS = new Set<TabId>(["skewer-orders"]);
 
 type TabAttention = {
   tone: "warn" | "info";
@@ -498,6 +514,7 @@ function BranchDetailContent() {
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
     stockEnabled: false,
+    operatingMode: "NORMAL" as "NORMAL" | "SKEWER",
     storefrontHours: null as WeeklySchedule | null,
     deliveryHours: null as WeeklySchedule | null,
   });
@@ -653,6 +670,7 @@ function BranchDetailContent() {
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
       stockEnabled: data.stockEnabled ?? false,
+      operatingMode: data.operatingMode === "SKEWER" ? "SKEWER" : "NORMAL",
       storefrontHours: ensureWeeklySchedule(
         data.storefrontHours,
         data.opensAt,
@@ -698,6 +716,18 @@ function BranchDetailContent() {
       cancelled = true;
     };
   }, [id, activeTab, overviewFrom, overviewTo]);
+
+  useEffect(() => {
+    if (!branch) return;
+    const mode = branch.operatingMode === "SKEWER" ? "SKEWER" : "NORMAL";
+    const hidden =
+      mode === "SKEWER"
+        ? SKEWER_HIDDEN_TABS.has(activeTab)
+        : NORMAL_HIDDEN_TABS.has(activeTab);
+    if (hidden) {
+      setTab(mode === "SKEWER" ? "skewer-orders" : "orders");
+    }
+  }, [branch?.operatingMode, activeTab, branch]);
 
   useEffect(() => {
     if (!staffModalOpen) {
@@ -805,6 +835,7 @@ function BranchDetailContent() {
         isOpen: settings.isOpen,
         allowAdvanceOrder: settings.allowAdvanceOrder,
         autoAcceptOrders: settings.autoAcceptOrders,
+        operatingMode: settings.operatingMode,
         storefrontHours: settings.storefrontHours,
         deliveryHours: settings.deliveryHours,
       }),
@@ -1487,6 +1518,11 @@ function BranchDetailContent() {
                 ⚗ ทดลอง
               </span>
             )}
+            {branch.operatingMode === "SKEWER" && (
+              <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-900">
+                โหมดเสียบไม้
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {branch.brand && branch.code ? (
@@ -1513,7 +1549,14 @@ function BranchDetailContent() {
 
       <div className="sticky top-[3rem] z-20 -mx-1 mt-4 overflow-x-auto filter-scroll-row bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.25rem]">
         <div className="flex min-w-max items-center gap-0.5 rounded-2xl border border-slate-200 bg-white/90 p-1.5 shadow-sm">
-          {TAB_GROUPS.map((group, groupIndex) => (
+          {TAB_GROUPS.map((group, groupIndex) => {
+            const mode = branch.operatingMode === "SKEWER" ? "SKEWER" : "NORMAL";
+            const visibleTabIds = group.tabIds.filter((tabId) => {
+              if (mode === "SKEWER") return !SKEWER_HIDDEN_TABS.has(tabId);
+              return !NORMAL_HIDDEN_TABS.has(tabId);
+            });
+            if (visibleTabIds.length === 0) return null;
+            return (
             <div key={group.id} className="flex items-center gap-0.5">
               {groupIndex > 0 ? (
                 <span
@@ -1521,7 +1564,7 @@ function BranchDetailContent() {
                   aria-hidden
                 />
               ) : null}
-              {group.tabIds.map((tabId) => {
+              {visibleTabIds.map((tabId) => {
                 const tab = TAB_BY_ID[tabId];
                 const active = activeTab === tab.id;
                 const attention = getTabAttention(tab.id, branch);
@@ -1580,7 +1623,8 @@ function BranchDetailContent() {
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -2253,6 +2297,10 @@ function BranchDetailContent() {
         )}
 
         {activeTab === "orders" && <BranchOrdersPanel branchId={id} />}
+
+        {activeTab === "skewer-orders" && (
+          <BranchSkewerOrdersPanel branchId={id} />
+        )}
 
         {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
 
@@ -2943,6 +2991,66 @@ function BranchDetailContent() {
                   </div>
                 );
               })()}
+              {/* Operating mode */}
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    โหมดการทำงานของสาขา
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    โหมดเสียบไม้ใช้สำหรับรับคำสั่งเสียบไม้ (ไม่ใช่คิวหมาล่า) — ลูกค้าสั่งแล้วแอดมินยืนยันจำนวน
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings((s) => ({ ...s, operatingMode: "NORMAL" }))
+                    }
+                    className={`rounded-xl border px-4 py-3 text-left transition ${
+                      settings.operatingMode === "NORMAL"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-gray-200 bg-white text-gray-800 hover:border-gray-300"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">หมาล่าปกติ</p>
+                    <p
+                      className={`mt-0.5 text-xs ${
+                        settings.operatingMode === "NORMAL"
+                          ? "text-slate-300"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      คิวออเดอร์ · กะ · หน้าร้านลูกค้าเดิม
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings((s) => ({ ...s, operatingMode: "SKEWER" }))
+                    }
+                    className={`rounded-xl border px-4 py-3 text-left transition ${
+                      settings.operatingMode === "SKEWER"
+                        ? "border-amber-700 bg-amber-700 text-white"
+                        : "border-gray-200 bg-white text-gray-800 hover:border-gray-300"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">เสียบไม้</p>
+                    <p
+                      className={`mt-0.5 text-xs ${
+                        settings.operatingMode === "SKEWER"
+                          ? "text-amber-100"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      สั่งไม้ขั้นต่ำ 12 · รอแอดมินยืนยัน · ไม่ใช้คิว
+                    </p>
+                  </button>
+                </div>
+                <p className="text-xs text-amber-800">
+                  กดบันทึกตั้งค่าด้านล่างเพื่อใช้โหมดที่เลือก
+                </p>
+              </div>
               {/* 1. Daily ops status */}
               <div className="space-y-3">
                 <div>

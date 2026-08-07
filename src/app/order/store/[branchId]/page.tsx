@@ -412,6 +412,10 @@ export default function StorePage() {
       .then((data: BranchData[] | unknown) => {
         const branches = Array.isArray(data) ? data : [];
         const found = branches.find((b) => b.id === branchId) ?? null;
+        if (found?.operatingMode === "SKEWER") {
+          router.replace(`/skewer/${branchId}`);
+          return;
+        }
         setBranch(found);
         if (found?.brand) {
           syncActiveBrandFromApi({

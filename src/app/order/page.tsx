@@ -213,7 +213,11 @@ function BranchCard({
   const range = priceRangeLabel(branch.priceRange);
   return (
     <Link
-      href={`/order/store/${branch.id}`}
+      href={
+        branch.operatingMode === "SKEWER"
+          ? `/skewer/${branch.id}`
+          : `/order/store/${branch.id}`
+      }
       className="flex items-stretch gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_2px_10px_rgba(0,0,0,0.05)] transition hover:border-site-primary/30 hover:shadow-md active:scale-[0.99]"
     >
       <div className="relative w-[108px] shrink-0 self-stretch overflow-hidden rounded-xl bg-site-primary-soft">

@@ -11,6 +11,10 @@ import { LoadingState } from "@/components/LoadingState";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
 import { SKEWER_ORDER_STATUS_LABELS } from "@/lib/skewer-order";
+import {
+  assignStableMenuSequence,
+  sortMenuItemData,
+} from "@/lib/staff-menu-order";
 import { compareThaiText } from "@/lib/thai-sort";
 import type { SkewerOrderStatus } from "@prisma/client";
 
@@ -44,11 +48,13 @@ type MenuItem = {
   name: string;
   imageUrl: string | null;
   isOutOfStock: boolean;
+  sortOrder?: number | null;
   category: { id: string; name: string; sortOrder: number } | null;
 };
 
 type DisplayRow = {
   key: string;
+  menuId: string | null;
   name: string;
   imageUrl: string | null;
   categoryId: string | null;
@@ -56,6 +62,7 @@ type DisplayRow = {
   requestedQuantity: number;
   confirmedQuantity: number | null;
   ordered: boolean;
+  seq: number;
 };
 
 type PageProps = {
@@ -203,6 +210,16 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     return map;
   }, [order]);
 
+  const catalogSorted = useMemo(
+    () => sortMenuItemData(menuItems),
+    [menuItems],
+  );
+
+  const seqById = useMemo(
+    () => assignStableMenuSequence(catalogSorted),
+    [catalogSorted],
+  );
+
   const categories = useMemo(() => {
     const map = new Map<string, { id: string; name: string; sortOrder: number }>();
     for (const item of menuItems) {
@@ -220,10 +237,11 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
   const displayRows = useMemo(() => {
     if (!order) return [] as DisplayRow[];
 
-    const rows: DisplayRow[] = menuItems.map((menu) => {
+    const rows: DisplayRow[] = catalogSorted.map((menu) => {
       const ordered = orderByMenuId.get(menu.id);
       return {
         key: menu.id,
+        menuId: menu.id,
         name: menu.name,
         imageUrl: ordered?.imageUrl || menu.imageUrl,
         categoryId: menu.category?.id ?? null,
@@ -231,6 +249,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         requestedQuantity: ordered?.requestedQuantity ?? 0,
         confirmedQuantity: ordered?.confirmedQuantity ?? null,
         ordered: Boolean(ordered),
+        seq: seqById.get(menu.id) ?? 9999,
       };
     });
 
@@ -243,6 +262,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
       }
       rows.push({
         key: `order-${item.id}`,
+        menuId: item.branchMenuItemId,
         name: item.itemName,
         imageUrl: item.imageUrl,
         categoryId: null,
@@ -250,14 +270,12 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         requestedQuantity: item.requestedQuantity,
         confirmedQuantity: item.confirmedQuantity,
         ordered: true,
+        seq: 9999,
       });
     }
 
-    return rows.sort((a, b) => {
-      if (a.ordered !== b.ordered) return a.ordered ? -1 : 1;
-      return compareThaiText(a.name, b.name);
-    });
-  }, [order, menuItems, orderByMenuId]);
+    return rows.sort((a, b) => a.seq - b.seq || compareThaiText(a.name, b.name));
+  }, [order, catalogSorted, menuItems, orderByMenuId, seqById]);
 
   const visibleRows = useMemo(() => {
     if (categoryFilter === "ALL") return displayRows;
@@ -382,10 +400,10 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     if (visibleRows.length === 0) {
       lines.push("- ไม่มีรายการ");
     } else {
-      visibleRows.forEach((item, index) => {
+      visibleRows.forEach((item) => {
         const qty = rowDisplayQty(order, item);
         const mark = item.ordered ? "" : " (ไม่ได้สั่ง)";
-        lines.push(`${index + 1}. ${item.name}: ${qty}${mark}`);
+        lines.push(`${item.seq}. ${item.name}: ${qty}${mark}`);
       });
     }
     return lines.join("\n");
@@ -636,7 +654,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                   </p>
                 ) : (
                   <ul className="divide-y divide-gray-100">
-                    {visibleRows.map((item, index) => {
+                    {visibleRows.map((item) => {
                       const confirmed = item.confirmedQuantity;
                       const displayQty = rowDisplayQty(order, item);
                       const less =
@@ -661,7 +679,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                               item.ordered ? "text-gray-500" : "text-gray-300"
                             }`}
                           >
-                            {index + 1}
+                            {item.seq}
                           </span>
                           <div
                             className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft ${

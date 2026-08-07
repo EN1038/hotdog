@@ -14,7 +14,12 @@ export async function GET(_request: Request, { params }: Params) {
       where: { id, customerId: session.customerId! },
       include: {
         branch: { select: { id: true, name: true, code: true } },
-        items: { orderBy: { itemName: "asc" } },
+        items: {
+          orderBy: { itemName: "asc" },
+          include: {
+            branchMenuItem: { select: { imageUrl: true } },
+          },
+        },
       },
     });
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
@@ -22,6 +27,14 @@ export async function GET(_request: Request, { params }: Params) {
     return jsonOk({
       ...order,
       requestedDate: requestedDateToKey(order.requestedDate),
+      items: order.items.map((item) => ({
+        id: item.id,
+        branchMenuItemId: item.branchMenuItemId,
+        itemName: item.itemName,
+        requestedQuantity: item.requestedQuantity,
+        confirmedQuantity: item.confirmedQuantity,
+        imageUrl: item.branchMenuItem?.imageUrl ?? null,
+      })),
     });
   } catch (error) {
     return handleApiError(error);

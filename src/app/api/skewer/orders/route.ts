@@ -1,4 +1,4 @@
-import { BranchOperatingMode, Prisma } from "@prisma/client";
+import { BranchOperatingMode, Prisma, SkewerOrderStatus } from "@prisma/client";
 import { z } from "zod";
 import { requireCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -70,28 +70,57 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const branchId = searchParams.get("branchId");
     const date = searchParams.get("date");
+    const dateFrom = searchParams.get("dateFrom") ?? searchParams.get("from");
+    const dateTo = searchParams.get("dateTo") ?? searchParams.get("to");
+    const status = searchParams.get("status");
 
-    let requestedDateFilter: Date | undefined;
-    if (date) {
+    const statusFilter =
+      status &&
+      status !== "ALL" &&
+      Object.values(SkewerOrderStatus).includes(status as SkewerOrderStatus)
+        ? (status as SkewerOrderStatus)
+        : undefined;
+
+    let requestedDateWhere:
+      | Date
+      | { gte?: Date; lte?: Date }
+      | undefined;
+
+    if (dateFrom || dateTo) {
+      if (dateFrom && !isBangkokDateKey(dateFrom)) {
+        return jsonError("รูปแบบวันที่เริ่มไม่ถูกต้อง");
+      }
+      if (dateTo && !isBangkokDateKey(dateTo)) {
+        return jsonError("รูปแบบวันที่สิ้นสุดไม่ถูกต้อง");
+      }
+      if (dateFrom && dateTo && dateFrom > dateTo) {
+        return jsonError("วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด");
+      }
+      requestedDateWhere = {
+        ...(dateFrom ? { gte: queueBusinessDateFromKey(dateFrom) } : {}),
+        ...(dateTo ? { lte: queueBusinessDateFromKey(dateTo) } : {}),
+      };
+    } else if (date) {
       if (!isBangkokDateKey(date)) {
         return jsonError("รูปแบบวันที่ไม่ถูกต้อง");
       }
-      requestedDateFilter = queueBusinessDateFromKey(date);
+      requestedDateWhere = queueBusinessDateFromKey(date);
     }
 
     const orders = await prisma.skewerOrder.findMany({
       where: {
         customerId: session.customerId!,
         ...(branchId ? { branchId } : {}),
-        ...(requestedDateFilter
-          ? { requestedDate: requestedDateFilter }
+        ...(requestedDateWhere
+          ? { requestedDate: requestedDateWhere }
           : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
       include: {
         branch: { select: { id: true, name: true, code: true } },
         items: { orderBy: { itemName: "asc" } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ requestedDate: "desc" }, { createdAt: "desc" }],
     });
 
     return jsonOk(orders.map(serializeSkewerOrder));

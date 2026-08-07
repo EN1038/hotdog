@@ -1,0 +1,686 @@
+"use client";
+
+import { Suspense, use, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  SkewerAuthGate,
+  useSkewerBranchMeta,
+} from "@/components/skewer/SkewerAppShell";
+import { SkewerKeyOrderLayout } from "@/components/skewer/SkewerKeyOrderLayout";
+import { LoadingState } from "@/components/LoadingState";
+import { DateInput } from "@/components/DateInput";
+import {
+  CustomerDeliveryMapPin,
+  type MapLocationValue,
+} from "@/components/customer/CustomerDeliveryMapPin";
+import {
+  StaffKeyOrderAlertModal,
+  scrollToStaffAnchor,
+} from "@/components/staff/StaffOrderSummary";
+import { IconSkewerPlaceholder } from "@/components/icons";
+import { bangkokDateKey } from "@/lib/constants";
+import { SKEWER_MIN_QTY_PER_ITEM } from "@/lib/skewer-order";
+import { compareThaiText } from "@/lib/thai-sort";
+import { hasMapPin } from "@/lib/geo";
+
+type MenuItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  isOutOfStock: boolean;
+  category: { id: string; name: string; sortOrder: number } | null;
+};
+
+type PrefillOrder = {
+  id: string;
+  addressText: string;
+  latitude: number | null;
+  longitude: number | null;
+  note: string | null;
+  items: {
+    branchMenuItemId: string | null;
+    requestedQuantity: number;
+    confirmedQuantity: number | null;
+  }[];
+};
+
+type PageProps = { params: Promise<{ branchId: string }> };
+
+export default function SkewerOrderPage({ params }: PageProps) {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+          <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
+        </main>
+      }
+    >
+      <SkewerOrderPageInner params={params} />
+    </Suspense>
+  );
+}
+
+function SkewerOrderPageInner({ params }: PageProps) {
+  const { branchId } = use(params);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const reorderId = searchParams.get("reorder");
+  const meta = useSkewerBranchMeta(branchId);
+  const branchName = meta.name;
+  const isOpen = meta.isOpen;
+
+  const [loading, setLoading] = useState(true);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [branchPin, setBranchPin] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [requestedDate, setRequestedDate] = useState(
+    reorderId ? "" : bangkokDateKey(),
+  );
+  const [addressText, setAddressText] = useState("");
+  const [mapValue, setMapValue] = useState<MapLocationValue>({
+    address: "",
+    latitude: null,
+    longitude: null,
+  });
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [alertTitle, setAlertTitle] = useState("กรอกข้อมูลไม่ครบ");
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [prefillHint, setPrefillHint] = useState<string | null>(null);
+  const prefillsDoneKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/skewer/branch?branchId=${encodeURIComponent(branchId)}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "โหลดเมนูไม่สำเร็จ");
+        if (cancelled) return;
+        setMenuItems(Array.isArray(data.menuItems) ? data.menuItems : []);
+        if (
+          typeof data.latitude === "number" &&
+          typeof data.longitude === "number"
+        ) {
+          setBranchPin({
+            latitude: data.latitude,
+            longitude: data.longitude,
+          });
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
+
+  function applyPrefill(order: PrefillOrder, opts: { clearDate: boolean }) {
+    const available = new Set(menuItems.map((m) => m.id));
+    const nextQtys: Record<string, number> = {};
+    for (const item of order.items) {
+      if (!item.branchMenuItemId || !available.has(item.branchMenuItemId)) {
+        continue;
+      }
+      const qty = item.confirmedQuantity ?? item.requestedQuantity;
+      if (qty >= SKEWER_MIN_QTY_PER_ITEM) {
+        nextQtys[item.branchMenuItemId] = qty;
+      }
+    }
+    setQtys(nextQtys);
+    setAddressText(order.addressText || "");
+    setMapValue({
+      address: order.addressText || "",
+      latitude: order.latitude,
+      longitude: order.longitude,
+    });
+    setNote(order.note || "");
+    if (opts.clearDate) {
+      setRequestedDate("");
+    }
+  }
+
+  // Prefill from reorder id, or last order at this branch
+  useEffect(() => {
+    if (loading || menuItems.length === 0) return;
+    const key = `${branchId}:${reorderId || "latest"}`;
+    if (prefillsDoneKey.current === key) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        if (reorderId) {
+          const res = await fetch(
+            `/api/skewer/orders/${encodeURIComponent(reorderId)}`,
+          );
+          const data = await res.json().catch(() => null);
+          if (!res.ok || !data || cancelled) return;
+          applyPrefill(data as PrefillOrder, { clearDate: true });
+          setPrefillHint("เติมรายการจากออเดอร์ที่เลือกแล้ว — กรุณาเลือกวันที่ต้องการ");
+        } else {
+          const res = await fetch(
+            `/api/skewer/orders?branchId=${encodeURIComponent(branchId)}`,
+          );
+          const data = await res.json().catch(() => []);
+          const latest = Array.isArray(data) ? data[0] : null;
+          if (!latest || cancelled) return;
+          applyPrefill(latest as PrefillOrder, { clearDate: false });
+          setPrefillHint("เติมรายการตามออเดอร์ล่าสุดของคุณแล้ว ปรับได้ก่อนส่ง");
+        }
+      } catch {
+        /* ignore prefill failures */
+      } finally {
+        if (!cancelled) prefillsDoneKey.current = key;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, menuItems, branchId, reorderId]);
+
+  useEffect(() => {
+    const fromMap = mapValue.address?.trim();
+    if (fromMap && !addressText.trim()) {
+      setAddressText(fromMap);
+    }
+  }, [mapValue.address, addressText]);
+
+  const categories = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; sortOrder: number }>();
+    for (const item of menuItems) {
+      if (!item.category) continue;
+      if (!map.has(item.category.id)) {
+        map.set(item.category.id, item.category);
+      }
+    }
+    return [...map.values()].sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder || compareThaiText(a.name, b.name),
+    );
+  }, [menuItems]);
+
+  const visibleItems = useMemo(() => {
+    const list = menuItems.filter((m) => !m.isOutOfStock);
+    const filtered =
+      categoryFilter === "ALL"
+        ? list
+        : list.filter((m) => m.category?.id === categoryFilter);
+    return [...filtered].sort((a, b) => compareThaiText(a.name, b.name));
+  }, [menuItems, categoryFilter]);
+
+  const selectedLines = useMemo(() => {
+    return Object.entries(qtys)
+      .filter(([, q]) => q >= SKEWER_MIN_QTY_PER_ITEM)
+      .map(([id, quantity]) => {
+        const item = menuItems.find((m) => m.id === id);
+        return item ? { id, name: item.name, quantity } : null;
+      })
+      .filter(Boolean) as { id: string; name: string; quantity: number }[];
+  }, [qtys, menuItems]);
+
+  const totalSkewers = selectedLines.reduce((s, l) => s + l.quantity, 0);
+
+  function clearValidation() {
+    setError("");
+    setAlertMessage(null);
+    setAlertTitle("กรอกข้อมูลไม่ครบ");
+    setHighlightId(null);
+  }
+
+  function fail(message: string, anchorId: string, title?: string) {
+    setError(message);
+    setAlertTitle(title ?? "กรอกข้อมูลไม่ครบ");
+    setAlertMessage(message);
+    setHighlightId(anchorId);
+    window.setTimeout(() => {
+      scrollToStaffAnchor(anchorId);
+      const focusEl = document.querySelector<HTMLElement>(
+        `#${anchorId} input, #${anchorId} textarea, #${anchorId} [data-skewer-focus]`,
+      );
+      focusEl?.focus({ preventScroll: true });
+    }, 80);
+  }
+
+  function setQty(id: string, next: number) {
+    clearValidation();
+    setQtys((prev) => {
+      const copy = { ...prev };
+      if (next <= 0) delete copy[id];
+      else copy[id] = next;
+      return copy;
+    });
+  }
+
+  async function tryGeocodeAddress() {
+    const q = addressText.trim();
+    if (!q || (mapValue.latitude != null && mapValue.longitude != null)) {
+      return mapValue;
+    }
+    try {
+      const res = await fetch(
+        `/api/customer/geocode?q=${encodeURIComponent(q)}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      const hit = Array.isArray(data.results) ? data.results[0] : null;
+      if (
+        res.ok &&
+        hit &&
+        typeof hit.latitude === "number" &&
+        typeof hit.longitude === "number"
+      ) {
+        const next = {
+          address:
+            typeof hit.label === "string" && hit.label.trim()
+              ? hit.label
+              : q,
+          latitude: hit.latitude,
+          longitude: hit.longitude,
+        };
+        setMapValue(next);
+        return next;
+      }
+    } catch {
+      /* optional pin */
+    }
+    return mapValue;
+  }
+
+  async function submit() {
+    clearValidation();
+    if (!isOpen) {
+      fail("สาขายังปิดรับออเดอร์ กรุณาลองใหม่ภายหลัง", "skewer-menu-section", "ยังไม่เปิดรับออเดอร์");
+      return;
+    }
+    if (selectedLines.length === 0) {
+      fail(
+        `กรุณาเลือกอย่างน้อย 1 เมนู (ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้ต่อรายการ) — กดปุ่ม + ที่เมนูด้านบน`,
+        "skewer-menu-section",
+      );
+      return;
+    }
+    if (!requestedDate) {
+      fail(
+        reorderId
+          ? "กรุณาเลือกวันที่ต้องการสำหรับออเดอร์ใหม่นี้"
+          : "กรุณาเลือกวันที่ต้องการรับ/ส่งไม้",
+        "skewer-date-field",
+      );
+      return;
+    }
+    const addr = addressText.trim();
+    if (addr.length < 5) {
+      fail(
+        "กรุณากรอกที่อยู่จัดส่งหรือจุดนัดรับให้ชัดเจน (อย่างน้อย 5 ตัวอักษร)",
+        "skewer-address-field",
+      );
+      return;
+    }
+    if (!hasMapPin(mapValue)) {
+      fail(
+        "กรุณาปักหมุดจุดส่งบนแผนที่ — กด “ตำแหน่งปัจจุบัน” หรือแตะแผนที่",
+        "skewer-map-field",
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const pin = await tryGeocodeAddress();
+      const lat =
+        pin.latitude != null && Number.isFinite(pin.latitude)
+          ? pin.latitude
+          : null;
+      const lng =
+        pin.longitude != null && Number.isFinite(pin.longitude)
+          ? pin.longitude
+          : null;
+
+      const res = await fetch("/api/skewer/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branchId,
+          requestedDate,
+          addressText: addr,
+          latitude: lat,
+          longitude: lng,
+          note: note.trim() || undefined,
+          items: selectedLines.map((l) => ({
+            branchMenuItemId: l.id,
+            quantity: l.quantity,
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        fail(data.error || "สั่งไม่สำเร็จ", "skewer-menu-section", "ส่งคำสั่งไม่สำเร็จ");
+        return;
+      }
+      router.replace(`/skewer/${branchId}/history/${data.id}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const highlightClass = (id: string) =>
+    highlightId === id
+      ? "ring-2 ring-amber-400 ring-offset-2 border-amber-300"
+      : "border-gray-200";
+
+  return (
+    <SkewerAuthGate
+      branchName={branchName || meta.brandName}
+      brandLogoUrl={meta.brandLogoUrl}
+      heroImageUrl={meta.branchImageUrl || meta.brandCoverUrl || null}
+    >
+      {meta.loading || loading ? (
+        <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+          <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />
+        </main>
+      ) : (
+        <SkewerKeyOrderLayout
+          branchId={branchId}
+          title="สั่งเสียบไม้"
+          subtitle={
+            branchName
+              ? `สาขา ${branchName.replace(/^สาขา\s*/, "")} · ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้/รายการ`
+              : `ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้/รายการ`
+          }
+          footer={
+            <button
+              type="button"
+              disabled={submitting || !isOpen}
+              onClick={() => void submit()}
+              className="w-full rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white disabled:opacity-50"
+            >
+              {submitting
+                ? "กำลังส่ง…"
+                : selectedLines.length === 0
+                  ? "ส่งคำสั่ง"
+                  : `ส่งคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ไม้`}
+            </button>
+          }
+        >
+          <StaffKeyOrderAlertModal
+            open={Boolean(alertMessage)}
+            title={alertTitle}
+            message={alertMessage ?? ""}
+            onClose={() => setAlertMessage(null)}
+          />
+
+          {!isOpen && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
+              สาขายังปิดรับออเดอร์
+            </p>
+          )}
+
+          {prefillHint ? (
+            <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+              {prefillHint}
+            </p>
+          ) : null}
+
+          <section
+            id="skewer-menu-section"
+            tabIndex={-1}
+            className={`rounded-2xl border bg-white p-4 outline-none transition ${highlightClass("skewer-menu-section")}`}
+          >
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold text-gray-900">เลือกเมนู</h2>
+              <p className="text-xs text-gray-500">
+                เรียงตามพยัญชนะไทย · กด + เพิ่มจำนวน (ขั้นต่ำ{" "}
+                {SKEWER_MIN_QTY_PER_ITEM} ไม้)
+              </p>
+            </div>
+
+            {categories.length > 1 ? (
+              <div className="mb-3 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex w-max min-w-full gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("ALL")}
+                    className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                      categoryFilter === "ALL"
+                        ? "bg-site-primary text-white"
+                        : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    ทั้งหมด
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setCategoryFilter(cat.id)}
+                      className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                        categoryFilter === cat.id
+                          ? "bg-site-primary text-white"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {visibleItems.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
+                ไม่พบเมนู
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {visibleItems.map((item, index) => {
+                  const qty = qtys[item.id] ?? 0;
+                  return (
+                    <li
+                      key={item.id}
+                      className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                    >
+                      <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                        {index + 1}
+                      </span>
+                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                        {item.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.imageUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-gray-400">
+                            <IconSkewerPlaceholder size={28} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">
+                          {item.name}
+                        </p>
+                        {item.category ? (
+                          <p className="truncate text-xs text-gray-500">
+                            {item.category.name}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-lg leading-none text-gray-700 disabled:opacity-40"
+                          disabled={qty <= 0}
+                          onClick={() =>
+                            setQty(
+                              item.id,
+                              qty <= SKEWER_MIN_QTY_PER_ITEM ? 0 : qty - 1,
+                            )
+                          }
+                        >
+                          −
+                        </button>
+                        <span className="min-w-[2rem] text-center text-sm font-bold tabular-nums">
+                          {qty || "0"}
+                        </span>
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded-full bg-site-primary text-lg leading-none text-white"
+                          onClick={() =>
+                            setQty(
+                              item.id,
+                              qty < SKEWER_MIN_QTY_PER_ITEM
+                                ? SKEWER_MIN_QTY_PER_ITEM
+                                : qty + 1,
+                            )
+                          }
+                        >
+                          +
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section
+            id="skewer-delivery"
+            tabIndex={-1}
+            className={`space-y-3 rounded-2xl border bg-white p-4 outline-none transition ${
+              highlightId === "skewer-date-field" ||
+              highlightId === "skewer-address-field" ||
+              highlightId === "skewer-map-field"
+                ? "ring-2 ring-amber-400 ring-offset-2 border-amber-300"
+                : "border-gray-200"
+            }`}
+          >
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">
+                วันและที่อยู่
+              </h2>
+              <p className="text-xs text-gray-500">
+                กรอกวันที่ต้องการและที่อยู่จัดส่ง / นัดรับ
+              </p>
+            </div>
+            <div
+              id="skewer-date-field"
+              tabIndex={-1}
+              className={`rounded-xl outline-none ${
+                highlightId === "skewer-date-field"
+                  ? "ring-2 ring-amber-400"
+                  : ""
+              }`}
+            >
+              <label className="text-sm font-medium text-gray-800">
+                วันที่ต้องการ
+              </label>
+              <DateInput
+                className={`mt-1 w-full rounded-xl border px-3 py-2.5 text-sm ${
+                  highlightId === "skewer-date-field"
+                    ? "border-amber-400"
+                    : "border-gray-200"
+                }`}
+                value={requestedDate}
+                onChange={(v) => {
+                  clearValidation();
+                  setRequestedDate(v);
+                }}
+                min={bangkokDateKey()}
+                required
+                openPickerOnClick
+                placeholder="เลือกวันที่ต้องการ"
+              />
+              {!requestedDate ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  {reorderId
+                    ? "สั่งซ้ำต้องเลือกวันที่ต้องการใหม่"
+                    : "ต้องระบุวันที่ต้องการ"}
+                </p>
+              ) : null}
+            </div>
+            <div
+              id="skewer-address-field"
+              tabIndex={-1}
+              className={`rounded-xl outline-none ${
+                highlightId === "skewer-address-field"
+                  ? "ring-2 ring-amber-400"
+                  : ""
+              }`}
+            >
+              <label className="text-sm font-medium text-gray-800">
+                ที่อยู่จัดส่ง / นัดรับ
+              </label>
+              <textarea
+                className={`mt-1 w-full rounded-xl border px-3 py-2.5 text-sm ${
+                  highlightId === "skewer-address-field"
+                    ? "border-amber-400"
+                    : "border-gray-200"
+                }`}
+                rows={3}
+                value={addressText}
+                onChange={(e) => {
+                  clearValidation();
+                  setAddressText(e.target.value);
+                }}
+                onBlur={() => void tryGeocodeAddress()}
+                placeholder="บ้านเลขที่ ถนน แขวง/ตำบล อำเภอ จังหวัด"
+              />
+            </div>
+            <div
+              id="skewer-map-field"
+              tabIndex={-1}
+              data-skewer-focus
+              className={`rounded-xl outline-none ${
+                highlightId === "skewer-map-field"
+                  ? "ring-2 ring-amber-400 p-1"
+                  : ""
+              }`}
+            >
+              <CustomerDeliveryMapPin
+                value={mapValue}
+                onChange={(next) => {
+                  clearValidation();
+                  setMapValue(next);
+                }}
+                referencePin={branchPin}
+                autoLocate={false}
+                showUseReferencePin={false}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-800">
+                โน้ต (ถ้ามี)
+              </label>
+              <input
+                className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={300}
+              />
+            </div>
+          </section>
+
+          {error && !alertMessage ? (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">
+              {error}
+            </p>
+          ) : null}
+        </SkewerKeyOrderLayout>
+      )}
+    </SkewerAuthGate>
+  );
+}

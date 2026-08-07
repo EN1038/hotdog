@@ -134,11 +134,12 @@ export default function StaffPromoKeyOrderIndexPage() {
                               )?.maxSelect ?? ""
                             } ไม้`
                           : ""}
-                        {!isStockExemptMenuItem(item) ? (
+                        {!isStockExemptMenuItem(item) &&
+                        item.stockQuantity != null ? (
                           <>
                             {" · "}
                             <span className="font-bold text-gray-900">
-                              เหลือ {item.stockQuantity ?? 0}
+                              เหลือ {item.stockQuantity}
                             </span>
                           </>
                         ) : null}

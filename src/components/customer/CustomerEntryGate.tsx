@@ -22,6 +22,7 @@ export function CustomerEntryGate({
   const router = useRouter();
   const { session, sessionChecked } = useCustomer();
   const [destination, setDestination] = useState<string | null>(null);
+  const [requireLogin, setRequireLogin] = useState(false);
   const [brandInfo, setBrandInfo] = useState<{
     name: string;
     logoUrl: string | null;
@@ -81,7 +82,13 @@ export function CustomerEntryGate({
                 heroImageUrl: branchImage,
               });
             }
-            setDestination(`/order/store/${branches[0].id}`);
+            const isSkewer = branches[0]?.operatingMode === "SKEWER";
+            setDestination(
+              isSkewer
+                ? `/skewer/${branches[0].id}`
+                : `/order/store/${branches[0].id}`,
+            );
+            setRequireLogin(Boolean(isSkewer));
           } else {
             setNotFound(true);
           }
@@ -133,13 +140,18 @@ export function CustomerEntryGate({
       brandName={brandInfo?.name}
       brandLogoUrl={brandInfo?.logoUrl}
       heroImageUrl={brandInfo?.heroImageUrl}
+      showBrowseOption={!requireLogin}
       browseHint={
-        branchCode
-          ? "เข้าดูเมนูและสั่งที่สาขานี้ได้เลย โดยไม่ต้องเข้าสู่ระบบ"
-          : "เลือกดูเมนูและสาขาได้ก่อน โดยไม่ต้องเข้าสู่ระบบ"
+        requireLogin
+          ? "ต้องเข้าสู่ระบบด้วยเบอร์โทรก่อนสั่งเสียบไม้"
+          : branchCode
+            ? "เข้าดูเมนูและสั่งที่สาขานี้ได้เลย โดยไม่ต้องเข้าสู่ระบบ"
+            : "เลือกดูเมนูและสาขาได้ก่อน โดยไม่ต้องเข้าสู่ระบบ"
       }
       browseLabel={branchCode ? "เข้าชมสาขานี้" : "เข้าชมร้าน"}
-      onBrowseShop={() => router.replace(destination)}
+      onBrowseShop={
+        requireLogin ? undefined : () => router.replace(destination)
+      }
       onSuccess={() => router.replace(destination)}
     />
   );

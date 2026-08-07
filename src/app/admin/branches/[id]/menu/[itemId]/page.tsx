@@ -63,6 +63,7 @@ type FormState = {
   imageUrl: string;
   isHidden: boolean;
   isOutOfStock: boolean;
+  sortOrder: string;
 };
 
 const EMPTY_ITEM: MenuItemDetail = {
@@ -98,6 +99,7 @@ const EMPTY_FORM: FormState = {
   imageUrl: "",
   isHidden: false,
   isOutOfStock: false,
+  sortOrder: "0",
 };
 
 const sectionClass = "rounded-xl border border-gray-200 bg-white p-4";
@@ -169,6 +171,7 @@ export default function MenuItemEditorPage() {
       imageUrl: data.imageUrl ?? "",
       isHidden,
       isOutOfStock,
+      sortOrder: String(data.sortOrder ?? 0),
     });
     const ids = data.optionGroupIds ?? data.optionGroups.map((g) => g.id);
     setSelectedGroupIds(ids);
@@ -306,6 +309,10 @@ export default function MenuItemEditorPage() {
         imageUrl: form.imageUrl || null,
         isHidden: form.isHidden,
         isOutOfStock: form.isHidden ? false : form.isOutOfStock,
+        sortOrder: (() => {
+          const n = Number.parseInt(form.sortOrder, 10);
+          return Number.isFinite(n) ? n : 0;
+        })(),
         optionGroupIds: selectedGroupIds,
       };
 
@@ -489,6 +496,22 @@ export default function MenuItemEditorPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className={adminLabelClass}>ลำดับแสดงผล</label>
+                <input
+                  type="number"
+                  className={adminInputClass}
+                  min={0}
+                  max={9999}
+                  value={form.sortOrder}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, sortOrder: e.target.value }))
+                  }
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  เลขน้อยแสดงก่อน — ใช้ร่วมกับการลากจัดลำดับในแท็บเมนู
+                </p>
               </div>
               <ImageField
                 label="รูปเมนู"

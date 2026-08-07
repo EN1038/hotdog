@@ -39,6 +39,14 @@ const summaryLineSchema = z.object({
   countedQty: z.number().int().min(0),
 });
 
+const batchIdSchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(64)
+  .regex(/^[a-zA-Z0-9_-]+$/)
+  .optional();
+
 const postSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("stock_in"),
@@ -47,6 +55,7 @@ const postSchema = z.discriminatedUnion("action", [
     unitCost: z.number().min(0).nullable().optional(),
     supplier: z.string().trim().max(120).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
+    batchId: batchIdSchema,
   }),
   z.object({
     action: z.literal("damage"),
@@ -68,6 +77,7 @@ const postSchema = z.discriminatedUnion("action", [
     quantity: z.number().int().positive(),
     note: z.string().trim().min(1, "กรุณากรอกรายละเอียด").max(300),
     imageUrl: z.string().trim().min(1, "กรุณาแนบรูปถ่าย"),
+    batchId: batchIdSchema,
   }),
   z.object({
     action: z.literal("adjust"),
@@ -77,29 +87,50 @@ const postSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("summary"),
+    stockType: z.enum(["SALE_ITEM", "CONSUMABLE", "EQUIPMENT"]).default("SALE_ITEM"),
     lines: z.array(summaryLineSchema).min(1),
-    cash: z.number().min(0),
-    transfer: z.number().min(0),
-    change: z.number().min(0),
-    customers: z.number().int().min(0),
+    cash: z.number().min(0).default(0),
+    transfer: z.number().min(0).default(0),
+    change: z.number().min(0).default(0),
+    customers: z.number().int().min(0).default(0),
   }),
 ]);
 
 export async function GET() {
   try {
+    const { ensureProdSchemaCompat } = await import("@/lib/schema-compat");
+    await ensureProdSchemaCompat();
+
     const session = await requireStaff();
+    // Always select scalars — do not load full Branch (isTest etc. may lag migrate on prod).
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
+      select: {
+        id: true,
+        brandId: true,
+        stockEnabled: true,
+      },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
     const menuItems = await prisma.branchMenuItem.findMany({
       where: { branchId: branch.id, isHidden: false },
-      include: {
-        category: true,
-        stock: true,
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        sortOrder: true,
+        imageUrl: true,
+        category: {
+          select: {
+            name: true,
+            sortOrder: true,
+            stockExempt: true,
+          },
+        },
+        stock: { select: { quantity: true } },
         optionGroupLinks: {
-          include: { group: { select: { mode: true } } },
+          select: { group: { select: { mode: true } } },
         },
       },
       orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
@@ -107,11 +138,20 @@ export async function GET() {
 
     const nonMenuItems = await prisma.branchNonMenuItem.findMany({
       where: { branchId: branch.id },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        stockType: true,
+        quantity: true,
+        price: true,
+        imageUrl: true,
+      },
       orderBy: { name: "asc" },
     });
 
-    const products: any[] = [];
-    const balances: any[] = [];
+    const products: Array<Record<string, unknown>> = [];
+    const balances: Array<Record<string, unknown>> = [];
 
     const priceByProductId = new Map<string, number>();
 
@@ -203,10 +243,13 @@ export async function GET() {
       EQUIPMENT: emptyTypeSummary(),
     };
     for (const bal of balances) {
-      const stockType = bal.product.stockType as keyof typeof currentByType;
-      if (!(stockType in currentByType)) continue;
+      const stockType = (bal.product as { stockType?: string }).stockType as
+        | keyof typeof currentByType
+        | undefined;
+      if (!stockType || !(stockType in currentByType)) continue;
       const qty = Math.max(0, Number(bal.quantity) || 0);
-      const unitPrice = Number(bal.product.price) || 0;
+      const unitPrice =
+        Number((bal.product as { price?: number }).price) || 0;
       currentByType[stockType].quantity += qty;
       currentByType[stockType].valueBaht += qty * unitPrice;
     }
@@ -218,92 +261,131 @@ export async function GET() {
       EQUIPMENT: emptyTypeSummary(),
     };
 
-    const [menuWaste, nonMenuWaste] = await Promise.all([
-      prisma.branchMenuItemStockHistory.findMany({
-        where: {
-          branchId: branch.id,
-          type: { in: [...WASTE_HISTORY_TYPES] },
-          createdAt: { gte: month.start, lt: month.end },
-        },
-        select: { menuItemId: true, quantity: true },
-      }),
-      prisma.branchNonMenuItemHistory.findMany({
-        where: {
-          item: { branchId: branch.id },
-          type: { in: [...WASTE_HISTORY_TYPES] },
-          createdAt: { gte: month.start, lt: month.end },
-        },
-        select: {
-          quantity: true,
-          item: { select: { id: true, stockType: true, price: true } },
-        },
-      }),
-    ]);
+    // History may miss cancel columns if migrate lag — use select without them.
+    try {
+      const [menuWaste, nonMenuWaste] = await Promise.all([
+        prisma.branchMenuItemStockHistory.findMany({
+          where: {
+            branchId: branch.id,
+            type: { in: [...WASTE_HISTORY_TYPES] },
+            createdAt: { gte: month.start, lt: month.end },
+          },
+          select: { menuItemId: true, quantity: true },
+        }),
+        prisma.branchNonMenuItemHistory.findMany({
+          where: {
+            item: { branchId: branch.id },
+            type: { in: [...WASTE_HISTORY_TYPES] },
+            createdAt: { gte: month.start, lt: month.end },
+          },
+          select: {
+            quantity: true,
+            item: { select: { id: true, stockType: true, price: true } },
+          },
+        }),
+      ]);
 
-    for (const row of menuWaste) {
-      const qty = Math.abs(row.quantity);
-      if (qty <= 0) continue;
-      const unitPrice = priceByProductId.get(row.menuItemId) ?? 0;
-      wasteByType.SALE_ITEM.quantity += qty;
-      wasteByType.SALE_ITEM.valueBaht += qty * unitPrice;
+      for (const row of menuWaste) {
+        const qty = Math.abs(row.quantity);
+        if (qty <= 0) continue;
+        const unitPrice = priceByProductId.get(row.menuItemId) ?? 0;
+        wasteByType.SALE_ITEM.quantity += qty;
+        wasteByType.SALE_ITEM.valueBaht += qty * unitPrice;
+      }
+      for (const row of nonMenuWaste) {
+        const qty = Math.abs(row.quantity);
+        if (qty <= 0) continue;
+        const stockType = row.item.stockType as keyof typeof wasteByType;
+        if (!(stockType in wasteByType)) continue;
+        const unitPrice =
+          priceByProductId.get(row.item.id) ?? Number(row.item.price ?? 0);
+        wasteByType[stockType].quantity += qty;
+        wasteByType[stockType].valueBaht += qty * unitPrice;
+      }
+    } catch (e) {
+      console.error(
+        "[staff/stock] waste summary skipped",
+        e instanceof Error ? e.message : e,
+      );
     }
-    for (const row of nonMenuWaste) {
-      const qty = Math.abs(row.quantity);
-      if (qty <= 0) continue;
-      const stockType = row.item.stockType as keyof typeof wasteByType;
-      if (!(stockType in wasteByType)) continue;
-      const unitPrice =
-        priceByProductId.get(row.item.id) ?? Number(row.item.price ?? 0);
-      wasteByType[stockType].quantity += qty;
-      wasteByType[stockType].valueBaht += qty * unitPrice;
+
+    let mappedMovements: Array<Record<string, unknown>> = [];
+    try {
+      // Select scalars only — avoid Prisma selecting cancel columns if DB lags.
+      const [recentMenuMovements, recentNonMenuMovements] = await Promise.all([
+        prisma.branchMenuItemStockHistory.findMany({
+          where: { branchId: branch.id },
+          select: {
+            id: true,
+            type: true,
+            quantity: true,
+            createdAt: true,
+            note: true,
+            menuItemId: true,
+            menuItem: { select: { name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 25,
+        }),
+        prisma.branchNonMenuItemHistory.findMany({
+          where: { item: { branchId: branch.id } },
+          select: {
+            id: true,
+            type: true,
+            quantity: true,
+            createdAt: true,
+            note: true,
+            branchNonMenuItemId: true,
+            item: {
+              select: { name: true, unit: true, stockType: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 25,
+        }),
+      ]);
+
+      mappedMovements = [
+        ...recentMenuMovements.map((m) => ({
+          id: m.id,
+          type: m.type,
+          quantity: m.quantity,
+          createdAt: m.createdAt.toISOString(),
+          note: m.note,
+          product: {
+            id: m.menuItemId,
+            name: m.menuItem.name,
+            unit: "รายการ",
+            stockType: "SALE_ITEM",
+          },
+        })),
+        ...recentNonMenuMovements.map((m) => ({
+          id: m.id,
+          type: m.type,
+          quantity: m.quantity,
+          createdAt: m.createdAt.toISOString(),
+          note: m.note,
+          product: {
+            id: m.branchNonMenuItemId,
+            name: m.item.name,
+            unit: m.item.unit,
+            stockType: m.item.stockType,
+          },
+        })),
+      ];
+
+      mappedMovements.sort(
+        (a, b) =>
+          new Date(String(b.createdAt)).getTime() -
+          new Date(String(a.createdAt)).getTime(),
+      );
+      mappedMovements = mappedMovements.slice(0, 50);
+    } catch (e) {
+      console.error(
+        "[staff/stock] recent movements skipped",
+        e instanceof Error ? e.message : e,
+      );
     }
-
-    // Recent movements
-    const recentMenuMovements = await prisma.branchMenuItemStockHistory.findMany({
-      where: { branchId: branch.id },
-      include: { menuItem: true },
-      orderBy: { createdAt: "desc" },
-      take: 25,
-    });
-    
-    const recentNonMenuMovements = await prisma.branchNonMenuItemHistory.findMany({
-      where: { item: { branchId: branch.id } },
-      include: { item: true },
-      orderBy: { createdAt: "desc" },
-      take: 25,
-    });
-
-    let mappedMovements = [
-      ...recentMenuMovements.map((m) => ({
-        id: m.id,
-        type: m.type,
-        quantity: m.quantity,
-        createdAt: m.createdAt.toISOString(),
-        note: m.note,
-        product: {
-          id: m.menuItemId,
-          name: m.menuItem.name,
-          unit: "รายการ",
-          stockType: "SALE_ITEM",
-        },
-      })),
-      ...recentNonMenuMovements.map((m) => ({
-        id: m.id,
-        type: m.type,
-        quantity: m.quantity,
-        createdAt: m.createdAt.toISOString(),
-        note: m.note,
-        product: {
-          id: m.branchNonMenuItemId,
-          name: m.item.name,
-          unit: m.item.unit,
-          stockType: m.item.stockType,
-        },
-      }))
-    ];
-
-    mappedMovements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    mappedMovements = mappedMovements.slice(0, 50);
 
     return jsonOk({
       stockActive: true,
@@ -313,7 +395,7 @@ export async function GET() {
       pending: [],
       balances,
       products,
-      lowItems: balances.filter((b) => b.quantity <= 0),
+      lowItems: balances.filter((b) => Number(b.quantity) <= 0),
       counts: [],
       recentMovements: mappedMovements,
       summary: {
@@ -323,6 +405,10 @@ export async function GET() {
       },
     });
   } catch (error) {
+    console.error(
+      "[staff/stock GET]",
+      error instanceof Error ? error.message : error,
+    );
     return handleApiError(error);
   }
 }
@@ -335,168 +421,231 @@ export async function POST(request: Request) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
+      select: {
+        id: true,
+        brandId: true,
+        stockEnabled: true,
+        name: true,
+      },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
-    // End-of-day stock + cash summary (BranchMenuItem stock system)
+    // End-of-day stock (+ cash when SALE_ITEM) summary by stock type
     if (body.action === "summary") {
-      const [menuItems, catalogMenus] = await Promise.all([
-        prisma.branchMenuItem.findMany({
-          where: {
-            branchId: branch.id,
-            id: { in: body.lines.map((l) => l.brandProductId) },
-          },
-          include: { stock: true },
-        }),
-        prisma.branchMenuItem.findMany({
-          where: { branchId: branch.id, isHidden: false },
-          select: {
-            id: true,
-            name: true,
-            sortOrder: true,
-            category: { select: { sortOrder: true, stockExempt: true } },
-            optionGroupLinks: {
-              select: { group: { select: { mode: true } } },
-            },
-          },
-        }),
-      ]);
-      const menuMap = new Map(menuItems.map((m) => [m.id, m]));
-
-      for (const line of body.lines) {
-        if (!menuMap.has(line.brandProductId)) {
-          return jsonError(`ไม่พบเมนูในสาขา: ${line.brandProductId}`);
-        }
-      }
-
-      const saleCatalog = catalogMenus.filter((item) => {
-        const isPromo = item.optionGroupLinks.some(
-          (l) => l.group.mode === "FROM_MENU",
-        );
-        return !isPromo && !item.category?.stockExempt;
-      });
-      const sortedSaleCatalog = sortStaffMenuItems(
-        saleCatalog.map((item) =>
-          withMenuOrderFields({
-            id: item.id,
-            name: item.name,
-            sortOrder: item.sortOrder,
-            category: item.category,
-          }),
-        ),
-      );
-      const seqById = assignStableMenuSequence(sortedSaleCatalog);
+      const stockType = body.stockType;
+      const lineIds = body.lines.map((l) => l.brandProductId);
+      const typeLabel =
+        stockType === "SALE_ITEM"
+          ? "เมนูขาย"
+          : stockType === "CONSUMABLE"
+            ? "ของสิ้นเปลือง"
+            : "อุปกรณ์";
 
       const activeShift = await getActiveShift(branch.id);
       const countLinesPayload: Array<{
+        menuItemId?: string;
+        nonMenuItemId?: string;
         name: string;
         systemQty: number;
         countedQty: number;
         unitPrice: number;
+        unit: string;
+        stockType: typeof stockType;
         seq: number;
       }> = [];
 
-      await prisma.$transaction(async (tx) => {
+      if (stockType === "SALE_ITEM") {
+        // SALE_ITEM: record count only — admin must convert/apply before stock adjusts
+        const [menuItems, catalogMenus] = await Promise.all([
+          prisma.branchMenuItem.findMany({
+            where: { branchId: branch.id, id: { in: lineIds } },
+            include: { stock: true },
+          }),
+          prisma.branchMenuItem.findMany({
+            where: { branchId: branch.id, isHidden: false },
+            select: {
+              id: true,
+              name: true,
+              sortOrder: true,
+              category: { select: { sortOrder: true, stockExempt: true } },
+              optionGroupLinks: {
+                select: { group: { select: { mode: true } } },
+              },
+            },
+          }),
+        ]);
+        const menuMap = new Map(menuItems.map((m) => [m.id, m]));
+
+        for (const line of body.lines) {
+          if (!menuMap.has(line.brandProductId)) {
+            return jsonError(`ไม่พบเมนูในสาขา: ${line.brandProductId}`);
+          }
+        }
+
+        const saleCatalog = catalogMenus.filter((item) => {
+          const isPromo = item.optionGroupLinks.some(
+            (l) => l.group.mode === "FROM_MENU",
+          );
+          return !isPromo && !item.category?.stockExempt;
+        });
+        const sortedSaleCatalog = sortStaffMenuItems(
+          saleCatalog.map((item) =>
+            withMenuOrderFields({
+              id: item.id,
+              name: item.name,
+              sortOrder: item.sortOrder,
+              category: item.category,
+            }),
+          ),
+        );
+        const seqById = assignStableMenuSequence(sortedSaleCatalog);
+
         for (const line of body.lines) {
           const menu = menuMap.get(line.brandProductId)!;
           const oldQty = menu.stock?.quantity ?? 0;
           const newQty = line.countedQty;
-          const actualDiff = newQty - oldQty;
           const unitPrice = Number(menu.price ?? 0);
-
-          await tx.branchMenuItemStock.upsert({
-            where: { menuItemId: menu.id },
-            update: { quantity: newQty },
-            create: {
-              branchId: branch.id,
-              menuItemId: menu.id,
-              quantity: newQty,
-            },
-          });
-
-          await tx.branchMenuItem.update({
-            where: { id: menu.id },
-            data: { isOutOfStock: newQty <= 0 },
-          });
-
-          if (actualDiff !== 0) {
-            await tx.branchMenuItemStockHistory.create({
-              data: {
-                branchId: branch.id,
-                menuItemId: menu.id,
-                quantity: actualDiff,
-                type: "ADJUST",
-                note: `สรุปยอดสต๊อกสิ้นวัน (นับได้ ${newQty})`,
-                createdByStaffId: session.staffId,
-              },
-            });
-          }
-
           countLinesPayload.push({
+            menuItemId: menu.id,
             name: menu.name,
             systemQty: oldQty,
             countedQty: newQty,
             unitPrice,
+            unit: "รายการ",
+            stockType,
             seq: seqById.get(menu.id) ?? 0,
           });
         }
-      });
+      } else {
+        const nonMenuItems = await prisma.branchNonMenuItem.findMany({
+          where: {
+            branchId: branch.id,
+            stockType,
+            id: { in: lineIds },
+          },
+        });
+        const itemMap = new Map(nonMenuItems.map((m) => [m.id, m]));
 
-      // Keep note lines in menu sequence order
+        for (const line of body.lines) {
+          if (!itemMap.has(line.brandProductId)) {
+            return jsonError(`ไม่พบรายการในสาขา: ${line.brandProductId}`);
+          }
+        }
+
+        const sorted = [...nonMenuItems].sort((a, b) =>
+          a.name.localeCompare(b.name, "th"),
+        );
+        const seqById = new Map(sorted.map((item, i) => [item.id, i + 1]));
+
+        await prisma.$transaction(
+          async (tx) => {
+            for (const line of body.lines) {
+              const item = itemMap.get(line.brandProductId)!;
+              const oldQty = item.quantity;
+              const newQty = line.countedQty;
+              const actualDiff = newQty - oldQty;
+              const unitPrice = Number(item.price ?? 0);
+
+              if (actualDiff !== 0) {
+                await tx.branchNonMenuItem.update({
+                  where: { id: item.id },
+                  data: { quantity: newQty },
+                });
+
+                await tx.branchNonMenuItemHistory.create({
+                  data: {
+                    branchNonMenuItemId: item.id,
+                    quantity: actualDiff,
+                    type: "ADJUST",
+                    note: `สรุปยอดสต๊อกสิ้นวัน · ${typeLabel} (นับได้ ${newQty})`,
+                    createdByStaffId: session.staffId,
+                  },
+                });
+              }
+
+              countLinesPayload.push({
+                nonMenuItemId: item.id,
+                name: item.name,
+                systemQty: oldQty,
+                countedQty: newQty,
+                unitPrice,
+                unit: item.unit,
+                stockType,
+                seq: seqById.get(item.id) ?? 0,
+              });
+            }
+          },
+          { timeout: 120_000, maxWait: 20_000 },
+        );
+      }
+
       countLinesPayload.sort((a, b) => {
         if (a.seq && b.seq && a.seq !== b.seq) return a.seq - b.seq;
         return a.name.localeCompare(b.name, "th");
       });
 
-      // Persist summary for admin history (best-effort; stock already saved)
-      if (branch.brandId) {
-        try {
-          let location = await prisma.stockLocation.findFirst({
-            where: { branchId: branch.id, type: "BRANCH" },
-          });
-          if (!location) {
-            location = await prisma.stockLocation.create({
-              data: {
-                brandId: branch.brandId,
-                branchId: branch.id,
-                type: "BRANCH",
-                name: branch.name || "สาขา",
-              },
-            });
-          }
-
-          const roundLabel = activeShift?.roundNumber ?? "—";
-          const dateLabel = new Intl.DateTimeFormat("th-TH", {
-            timeZone: "Asia/Bangkok",
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-          }).format(new Date());
-          await prisma.stockCount.create({
-            data: {
-              brandId: branch.brandId,
-              branchId: branch.id,
-              shiftId: activeShift?.id ?? null,
-              stockLocationId: location.id,
-              name: `สรุปยอดสต๊อกและขายราย · รอบที่ ${roundLabel} (${dateLabel})`,
-              status: "COMPLETED",
-              completedAt: new Date(),
-              createdByStaffId: session.staffId,
-              note: JSON.stringify({
-                cash: body.cash,
-                transfer: body.transfer,
-                change: body.change,
-                customers: body.customers,
-                lines: countLinesPayload,
-              }),
-            },
-          });
-        } catch (err) {
-          console.error("[staff/stock summary] failed to save StockCount history", err);
-        }
+      if (!branch.brandId) {
+        return jsonError("สาขานี้ยังไม่ได้ผูกแบรนด์ ไม่สามารถบันทึกสรุปยอดได้");
       }
 
-      return jsonOk({ ok: true }, 201);
+      let location = await prisma.stockLocation.findFirst({
+        where: { branchId: branch.id, type: "BRANCH" },
+      });
+      if (!location) {
+        location = await prisma.stockLocation.create({
+          data: {
+            brandId: branch.brandId,
+            branchId: branch.id,
+            type: "BRANCH",
+            name: branch.name || "สาขา",
+          },
+        });
+      }
+
+      const roundLabel = activeShift?.roundNumber ?? "—";
+      const dateLabel = new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(new Date());
+      const titlePrefix =
+        stockType === "SALE_ITEM"
+          ? "สรุปยอดสต๊อกและขายราย"
+          : "สรุปยอดสต๊อก";
+      // SALE_ITEM waits for admin convert; other types apply stock immediately
+      const pendingAdmin = stockType === "SALE_ITEM";
+      const count = await prisma.stockCount.create({
+        data: {
+          brandId: branch.brandId,
+          branchId: branch.id,
+          shiftId: activeShift?.id ?? null,
+          stockLocationId: location.id,
+          name: `${titlePrefix} · ${typeLabel} · รอบที่ ${roundLabel} (${dateLabel})`,
+          status: pendingAdmin ? "IN_PROGRESS" : "COMPLETED",
+          completedAt: pendingAdmin ? null : new Date(),
+          createdByStaffId: session.staffId,
+          note: JSON.stringify({
+            stockType,
+            pendingAdminApply: pendingAdmin,
+            cash: stockType === "SALE_ITEM" ? body.cash : 0,
+            transfer: stockType === "SALE_ITEM" ? body.transfer : 0,
+            change: stockType === "SALE_ITEM" ? body.change : 0,
+            customers: stockType === "SALE_ITEM" ? body.customers : 0,
+            lines: countLinesPayload,
+          }),
+        },
+      });
+
+      return jsonOk(
+        {
+          ok: true,
+          countId: count.id,
+          status: count.status,
+          pendingAdminApply: pendingAdmin,
+        },
+        201,
+      );
     }
 
     const targetId = body.brandProductId;
@@ -528,6 +677,10 @@ export async function POST(request: Request) {
         });
 
         if (actualDiff !== 0) {
+          const batchId =
+            body.action === "stock_in" || body.action === "issue"
+              ? (body.batchId ?? null)
+              : null;
           await prisma.branchNonMenuItemHistory.create({
             data: {
               branchNonMenuItemId: targetId,
@@ -535,6 +688,7 @@ export async function POST(request: Request) {
               type: body.action.toUpperCase(),
               note: body.note ?? null,
               imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
+              batchId,
               createdByStaffId: session.staffId,
             },
           });
@@ -579,6 +733,10 @@ export async function POST(request: Request) {
           });
 
           if (actualDiff !== 0) {
+            const batchId =
+              body.action === "stock_in" || body.action === "issue"
+                ? (body.batchId ?? null)
+                : null;
             await tx.branchMenuItemStockHistory.create({
               data: {
                 branchId: session.branchId,
@@ -587,6 +745,7 @@ export async function POST(request: Request) {
                 type: body.action.toUpperCase(),
                 note: body.note ?? null,
                 imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
+                batchId,
                 createdByStaffId: session.staffId,
               },
             });

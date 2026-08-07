@@ -51,6 +51,12 @@ export default async function HomePage() {
           >
             ผู้ดูแลระบบ (Admin)
           </Link>
+          <Link
+            href="/product"
+            className="block rounded-2xl border border-dashed border-gray-300 bg-white/70 px-6 py-3.5 text-sm font-medium text-gray-600 hover:bg-white hover:text-gray-900"
+          >
+            เอกสารแนะนำระบบ (อ่านฟีเจอร์)
+          </Link>
         </div>
       </div>
     </main>

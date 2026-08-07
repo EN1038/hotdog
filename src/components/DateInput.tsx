@@ -59,6 +59,11 @@ export type DateInputProps = {
   placeholder?: string;
   /** Show native calendar button (default true) */
   showCalendar?: boolean;
+  /**
+   * Open the native calendar when tapping/clicking anywhere on the field
+   * (not only the icon). Makes the field picker-only (not free-typed).
+   */
+  openPickerOnClick?: boolean;
   "aria-label"?: string;
 };
 
@@ -78,12 +83,14 @@ export function DateInput({
   required,
   placeholder = "วว/ดด/ปปปป",
   showCalendar = true,
+  openPickerOnClick,
   "aria-label": ariaLabel,
 }: DateInputProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const nativeRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(() => (value ? isoToDmy(value) : ""));
+  const openOnClick = openPickerOnClick === true;
 
   useEffect(() => {
     setText(value ? isoToDmy(value) : "");
@@ -136,7 +143,18 @@ export function DateInput({
   }
 
   return (
-    <div className="relative w-full">
+    <div
+      className={`relative w-full${openOnClick && !disabled ? " cursor-pointer" : ""}`}
+      onClick={
+        openOnClick && !disabled
+          ? (e) => {
+              // Don't steal clicks from the calendar button (it opens itself)
+              if ((e.target as HTMLElement).closest("button")) return;
+              openNativePicker();
+            }
+          : undefined
+      }
+    >
       <input
         id={inputId}
         name={name}
@@ -146,15 +164,26 @@ export function DateInput({
         placeholder={placeholder}
         disabled={disabled}
         required={required}
+        readOnly={openOnClick}
         aria-label={ariaLabel}
         value={text}
         onChange={(e) => handleTextChange(e.target.value)}
         onBlur={handleBlur}
+        onKeyDown={
+          openOnClick
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openNativePicker();
+                }
+              }
+            : undefined
+        }
         className={
           showCalendar
             ? className
-              ? `${className} pr-8`
-              : "pr-8"
+              ? `${className} pr-8${openOnClick ? " cursor-pointer" : ""}`
+              : `pr-8${openOnClick ? " cursor-pointer" : ""}`
             : className
         }
       />
@@ -179,8 +208,11 @@ export function DateInput({
             type="button"
             disabled={disabled}
             aria-label="เปิดปฏิทิน"
-            onClick={openNativePicker}
-            className="absolute top-1/2 right-1 -translate-y-1/2 cursor-pointer rounded p-0.5 text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={(e) => {
+              e.stopPropagation();
+              openNativePicker();
+            }}
+            className="absolute top-1/2 right-1 z-10 -translate-y-1/2 cursor-pointer rounded p-0.5 text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg
               width="15"

@@ -269,6 +269,8 @@ async function brandAllowsNegative(tx: Tx, brandId: string) {
   return Boolean(brand?.allowNegativeStock);
 }
 
+export { brandAllowsNegative };
+
 type Actor = { adminId?: string | null; staffId?: string | null };
 
 /** Stock in (รับเข้า) to a location — SALE_ITEM / CONSUMABLE / EQUIPMENT */
@@ -856,92 +858,11 @@ export async function deductStockForOrder(orderId: string, tx?: Tx) {
 
     for (const [brandProductId, { saleQty, freeQty }] of needs) {
       const totalSold = saleQty + freeQty;
-      if (saleQty > 0) {
-        const productMeta = await client.brandProduct.findUnique({
-          where: { id: brandProductId },
-          select: { trackLots: true },
-        });
-        if (productMeta?.trackLots) {
-          const { deductFromLotsFefo } = await import("@/lib/stock-advanced");
-          await deductFromLotsFefo(client, {
-            stockLocationId: location.id,
-            brandProductId,
-            quantity: saleQty,
-            allowNegative: allowNeg,
-          });
-        }
-        const { beforeQty, afterQty } = await changeBalance(client, {
-          stockLocationId: location.id,
-          brandProductId,
-          delta: -saleQty,
-          allowNegative: allowNeg,
-        });
-        await client.stockMovement.create({
-          data: {
-            brandId,
-            brandProductId,
-            type: StockMovementType.SALE,
-            quantity: saleQty,
-            beforeQty,
-            afterQty,
-            stockLocationId: location.id,
-            fromLocationId: location.id,
-            orderId: order.id,
-            referenceType: "ORDER",
-            referenceId: order.id,
-            note: `ขายออเดอร์ ${order.orderNumber}`,
-          },
-        });
-        await syncAfterBranchQtyChange(
-          client,
-          location,
-          brandProductId,
-          afterQty,
-        );
-      }
-      if (freeQty > 0) {
-        const productMeta = await client.brandProduct.findUnique({
-          where: { id: brandProductId },
-          select: { trackLots: true },
-        });
-        if (productMeta?.trackLots) {
-          const { deductFromLotsFefo } = await import("@/lib/stock-advanced");
-          await deductFromLotsFefo(client, {
-            stockLocationId: location.id,
-            brandProductId,
-            quantity: freeQty,
-            allowNegative: allowNeg,
-          });
-        }
-        const { beforeQty, afterQty } = await changeBalance(client, {
-          stockLocationId: location.id,
-          brandProductId,
-          delta: -freeQty,
-          allowNegative: allowNeg,
-        });
-        await client.stockMovement.create({
-          data: {
-            brandId,
-            brandProductId,
-            type: StockMovementType.FREE,
-            quantity: freeQty,
-            beforeQty,
-            afterQty,
-            stockLocationId: location.id,
-            fromLocationId: location.id,
-            orderId: order.id,
-            referenceType: "ORDER_GIFT",
-            referenceId: order.id,
-            note: `ของแถมออเดอร์ ${order.orderNumber}`,
-          },
-        });
-        await syncAfterBranchQtyChange(
-          client,
-          location,
-          brandProductId,
-          afterQty,
-        );
-      }
+      // Finished SALE_ITEM goods sold as branch menu lines are inventoried in
+      // BranchMenuItemStock (staff stock UI) and deducted by
+      // deductBranchMenuStockForOrder. StockBalance here is often empty and was
+      // blocking key-order even when menu stock had quantity.
+      // Only auto-deduct recipe/BOM components from StockBalance below.
 
       // BOM / recipe: auto-deduct components (usually consumables)
       if (totalSold > 0) {
@@ -1010,7 +931,7 @@ export async function restoreStockForOrder(orderId: string, tx?: Tx) {
         },
       },
     });
-    if (!order?.stockDeducted) return;
+    if (!order?.stockDeducted) return false;
 
     if (
       !isBranchStockActive({
@@ -1023,7 +944,7 @@ export async function restoreStockForOrder(orderId: string, tx?: Tx) {
         where: { id: orderId },
         data: { stockDeducted: false },
       });
-      return;
+      return true;
     }
 
     const brandId = order.branch.brandId!;
@@ -1039,13 +960,20 @@ export async function restoreStockForOrder(orderId: string, tx?: Tx) {
         where: { id: orderId },
         data: { stockDeducted: false },
       });
-      return;
+      return true;
     }
 
+    // SALE/FREE from direct sale lines; ISSUE from recipe/BOM components.
     const sales = await client.stockMovement.findMany({
       where: {
         orderId,
-        type: { in: [StockMovementType.SALE, StockMovementType.FREE] },
+        type: {
+          in: [
+            StockMovementType.SALE,
+            StockMovementType.FREE,
+            StockMovementType.ISSUE,
+          ],
+        },
       },
     });
 
@@ -1083,17 +1011,221 @@ export async function restoreStockForOrder(orderId: string, tx?: Tx) {
       where: { id: orderId },
       data: { stockDeducted: false },
     });
+    return true;
+  };
+
+  const doAll = async (client: Tx) => {
+    const restored = await run(client);
+    if (!restored) return;
+    await restoreBranchMenuStockForOrder(orderId, client);
+    await restoreBranchNonMenuStockForOrder(orderId, client);
   };
 
   if (tx) {
-    await run(tx);
-    await restoreBranchMenuStockForOrder(orderId, tx);
+    await doAll(tx);
     return;
   }
   await prisma.$transaction(async (client) => {
-    await run(client);
-    await restoreBranchMenuStockForOrder(orderId, client);
+    await doAll(client);
   });
+}
+
+/**
+ * Reverse a prior stock restore so the order is deducted again.
+ * Used when undoing "ยกเลิกรอบ" (orders go back to their previous status).
+ * Does NOT create new SALE/ISSUE rows — only adjusts qty and sets stockDeducted,
+ * so a later cancel still restores against the original history once.
+ */
+export async function reapplyStockForOrder(orderId: string, tx?: Tx) {
+  const run = async (client: Tx) => {
+    const order = await client.order.findUnique({
+      where: { id: orderId },
+      include: {
+        branch: {
+          include: {
+            brand: {
+              select: {
+                id: true,
+                stockEnabled: true,
+                allowNegativeStock: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!order) return;
+    if (order.stockDeducted) return;
+    if (order.awaitingPhotoKey) return;
+
+    if (
+      !isBranchStockActive({
+        brandId: order.branch.brandId,
+        brandStockEnabled: order.branch.brand?.stockEnabled,
+        branchStockEnabled: order.branch.stockEnabled,
+      })
+    ) {
+      return;
+    }
+
+    const brandId = order.branch.brandId!;
+    const allowNeg = Boolean(order.branch.brand?.allowNegativeStock);
+    const location = await client.stockLocation.findFirst({
+      where: {
+        brandId,
+        branchId: order.branchId,
+        type: StockLocationType.BRANCH,
+      },
+    });
+
+    let reapplied = false;
+
+    if (location) {
+      const outbounds = await client.stockMovement.findMany({
+        where: {
+          orderId,
+          type: {
+            in: [
+              StockMovementType.SALE,
+              StockMovementType.FREE,
+              StockMovementType.ISSUE,
+            ],
+          },
+        },
+      });
+      // Net that was previously sold: sum outbound qty. After cancel, RETURNs
+      // put inventory back — re-deduct the same outbound quantity without
+      // writing new SALE/ISSUE (avoids double-restore on a later cancel).
+      const byProduct = new Map<string, number>();
+      for (const m of outbounds) {
+        byProduct.set(
+          m.brandProductId,
+          (byProduct.get(m.brandProductId) ?? 0) + m.quantity,
+        );
+      }
+      for (const [brandProductId, qty] of byProduct) {
+        if (qty <= 0) continue;
+        const { beforeQty, afterQty } = await changeBalance(client, {
+          stockLocationId: location.id,
+          brandProductId,
+          delta: -qty,
+          allowNegative: allowNeg,
+        });
+        await client.stockMovement.create({
+          data: {
+            brandId,
+            brandProductId,
+            type: StockMovementType.ADJUST,
+            quantity: qty,
+            beforeQty,
+            afterQty,
+            stockLocationId: location.id,
+            fromLocationId: location.id,
+            orderId,
+            referenceType: "SHIFT_RESTORE",
+            referenceId: orderId,
+            note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ (ออเดอร์ ${order.orderNumber})`,
+          },
+        });
+        await syncAfterBranchQtyChange(
+          client,
+          location,
+          brandProductId,
+          afterQty,
+        );
+        reapplied = true;
+      }
+    }
+
+    // Branch menu: re-deduct from original SALE history rows (no new SALE).
+    const menuSales = await client.branchMenuItemStockHistory.findMany({
+      where: {
+        type: "SALE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
+      },
+    });
+    for (const h of menuSales) {
+      const deductQty = Math.abs(h.quantity);
+      if (deductQty <= 0) continue;
+      const stock = await client.branchMenuItemStock.findUnique({
+        where: { menuItemId: h.menuItemId },
+      });
+      const oldQty = stock?.quantity ?? 0;
+      const newQty = oldQty - deductQty;
+      if (!allowNeg && newQty < 0) {
+        throw new StockError(
+          `สต๊อกไม่พอตอนกู้คืนรอบ (เมนูในออเดอร์ ${order.orderNumber})`,
+        );
+      }
+      await client.branchMenuItemStock.upsert({
+        where: { menuItemId: h.menuItemId },
+        update: { quantity: newQty },
+        create: {
+          branchId: h.branchId,
+          menuItemId: h.menuItemId,
+          quantity: newQty,
+        },
+      });
+      await client.branchMenuItem.update({
+        where: { id: h.menuItemId },
+        data: { isOutOfStock: newQty <= 0 },
+      });
+      await client.branchMenuItemStockHistory.create({
+        data: {
+          branchId: h.branchId,
+          menuItemId: h.menuItemId,
+          quantity: -deductQty,
+          type: "ADJUST",
+          note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ ${orderId}`,
+          createdByStaffId: null,
+        },
+      });
+      reapplied = true;
+    }
+
+    // Non-menu consumables: re-issue from original ISSUE history (no new ISSUE).
+    const issues = await client.branchNonMenuItemHistory.findMany({
+      where: {
+        type: "ISSUE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
+      },
+      include: { item: { select: { id: true, quantity: true, name: true } } },
+    });
+    for (const h of issues) {
+      const need = Math.abs(h.quantity);
+      if (need <= 0) continue;
+      if (!allowNeg && h.item.quantity < need) {
+        throw new StockError(
+          `สต๊อกสิ้นเปลืองไม่พอตอนกู้คืน: ${h.item.name}`,
+        );
+      }
+      const newQty = h.item.quantity - need;
+      await client.branchNonMenuItem.update({
+        where: { id: h.branchNonMenuItemId },
+        data: { quantity: newQty },
+      });
+      await client.branchNonMenuItemHistory.create({
+        data: {
+          branchNonMenuItemId: h.branchNonMenuItemId,
+          quantity: -need,
+          type: "ADJUST",
+          note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ ${orderId}`,
+          createdByStaffId: null,
+        },
+      });
+      reapplied = true;
+    }
+
+    if (reapplied) {
+      await client.order.update({
+        where: { id: orderId },
+        data: { stockDeducted: true },
+      });
+    }
+  };
+
+  if (tx) return run(tx);
+  return prisma.$transaction(run);
 }
 
 const BRANCH_MENU_ORDER_NOTE_PREFIX = "ORDER:";
@@ -1318,7 +1450,10 @@ export async function deductBranchMenuStockForOrder(input: {
         throw new StockError(`ไม่พบเมนูสำหรับตัดสต๊อก`, 400);
       }
       need.name = item.name;
-      const have = item.stock?.quantity ?? 0;
+      // No BranchMenuItemStock row = not tracked yet (same as isMenuItemSoldOut).
+      // Do not treat missing rows as quantity 0.
+      if (!item.stock) continue;
+      const have = item.stock.quantity;
       if (have < need.qty) {
         throw new StockError(
           `สต๊อกไม่พอ: ${item.name} (เหลือ ${have} ต้องการ ${need.qty})`,
@@ -1330,17 +1465,13 @@ export async function deductBranchMenuStockForOrder(input: {
 
     for (const [menuItemId, need] of needs) {
       const item = namedMap.get(menuItemId)!;
-      const oldQty = item.stock?.quantity ?? 0;
+      if (!item.stock) continue;
+      const oldQty = item.stock.quantity;
       const newQty = oldQty - need.qty;
 
-      await client.branchMenuItemStock.upsert({
+      await client.branchMenuItemStock.update({
         where: { menuItemId },
-        update: { quantity: newQty },
-        create: {
-          branchId: input.branchId,
-          menuItemId,
-          quantity: newQty,
-        },
+        data: { quantity: newQty },
       });
 
       await client.branchMenuItem.update({
@@ -1422,6 +1553,133 @@ export async function restoreBranchMenuStockForOrder(
   return prisma.$transaction(run);
 }
 
+/**
+ * Deduct CONSUMABLE quantities linked on OrderConsumableLine.
+ * Idempotent via history note prefix ORDER:{orderId}.
+ */
+export async function deductBranchNonMenuStockForOrder(input: {
+  orderId: string;
+  orderNumber: string;
+  branchId: string;
+  staffId?: string | null;
+  /** If omitted, load lines from OrderConsumableLine */
+  lines?: Array<{ branchNonMenuItemId: string; quantity: number }>;
+  tx?: Tx;
+}) {
+  const run = async (client: Tx) => {
+    const already = await client.branchNonMenuItemHistory.findFirst({
+      where: {
+        type: "ISSUE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${input.orderId}` },
+        item: { branchId: input.branchId },
+      },
+      select: { id: true },
+    });
+    if (already) return;
+
+    const lines =
+      input.lines ??
+      (
+        await client.orderConsumableLine.findMany({
+          where: { orderId: input.orderId },
+          select: { branchNonMenuItemId: true, quantity: true },
+        })
+      );
+
+    const needs = new Map<string, number>();
+    for (const line of lines) {
+      if (line.quantity <= 0) continue;
+      needs.set(
+        line.branchNonMenuItemId,
+        (needs.get(line.branchNonMenuItemId) ?? 0) + line.quantity,
+      );
+    }
+    if (needs.size === 0) return;
+
+    const items = await client.branchNonMenuItem.findMany({
+      where: {
+        id: { in: [...needs.keys()] },
+        branchId: input.branchId,
+        stockType: "CONSUMABLE",
+      },
+    });
+    const itemMap = new Map(items.map((i) => [i.id, i]));
+
+    for (const [itemId, qty] of needs) {
+      const item = itemMap.get(itemId);
+      if (!item) {
+        throw new StockError("ไม่พบสินค้าสิ้นเปลืองสำหรับตัดสต๊อก", 400);
+      }
+      if (item.quantity < qty) {
+        throw new StockError(
+          `สต๊อกไม่พอ: ${item.name} (เหลือ ${item.quantity} ต้องการ ${qty})`,
+        );
+      }
+    }
+
+    const note = branchMenuOrderNote(input.orderId, input.orderNumber);
+    for (const [itemId, qty] of needs) {
+      const item = itemMap.get(itemId)!;
+      const newQty = item.quantity - qty;
+      await client.branchNonMenuItem.update({
+        where: { id: itemId },
+        data: { quantity: newQty },
+      });
+      await client.branchNonMenuItemHistory.create({
+        data: {
+          branchNonMenuItemId: itemId,
+          quantity: -qty,
+          type: "ISSUE",
+          note,
+          createdByStaffId: input.staffId ?? null,
+        },
+      });
+    }
+  };
+
+  if (input.tx) return run(input.tx);
+  return prisma.$transaction(run);
+}
+
+export async function restoreBranchNonMenuStockForOrder(
+  orderId: string,
+  tx?: Tx,
+) {
+  const run = async (client: Tx) => {
+    const histories = await client.branchNonMenuItemHistory.findMany({
+      where: {
+        type: "ISSUE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
+      },
+      include: { item: { select: { id: true, quantity: true } } },
+    });
+    if (histories.length === 0) return;
+
+    for (const h of histories) {
+      // h.quantity is negative for ISSUE
+      const restoreQty = -h.quantity;
+      if (restoreQty <= 0) continue;
+      const newQty = h.item.quantity + restoreQty;
+      await client.branchNonMenuItem.update({
+        where: { id: h.branchNonMenuItemId },
+        data: { quantity: newQty },
+      });
+      await client.branchNonMenuItemHistory.create({
+        data: {
+          branchNonMenuItemId: h.branchNonMenuItemId,
+          quantity: restoreQty,
+          type: "ADJUST",
+          note: `คืนสต๊อกจากยกเลิกออเดอร์ ${orderId}`,
+          createdByStaffId: null,
+        },
+      });
+    }
+  };
+
+  if (tx) return run(tx);
+  return prisma.$transaction(run);
+}
+
 export async function maybeDeductOnAccept(input: {
   orderId: string;
   previousStatus: import("@prisma/client").OrderStatus;
@@ -1449,6 +1707,11 @@ export async function maybeDeductOnAccept(input: {
             quantity: i.quantity + (i.giftQuantity ?? 0),
             optionIds: [],
           })),
+      });
+      await deductBranchNonMenuStockForOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        branchId: order.branchId,
       });
     }
   }

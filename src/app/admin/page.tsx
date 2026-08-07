@@ -21,7 +21,6 @@ export default function AdminDashboard() {
     return <AdminLoadingState />;
   }
 
-  // Platform: brand list home · Brand admin: branch cards for their brand(s)
   if (session.isPlatformAdmin) {
     return <PlatformBrandsHome />;
   }

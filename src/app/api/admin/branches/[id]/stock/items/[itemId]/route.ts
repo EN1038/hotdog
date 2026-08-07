@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { logAdminActivity } from "@/lib/admin-activity";
@@ -38,16 +39,30 @@ export async function PATCH(
         : typeof body.imageUrl === "string"
           ? body.imageUrl.trim() || null
           : null;
-    const price =
-      body.price === undefined || body.price === "" || body.price == null
-        ? existing.price
-        : Number(body.price);
+    let nextPrice: Prisma.Decimal | null | undefined = undefined;
+    if (body.price !== undefined) {
+      if (body.price === "" || body.price == null) {
+        nextPrice = null;
+      } else {
+        const n = Number(body.price);
+        if (!Number.isFinite(n) || n < 0) {
+          return jsonError("ราคาไม่ถูกต้อง", 400);
+        }
+        nextPrice = new Prisma.Decimal(n);
+      }
+    }
+
+    const showOnKeyOrder =
+      body.showOnKeyOrder === undefined
+        ? undefined
+        : Boolean(body.showOnKeyOrder);
+    const keyOrderSortOrder =
+      body.keyOrderSortOrder === undefined
+        ? undefined
+        : Number(body.keyOrderSortOrder);
 
     if (!name || !unit) {
       return jsonError("กรุณาระบุชื่อและหน่วย", 400);
-    }
-    if (body.price !== undefined && body.price !== "" && !Number.isFinite(price)) {
-      return jsonError("ราคาไม่ถูกต้อง", 400);
     }
 
     const branch = await prisma.branch.findUnique({
@@ -63,7 +78,16 @@ export async function PATCH(
         unit,
         description,
         imageUrl,
-        price: price == null ? null : Number(price),
+        ...(nextPrice !== undefined ? { price: nextPrice } : {}),
+        ...(showOnKeyOrder !== undefined &&
+        existing.stockType === "CONSUMABLE"
+          ? { showOnKeyOrder }
+          : {}),
+        ...(keyOrderSortOrder !== undefined &&
+        Number.isFinite(keyOrderSortOrder) &&
+        existing.stockType === "CONSUMABLE"
+          ? { keyOrderSortOrder: Math.max(0, Math.floor(keyOrderSortOrder)) }
+          : {}),
       },
     });
 

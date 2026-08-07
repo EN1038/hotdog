@@ -11,12 +11,21 @@ const patchSchema = z.object({
   stockEnabled: z.boolean(),
 });
 
+const batchIdSchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(64)
+  .regex(/^[a-zA-Z0-9_-]+$/)
+  .optional();
+
 const postSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("stock_in"),
     brandProductId: z.string(), // This is either menuItemId or nonMenuItemId
     quantity: z.number().int().positive(),
     note: z.string().trim().max(300).nullable().optional(),
+    batchId: batchIdSchema,
   }),
   z.object({
     action: z.literal("damage"),
@@ -35,6 +44,8 @@ const postSchema = z.discriminatedUnion("action", [
     brandProductId: z.string(),
     quantity: z.number().int().positive(),
     note: z.string().trim().max(300).nullable().optional(),
+    imageUrl: z.string().trim().max(500).nullable().optional(),
+    batchId: batchIdSchema,
   }),
   z.object({
     action: z.literal("adjust"),
@@ -89,7 +100,7 @@ export async function GET(_request: Request, { params }: Params) {
         category: item.category?.name ?? "เมนู",
         sortOrder: item.sortOrder,
         categorySortOrder: item.category?.sortOrder ?? 999,
-        lowStockAlert: 10,
+        lowStockAlert: null,
         trackStock: true,
         imageUrl: item.imageUrl,
         isMenu: true,
@@ -106,6 +117,7 @@ export async function GET(_request: Request, { params }: Params) {
           category: item.category?.name ?? "เมนู",
           sortOrder: item.sortOrder,
           categorySortOrder: item.category?.sortOrder ?? 999,
+          price: Number(item.price ?? 0),
         },
       });
     }
@@ -121,12 +133,14 @@ export async function GET(_request: Request, { params }: Params) {
         category: typeLabel,
         sortOrder: 0,
         categorySortOrder: 999,
-        lowStockAlert: 10,
+        lowStockAlert: null,
         trackStock: true,
         imageUrl: item.imageUrl,
         isMenu: false,
         price: Number(item.price ?? 0),
         description: item.description ?? "",
+        showOnKeyOrder: Boolean(item.showOnKeyOrder),
+        keyOrderSortOrder: item.keyOrderSortOrder ?? 0,
       });
       balances.push({
         id: item.id,
@@ -139,6 +153,7 @@ export async function GET(_request: Request, { params }: Params) {
           category: typeLabel,
           sortOrder: 0,
           categorySortOrder: 999,
+          price: Number(item.price ?? 0),
         },
       });
     }
@@ -205,13 +220,19 @@ export async function POST(request: Request, { params }: Params) {
 
     const targetId = body.brandProductId;
 
-    // Check if it's a non-menu item
-    const nonMenu = await prisma.branchNonMenuItem.findUnique({
-      where: { id: targetId },
+    // Check if it's a non-menu item in this branch
+    const nonMenu = await prisma.branchNonMenuItem.findFirst({
+      where: { id: targetId, branchId: id },
     });
 
     let oldQty = 0;
     let newQty = 0;
+    const batchId =
+      body.action === "stock_in" || body.action === "issue"
+        ? (body.batchId ?? null)
+        : null;
+    const imageUrl =
+      body.action === "issue" ? (body.imageUrl ?? null) : null;
 
     if (nonMenu) {
       oldQty = nonMenu.quantity;
@@ -222,7 +243,11 @@ export async function POST(request: Request, { params }: Params) {
       } else {
         newQty = oldQty - body.quantity;
       }
-      
+
+      if (newQty < 0) {
+        return jsonError(`ยอดสต๊อกไม่พอสำหรับ “${nonMenu.name}”`);
+      }
+
       const actualDiff = newQty - oldQty;
       if (actualDiff !== 0 || body.action === "adjust") {
         await prisma.branchNonMenuItem.update({
@@ -237,6 +262,8 @@ export async function POST(request: Request, { params }: Params) {
               quantity: actualDiff,
               type: body.action.toUpperCase(),
               note: body.note ?? null,
+              imageUrl,
+              batchId,
               createdByStaffId: null,
             },
           });
@@ -251,7 +278,7 @@ export async function POST(request: Request, { params }: Params) {
       if (!menuItem) return jsonError("ไม่พบรายการสินค้า", 404);
 
       oldQty = menuItem.stock?.quantity ?? 0;
-      
+
       if (body.action === "stock_in") {
         newQty = oldQty + body.quantity;
       } else if (body.action === "adjust") {
@@ -259,7 +286,11 @@ export async function POST(request: Request, { params }: Params) {
       } else {
         newQty = oldQty - body.quantity;
       }
-      
+
+      if (newQty < 0) {
+        return jsonError(`ยอดสต๊อกไม่พอสำหรับ “${menuItem.name}”`);
+      }
+
       const actualDiff = newQty - oldQty;
 
       if (actualDiff !== 0 || body.action === "adjust") {
@@ -287,6 +318,8 @@ export async function POST(request: Request, { params }: Params) {
                 quantity: actualDiff,
                 type: body.action.toUpperCase(),
                 note: body.note ?? null,
+                imageUrl,
+                batchId,
                 createdByStaffId: null,
               },
             });

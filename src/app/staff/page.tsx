@@ -20,6 +20,7 @@ import { useToast } from "@/components/admin/Toast";
 import { type ActiveShiftInfo, StaffShiftControls } from "@/components/staff/StaffShiftControls";
 import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
+import { StaffExpensesSheet } from "@/components/staff/StaffExpensesSheet";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
@@ -79,24 +80,60 @@ export default function StaffHomePage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [meta, setMeta] = useState<HomeMeta | null>(null);
   const [promoHref, setPromoHref] = useState("/staff/key-order/promo");
   const [promoLabel, setPromoLabel] = useState("คีย์โปรโมชั่น");
   const [promoDescription, setPromoDescription] = useState("เลือกเมนูเซ็ตโปร");
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [dailySalesOpen, setDailySalesOpen] = useState(false);
+  const [expensesOpen, setExpensesOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("expenses") === "1") {
+      setExpensesOpen(true);
+      router.replace("/staff", { scroll: false });
+    }
+  }, [router]);
 
   const reloadMeta = async () => {
-    const res = await fetch("/api/staff/branding");
-    if (res.status === 401) {
-      router.replace("/staff/login");
-      return;
-    }
-    if (res.ok) {
-      const data = await res.json();
+    setLoadError(null);
+    setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
+    try {
+      const res = await fetch("/api/staff/branding", {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (res.status === 401) {
+        router.replace("/staff/login");
+        return;
+      }
+      if (!res.ok) {
+        setLoadError(
+          res.status >= 500
+            ? "เซิร์ฟเวอร์ตอบช้า — ลองใหม่อีกครั้ง"
+            : "โหลดข้อมูลไม่สำเร็จ",
+        );
+        return;
+      }
+      const data = (await res.json()) as HomeMeta;
       setMeta(data);
+    } catch (e) {
+      const aborted =
+        (e instanceof DOMException && e.name === "AbortError") ||
+        (e instanceof Error && e.name === "AbortError");
+      setLoadError(
+        aborted
+          ? "โหลดนานเกินไป — ตรวจเน็ตหรือกดลองใหม่"
+          : "เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่",
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -181,7 +218,36 @@ export default function StaffHomePage() {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <LoadingState className="w-full max-w-sm" />
+        <LoadingState className="w-full max-w-sm" recoveryAfterMs={8000} />
+      </main>
+    );
+  }
+
+  if (loadError && !meta) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="w-full max-w-sm rounded-2xl border border-slate-100 bg-white px-6 py-10 text-center shadow-sm">
+          <p className="text-[15px] font-semibold text-slate-800">
+            โหลดหน้าพนักงานไม่สำเร็จ
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void reloadMeta()}
+            className="mt-6 w-full rounded-xl bg-site-primary px-4 py-3 text-sm font-semibold text-white"
+          >
+            ลองใหม่
+          </button>
+          <button
+            type="button"
+            onClick={() => router.replace("/staff/login")}
+            className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600"
+          >
+            เข้าสู่ระบบใหม่
+          </button>
+        </div>
       </main>
     );
   }
@@ -251,6 +317,15 @@ export default function StaffHomePage() {
           },
         ]
       : []),
+    {
+      onClick: () => setExpensesOpen(true),
+      label: "ค่าใช้จ่าย",
+      description: "บันทึก · ดูประวัติ · ดูยอด",
+      color: "#e11d48",
+      icon: <IconMoney size={24} />,
+      requiresShift: false,
+      kind: "expenses" as const,
+    },
   ];
 
   function cardEmoji(kind: string) {
@@ -258,6 +333,7 @@ export default function StaffHomePage() {
     if (kind === "key") return "🛒";
     if (kind === "promo") return "🌟";
     if (kind === "summary") return "📊";
+    if (kind === "expenses") return "🧾";
     if (kind === "daily-sales") return "💰";
     if (kind === "stock") return "📦";
     return "🔹";
@@ -387,6 +463,12 @@ export default function StaffHomePage() {
           initialDate={bangkokDateKey()}
           brandName={meta?.brand?.name ?? ""}
           branchName={meta?.branchName ?? ""}
+        />
+
+        <StaffExpensesSheet
+          open={expensesOpen}
+          onClose={() => setExpensesOpen(false)}
+          initialDate={bangkokDateKey()}
         />
       </div>
     </StaffAppShell>

@@ -73,6 +73,8 @@ export type BranchData = {
   ownerMessage?: string | null;
   extraMessage?: string | null;
   isOpen: boolean;
+  /** NORMAL = mala storefront; SKEWER = skewer-prep ordering */
+  operatingMode?: "NORMAL" | "SKEWER";
   /** @deprecated Prefer storefrontHours */
   opensAt: string | null;
   /** @deprecated Prefer deliveryHours / storefrontHours */

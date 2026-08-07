@@ -16,6 +16,12 @@ import {
   type StaffFulfillmentState,
 } from "@/components/staff/StaffQuickFulfillment";
 import {
+  StaffConsumablePicker,
+  requiresConsumableSelection,
+  selectedConsumableTotal,
+  type StaffConsumableItem,
+} from "@/components/staff/StaffConsumablePicker";
+import {
   StaffKeyOrderAlertModal,
   StaffOrderSummary,
   StaffOrderStickySummary,
@@ -53,6 +59,7 @@ import { saveStaffOrderFeedback } from "@/lib/staff-order-feedback";
 type MenuPayload = {
   branchName?: string;
   menuItems: MenuItemData[];
+  consumables?: StaffConsumableItem[];
   deliveryLocations: StaffDeliveryLocation[];
 };
 
@@ -74,6 +81,10 @@ export default function StaffPhotoKeyOrderPage() {
   const [queueNumber, setQueueNumber] = useState<number | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItemData[]>([]);
+  const [consumables, setConsumables] = useState<StaffConsumableItem[]>([]);
+  const [qtyByConsumableId, setQtyByConsumableId] = useState<
+    Record<string, number>
+  >({});
   const [deliveryLocations, setDeliveryLocations] = useState<
     StaffDeliveryLocation[]
   >([]);
@@ -124,6 +135,9 @@ export default function StaffPhotoKeyOrderPage() {
       );
       setBranchName(menuData.branchName ?? "");
       setMenuItems(Array.isArray(menuData.menuItems) ? menuData.menuItems : []);
+      setConsumables(
+        Array.isArray(menuData.consumables) ? menuData.consumables : [],
+      );
       setDeliveryLocations(
         Array.isArray(menuData.deliveryLocations)
           ? menuData.deliveryLocations
@@ -175,7 +189,10 @@ export default function StaffPhotoKeyOrderPage() {
   }, [regularItems, categoryFilter]);
 
   const sharedGroups = useMemo(
-    () => collectSharedOptionGroups(regularItems, qtyByItemId),
+    () =>
+      collectSharedOptionGroups(regularItems, qtyByItemId, {
+        onlySelected: false,
+      }),
     [regularItems, qtyByItemId],
   );
 
@@ -298,6 +315,15 @@ export default function StaffPhotoKeyOrderPage() {
       return;
     }
 
+    if (
+      fulfillment.salesChannel === "STOREFRONT" &&
+      requiresConsumableSelection(consumables) &&
+      selectedConsumableTotal(consumables, qtyByConsumableId) < 1
+    ) {
+      fail("กรุณาเลือกสินค้าสิ้นเปลืองอย่างน้อย 1 รายการ", "staff-consumables");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const items = lines.map((item) => ({
@@ -311,6 +337,12 @@ export default function StaffPhotoKeyOrderPage() {
         salesChannel: fulfillment.salesChannel,
         note: fulfillment.note.trim() || undefined,
         items,
+        consumables: Object.entries(qtyByConsumableId)
+          .filter(([, q]) => q > 0)
+          .map(([branchNonMenuItemId, quantity]) => ({
+            branchNonMenuItemId,
+            quantity,
+          })),
       };
       if (fulfillment.fulfillmentType === "DELIVERY") {
         body.deliveryLocationId = fulfillment.deliveryLocationId;
@@ -329,6 +361,11 @@ export default function StaffPhotoKeyOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401) {
+        fail("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+        router.replace("/staff/login");
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         saveStaffOrderFeedback({
@@ -431,15 +468,31 @@ export default function StaffPhotoKeyOrderPage() {
         </p>
       ) : null}
 
-      <div id="staff-fulfillment" className="mb-4">
-        <StaffQuickFulfillment
-          value={fulfillment}
-          onChange={(next) => {
+      <div className="mb-4 space-y-3">
+        <StaffConsumablePicker
+          items={consumables}
+          qtyByItemId={qtyByConsumableId}
+          onChangeQty={(itemId, next) => {
             clearValidation();
-            setFulfillment(next);
+            setQtyByConsumableId((prev) => {
+              const q = Math.max(0, Math.min(99, Math.floor(next)));
+              const nextMap = { ...prev };
+              if (q <= 0) delete nextMap[itemId];
+              else nextMap[itemId] = q;
+              return nextMap;
+            });
           }}
-          deliveryLocations={deliveryLocations}
         />
+        <div id="staff-fulfillment">
+          <StaffQuickFulfillment
+            value={fulfillment}
+            onChange={(next) => {
+              clearValidation();
+              setFulfillment(next);
+            }}
+            deliveryLocations={deliveryLocations}
+          />
+        </div>
       </div>
 
       {sharedGroups.length > 0 ? (

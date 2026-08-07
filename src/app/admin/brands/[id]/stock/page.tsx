@@ -401,6 +401,17 @@ export default function BrandStockPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = new URLSearchParams(window.location.search).get("tab");
+    if (!raw) return;
+    const allTabs = TAB_CATEGORIES.flatMap((c) => c.tabs.map((t) => t.id));
+    if ((allTabs as string[]).includes(raw)) {
+      setTab(raw as TabId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [busy, setBusy] = useState(false);
   const [productFilter, setProductFilter] = useState<StockType | "ALL">("ALL");
   const [newName, setNewName] = useState("");
@@ -1286,6 +1297,9 @@ export default function BrandStockPage() {
         description="บ้านกลางของแบรนด์ — รับของเข้า ส่งสาขา ตรวจนับ และติดตามยอด"
         actions={
           <div className="flex flex-wrap gap-2">
+            <Link href={`/admin/brands/${id}/kitchen`} className={btnOutline}>
+              ครัว / ผลิต
+            </Link>
             <Link href={`/admin/brands/${id}`} className={btnOutline}>
               กลับแบรนด์
             </Link>

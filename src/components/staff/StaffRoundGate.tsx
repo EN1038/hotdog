@@ -30,42 +30,60 @@ export function useStaffRoundGate() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
+
     (async () => {
-      const res = await fetch("/api/staff/branding");
-      if (cancelled) return;
-      if (res.status === 401) {
-        router.replace("/staff/login");
-        return;
+      try {
+        const res = await fetch("/api/staff/branding", {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (res.status === 401) {
+          router.replace("/staff/login");
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const canSell = data.canSell !== false && data.canEnter !== false;
+        const active =
+          data.activeShift && typeof data.activeShift === "object"
+            ? {
+                id: String(data.activeShift.id ?? ""),
+                roundNumber: Number(data.activeShift.roundNumber ?? 0),
+                openedAt: String(data.activeShift.openedAt ?? ""),
+                openingCash: Number(data.activeShift.openingCash ?? 0),
+              }
+            : null;
+        const next: StaffRoundGateState = {
+          operatingDay:
+            typeof data.operatingDay === "string" ? data.operatingDay : "",
+          canEnter: canSell,
+          entryLocked: !canSell,
+          canSell,
+          activeShift: active?.id ? active : null,
+        };
+        if (!next.canSell) {
+          setBlocked(true);
+          router.replace("/staff");
+          return;
+        }
+        setState(next);
+      } catch {
+        if (!cancelled) {
+          // Fall back to staff home rather than infinite spinner
+          setBlocked(true);
+          router.replace("/staff");
+        }
+      } finally {
+        window.clearTimeout(timeoutId);
+        if (!cancelled) setLoading(false);
       }
-      const data = await res.json().catch(() => ({}));
-      const canSell = data.canSell !== false && data.canEnter !== false;
-      const active =
-        data.activeShift && typeof data.activeShift === "object"
-          ? {
-              id: String(data.activeShift.id ?? ""),
-              roundNumber: Number(data.activeShift.roundNumber ?? 0),
-              openedAt: String(data.activeShift.openedAt ?? ""),
-              openingCash: Number(data.activeShift.openingCash ?? 0),
-            }
-          : null;
-      const next: StaffRoundGateState = {
-        operatingDay:
-          typeof data.operatingDay === "string" ? data.operatingDay : "",
-        canEnter: canSell,
-        entryLocked: !canSell,
-        canSell,
-        activeShift: active?.id ? active : null,
-      };
-      if (!next.canSell) {
-        setBlocked(true);
-        router.replace("/staff");
-        return;
-      }
-      setState(next);
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
     };
   }, [router]);
 

@@ -10,9 +10,8 @@ import {
 import { DateInput } from "@/components/DateInput";
 import { LoadingState } from "@/components/LoadingState";
 import { bangkokDateKey } from "@/lib/constants";
-import {
-  SKEWER_ORDER_STATUS_LABELS,
-} from "@/lib/skewer-order";
+import { addDaysToDateKey } from "@/lib/operating-day";
+import { SKEWER_ORDER_STATUS_LABELS } from "@/lib/skewer-order";
 import type { SkewerOrderStatus } from "@prisma/client";
 
 type OrderRow = {
@@ -29,7 +28,17 @@ type OrderRow = {
   createdAt: string;
 };
 
+type StatusFilter = SkewerOrderStatus | "ALL";
+
 type PageProps = { params: Promise<{ branchId: string }> };
+
+function defaultDateRange() {
+  const today = bangkokDateKey();
+  return {
+    from: addDaysToDateKey(today, -3),
+    to: addDaysToDateKey(today, 3),
+  };
+}
 
 function formatDateLabel(ymd: string) {
   try {
@@ -53,14 +62,19 @@ export default function SkewerHistoryPage({ params }: PageProps) {
   const { branchId } = use(params);
   const pathname = usePathname();
   const meta = useSkewerBranchMeta(branchId);
-  const [selectedDate, setSelectedDate] = useState(() => bangkokDateKey());
+  const [dateFrom, setDateFrom] = useState(() => defaultDateRange().from);
+  const [dateTo, setDateTo] = useState(() => defaultDateRange().to);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [error, setError] = useState("");
 
-  // Always land on today when opening this page
+  // Reset to default window (±3 days) whenever opening this page
   useEffect(() => {
-    setSelectedDate(bangkokDateKey());
+    const range = defaultDateRange();
+    setDateFrom(range.from);
+    setDateTo(range.to);
+    setStatusFilter("ALL");
   }, [pathname]);
 
   useEffect(() => {
@@ -69,8 +83,10 @@ export default function SkewerHistoryPage({ params }: PageProps) {
     setError("");
     const params = new URLSearchParams({
       branchId,
-      date: selectedDate,
+      dateFrom,
+      dateTo,
     });
+    if (statusFilter !== "ALL") params.set("status", statusFilter);
     fetch(`/api/skewer/orders?${params}`)
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -86,7 +102,7 @@ export default function SkewerHistoryPage({ params }: PageProps) {
     return () => {
       cancelled = true;
     };
-  }, [branchId, selectedDate]);
+  }, [branchId, dateFrom, dateTo, statusFilter]);
 
   return (
     <SkewerAppShell branchId={branchId} active="history" meta={meta}>
@@ -98,24 +114,81 @@ export default function SkewerHistoryPage({ params }: PageProps) {
           </p>
         </div>
 
-        <div>
-          <label
-            htmlFor="skewer-history-date"
-            className="text-sm font-medium text-gray-800"
-          >
-            วันที่ต้องการ
-          </label>
-          <DateInput
-            id="skewer-history-date"
-            className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"
-            value={selectedDate}
-            onChange={(v) => {
-              if (v) setSelectedDate(v);
-            }}
-            required
-            openPickerOnClick
-            placeholder="เลือกวันที่"
-          />
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="skewer-history-from"
+                className="text-sm font-medium text-gray-800"
+              >
+                วันที่เริ่ม
+              </label>
+              <DateInput
+                id="skewer-history-from"
+                className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"
+                value={dateFrom}
+                onChange={(v) => {
+                  if (!v) return;
+                  setDateFrom(v);
+                  if (v > dateTo) setDateTo(v);
+                }}
+                max={dateTo}
+                required
+                openPickerOnClick
+                placeholder="เริ่ม"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="skewer-history-to"
+                className="text-sm font-medium text-gray-800"
+              >
+                วันที่สิ้นสุด
+              </label>
+              <DateInput
+                id="skewer-history-to"
+                className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"
+                value={dateTo}
+                onChange={(v) => {
+                  if (!v) return;
+                  setDateTo(v);
+                  if (v < dateFrom) setDateFrom(v);
+                }}
+                min={dateFrom}
+                required
+                openPickerOnClick
+                placeholder="สิ้นสุด"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="skewer-history-status"
+              className="text-sm font-medium text-gray-800"
+            >
+              สถานะ
+            </label>
+            <select
+              id="skewer-history-status"
+              className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900"
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as StatusFilter)
+              }
+            >
+              <option value="ALL">ทั้งหมด</option>
+              <option value="PENDING_CONFIRM">
+                {SKEWER_ORDER_STATUS_LABELS.PENDING_CONFIRM}
+              </option>
+              <option value="CONFIRMED">
+                {SKEWER_ORDER_STATUS_LABELS.CONFIRMED}
+              </option>
+              <option value="CANCELLED">
+                {SKEWER_ORDER_STATUS_LABELS.CANCELLED}
+              </option>
+            </select>
+          </div>
         </div>
 
         {loading ? (
@@ -126,7 +199,11 @@ export default function SkewerHistoryPage({ params }: PageProps) {
           </p>
         ) : orders.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500">
-            ไม่มีประวัติวันที่ {formatDateLabel(selectedDate)}
+            ไม่มีประวัติ {formatDateLabel(dateFrom)} –{" "}
+            {formatDateLabel(dateTo)}
+            {statusFilter !== "ALL"
+              ? ` · ${SKEWER_ORDER_STATUS_LABELS[statusFilter]}`
+              : ""}
           </p>
         ) : (
           <ul className="space-y-3">

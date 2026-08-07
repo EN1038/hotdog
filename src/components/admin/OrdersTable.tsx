@@ -48,6 +48,9 @@ export type AdminOrderRow = {
 type OrdersTableProps = {
   orders: AdminOrderRow[];
   emptyText?: string;
+  /** When set, show permanent-delete action per row */
+  onHardDelete?: (order: AdminOrderRow) => void;
+  hardDeleteBusyId?: string | null;
 };
 
 function formatMoney(n: number) {
@@ -71,6 +74,8 @@ function formatDateTime(iso: string) {
 export function OrdersTable({
   orders,
   emptyText = "ยังไม่มีออเดอร์",
+  onHardDelete,
+  hardDeleteBusyId,
 }: OrdersTableProps) {
   if (orders.length === 0) {
     return (
@@ -92,6 +97,9 @@ export function OrdersTable({
             <th className="whitespace-nowrap px-3 py-3 font-semibold">รายการ</th>
             <th className="whitespace-nowrap px-3 py-3 font-semibold">ยอด</th>
             <th className="whitespace-nowrap px-3 py-3 font-semibold">สถานะ</th>
+            {onHardDelete ? (
+              <th className="whitespace-nowrap px-3 py-3 font-semibold">จัดการ</th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -201,6 +209,24 @@ export function OrdersTable({
                     </span>
                   </Link>
                 </td>
+                {onHardDelete ? (
+                  <td className="whitespace-nowrap px-3 py-3">
+                    <button
+                      type="button"
+                      disabled={
+                        !order.orderNumber || hardDeleteBusyId === order.id
+                      }
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onHardDelete(order);
+                      }}
+                      className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {hardDeleteBusyId === order.id ? "กำลังลบ…" : "ลบถาวร"}
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             );
           })}
@@ -208,6 +234,9 @@ export function OrdersTable({
       </table>
       <p className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
         กดที่เลขที่ออเดอร์หรือแถวเพื่อดูรายละเอียด · ชุดโปร (เลือกไม้) แสดงจำนวนชิ้นในชุดแยกจากจำนวนรายการ
+        {onHardDelete
+          ? " · ลบถาวรจะคืนสต๊อกแล้วลบออกจากประวัติ"
+          : ""}
       </p>
     </div>
   );

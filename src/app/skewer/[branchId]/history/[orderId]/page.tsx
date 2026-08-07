@@ -7,6 +7,7 @@ import {
   useSkewerBranchMeta,
 } from "@/components/skewer/SkewerAppShell";
 import { LoadingState } from "@/components/LoadingState";
+import { IconSkewerPlaceholder } from "@/components/icons";
 import { SKEWER_ORDER_STATUS_LABELS } from "@/lib/skewer-order";
 import type { SkewerOrderStatus } from "@prisma/client";
 
@@ -28,6 +29,7 @@ type OrderDetail = {
     itemName: string;
     requestedQuantity: number;
     confirmedQuantity: number | null;
+    imageUrl: string | null;
   }[];
 };
 
@@ -117,50 +119,84 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-gray-900">รายการไม้</h2>
-              <ul className="mt-3 divide-y divide-gray-100">
-                {order.items.map((item) => {
+            <div className="rounded-2xl border border-gray-200 bg-white p-3">
+              <div className="mb-1 flex items-baseline justify-between gap-2 px-0.5">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  รายการไม้
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {order.items.length} รายการ
+                </p>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {order.items.map((item, index) => {
                   const confirmed = item.confirmedQuantity;
-                  const same =
-                    confirmed != null && confirmed === item.requestedQuantity;
+                  const displayQty =
+                    order.status === "CONFIRMED"
+                      ? (confirmed ?? 0)
+                      : item.requestedQuantity;
                   const less =
-                    confirmed != null && confirmed < item.requestedQuantity;
+                    order.status === "CONFIRMED" &&
+                    confirmed != null &&
+                    confirmed < item.requestedQuantity;
+                  const same =
+                    order.status === "CONFIRMED" &&
+                    confirmed != null &&
+                    confirmed === item.requestedQuantity;
                   return (
                     <li
                       key={item.id}
-                      className="flex items-start justify-between gap-3 py-3"
+                      className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
                     >
+                      <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                        {index + 1}
+                      </span>
+                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                        {item.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.imageUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-gray-400">
+                            <IconSkewerPlaceholder size={28} />
+                          </div>
+                        )}
+                      </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-900">
+                        <p className="truncate text-sm font-bold text-gray-900 leading-tight">
                           {item.itemName}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          สั่ง {item.requestedQuantity} ไม้
-                        </p>
-                      </div>
-                      <div className="text-right text-sm">
                         {order.status === "CONFIRMED" ? (
-                          <>
-                            <p className="font-semibold text-gray-900">
-                              ได้ {confirmed ?? 0} ไม้
-                            </p>
-                            {same && (
-                              <p className="text-xs text-emerald-700">
-                                ได้เท่าที่สั่ง
-                              </p>
-                            )}
-                            {less && (
-                              <p className="text-xs text-amber-700">
-                                น้อยกว่าที่สั่ง
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-gray-500">
-                            ×{item.requestedQuantity}
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            สั่ง {item.requestedQuantity} ไม้
+                            {same
+                              ? " · ได้เท่าที่สั่ง"
+                              : less
+                                ? " · น้อยกว่าที่สั่ง"
+                                : ""}
                           </p>
+                        ) : (
+                          <p className="mt-0.5 text-xs text-gray-400">ไม้</p>
                         )}
+                      </div>
+                      <div
+                        className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
+                          less
+                            ? "bg-amber-50 text-amber-700"
+                            : order.status === "CONFIRMED"
+                              ? "bg-emerald-50 text-emerald-800"
+                              : "bg-slate-100 text-slate-900"
+                        }`}
+                      >
+                        <p className="text-lg font-black tabular-nums leading-none">
+                          {displayQty}
+                        </p>
+                        <p className="mt-0.5 text-[10px] font-semibold opacity-70">
+                          {order.status === "CONFIRMED" ? "ได้" : "สั่ง"}
+                        </p>
                       </div>
                     </li>
                   );

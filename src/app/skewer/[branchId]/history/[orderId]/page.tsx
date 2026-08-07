@@ -1,15 +1,27 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { toPng } from "html-to-image";
 import {
   SkewerAppShell,
   useSkewerBranchMeta,
 } from "@/components/skewer/SkewerAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { IconSkewerPlaceholder } from "@/components/icons";
+import { bangkokDateKey } from "@/lib/constants";
 import { SKEWER_ORDER_STATUS_LABELS } from "@/lib/skewer-order";
+import { compareThaiText } from "@/lib/thai-sort";
 import type { SkewerOrderStatus } from "@prisma/client";
+
+type OrderItem = {
+  id: string;
+  branchMenuItemId: string | null;
+  itemName: string;
+  requestedQuantity: number;
+  confirmedQuantity: number | null;
+  imageUrl: string | null;
+};
 
 type OrderDetail = {
   id: string;
@@ -24,13 +36,26 @@ type OrderDetail = {
   cancelReason: string | null;
   confirmedAt: string | null;
   createdAt: string;
-  items: {
-    id: string;
-    itemName: string;
-    requestedQuantity: number;
-    confirmedQuantity: number | null;
-    imageUrl: string | null;
-  }[];
+  items: OrderItem[];
+};
+
+type MenuItem = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  isOutOfStock: boolean;
+  category: { id: string; name: string; sortOrder: number } | null;
+};
+
+type DisplayRow = {
+  key: string;
+  name: string;
+  imageUrl: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  requestedQuantity: number;
+  confirmedQuantity: number | null;
+  ordered: boolean;
 };
 
 type PageProps = {
@@ -68,25 +93,94 @@ function formatDateTimeLabel(iso: string) {
 
 function formatBranchLabel(name: string | undefined) {
   if (!name?.trim()) return "";
-  const t = name.trim();
-  return t.replace(/^สาขา\s*/i, "");
+  return name.trim().replace(/^สาขา\s*/i, "");
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+function downloadDataUrl(dataUrl: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function copyTextToClipboard(text: string) {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === "function"
+  ) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand("copy");
+  ta.remove();
+  if (!ok) throw new Error("copy failed");
+}
+
+function rowDisplayQty(
+  order: OrderDetail,
+  item: DisplayRow,
+): number {
+  if (order.status === "CONFIRMED") {
+    return item.ordered ? (item.confirmedQuantity ?? 0) : 0;
+  }
+  return item.requestedQuantity;
 }
 
 export default function SkewerHistoryDetailPage({ params }: PageProps) {
   const { branchId, orderId } = use(params);
   const meta = useSkewerBranchMeta(branchId);
+  const captureRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [error, setError] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [exportBusy, setExportBusy] = useState<"save" | "share" | "copy" | null>(
+    null,
+  );
+  const [exportMsg, setExportMsg] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/skewer/orders/${encodeURIComponent(orderId)}`)
-      .then(async (res) => {
+    setError("");
+
+    Promise.all([
+      fetch(`/api/skewer/orders/${encodeURIComponent(orderId)}`).then(
+        async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "โหลดออเดอร์ไม่สำเร็จ");
+          return data as OrderDetail;
+        },
+      ),
+      fetch(
+        `/api/skewer/branch?branchId=${encodeURIComponent(branchId)}`,
+      ).then(async (res) => {
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "โหลดออเดอร์ไม่สำเร็จ");
-        if (!cancelled) setOrder(data);
+        if (!res.ok) throw new Error(data.error || "โหลดเมนูไม่สำเร็จ");
+        return Array.isArray(data.menuItems) ? (data.menuItems as MenuItem[]) : [];
+      }),
+    ])
+      .then(([orderData, menus]) => {
+        if (cancelled) return;
+        setOrder(orderData);
+        setMenuItems(menus);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -94,10 +188,81 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [branchId, orderId]);
+
+  const orderByMenuId = useMemo(() => {
+    const map = new Map<string, OrderItem>();
+    if (!order) return map;
+    for (const item of order.items) {
+      if (item.branchMenuItemId) map.set(item.branchMenuItemId, item);
+    }
+    return map;
+  }, [order]);
+
+  const categories = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; sortOrder: number }>();
+    for (const item of menuItems) {
+      if (!item.category) continue;
+      if (!map.has(item.category.id)) {
+        map.set(item.category.id, item.category);
+      }
+    }
+    return [...map.values()].sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder || compareThaiText(a.name, b.name),
+    );
+  }, [menuItems]);
+
+  const displayRows = useMemo(() => {
+    if (!order) return [] as DisplayRow[];
+
+    const rows: DisplayRow[] = menuItems.map((menu) => {
+      const ordered = orderByMenuId.get(menu.id);
+      return {
+        key: menu.id,
+        name: menu.name,
+        imageUrl: ordered?.imageUrl || menu.imageUrl,
+        categoryId: menu.category?.id ?? null,
+        categoryName: menu.category?.name ?? null,
+        requestedQuantity: ordered?.requestedQuantity ?? 0,
+        confirmedQuantity: ordered?.confirmedQuantity ?? null,
+        ordered: Boolean(ordered),
+      };
+    });
+
+    for (const item of order.items) {
+      if (
+        item.branchMenuItemId &&
+        menuItems.some((m) => m.id === item.branchMenuItemId)
+      ) {
+        continue;
+      }
+      rows.push({
+        key: `order-${item.id}`,
+        name: item.itemName,
+        imageUrl: item.imageUrl,
+        categoryId: null,
+        categoryName: null,
+        requestedQuantity: item.requestedQuantity,
+        confirmedQuantity: item.confirmedQuantity,
+        ordered: true,
+      });
+    }
+
+    return rows.sort((a, b) => {
+      if (a.ordered !== b.ordered) return a.ordered ? -1 : 1;
+      return compareThaiText(a.name, b.name);
+    });
+  }, [order, menuItems, orderByMenuId]);
+
+  const visibleRows = useMemo(() => {
+    if (categoryFilter === "ALL") return displayRows;
+    return displayRows.filter((row) => row.categoryId === categoryFilter);
+  }, [displayRows, categoryFilter]);
 
   const summary = useMemo(() => {
     if (!order) return null;
@@ -116,6 +281,130 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
   const brandName = meta.brandName || "";
   const branchLabel = formatBranchLabel(meta.name);
 
+  function exportFilename() {
+    const num = order?.orderNumber || orderId;
+    return `ออเดอร์ไม้_${num}_${bangkokDateKey()}.png`;
+  }
+
+  async function capturePng(): Promise<string> {
+    const node = captureRef.current;
+    if (!node) throw new Error("ไม่พบเนื้อหาออเดอร์");
+    return toPng(node, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+    });
+  }
+
+  async function handleSaveImage() {
+    if (exportBusy || !order) return;
+    setExportBusy("save");
+    setExportMsg("");
+    try {
+      const dataUrl = await capturePng();
+      downloadDataUrl(dataUrl, exportFilename());
+      setExportMsg("บันทึกรูปแล้ว");
+    } catch {
+      setExportMsg("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleShareImage() {
+    if (exportBusy || !order) return;
+    setExportBusy("share");
+    setExportMsg("");
+    try {
+      const dataUrl = await capturePng();
+      const blob = await dataUrlToBlob(dataUrl);
+      const file = new File([blob], exportFilename(), { type: "image/png" });
+      const title = [
+        brandName,
+        branchLabel ? `สาขา ${branchLabel}` : "",
+        `#${order.orderNumber}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      ) {
+        await navigator.share({
+          files: [file],
+          title,
+          text: `ออเดอร์เสียบไม้ #${order.orderNumber}`,
+        });
+        setExportMsg("แชร์รูปแล้ว");
+        return;
+      }
+
+      downloadDataUrl(dataUrl, exportFilename());
+      setExportMsg("อุปกรณ์นี้แชร์ไม่ได้ — บันทึกรูปแทนแล้ว ส่งในไลน์จากแกลเลอรี");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setExportMsg("");
+        return;
+      }
+      setExportMsg("แชร์รูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  function buildCopyText() {
+    if (!order || !summary) return "";
+    const lines: string[] = [];
+    if (brandName) lines.push(brandName);
+    if (branchLabel) lines.push(`สาขา ${branchLabel}`);
+    lines.push(
+      `#${order.orderNumber} · ${SKEWER_ORDER_STATUS_LABELS[order.status]}`,
+    );
+    lines.push(
+      formatDateTimeLabel(order.confirmedAt || order.createdAt),
+    );
+    lines.push(`ต้องการ ${formatDateLabel(order.requestedDate)}`);
+    lines.push("");
+    lines.push(`จำนวนที่สั่ง: ${summary.requestedTotal} ไม้ · ${summary.itemCount} ชนิด`);
+    if (order.status === "CONFIRMED") {
+      lines.push(`จำนวนที่ได้: ${summary.confirmedTotal} ไม้`);
+    }
+    lines.push(`ที่อยู่: ${order.addressText}`);
+    if (order.note) lines.push(`โน้ต: ${order.note}`);
+    if (categoryFilter !== "ALL") {
+      const cat = categories.find((c) => c.id === categoryFilter);
+      if (cat) lines.push(`หมวด ${cat.name}`);
+    }
+    lines.push("");
+    lines.push("รายการ:");
+    if (visibleRows.length === 0) {
+      lines.push("- ไม่มีรายการ");
+    } else {
+      visibleRows.forEach((item, index) => {
+        const qty = rowDisplayQty(order, item);
+        const mark = item.ordered ? "" : " (ไม่ได้สั่ง)";
+        lines.push(`${index + 1}. ${item.name}: ${qty}${mark}`);
+      });
+    }
+    return lines.join("\n");
+  }
+
+  async function handleCopyText() {
+    if (exportBusy || !order) return;
+    setExportBusy("copy");
+    setExportMsg("");
+    try {
+      await copyTextToClipboard(buildCopyText());
+      setExportMsg("คัดลอกข้อความแล้ว — ไปวางในไลน์ได้เลย");
+    } catch {
+      setExportMsg("คัดลอกไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
   return (
     <SkewerAppShell branchId={branchId} active="history" meta={meta}>
       <div className="space-y-4 px-4 pb-6 pt-4">
@@ -127,7 +416,42 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
           </p>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-3">
+            {categories.length > 1 ? (
+              <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex w-max min-w-full gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("ALL")}
+                    className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                      categoryFilter === "ALL"
+                        ? "bg-site-primary text-white"
+                        : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    ทั้งหมด
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setCategoryFilter(cat.id)}
+                      className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                        categoryFilter === cat.id
+                          ? "bg-site-primary text-white"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div
+              ref={captureRef}
+              className="space-y-3 rounded-2xl border border-gray-200 bg-white p-3"
+            >
               <div className="border-b border-gray-100 pb-2.5">
                 {brandName ? (
                   <p className="text-sm font-extrabold text-gray-900">
@@ -296,91 +620,153 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                   </p>
                 ) : null}
               </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                <div className="mb-1 flex items-baseline justify-between gap-2 px-0.5">
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    รายการไม้
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    {visibleRows.length} / {displayRows.length} รายการ
+                  </p>
+                </div>
+                {visibleRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
+                    ไม่พบเมนูในหมวดนี้
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {visibleRows.map((item, index) => {
+                      const confirmed = item.confirmedQuantity;
+                      const displayQty = rowDisplayQty(order, item);
+                      const less =
+                        order.status === "CONFIRMED" &&
+                        item.ordered &&
+                        confirmed != null &&
+                        confirmed < item.requestedQuantity;
+                      const same =
+                        order.status === "CONFIRMED" &&
+                        item.ordered &&
+                        confirmed != null &&
+                        confirmed === item.requestedQuantity;
+                      return (
+                        <li
+                          key={item.key}
+                          className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 ${
+                            item.ordered ? "" : "opacity-40"
+                          }`}
+                        >
+                          <span
+                            className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
+                              item.ordered ? "text-gray-500" : "text-gray-300"
+                            }`}
+                          >
+                            {index + 1}
+                          </span>
+                          <div
+                            className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft ${
+                              item.ordered ? "" : "grayscale"
+                            }`}
+                          >
+                            {item.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.imageUrl}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                <IconSkewerPlaceholder size={28} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p
+                              className={`truncate text-sm leading-tight ${
+                                item.ordered
+                                  ? "font-bold text-gray-900"
+                                  : "font-medium text-gray-400"
+                              }`}
+                            >
+                              {item.name}
+                            </p>
+                            <p
+                              className={`mt-0.5 text-xs ${
+                                item.ordered ? "text-gray-500" : "text-gray-300"
+                              }`}
+                            >
+                              {item.ordered
+                                ? order.status === "CONFIRMED"
+                                  ? `สั่ง ${item.requestedQuantity} ไม้${
+                                      same
+                                        ? " · ได้เท่าที่สั่ง"
+                                        : less
+                                          ? " · น้อยกว่าที่สั่ง"
+                                          : ""
+                                    }`
+                                  : "ไม้"
+                                : "ไม่ได้สั่ง"}
+                            </p>
+                          </div>
+                          <div
+                            className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
+                              !item.ordered
+                                ? "bg-gray-50 text-gray-300"
+                                : less
+                                  ? "bg-amber-50 text-amber-700"
+                                  : order.status === "CONFIRMED"
+                                    ? "bg-emerald-50 text-emerald-800"
+                                    : "bg-slate-100 text-slate-900"
+                            }`}
+                          >
+                            <p className="text-lg font-black tabular-nums leading-none">
+                              {displayQty}
+                            </p>
+                            <p className="mt-0.5 text-[10px] font-semibold opacity-70">
+                              {order.status === "CONFIRMED" && item.ordered
+                                ? "ได้"
+                                : "สั่ง"}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-3">
-              <div className="mb-1 flex items-baseline justify-between gap-2 px-0.5">
-                <h2 className="text-sm font-semibold text-gray-900">
-                  รายการไม้
-                </h2>
-                <p className="text-xs text-gray-500">
-                  {order.items.length} รายการ
-                </p>
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  disabled={!!exportBusy}
+                  onClick={() => void handleSaveImage()}
+                  className="rounded-xl border border-gray-300 bg-white px-2 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!!exportBusy}
+                  onClick={() => void handleShareImage()}
+                  className="rounded-xl border border-green-600 bg-green-50 px-2 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
+                >
+                  {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!!exportBusy}
+                  onClick={() => void handleCopyText()}
+                  className="rounded-xl border border-blue-600 bg-blue-50 px-2 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
+                >
+                  {exportBusy === "copy" ? "กำลังคัดลอก…" : "Copy"}
+                </button>
               </div>
-              <ul className="divide-y divide-gray-100">
-                {order.items.map((item, index) => {
-                  const confirmed = item.confirmedQuantity;
-                  const displayQty =
-                    order.status === "CONFIRMED"
-                      ? (confirmed ?? 0)
-                      : item.requestedQuantity;
-                  const less =
-                    order.status === "CONFIRMED" &&
-                    confirmed != null &&
-                    confirmed < item.requestedQuantity;
-                  const same =
-                    order.status === "CONFIRMED" &&
-                    confirmed != null &&
-                    confirmed === item.requestedQuantity;
-                  return (
-                    <li
-                      key={item.id}
-                      className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
-                    >
-                      <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                        {index + 1}
-                      </span>
-                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
-                        {item.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.imageUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-gray-400">
-                            <IconSkewerPlaceholder size={28} />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold leading-tight text-gray-900">
-                          {item.itemName}
-                        </p>
-                        {order.status === "CONFIRMED" ? (
-                          <p className="mt-0.5 text-xs text-gray-400">
-                            สั่ง {item.requestedQuantity} ไม้
-                            {same
-                              ? " · ได้เท่าที่สั่ง"
-                              : less
-                                ? " · น้อยกว่าที่สั่ง"
-                                : ""}
-                          </p>
-                        ) : (
-                          <p className="mt-0.5 text-xs text-gray-400">ไม้</p>
-                        )}
-                      </div>
-                      <div
-                        className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
-                          less
-                            ? "bg-amber-50 text-amber-700"
-                            : order.status === "CONFIRMED"
-                              ? "bg-emerald-50 text-emerald-800"
-                              : "bg-slate-100 text-slate-900"
-                        }`}
-                      >
-                        <p className="text-lg font-black tabular-nums leading-none">
-                          {displayQty}
-                        </p>
-                        <p className="mt-0.5 text-[10px] font-semibold opacity-70">
-                          {order.status === "CONFIRMED" ? "ได้" : "สั่ง"}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              {exportMsg ? (
+                <p className="text-center text-xs text-gray-600">{exportMsg}</p>
+              ) : null}
             </div>
 
             {order.status === "CONFIRMED" ? (

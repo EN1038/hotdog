@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { OrderStatus } from "@prisma/client";
 import {
@@ -12,6 +12,11 @@ import {
   OrdersTable,
   type AdminOrderRow,
 } from "@/components/admin/OrdersTable";
+import {
+  AdminHardDeleteOrderModal,
+  type HardDeleteOrderTarget,
+} from "@/components/admin/AdminHardDeleteOrderModal";
+import { useToast } from "@/components/admin/Toast";
 import { ORDER_STATUS_LABELS } from "@/lib/constants";
 import {
   isCancelledStatus,
@@ -154,6 +159,7 @@ const SHIFT_ALL = "all";
 const SHIFT_NONE = "none";
 
 export function BranchOrdersPanel({ branchId }: { branchId: string }) {
+  const toast = useToast();
   const searchParams = useSearchParams();
   const dateFromUrl = searchParams.get("date")?.trim() ?? "";
   const shiftFromUrl = searchParams.get("shift")?.trim() ?? "";
@@ -168,6 +174,10 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
   const [data, setData] = useState<OrdersPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [deleteTarget, setDeleteTarget] =
+    useState<HardDeleteOrderTarget | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateFromUrl)) {
@@ -219,8 +229,38 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [branchId, date]);
+  }, [branchId, date, reloadKey]);
 
+  const handleHardDelete = useCallback(
+    async (input: { confirmOrderNumber: string; reason: string }) => {
+      if (!deleteTarget) return;
+      setDeleteBusy(true);
+      try {
+        const res = await fetch(
+          `/api/admin/branches/${branchId}/orders/${deleteTarget.id}`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(input),
+          },
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error("ลบไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
+          return;
+        }
+        toast.success(
+          "ลบออเดอร์แล้ว",
+          `#${deleteTarget.orderNumber} ถูกลบถาวรและคืนสต๊อกแล้ว`,
+        );
+        setDeleteTarget(null);
+        setReloadKey((k) => k + 1);
+      } finally {
+        setDeleteBusy(false);
+      }
+    },
+    [branchId, deleteTarget, toast],
+  );
   const shifts = data?.shifts ?? [];
   const hasOrphanOrders = Boolean(
     data?.orders.some((o) => !o.shiftId),
@@ -449,6 +489,19 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
       ) : (
         <OrdersTable
           orders={filteredOrders}
+          onHardDelete={(order) => {
+            if (!order.orderNumber) {
+              toast.error("ลบไม่ได้", "ออเดอร์นี้ไม่มีเลขที่");
+              return;
+            }
+            setDeleteTarget({
+              id: order.id,
+              orderNumber: order.orderNumber,
+              queueNumber: order.queueNumber,
+              status: order.status,
+            });
+          }}
+          hardDeleteBusyId={deleteBusy ? deleteTarget?.id ?? null : null}
           emptyText={
             statusFilter === OrderStatus.CANCELLED
               ? "ไม่มีออเดอร์ที่ยกเลิกในรอบนี้"
@@ -462,6 +515,17 @@ export function BranchOrdersPanel({ branchId }: { branchId: string }) {
           }
         />
       )}
+
+      <AdminHardDeleteOrderModal
+        open={Boolean(deleteTarget)}
+        branchId={branchId}
+        order={deleteTarget}
+        busy={deleteBusy}
+        onClose={() => {
+          if (!deleteBusy) setDeleteTarget(null);
+        }}
+        onConfirm={(input) => void handleHardDelete(input)}
+      />
     </div>
   );
 }

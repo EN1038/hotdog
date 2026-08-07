@@ -246,6 +246,22 @@ function SkewerOrderPageInner({ params }: PageProps) {
     }[];
   }, [qtys, menuItems, seqById]);
 
+  /** Full menu for review modal — stock sequence, qty 0 if not ordered. */
+  const reviewRows = useMemo(() => {
+    return catalogSorted.map((item) => {
+      const quantity = qtys[item.id] ?? 0;
+      const ordered = quantity >= SKEWER_MIN_QTY_PER_ITEM;
+      return {
+        id: item.id,
+        name: item.name,
+        imageUrl: item.imageUrl,
+        seq: seqById.get(item.id) ?? 0,
+        quantity: ordered ? quantity : 0,
+        ordered,
+      };
+    });
+  }, [catalogSorted, qtys, seqById]);
+
   const totalSkewers = selectedLines.reduce((s, l) => s + l.quantity, 0);
 
   function clearValidation() {
@@ -509,26 +525,75 @@ function SkewerOrderPageInner({ params }: PageProps) {
                         รายการไม้
                       </p>
                       <p className="text-xs text-gray-500">
-                        {selectedLines.length} รายการ · {totalSkewers} ไม้
+                        สั่ง {selectedLines.length}/{reviewRows.length} ·{" "}
+                        {totalSkewers} ไม้
                       </p>
                     </div>
                     <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                      {selectedLines.map((line) => (
+                      {reviewRows.map((row) => (
                         <li
-                          key={line.id}
-                          className="flex items-center justify-between gap-3 px-3 py-2.5"
+                          key={row.id}
+                          className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 ${
+                            row.ordered ? "" : "opacity-40"
+                          }`}
                         >
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                              {line.seq}
-                            </span>
-                            <p className="truncate text-sm font-bold text-gray-900">
-                              {line.name}
+                          <span
+                            className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
+                              row.ordered ? "text-gray-500" : "text-gray-300"
+                            }`}
+                          >
+                            {row.seq}
+                          </span>
+                          <div
+                            className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft ${
+                              row.ordered ? "" : "grayscale"
+                            }`}
+                          >
+                            {row.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={row.imageUrl}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                <IconSkewerPlaceholder size={20} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p
+                              className={`truncate text-sm leading-tight ${
+                                row.ordered
+                                  ? "font-bold text-gray-900"
+                                  : "font-medium text-gray-400"
+                              }`}
+                            >
+                              {row.name}
+                            </p>
+                            <p
+                              className={`mt-0.5 text-[11px] ${
+                                row.ordered ? "text-gray-500" : "text-gray-300"
+                              }`}
+                            >
+                              {row.ordered ? "ไม้" : "ไม่ได้สั่ง"}
                             </p>
                           </div>
-                          <p className="shrink-0 text-sm font-black tabular-nums text-gray-900">
-                            ×{line.quantity}
-                          </p>
+                          <div
+                            className={`min-w-[3.75rem] rounded-xl px-2.5 py-1.5 text-center ${
+                              row.ordered
+                                ? "bg-slate-100 text-slate-900"
+                                : "bg-gray-50 text-gray-300"
+                            }`}
+                          >
+                            <p className="text-base font-black tabular-nums leading-none">
+                              {row.quantity}
+                            </p>
+                            <p className="mt-0.5 text-[10px] font-semibold opacity-70">
+                              สั่ง
+                            </p>
+                          </div>
                         </li>
                       ))}
                     </ul>

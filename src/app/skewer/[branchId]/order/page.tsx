@@ -20,6 +20,10 @@ import {
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
 import { SKEWER_MIN_QTY_PER_ITEM } from "@/lib/skewer-order";
+import {
+  assignStableMenuSequence,
+  sortMenuItemData,
+} from "@/lib/staff-menu-order";
 import { compareThaiText } from "@/lib/thai-sort";
 import { hasMapPin } from "@/lib/geo";
 
@@ -29,6 +33,7 @@ type MenuItem = {
   description: string | null;
   imageUrl: string | null;
   isOutOfStock: boolean;
+  sortOrder?: number | null;
   category: { id: string; name: string; sortOrder: number } | null;
 };
 
@@ -94,6 +99,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
   const [alertTitle, setAlertTitle] = useState("กรอกข้อมูลไม่ครบ");
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [prefillHint, setPrefillHint] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const prefillsDoneKey = useRef<string | null>(null);
 
   useEffect(() => {
@@ -201,24 +207,44 @@ function SkewerOrderPageInner({ params }: PageProps) {
     );
   }, [menuItems]);
 
+  /** Full branch menu in stock page order (stable seq source). */
+  const catalogSorted = useMemo(
+    () => sortMenuItemData(menuItems),
+    [menuItems],
+  );
+
+  const seqById = useMemo(
+    () => assignStableMenuSequence(catalogSorted),
+    [catalogSorted],
+  );
+
   const visibleItems = useMemo(() => {
-    const list = menuItems.filter((m) => !m.isOutOfStock);
-    const filtered =
-      categoryFilter === "ALL"
-        ? list
-        : list.filter((m) => m.category?.id === categoryFilter);
-    return [...filtered].sort((a, b) => compareThaiText(a.name, b.name));
-  }, [menuItems, categoryFilter]);
+    const orderable = catalogSorted.filter((m) => !m.isOutOfStock);
+    if (categoryFilter === "ALL") return orderable;
+    return orderable.filter((m) => m.category?.id === categoryFilter);
+  }, [catalogSorted, categoryFilter]);
 
   const selectedLines = useMemo(() => {
     return Object.entries(qtys)
       .filter(([, q]) => q >= SKEWER_MIN_QTY_PER_ITEM)
       .map(([id, quantity]) => {
         const item = menuItems.find((m) => m.id === id);
-        return item ? { id, name: item.name, quantity } : null;
+        if (!item) return null;
+        return {
+          id,
+          name: item.name,
+          quantity,
+          seq: seqById.get(id) ?? 9999,
+        };
       })
-      .filter(Boolean) as { id: string; name: string; quantity: number }[];
-  }, [qtys, menuItems]);
+      .filter(Boolean)
+      .sort((a, b) => a!.seq - b!.seq) as {
+      id: string;
+      name: string;
+      quantity: number;
+      seq: number;
+    }[];
+  }, [qtys, menuItems, seqById]);
 
   const totalSkewers = selectedLines.reduce((s, l) => s + l.quantity, 0);
 
@@ -287,18 +313,18 @@ function SkewerOrderPageInner({ params }: PageProps) {
     return mapValue;
   }
 
-  async function submit() {
+  function validateForm(): boolean {
     clearValidation();
     if (!isOpen) {
       fail("สาขายังปิดรับออเดอร์ กรุณาลองใหม่ภายหลัง", "skewer-menu-section", "ยังไม่เปิดรับออเดอร์");
-      return;
+      return false;
     }
     if (selectedLines.length === 0) {
       fail(
         `กรุณาเลือกอย่างน้อย 1 เมนู (ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้ต่อรายการ) — กดปุ่ม + ที่เมนูด้านบน`,
         "skewer-menu-section",
       );
-      return;
+      return false;
     }
     if (!requestedDate) {
       fail(
@@ -307,7 +333,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
           : "กรุณาเลือกวันที่ต้องการรับ/ส่งไม้",
         "skewer-date-field",
       );
-      return;
+      return false;
     }
     const addr = addressText.trim();
     if (addr.length < 5) {
@@ -315,18 +341,32 @@ function SkewerOrderPageInner({ params }: PageProps) {
         "กรุณากรอกที่อยู่จัดส่งหรือจุดนัดรับให้ชัดเจน (อย่างน้อย 5 ตัวอักษร)",
         "skewer-address-field",
       );
-      return;
+      return false;
     }
     if (!hasMapPin(mapValue)) {
       fail(
         "กรุณาปักหมุดจุดส่งบนแผนที่ — กด “ตำแหน่งปัจจุบัน” หรือแตะแผนที่",
         "skewer-map-field",
       );
+      return false;
+    }
+    return true;
+  }
+
+  function openReview() {
+    if (!validateForm()) return;
+    setReviewOpen(true);
+  }
+
+  async function submit() {
+    if (!validateForm()) {
+      setReviewOpen(false);
       return;
     }
 
     setSubmitting(true);
     try {
+      const addr = addressText.trim();
       const pin = await tryGeocodeAddress();
       const lat =
         pin.latitude != null && Number.isFinite(pin.latitude)
@@ -355,9 +395,11 @@ function SkewerOrderPageInner({ params }: PageProps) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        setReviewOpen(false);
         fail(data.error || "สั่งไม่สำเร็จ", "skewer-menu-section", "ส่งคำสั่งไม่สำเร็จ");
         return;
       }
+      setReviewOpen(false);
       router.replace(`/skewer/${branchId}/history/${data.id}`);
     } finally {
       setSubmitting(false);
@@ -392,14 +434,12 @@ function SkewerOrderPageInner({ params }: PageProps) {
             <button
               type="button"
               disabled={submitting || !isOpen}
-              onClick={() => void submit()}
+              onClick={openReview}
               className="w-full rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white disabled:opacity-50"
             >
-              {submitting
-                ? "กำลังส่ง…"
-                : selectedLines.length === 0
-                  ? "ส่งคำสั่ง"
-                  : `ส่งคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ไม้`}
+              {selectedLines.length === 0
+                ? "ตรวจสอบคำสั่ง"
+                : `ตรวจสอบคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ไม้`}
             </button>
           }
         >
@@ -409,6 +449,112 @@ function SkewerOrderPageInner({ params }: PageProps) {
             message={alertMessage ?? ""}
             onClose={() => setAlertMessage(null)}
           />
+
+          {reviewOpen ? (
+            <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+              <button
+                type="button"
+                aria-label="ปิด"
+                className="absolute inset-0"
+                disabled={submitting}
+                onClick={() => setReviewOpen(false)}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="skewer-review-title"
+                className="relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+              >
+                <div className="border-b border-gray-100 px-5 py-4">
+                  <h2
+                    id="skewer-review-title"
+                    className="text-base font-bold text-gray-900"
+                  >
+                    ตรวจสอบก่อนส่งคำสั่ง
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    ดูรายการให้ครบ แล้วกดยืนยันส่ง
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+                  <div className="rounded-xl bg-gray-50 px-3 py-2.5 text-sm text-gray-700">
+                    <p>
+                      <span className="text-gray-500">วันที่ต้องการ:</span>{" "}
+                      <strong>
+                        {requestedDate
+                          ? new Date(
+                              `${requestedDate}T12:00:00+07:00`,
+                            ).toLocaleDateString("th-TH", {
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : "—"}
+                      </strong>
+                    </p>
+                    <p className="mt-1.5 whitespace-pre-wrap">
+                      <span className="text-gray-500">ที่อยู่:</span>{" "}
+                      {addressText.trim()}
+                    </p>
+                    {note.trim() ? (
+                      <p className="mt-1.5">
+                        <span className="text-gray-500">โน้ต:</span> {note.trim()}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900">
+                        รายการไม้
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {selectedLines.length} รายการ · {totalSkewers} ไม้
+                      </p>
+                    </div>
+                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                      {selectedLines.map((line) => (
+                        <li
+                          key={line.id}
+                          className="flex items-center justify-between gap-3 px-3 py-2.5"
+                        >
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                              {line.seq}
+                            </span>
+                            <p className="truncate text-sm font-bold text-gray-900">
+                              {line.name}
+                            </p>
+                          </div>
+                          <p className="shrink-0 text-sm font-black tabular-nums text-gray-900">
+                            ×{line.quantity}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 border-t border-gray-100 px-5 py-4">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => setReviewOpen(false)}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm font-bold text-gray-800 disabled:opacity-50"
+                  >
+                    แก้ไข
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => void submit()}
+                    className="rounded-xl bg-site-primary px-3 py-3 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    {submitting ? "กำลังส่ง…" : "ยืนยันส่ง"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {!isOpen && (
             <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
@@ -430,7 +576,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
             <div className="mb-3">
               <h2 className="text-sm font-semibold text-gray-900">เลือกเมนู</h2>
               <p className="text-xs text-gray-500">
-                เรียงตามพยัญชนะไทย · กด + เพิ่มจำนวน (ขั้นต่ำ{" "}
+                ลำดับเหมือนหน้าสต๊อก · กด + เพิ่มจำนวน (ขั้นต่ำ{" "}
                 {SKEWER_MIN_QTY_PER_ITEM} ไม้)
               </p>
             </div>
@@ -473,15 +619,16 @@ function SkewerOrderPageInner({ params }: PageProps) {
               </p>
             ) : (
               <ul className="divide-y divide-gray-100">
-                {visibleItems.map((item, index) => {
+                {visibleItems.map((item) => {
                   const qty = qtys[item.id] ?? 0;
+                  const seq = seqById.get(item.id) ?? 0;
                   return (
                     <li
                       key={item.id}
                       className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
                     >
                       <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                        {index + 1}
+                        {seq}
                       </span>
                       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
                         {item.imageUrl ? (

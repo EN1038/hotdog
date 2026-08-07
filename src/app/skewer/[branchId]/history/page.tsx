@@ -12,6 +12,10 @@ import { LoadingState } from "@/components/LoadingState";
 import { bangkokDateKey } from "@/lib/constants";
 import { addDaysToDateKey } from "@/lib/operating-day";
 import { SKEWER_ORDER_STATUS_LABELS } from "@/lib/skewer-order";
+import {
+  assignStableMenuSequence,
+  sortMenuItemData,
+} from "@/lib/staff-menu-order";
 import type { SkewerOrderStatus } from "@prisma/client";
 
 type OrderRow = {
@@ -21,6 +25,7 @@ type OrderRow = {
   status: SkewerOrderStatus;
   addressText: string;
   items: {
+    branchMenuItemId?: string | null;
     itemName: string;
     requestedQuantity: number;
     confirmedQuantity: number | null;
@@ -67,6 +72,9 @@ export default function SkewerHistoryPage({ params }: PageProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [menuSeqById, setMenuSeqById] = useState<Map<string, number>>(
+    () => new Map(),
+  );
   const [error, setError] = useState("");
 
   // Reset to default window (±3 days) whenever opening this page
@@ -76,6 +84,24 @@ export default function SkewerHistoryPage({ params }: PageProps) {
     setDateTo(range.to);
     setStatusFilter("ALL");
   }, [pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/skewer/branch?branchId=${encodeURIComponent(branchId)}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const menus = Array.isArray(data.menuItems) ? data.menuItems : [];
+        const sorted = sortMenuItemData(menus);
+        if (!cancelled) setMenuSeqById(assignStableMenuSequence(sorted));
+      })
+      .catch(() => {
+        /* optional for list sorting */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +130,25 @@ export default function SkewerHistoryPage({ params }: PageProps) {
     };
   }, [branchId, dateFrom, dateTo, statusFilter]);
 
+  function formatOrderItemsLine(order: OrderRow) {
+    const items = [...order.items].sort((a, b) => {
+      const sa = a.branchMenuItemId
+        ? (menuSeqById.get(a.branchMenuItemId) ?? 9999)
+        : 9999;
+      const sb = b.branchMenuItemId
+        ? (menuSeqById.get(b.branchMenuItemId) ?? 9999)
+        : 9999;
+      return sa - sb;
+    });
+    return items
+      .map((i) => {
+        if (order.status === "CONFIRMED") {
+          return `${i.itemName} ×${i.confirmedQuantity ?? i.requestedQuantity}`;
+        }
+        return `${i.itemName} ×${i.requestedQuantity}`;
+      })
+      .join(" · ");
+  }
   return (
     <SkewerAppShell branchId={branchId} active="history" meta={meta}>
       <div className="space-y-4 px-4 pb-6 pt-4">
@@ -232,14 +277,7 @@ export default function SkewerHistoryPage({ params }: PageProps) {
                     </span>
                   </div>
                   <p className="mt-2 line-clamp-1 text-xs text-gray-500">
-                    {order.items
-                      .map((i) => {
-                        if (order.status === "CONFIRMED") {
-                          return `${i.itemName} ×${i.confirmedQuantity ?? i.requestedQuantity}`;
-                        }
-                        return `${i.itemName} ×${i.requestedQuantity}`;
-                      })
-                      .join(" · ")}
+                    {formatOrderItemsLine(order)}
                   </p>
                 </Link>
                 {order.status === "CONFIRMED" ? (

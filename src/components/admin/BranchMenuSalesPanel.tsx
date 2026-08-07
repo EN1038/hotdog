@@ -5,6 +5,10 @@ import Link from "next/link";
 import { adminInputClass, adminLabelClass } from "@/components/admin/AdminShell";
 import { DateInput } from "@/components/DateInput";
 import { MenuSalesLineChart } from "@/components/admin/MenuSalesLineChart";
+import {
+  bangkokDateKey,
+  bangkokMonthRangeToToday,
+} from "@/lib/constants";
 
 type SalesItem = {
   id: string;
@@ -39,6 +43,8 @@ type TrendPayload = {
 };
 
 type SalesPayload = {
+  from?: string;
+  to?: string;
   date: string;
   operatingDay?: string;
   summary: SalesSummary;
@@ -53,8 +59,27 @@ function money(n: number) {
   });
 }
 
-export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
-  const [date, setDate] = useState("");
+type Props = {
+  branchId: string;
+  /** When set, parent owns the date range (hide local pickers). */
+  dateFrom?: string;
+  dateTo?: string;
+  showDatePicker?: boolean;
+};
+
+export function BranchMenuSalesPanel({
+  branchId,
+  dateFrom: controlledFrom,
+  dateTo: controlledTo,
+  showDatePicker = true,
+}: Props) {
+  const defaults = bangkokMonthRangeToToday();
+  const [localFrom, setLocalFrom] = useState(defaults.from);
+  const [localTo, setLocalTo] = useState(defaults.to);
+  const dateFrom = controlledFrom ?? localFrom;
+  const dateTo = controlledTo ?? localTo;
+  const controlled = controlledFrom != null && controlledTo != null;
+
   const [operatingDay, setOperatingDay] = useState("");
   const [metric, setMetric] = useState<"quantity" | "revenue">("quantity");
   const [data, setData] = useState<SalesPayload | null>(null);
@@ -65,10 +90,10 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const qs = date
-      ? `?date=${encodeURIComponent(date)}&trend=1`
-      : "?trend=1";
-    fetch(`/api/admin/branches/${branchId}/menu-sales${qs}`)
+    const from = dateFrom <= dateTo ? dateFrom : dateTo;
+    const to = dateFrom <= dateTo ? dateTo : dateFrom;
+    const qs = new URLSearchParams({ from, to, trend: "1" });
+    fetch(`/api/admin/branches/${branchId}/menu-sales?${qs}`)
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -79,8 +104,7 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
       .then((payload) => {
         if (!cancelled) {
           setData(payload);
-          setOperatingDay(payload.operatingDay ?? payload.date);
-          if (!date) setDate(payload.date);
+          setOperatingDay(payload.operatingDay ?? payload.to ?? payload.date);
         }
       })
       .catch((e: unknown) => {
@@ -95,12 +119,15 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [branchId, date]);
+  }, [branchId, dateFrom, dateTo]);
 
   const summary = data?.summary;
   const soldItems = data?.items.filter((i) => i.quantity > 0) ?? [];
   const unsoldItems = data?.items.filter((i) => i.quantity === 0) ?? [];
-  const maxDate = operatingDay || date;
+  const maxDate = operatingDay || bangkokDateKey();
+  const isSingleDay = dateFrom === dateTo;
+  const isTodayRange =
+    isSingleDay && dateFrom === operatingDay && dateTo === operatingDay;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -108,23 +135,42 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
         <div>
           <h3 className="text-base font-semibold text-slate-900">ยอดขายเมนู</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            ตัวเลขรายวันตามรอบวันธุรกิจ + กราฟแนวโน้ม 7 วัน (Top เมนู) — ออเดอร์สำเร็จ
+            สรุปตามช่วงวันที่เลือก + กราฟแนวโน้มเมนู — ออเดอร์สำเร็จ
           </p>
         </div>
-        <div className="min-w-[10rem]">
-          <label className={adminLabelClass} htmlFor="menu-sales-date">
-            วันที่
-          </label>
-          <DateInput
-            id="menu-sales-date"
-            className={adminInputClass}
-            value={date}
-            max={maxDate || undefined}
-            onChange={(next) => {
-              if (next) setDate(next);
-            }}
-          />
-        </div>
+        {showDatePicker && !controlled ? (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-[10.5rem]">
+              <label className={adminLabelClass} htmlFor="menu-sales-from">
+                วันที่เริ่ม
+              </label>
+              <DateInput
+                id="menu-sales-from"
+                className={adminInputClass}
+                value={localFrom}
+                max={localTo || maxDate}
+                onChange={(next) => {
+                  if (next) setLocalFrom(next);
+                }}
+              />
+            </div>
+            <div className="w-[10.5rem]">
+              <label className={adminLabelClass} htmlFor="menu-sales-to">
+                วันที่สิ้นสุด
+              </label>
+              <DateInput
+                id="menu-sales-to"
+                className={adminInputClass}
+                value={localTo}
+                min={localFrom}
+                max={maxDate}
+                onChange={(next) => {
+                  if (next) setLocalTo(next);
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {loading ? (
@@ -168,7 +214,7 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
-                  กราฟแนวโน้มเมนู (7 วันถึงวันที่เลือก)
+                  กราฟแนวโน้มเมนูในช่วงที่เลือก
                 </p>
                 <p className="text-xs text-slate-500">
                   แสดง Top เมนูตามยอดชิ้นในช่วงนั้น — วางเมาส์ที่จุดเพื่อดูรายละเอียด
@@ -208,7 +254,12 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
 
           <div className="mt-4 space-y-2">
             <p className="text-xs font-medium text-slate-600">
-              อันดับยอดขายวัน{date === operatingDay ? "นี้" : "ที่เลือก"}
+              อันดับยอดขาย
+              {isTodayRange
+                ? "วันนี้"
+                : isSingleDay
+                  ? "วันที่เลือก"
+                  : "ในช่วงที่เลือก"}
               {soldItems.length === 0 ? " — ยังไม่มียอด" : ""}
             </p>
             {soldItems.length > 0 && (
@@ -263,7 +314,7 @@ export function BranchMenuSalesPanel({ branchId }: { branchId: string }) {
             {unsoldItems.length > 0 && (
               <details className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2">
                 <summary className="cursor-pointer text-xs font-medium text-slate-600">
-                  เมนูที่ยังไม่ขายในวันนี้ ({unsoldItems.length})
+                  เมนูที่ยังไม่ขายในช่วงนี้ ({unsoldItems.length})
                 </summary>
                 <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-slate-600">
                   {unsoldItems.map((item) => (

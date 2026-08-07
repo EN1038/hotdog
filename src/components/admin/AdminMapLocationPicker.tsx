@@ -34,6 +34,7 @@ export function AdminMapLocationPicker(props: {
   hideAddressField?: boolean;
   enableMyLocation?: boolean;
   autoLocateOnMount?: boolean;
+  showUseReferencePin?: boolean;
 }) {
   return <AdminMapLocationFieldInner {...props} />;
 }

@@ -1,20 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/components/LoginForm";
 import { PlatformMark } from "@/components/PlatformMark";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import {
+  AdminBranchSwitcher,
+  isAdminBranchPath,
+} from "@/components/admin/AdminBranchSwitcher";
+import {
   IconClose,
   IconHome,
+  IconMoney,
+  IconPackage,
   IconReceipt,
   IconStore,
   IconUser,
-  IconPackage,
 } from "@/components/icons";
 import { getBrandProfileGaps } from "@/lib/brand-profile";
+import {
+  brandHqHref,
+  parseBrandHqSection,
+  resolveBrandHqBasePath,
+  type BrandHqSection,
+} from "@/lib/brand-hq-nav";
 
 export {
   adminInputClass,
@@ -42,7 +53,7 @@ type NavItem = {
   href: string;
   label: string;
   exact?: boolean;
-  match?: (pathname: string) => boolean;
+  match?: (pathname: string, searchParams: URLSearchParams) => boolean;
   platformOnly?: boolean;
   /** Hide from platform admins (brand operator pages) */
   brandAdminOnly?: boolean;
@@ -140,20 +151,68 @@ const NAV_GROUPS: NavGroup[] = [
         platformOnly: true,
         icon: IconSettings,
       },
-      {
-        href: "/admin/line",
-        label: "LINE แจ้งเตือน",
-        platformOnly: true,
-        icon: IconChat,
-      },
-      {
-        href: "/admin/line-connect",
-        label: "เชื่อม LINE",
-        icon: IconChat,
-      },
     ],
   },
 ];
+
+function brandHqNavItems(basePath: string): NavItem[] {
+  const sections: {
+    section: BrandHqSection;
+    label: string;
+    icon: NavItem["icon"];
+  }[] = [
+    { section: "home", label: "หน้าแรก", icon: IconHome },
+    { section: "sales", label: "ขาย", icon: IconReceipt },
+    { section: "stock_now", label: "สต๊อกปัจจุบัน", icon: IconPackage },
+    { section: "restock", label: "เติม", icon: IconPlusNav },
+    { section: "issue", label: "จ่าย", icon: IconMoney },
+  ];
+  return sections.map(({ section, label, icon }) => ({
+    href: brandHqHref(basePath, section),
+    label,
+    exact: true,
+    icon,
+    match: (pathname, searchParams) => {
+      if (pathname !== basePath) return false;
+      return parseBrandHqSection(searchParams.get("section")) === section;
+    },
+  }));
+}
+
+function IconPlusNav({
+  size = 20,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className ? `block shrink-0 ${className}` : "block shrink-0"}
+      aria-hidden
+    >
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <rect
+        x="3"
+        y="3"
+        width="18"
+        height="18"
+        rx="4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
 
 function IconTag({
   size = 20,
@@ -246,33 +305,6 @@ function IconSettings({
   );
 }
 
-function IconChat({
-  size = 20,
-  className,
-}: {
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className ? `block shrink-0 ${className}` : "block shrink-0"}
-      aria-hidden
-    >
-      <path
-        d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function IconMenu({
   size = 20,
   className,
@@ -299,28 +331,50 @@ function IconMenu({
   );
 }
 
-function isActive(pathname: string, item: NavItem) {
-  if (item.match) return item.match(pathname);
+function isActive(
+  pathname: string,
+  searchParams: URLSearchParams,
+  item: NavItem,
+) {
+  if (item.match) return item.match(pathname, searchParams);
   if (item.exact) return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function filterNavGroups(isPlatformAdmin: boolean): NavGroup[] {
-  return NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items
-      .map((item) => {
-        if (item.href === "/admin" && isPlatformAdmin) {
-          return { ...item, label: "แบรนด์" };
-        }
-        return item;
-      })
-      .filter((item) => {
+function filterNavGroups(
+  isPlatformAdmin: boolean,
+  pathname: string,
+  soleBrandId?: string | null,
+): NavGroup[] {
+  const hqBase = resolveBrandHqBasePath(pathname, {
+    isPlatformAdmin,
+    soleBrandId,
+  });
+
+  return NAV_GROUPS.map((group) => {
+    if (group.title === "ภาพรวม") {
+      if (hqBase) {
+        return { ...group, items: brandHqNavItems(hqBase) };
+      }
+      return {
+        ...group,
+        items: group.items.map((item) => {
+          if (item.href === "/admin" && isPlatformAdmin) {
+            return { ...item, label: "แบรนด์" };
+          }
+          return item;
+        }),
+      };
+    }
+    return {
+      ...group,
+      items: group.items.filter((item) => {
         if (item.platformOnly && !isPlatformAdmin) return false;
         if (item.brandAdminOnly && isPlatformAdmin) return false;
         return true;
       }),
-  })).filter((group) => group.items.length > 0);
+    };
+  }).filter((group) => group.items.length > 0);
 }
 
 function RoleBadge({ isPlatformAdmin }: { isPlatformAdmin: boolean }) {
@@ -339,27 +393,29 @@ function RoleBadge({ isPlatformAdmin }: { isPlatformAdmin: boolean }) {
 
 function SidebarNav({
   pathname,
+  searchParams,
   navGroups,
   onNavigate,
 }: {
   pathname: string;
+  searchParams: URLSearchParams;
   navGroups: NavGroup[];
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+    <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 py-3">
       {navGroups.map((group) => (
         <div key={group.title}>
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+          <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             {group.title}
           </p>
-          <ul className="space-y-1">
+          <ul className="space-y-0.5">
             {group.items.map((item) => {
-              const active = isActive(pathname, item);
+              const active = isActive(pathname, searchParams, item);
               const Icon = item.icon;
               const warn = item.badgeTone === "warn" && item.badge;
               return (
-                <li key={item.href}>
+                <li key={`${item.href}:${item.label}`}>
                   <Link
                     href={item.href}
                     onClick={onNavigate}
@@ -368,16 +424,16 @@ function SidebarNav({
                         ? `${item.label} — โปรไฟล์ยังไม่ครบ ${item.badge} รายการ`
                         : undefined
                     }
-                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                    className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition ${
                       active
-                        ? "bg-site-primary font-semibold text-white shadow-md shadow-slate-900/20"
+                        ? "bg-site-primary font-semibold text-white shadow-sm shadow-slate-900/15"
                         : warn
                           ? "font-medium text-amber-800 ring-1 ring-inset ring-amber-200 hover:bg-amber-50"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
                     <Icon
-                      size={18}
+                      size={17}
                       className={
                         active
                           ? "text-white"
@@ -411,27 +467,48 @@ function SidebarNav({
 
 function ShellHeader() {
   return (
-    <div className="flex items-center justify-center border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
-      <PlatformMark placement="sidebar" height={80} />
+    <div className="flex items-center justify-center border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 px-3 py-3">
+      <PlatformMark placement="sidebar" height={40} />
     </div>
   );
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { session } = useAdminSession();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandProfileGapCount, setBrandProfileGapCount] = useState(0);
+  const [branchMeta, setBranchMeta] = useState<{
+    name: string;
+    brandName: string | null;
+  } | null>(null);
 
   const isPlatformAdmin = session?.isPlatformAdmin ?? false;
+  const soleBrandId =
+    !isPlatformAdmin && session?.brandIds.length === 1
+      ? session.brandIds[0]
+      : null;
+  const onBranchPage = isAdminBranchPath(pathname);
   const navGroups = useMemo(
-    () => filterNavGroups(isPlatformAdmin),
-    [isPlatformAdmin],
+    () => filterNavGroups(isPlatformAdmin, pathname, soleBrandId),
+    [isPlatformAdmin, pathname, soleBrandId],
+  );
+
+  const handleBranchMeta = useCallback(
+    (meta: { name: string; brandName: string | null } | null) => {
+      setBranchMeta(meta);
+    },
+    [],
   );
 
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!onBranchPage) setBranchMeta(null);
+  }, [onBranchPage]);
 
   useEffect(() => {
     if (!session || session.isPlatformAdmin) {
@@ -493,20 +570,36 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const currentLabel =
     navGroupsWithBadges
       .flatMap((g) => g.items)
-      .find((item) => isActive(pathname, item))?.label ?? "หลังบ้าน";
+      .find((item) => isActive(pathname, searchParams, item))?.label ??
+    "หลังบ้าน";
+
+  const headerTitle = onBranchPage
+    ? branchMeta?.name ?? "สาขา"
+    : currentLabel;
+  const headerSubtitle = onBranchPage
+    ? branchMeta?.brandName
+      ? `แบรนด์ · ${branchMeta.brandName}`
+      : "สลับสาขาได้จากเมนูด้านบน"
+    : isPlatformAdmin
+      ? "จัดการแพลตฟอร์มและร้านค้า"
+      : "จัดการแบรนด์และสาขาของคุณ";
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
         <ShellHeader />
 
-        <SidebarNav pathname={pathname} navGroups={navGroupsWithBadges} />
+        <SidebarNav
+          pathname={pathname}
+          searchParams={searchParams}
+          navGroups={navGroupsWithBadges}
+        />
 
-        <div className="border-t border-slate-200 p-3">
+        <div className="border-t border-slate-200 p-2.5">
           <button
             type="button"
             onClick={() => logout("/admin/login")}
-            className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="w-full rounded-lg px-2.5 py-2 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
             ออกจากระบบ
           </button>
@@ -521,15 +614,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,85vw)] flex-col border-r border-slate-200 bg-white text-slate-900 shadow-2xl">
-            <div className="relative flex items-center justify-center border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
-              <div className="flex items-center justify-center min-w-0 flex-1">
-                <PlatformMark placement="sidebar" height={80} />
+          <aside className="absolute inset-y-0 left-0 flex w-[min(16.5rem,85vw)] flex-col border-r border-slate-200 bg-white text-slate-900 shadow-2xl">
+            <div className="relative flex items-center justify-center border-b border-slate-200 bg-gradient-to-b from-white to-slate-50 px-3 py-3">
+              <div className="flex min-w-0 flex-1 items-center justify-center">
+                <PlatformMark placement="sidebar" height={40} />
               </div>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="absolute top-4 right-4 shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                className="absolute top-2.5 right-2.5 shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                 aria-label="ปิด"
               >
                 <IconClose size={18} />
@@ -537,14 +630,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarNav
               pathname={pathname}
+              searchParams={searchParams}
               navGroups={navGroupsWithBadges}
               onNavigate={() => setMobileOpen(false)}
             />
-            <div className="border-t border-slate-200 p-3">
+            <div className="border-t border-slate-200 p-2.5">
               <button
                 type="button"
                 onClick={() => logout("/admin/login")}
-                className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                className="w-full rounded-lg px-2.5 py-2 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
               >
                 ออกจากระบบ
               </button>
@@ -554,8 +648,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3.5 backdrop-blur-md lg:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-3 py-2.5 backdrop-blur-md lg:px-5">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
@@ -564,17 +658,33 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             >
               <IconMenu size={20} />
             </button>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-900">
-                {currentLabel}
+
+            {onBranchPage ? (
+              <Suspense
+                fallback={
+                  <div className="h-10 min-w-[10rem] animate-pulse rounded-xl bg-slate-100" />
+                }
+              >
+                <AdminBranchSwitcher onBranchMeta={handleBranchMeta} />
+              </Suspense>
+            ) : (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">
+                  {headerTitle}
+                </p>
+                <p className="hidden truncate text-xs text-slate-500 sm:block">
+                  {headerSubtitle}
+                </p>
+              </div>
+            )}
+
+            {onBranchPage && branchMeta?.brandName ? (
+              <p className="hidden min-w-0 truncate text-xs text-slate-500 md:block">
+                {branchMeta.brandName}
               </p>
-              <p className="hidden text-xs text-slate-500 sm:block">
-                {isPlatformAdmin
-                  ? "จัดการแพลตฟอร์มและร้านค้า"
-                  : "จัดการแบรนด์และสาขาของคุณ"}
-              </p>
-            </div>
+            ) : null}
           </div>
+
           {session?.username && (
             <div className="hidden shrink-0 items-center gap-2 sm:flex">
               <RoleBadge isPlatformAdmin={isPlatformAdmin} />
@@ -585,7 +695,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           )}
         </header>
 
-        <main className="flex-1 p-4 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );

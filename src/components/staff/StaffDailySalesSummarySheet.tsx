@@ -21,9 +21,19 @@ type StockTotals = {
   countedValueBaht: number;
 };
 
+type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+
+const STOCK_TYPE_LABEL: Record<StockType, string> = {
+  SALE_ITEM: "เมนูขาย",
+  CONSUMABLE: "ของสิ้นเปลือง",
+  EQUIPMENT: "อุปกรณ์",
+};
+
 type DailySummary = {
   id: string;
   name: string;
+  status?: string;
+  pendingAdminApply?: boolean;
   completedAt: string;
   shiftId: string | null;
   shift: {
@@ -33,6 +43,7 @@ type DailySummary = {
     closedAt: string | null;
   } | null;
   createdByStaff: { id: string; name: string } | null;
+  stockType?: StockType;
   cash: number;
   transfer: number;
   change: number;
@@ -132,24 +143,40 @@ function StockTotalRow({
   qty,
   valueBaht,
   last = false,
+  emphasize = false,
 }: {
   label: string;
   qty: number;
   valueBaht: number;
   last?: boolean;
+  emphasize?: boolean;
 }) {
   return (
     <div
       className={`flex items-baseline justify-between gap-3 px-1 py-2.5 text-sm ${
         last ? "" : "border-b border-gray-200"
-      }`}
+      } ${emphasize ? "rounded-lg bg-red-50 px-2" : ""}`}
     >
-      <span className="min-w-0 shrink text-gray-700">{label}</span>
+      <span
+        className={`min-w-0 shrink font-medium ${
+          emphasize ? "text-red-700" : "text-gray-700"
+        }`}
+      >
+        {label}
+      </span>
       <div className="flex shrink-0 items-baseline gap-3 text-right">
-        <span className="tabular-nums font-bold text-gray-900">
+        <span
+          className={`tabular-nums font-bold ${
+            emphasize ? "text-red-800" : "text-gray-900"
+          }`}
+        >
           {qty.toLocaleString("th-TH")}
         </span>
-        <span className="min-w-[7.5rem] tabular-nums font-semibold text-gray-900">
+        <span
+          className={`min-w-[7.5rem] tabular-nums font-semibold ${
+            emphasize ? "text-red-800" : "text-gray-900"
+          }`}
+        >
           มูลค่า {formatPrice(valueBaht)} บาท
         </span>
       </div>
@@ -190,7 +217,9 @@ export function StaffDailySalesSummarySheet({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [exportBusy, setExportBusy] = useState<"save" | "share" | null>(null);
+  const [exportBusy, setExportBusy] = useState<"save" | "share" | "copy" | null>(
+    null,
+  );
   const [exportMsg, setExportMsg] = useState("");
   const [brandName, setBrandName] = useState(brandNameProp?.trim() || "");
   const [branchName, setBranchName] = useState(branchNameProp?.trim() || "");
@@ -276,9 +305,17 @@ export function StaffDailySalesSummarySheet({
   }, [open, date]);
 
   const selected = summaries.find((s) => s.id === selectedId) ?? null;
+  const selectedStockType: StockType = selected?.stockType ?? "SALE_ITEM";
+  const selectedIncludesSales = selectedStockType === "SALE_ITEM";
+  const selectedTypeLabel = STOCK_TYPE_LABEL[selectedStockType];
   const stockTotals =
     selected?.stockTotals ??
     (selected ? computeStockTotals(selected.lines) : null);
+  const mismatchLines =
+    selected?.lines.filter((line) => line.systemQty !== line.countedQty) ?? [];
+  const stockTotalsMismatch = Boolean(
+    stockTotals && stockTotals.systemQty !== stockTotals.countedQty,
+  );
 
   function goCreate() {
     onClose();
@@ -355,6 +392,104 @@ export function StaffDailySalesSummarySheet({
     }
   }
 
+  function buildCopyText() {
+    if (!selected) return "";
+    const branchLabel = formatBranchLabel(branchName);
+    const lines: string[] = [];
+    if (brandName) lines.push(brandName);
+    if (branchLabel) lines.push(`สาขา ${branchLabel}`);
+    lines.push(
+      selectedIncludesSales
+        ? "สรุปยอดสต๊อกและขายราย"
+        : `สรุปยอดสต๊อก · ${selectedTypeLabel}`,
+    );
+    lines.push(selected.name);
+    lines.push(`ประเภท: ${selectedTypeLabel}`);
+    lines.push(`บันทึกเมื่อ: ${formatShiftDateTime(selected.completedAt)}`);
+    if (selected.shift) {
+      lines.push(`รอบขาย: รอบที่ ${selected.shift.roundNumber}`);
+    }
+    lines.push(`ผู้บันทึก: ${selected.createdByStaff?.name ?? "—"}`);
+    if (selectedIncludesSales) {
+      lines.push(`ยอดเงินสด: ${formatPrice(selected.cash)} บาท`);
+      lines.push(`ยอดเงินโอน: ${formatPrice(selected.transfer)} บาท`);
+      lines.push(`เงินทอน: ${formatPrice(selected.change)} บาท`);
+      lines.push(
+        `จำนวนลูกค้า: ${selected.customers.toLocaleString("th-TH")} คิว`,
+      );
+    }
+    if (stockTotals) {
+      lines.push("");
+      lines.push("สรุปสต็อก");
+      lines.push(
+        `สต๊อกปัจจุบัน (ระบบ): ${stockTotals.systemQty.toLocaleString("th-TH")} (มูลค่า ${formatPrice(stockTotals.systemValueBaht)} บาท)`,
+      );
+      lines.push(
+        `สต๊อกที่นับได้: ${stockTotals.countedQty.toLocaleString("th-TH")} (มูลค่า ${formatPrice(stockTotals.countedValueBaht)} บาท)`,
+      );
+      if (mismatchLines.length > 0) {
+        lines.push(
+          `พบ ${mismatchLines.length} รายการที่ยอดนับได้ไม่ตรงสต๊อกปัจจุบัน`,
+        );
+      }
+    }
+    if (selected.lines.length > 0) {
+      lines.push("");
+      lines.push("สต็อกที่นับ:");
+      selected.lines.forEach((line, index) => {
+        const seq = line.seq && line.seq > 0 ? line.seq : index + 1;
+        const isDiff = line.systemQty !== line.countedQty;
+        const delta = line.countedQty - line.systemQty;
+        lines.push(
+          `${seq}. ${line.name}: ปัจจุบัน ${line.systemQty.toLocaleString("th-TH")} → นับได้ ${line.countedQty.toLocaleString("th-TH")}${
+            isDiff
+              ? ` (${delta > 0 ? "+" : ""}${delta.toLocaleString("th-TH")})`
+              : ""
+          }`,
+        );
+      });
+    } else if (selected.rawNote) {
+      lines.push("");
+      lines.push(selected.rawNote);
+    }
+    return lines.join("\n");
+  }
+
+  async function copyTextToClipboard(text: string) {
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    if (!ok) throw new Error("copy failed");
+  }
+
+  async function handleCopyText() {
+    if (!selected || exportBusy) return;
+    setExportBusy("copy");
+    setExportMsg("");
+    try {
+      await copyTextToClipboard(buildCopyText());
+      setExportMsg("คัดลอกข้อความแล้ว — ไปวางในไลน์ได้เลย");
+    } catch {
+      setExportMsg("คัดลอกไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
   if (!open) return null;
 
   return (
@@ -362,7 +497,7 @@ export function StaffDailySalesSummarySheet({
       className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="สรุปยอดสต๊อกและขายราย"
+      aria-label="สรุปยอดสต๊อกและขาย"
       onClick={onClose}
     >
       <div
@@ -372,10 +507,10 @@ export function StaffDailySalesSummarySheet({
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div>
             <p className="text-base font-bold text-gray-900">
-              สรุปยอดสต๊อกและขายราย
+              สรุปยอดสต๊อกและขาย
             </p>
             <p className="text-xs text-gray-500">
-              เลือกวันเพื่อดูสรุป หรือสร้างสรุปใหม่
+              เลือกวันเพื่อดูสรุป หรือสร้างสรุปใหม่ตามประเภท
             </p>
           </div>
           <button
@@ -407,7 +542,7 @@ export function StaffDailySalesSummarySheet({
             <p className="text-sm text-red-600">{error}</p>
           ) : summaries.length === 0 ? (
             <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
-              ยังไม่มีสรุปยอดสต๊อกและขายรายในวันที่{" "}
+              ยังไม่มีสรุปยอดสต๊อกในวันที่{" "}
               {formatOperatingDayLabel(date) || date}
             </p>
           ) : (
@@ -415,6 +550,11 @@ export function StaffDailySalesSummarySheet({
               <div className="flex flex-wrap gap-2">
                 {summaries.map((s) => {
                   const active = s.id === selectedId;
+                  const typeLabel =
+                    STOCK_TYPE_LABEL[s.stockType ?? "SALE_ITEM"];
+                  const pending =
+                    s.pendingAdminApply || s.status === "IN_PROGRESS";
+                  const cancelled = s.status === "CANCELLED";
                   return (
                     <button
                       key={s.id}
@@ -423,15 +563,23 @@ export function StaffDailySalesSummarySheet({
                       className={`rounded-xl border px-3 py-2 text-left text-xs ${
                         active
                           ? "border-blue-500 bg-blue-50 font-bold text-blue-700"
-                          : "border-gray-200 bg-white text-gray-700"
+                          : cancelled
+                            ? "border-slate-200 bg-slate-50 text-slate-500"
+                            : pending
+                              ? "border-amber-300 bg-amber-50 text-amber-900"
+                              : "border-gray-200 bg-white text-gray-700"
                       }`}
                     >
-                      <span className="block">
-                        {s.shift
-                          ? `สรุปรอบที่ ${s.shift.roundNumber}`
-                          : "สรุปยอด"}
-                      </span>
+                      <span className="block">{typeLabel}</span>
                       <span className="mt-0.5 block opacity-80">
+                        {pending
+                          ? "รอแอดมินปรับสต๊อก · "
+                          : cancelled
+                            ? "ปฏิเสธแล้ว · "
+                            : ""}
+                        {s.shift
+                          ? `รอบที่ ${s.shift.roundNumber} · `
+                          : ""}
                         {formatHm(s.completedAt)} น.
                       </span>
                     </button>
@@ -463,12 +611,26 @@ export function StaffDailySalesSummarySheet({
                             : ""
                         }`}
                       >
-                        สรุปยอดสต๊อกและขายราย
+                        {selectedIncludesSales
+                          ? "สรุปยอดสต๊อกและขายราย"
+                          : `สรุปยอดสต๊อก · ${selectedTypeLabel}`}
                       </p>
                     </div>
 
                     <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
                       <SummaryRow label="ชื่อสรุป" value={selected.name} />
+                      <SummaryRow label="ประเภท" value={selectedTypeLabel} />
+                      <SummaryRow
+                        label="สถานะ"
+                        value={
+                          selected.pendingAdminApply ||
+                          selected.status === "IN_PROGRESS"
+                            ? "รอแอดมินปรับสต๊อก"
+                            : selected.status === "CANCELLED"
+                              ? "ปฏิเสธแล้ว"
+                              : "ปรับสต๊อกแล้ว / บันทึกแล้ว"
+                        }
+                      />
                       <SummaryRow
                         label="บันทึกเมื่อ"
                         value={formatShiftDateTime(selected.completedAt)}
@@ -482,24 +644,29 @@ export function StaffDailySalesSummarySheet({
                       <SummaryRow
                         label="ผู้บันทึก"
                         value={selected.createdByStaff?.name ?? "—"}
+                        last={!selectedIncludesSales}
                       />
-                      <SummaryRow
-                        label="ยอดเงินสด"
-                        value={`${formatPrice(selected.cash)} บาท`}
-                      />
-                      <SummaryRow
-                        label="ยอดเงินโอน"
-                        value={`${formatPrice(selected.transfer)} บาท`}
-                      />
-                      <SummaryRow
-                        label="เงินทอน"
-                        value={`${formatPrice(selected.change)} บาท`}
-                      />
-                      <SummaryRow
-                        label="จำนวนลูกค้า"
-                        value={`${selected.customers.toLocaleString("th-TH")} คิว`}
-                        last
-                      />
+                      {selectedIncludesSales ? (
+                        <>
+                          <SummaryRow
+                            label="ยอดเงินสด"
+                            value={`${formatPrice(selected.cash)} บาท`}
+                          />
+                          <SummaryRow
+                            label="ยอดเงินโอน"
+                            value={`${formatPrice(selected.transfer)} บาท`}
+                          />
+                          <SummaryRow
+                            label="เงินทอน"
+                            value={`${formatPrice(selected.change)} บาท`}
+                          />
+                          <SummaryRow
+                            label="จำนวนลูกค้า"
+                            value={`${selected.customers.toLocaleString("th-TH")} คิว`}
+                            last
+                          />
+                        </>
+                      ) : null}
                     </div>
 
                     {selected.lines.length > 0 && stockTotals ? (
@@ -507,17 +674,30 @@ export function StaffDailySalesSummarySheet({
                         <p className="mb-1.5 text-xs font-semibold text-gray-700">
                           สรุปสต็อก
                         </p>
-                        <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
+                        {stockTotalsMismatch || mismatchLines.length > 0 ? (
+                          <p className="mb-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700">
+                            พบ {mismatchLines.length} รายการที่ยอดนับได้ไม่ตรงสต๊อกปัจจุบัน
+                          </p>
+                        ) : null}
+                        <div
+                          className={`rounded-xl border bg-white px-3 py-1 ${
+                            stockTotalsMismatch
+                              ? "border-red-300"
+                              : "border-gray-200"
+                          }`}
+                        >
                           <StockTotalRow
-                            label="จำนวนสต็อกในระบบ"
+                            label="สต๊อกปัจจุบัน (ระบบ)"
                             qty={stockTotals.systemQty}
                             valueBaht={stockTotals.systemValueBaht}
+                            emphasize={stockTotalsMismatch}
                           />
                           <StockTotalRow
-                            label="จำนวนสต็อกที่นับได้"
+                            label="สต๊อกที่นับได้"
                             qty={stockTotals.countedQty}
                             valueBaht={stockTotals.countedValueBaht}
                             last
+                            emphasize={stockTotalsMismatch}
                           />
                         </div>
                       </div>
@@ -528,26 +708,52 @@ export function StaffDailySalesSummarySheet({
                         <p className="mb-1.5 text-xs font-semibold text-gray-700">
                           สต็อกที่นับ
                         </p>
-                        <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                        <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 overflow-hidden">
                           {selected.lines.map((line, index) => {
-                            const seq = line.seq && line.seq > 0 ? line.seq : index + 1;
+                            const seq =
+                              line.seq && line.seq > 0 ? line.seq : index + 1;
+                            const isDiff = line.systemQty !== line.countedQty;
+                            const delta = line.countedQty - line.systemQty;
                             return (
                               <li
                                 key={`${seq}-${line.name}-${line.systemQty}-${line.countedQty}`}
-                                className="flex items-center justify-between gap-3 px-3 py-2.5"
+                                className={`flex items-center justify-between gap-3 px-3 py-2.5 ${
+                                  isDiff ? "bg-red-50" : "bg-white"
+                                }`}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                                  <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">
+                                  <span
+                                    className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
+                                      isDiff ? "text-red-600" : "text-slate-500"
+                                    }`}
+                                  >
                                     {seq}
                                   </span>
-                                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+                                  <p
+                                    className={`min-w-0 flex-1 truncate text-sm font-medium ${
+                                      isDiff
+                                        ? "font-bold text-red-800"
+                                        : "text-gray-900"
+                                    }`}
+                                  >
                                     {line.name}
                                   </p>
                                 </div>
-                                <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900">
-                                  ระบบ {line.systemQty.toLocaleString("th-TH")} →
+                                <p
+                                  className={`shrink-0 text-right text-sm font-semibold tabular-nums ${
+                                    isDiff ? "text-red-800" : "text-gray-900"
+                                  }`}
+                                >
+                                  ปัจจุบัน{" "}
+                                  {line.systemQty.toLocaleString("th-TH")} →
                                   นับได้{" "}
                                   {line.countedQty.toLocaleString("th-TH")}
+                                  {isDiff ? (
+                                    <span className="ml-1 font-bold">
+                                      ({delta > 0 ? "+" : ""}
+                                      {delta.toLocaleString("th-TH")})
+                                    </span>
+                                  ) : null}
                                 </p>
                               </li>
                             );
@@ -561,50 +767,54 @@ export function StaffDailySalesSummarySheet({
                     ) : null}
                   </div>
 
-                  {selected.lines.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          disabled={!!exportBusy}
-                          onClick={() => void handleSaveImage()}
-                          className="rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
-                        >
-                          {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!!exportBusy}
-                          onClick={() => void handleShareImage()}
-                          className="rounded-xl border border-green-600 bg-green-50 px-3 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
-                        >
-                          {exportBusy === "share" ? "กำลังแชร์…" : "LINE"}
-                        </button>
-                      </div>
-                      {exportMsg ? (
-                        <p className="text-center text-xs text-gray-600">
-                          {exportMsg}
-                        </p>
-                      ) : (
-                        <p className="text-center text-xs text-gray-400">
-                          กด LINE แล้วเลือกแอปไลน์จากเมนูแชร์ของเครื่อง
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
             </>
           )}
         </div>
 
-        <div className="border-t border-gray-100 px-4 py-3">
+        <div className="space-y-2 border-t border-gray-100 px-4 py-3">
+          {selected ? (
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                disabled={!!exportBusy || selected.lines.length === 0}
+                onClick={() => void handleSaveImage()}
+                className="rounded-xl border border-gray-300 bg-white px-2 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
+              </button>
+              <button
+                type="button"
+                disabled={!!exportBusy || selected.lines.length === 0}
+                onClick={() => void handleShareImage()}
+                className="rounded-xl border border-green-600 bg-green-50 px-2 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
+              >
+                {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
+              </button>
+              <button
+                type="button"
+                disabled={!!exportBusy}
+                onClick={() => void handleCopyText()}
+                className="rounded-xl border border-blue-600 bg-blue-50 px-2 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
+              >
+                {exportBusy === "copy" ? "กำลังคัดลอก…" : "Copy"}
+              </button>
+            </div>
+          ) : null}
+          {exportMsg ? (
+            <p className="text-center text-xs text-gray-600">{exportMsg}</p>
+          ) : selected ? (
+            <p className="text-center text-xs text-gray-400">
+              แชร์รูป หรือกด Copy แล้ววางข้อความในไลน์อีกช่องทาง
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={goCreate}
             className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700"
           >
-            สร้างสรุปยอดสต๊อกและขายราย
+            สร้างสรุปยอด (เลือกประเภท)
           </button>
         </div>
       </div>

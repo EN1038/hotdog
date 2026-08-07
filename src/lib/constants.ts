@@ -334,6 +334,13 @@ export function bangkokDateKey(now = new Date()): string {
   }).format(now);
 }
 
+/** Bangkok calendar: first day of current month → today */
+export function bangkokMonthRangeToToday(now = new Date()) {
+  const today = bangkokDateKey(now);
+  const [y, m] = today.split("-");
+  return { from: `${y}-${m}-01`, to: today };
+}
+
 export function startOfBangkokDayFromKey(key: string): Date {
   return new Date(`${key}T00:00:00+07:00`);
 }

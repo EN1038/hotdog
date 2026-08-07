@@ -23,6 +23,9 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "brand.stock.branch_transfer": "โอนสต๊อกระหว่างสาขา",
   "brand.stock.copy_from_branch": "คัดลอกเมนูจากสาขาเข้าบ้านกลาง",
   "brand.stock.copy_to_branch": "คัดลอกเมนูจากบ้านกลางไปสาขา",
+  "brand.kitchen.produce": "ผลิต/เสียบไม้ที่ครัว",
+  "brand.kitchen.request": "คำขอสต๊อกจากสาขา",
+  "brand.kitchen.fulfill": "จัดส่งตามคำขอสาขา",
   "brand.admin.create": "สร้างผู้ดูแลแบรนด์",
   "brand.admin.link": "ผูกผู้ดูแลกับแบรนด์",
   "brand.admin.update": "แก้ไขผู้ดูแลแบรนด์",
@@ -32,12 +35,17 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "branch.delete": "ลบสาขา",
   "branch.stock.enable": "เปิดสต๊อกสาขา",
   "branch.stock.disable": "ปิดสต๊อกสาขา",
+  "branch.shift.cancel": "ยกเลิกรอบขาย",
+  "branch.shift.restore": "กู้คืนรอบขายที่ยกเลิก",
+  "branch.stock.history.cancel": "ยกเลิกรายการเคลื่อนไหวสต๊อก",
+  "branch.stock.history.restore": "กู้คืนรายการเคลื่อนไหวสต๊อก",
   "staff.create": "เพิ่มพนักงาน",
   "staff.update": "แก้ไขพนักงาน",
   "staff.delete": "ลบพนักงาน",
   "menu.create": "เพิ่มเมนู",
   "menu.update": "แก้ไขเมนู",
   "menu.delete": "ลบเมนู",
+  "menu.reorder": "จัดลำดับเมนู",
   "category.create": "เพิ่มหมวดหมู่",
   "category.update": "แก้ไขหมวดหมู่",
   "category.delete": "ลบหมวดหมู่",
@@ -89,6 +97,9 @@ export function summarizeBranchPatch(
   if (typeof body.isHidden === "boolean") {
     parts.push(body.isHidden ? "ซ่อนสาขา" : "แสดงสาขา");
   }
+  if (typeof body.isTest === "boolean") {
+    parts.push(body.isTest ? "ตั้งเป็นสาขาทดลอง" : "ยกเลิกสาขาทดลอง");
+  }
   if (typeof body.allowAdvanceOrder === "boolean") {
     parts.push(
       body.allowAdvanceOrder ? "เปิดรับสั่งล่วงหน้า" : "ปิดรับสั่งล่วงหน้า",
@@ -98,6 +109,11 @@ export function summarizeBranchPatch(
     parts.push(
       body.autoAcceptOrders ? "เปิดรับออเดอร์อัตโนมัติ" : "ปิดรับออเดอร์อัตโนมัติ",
     );
+  }
+  if (body.operatingMode === "SKEWER") {
+    parts.push("ตั้งโหมดเสียบไม้");
+  } else if (body.operatingMode === "NORMAL") {
+    parts.push("ตั้งโหมดหมาล่าปกติ");
   }
   if (body.storefrontHours !== undefined) parts.push("แก้เวลาหน้าร้าน");
   if (body.deliveryHours !== undefined) parts.push("แก้เวลาเดลิเวอรี");

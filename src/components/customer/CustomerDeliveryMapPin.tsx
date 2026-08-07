@@ -13,6 +13,8 @@ type Props = {
   referencePin?: MapReferencePin | null;
   /** When false, skip auto GPS (e.g. restored saved pin) */
   autoLocate?: boolean;
+  /** Show “ใช้ตำแหน่งร้าน” button (default true) */
+  showUseReferencePin?: boolean;
 };
 
 export function CustomerDeliveryMapPin({
@@ -20,6 +22,7 @@ export function CustomerDeliveryMapPin({
   onChange,
   referencePin = null,
   autoLocate = true,
+  showUseReferencePin = true,
 }: Props) {
   const distanceLabel =
     hasMapPin(value) && referencePin && hasMapPin(referencePin)
@@ -49,6 +52,7 @@ export function CustomerDeliveryMapPin({
         hideAddressField
         enableMyLocation
         autoLocateOnMount={autoLocate && !hasMapPin(value)}
+        showUseReferencePin={showUseReferencePin}
         mapHeightClassName="h-56"
         addressLabel="ที่อยู่จากแผนที่"
       />

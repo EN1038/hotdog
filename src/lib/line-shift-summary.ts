@@ -79,11 +79,15 @@ export function formatShiftSummaryMessage(
       : meta?.branchName || null,
     dayLabel,
     summary.shift.code,
+    summary.shift.isCancelled ? "สถานะ: ยกเลิก" : null,
+    summary.shift.isCancelled && summary.shift.cancelNote
+      ? `เหตุผล: ${summary.shift.cancelNote}`
+      : null,
     `เปิด ${formatHm(summary.shift.openedAt)} – ปิด ${formatHm(summary.shift.closedAt)} น.`,
     "",
     `ออเดอร์ ${summary.orderCount.toLocaleString("th-TH")} รายการ`,
     summary.cancelledOrders > 0
-      ? `ยกเลิก ${summary.cancelledOrders.toLocaleString("th-TH")}`
+      ? `ยกเลิก ${summary.cancelledOrders.toLocaleString("th-TH")} · ฿${money(summary.cancelledRevenueBaht)} · คืนสต๊อก ${summary.stockRestoredQuantity || summary.cancelledItemQuantity} ชิ้น`
       : null,
     `เงินเริ่มต้น ฿${money(summary.shift.openingCash)}`,
     summary.shift.note ? `หมายเหตุ ${summary.shift.note}` : null,
@@ -95,6 +99,19 @@ export function formatShiftSummaryMessage(
       ? `ของแถม ${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`
       : null,
   ].filter((line) => line !== null);
+
+  const channelLines: string[] = [];
+  const channels = summary.channels ?? [];
+  if (channels.length === 0) {
+    channelLines.push("", "สรุปช่องทาง: ไม่มี");
+  } else {
+    channelLines.push("", "สรุปช่องทาง:");
+    for (const c of channels) {
+      channelLines.push(
+        `· ${c.label} ${c.orderCount} ออเดอร์ (฿${money(c.revenueBaht)})`,
+      );
+    }
+  }
 
   const menuLines: string[] = [];
   if (summary.menus.length === 0) {
@@ -111,7 +128,7 @@ export function formatShiftSummaryMessage(
     }
   }
 
-  let body = [...header, ...menuLines].join("\n");
+  let body = [...header, ...channelLines, ...menuLines].join("\n");
   if (body.length > LINE_TEXT_MAX) {
     body = body.slice(0, LINE_TEXT_MAX - 20) + "\n…(ตัดข้อความ)";
   }

@@ -46,7 +46,6 @@ export async function GET(request: Request) {
   }
 }
 
-/** POST — open a new staff sales round (requires opening cash). */
 export async function POST(request: Request) {
   try {
     const session = await requireStaff();
@@ -67,6 +66,11 @@ export async function POST(request: Request) {
       if (e instanceof ShiftGateError) {
         return jsonError(e.message, e.status);
       }
+      console.error(
+        "[staff/shifts POST] openShift failed",
+        session.branchId,
+        e instanceof Error ? e.message : e,
+      );
       throw e;
     }
   } catch (error) {

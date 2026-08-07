@@ -52,6 +52,15 @@ export type OrderCardData = {
   createdAt: string;
   createdByStaffId?: string | null;
   salesChannel?: SalesChannel | null;
+  cupSizeOz?: number | null;
+  cupCount?: number | null;
+  bagCount?: number | null;
+  consumableLines?: Array<{
+    id: string;
+    itemName: string;
+    quantity: number;
+    unit?: string | null;
+  }> | null;
   photoUrl?: string | null;
   awaitingPhotoKey?: boolean;
   promoSummary?: string | null;
@@ -315,6 +324,22 @@ export function OrderCard({
             />
           ) : null}
         </div>
+
+        {order.consumableLines && order.consumableLines.length > 0 ? (
+          <p className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-900">
+            {order.consumableLines
+              .map(
+                (l) =>
+                  `${l.itemName} × ${l.quantity}${l.unit ? ` ${l.unit}` : ""}`,
+              )
+              .join(" · ")}
+          </p>
+        ) : order.cupCount != null && order.cupCount > 0 ? (
+          <p className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-900">
+            แก้ว {order.cupSizeOz ?? "—"} ออนซ์ × {order.cupCount} · ถุง{" "}
+            {order.bagCount ?? order.cupCount} ใบ
+          </p>
+        ) : null}
 
         {order.note ? (
           <p className="mt-1.5 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs text-orange-800">

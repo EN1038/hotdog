@@ -16,15 +16,15 @@ function itemSortOf(item: StaffMenuOrderFields): number {
   return item.sortOrder ?? 0;
 }
 
-/** categorySortOrder → sortOrder → Thai name */
+/** sortOrder → categorySortOrder → Thai name */
 export function compareStaffMenuItems(
   a: StaffMenuOrderFields,
   b: StaffMenuOrderFields,
 ): number {
-  const cat = categorySortOf(a) - categorySortOf(b);
-  if (cat !== 0) return cat;
   const ord = itemSortOf(a) - itemSortOf(b);
   if (ord !== 0) return ord;
+  const cat = categorySortOf(a) - categorySortOf(b);
+  if (cat !== 0) return cat;
   return compareThaiText(a.name, b.name);
 }
 

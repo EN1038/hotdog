@@ -19,7 +19,9 @@ export async function GET(request: Request) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
-      include: {
+      select: {
+        id: true,
+        name: true,
         menuItems: {
           where: { isHidden: false, hideFromStaff: false },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
@@ -36,13 +38,36 @@ export async function GET(request: Request) {
             ...menuItemOptionGroupInclude,
           },
         },
-        deliveryLocations: { orderBy: { name: "asc" } },
+        branchNonMenuItems: {
+          where: { stockType: "CONSUMABLE", showOnKeyOrder: true },
+          orderBy: [{ keyOrderSortOrder: "asc" }, { name: "asc" }],
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            quantity: true,
+            imageUrl: true,
+          },
+        },
+        deliveryLocations: {
+          orderBy: { name: "asc" },
+          select: {
+            id: true,
+            name: true,
+            deliveryFee: true,
+            isCustomAddress: true,
+            address: true,
+            latitude: true,
+            longitude: true,
+          },
+        },
       },
     });
 
     if (!branch) {
       return jsonOk({
         menuItems: [],
+        consumables: [],
         deliveryLocations: [],
         channel,
       });
@@ -52,6 +77,7 @@ export async function GET(request: Request) {
       branchId: branch.id,
       branchName: branch.name,
       channel,
+      consumables: branch.branchNonMenuItems,
       menuItems: branch.menuItems.map((item) => {
         const flattened = flattenMenuItemOptionGroups(item);
         const stockQuantity = item.stock?.quantity ?? null;

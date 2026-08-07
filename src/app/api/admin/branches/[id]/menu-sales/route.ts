@@ -3,7 +3,10 @@ import { prisma } from "@/lib/db";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { bangkokDateKey } from "@/lib/branch-hours";
-import { queueBusinessDateFromKey } from "@/lib/constants";
+import {
+  isBangkokDateKey,
+  queueBusinessDateFromKey,
+} from "@/lib/constants";
 import { getCalendarDayState } from "@/lib/operating-day";
 import {
   BESTSELLER_MIN_QTY,
@@ -12,7 +15,6 @@ import {
 
 type Params = { params: Promise<{ id: string }> };
 
-const TREND_DAYS = 7;
 const TREND_SERIES_TOP = 5;
 
 function addDaysYmd(dateYmd: string, delta: number): string {
@@ -26,13 +28,21 @@ function dayLabelTh(dateYmd: string): string {
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
 }
 
-function buildDayWindow(endYmd: string, count: number) {
+function buildDayWindow(fromYmd: string, toYmd: string) {
   const days: { date: string; label: string }[] = [];
-  for (let i = count - 1; i >= 0; i -= 1) {
-    const date = addDaysYmd(endYmd, -i);
-    days.push({ date, label: dayLabelTh(date) });
+  let cur = fromYmd;
+  for (let i = 0; i < 93; i += 1) {
+    days.push({ date: cur, label: dayLabelTh(cur) });
+    if (cur >= toYmd) break;
+    cur = addDaysYmd(cur, 1);
   }
   return days;
+}
+
+function normalizeRange(fromRaw: string, toRaw: string) {
+  return fromRaw <= toRaw
+    ? { from: fromRaw, to: toRaw }
+    : { from: toRaw, to: fromRaw };
 }
 
 export async function GET(request: Request, { params }: Params) {
@@ -48,15 +58,32 @@ export async function GET(request: Request, { params }: Params) {
 
     const dayState = getCalendarDayState();
     const { searchParams } = new URL(request.url);
-    const date = searchParams.get("date")?.trim() || dayState.operatingDay;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return jsonError("รูปแบบวันที่ไม่ถูกต้อง (ใช้ YYYY-MM-DD)");
+    const fromParam = searchParams.get("from")?.trim();
+    const toParam = searchParams.get("to")?.trim();
+    const dateParam = searchParams.get("date")?.trim();
+
+    let from: string;
+    let to: string;
+    if (
+      fromParam &&
+      toParam &&
+      isBangkokDateKey(fromParam) &&
+      isBangkokDateKey(toParam)
+    ) {
+      ({ from, to } = normalizeRange(fromParam, toParam));
+    } else {
+      const date =
+        dateParam && isBangkokDateKey(dateParam)
+          ? dateParam
+          : dayState.operatingDay;
+      from = date;
+      to = date;
     }
 
     const includeTrend = searchParams.get("trend") !== "0";
-    const trendDays = buildDayWindow(date, TREND_DAYS);
+    const trendDays = buildDayWindow(from, to);
     const dayStart = queueBusinessDateFromKey(trendDays[0]!.date);
-    const dayEnd = queueBusinessDateFromKey(date);
+    const dayEnd = queueBusinessDateFromKey(to);
 
     const menuItems = await prisma.branchMenuItem.findMany({
       where: { branchId },
@@ -78,9 +105,7 @@ export async function GET(request: Request, { params }: Params) {
         order: {
           branchId,
           status: OrderStatus.COMPLETED,
-          queueBusinessDate: includeTrend
-            ? { gte: dayStart, lte: dayEnd }
-            : dayEnd,
+          queueBusinessDate: { gte: dayStart, lte: dayEnd },
         },
         ...(menuIds.length ? { branchMenuItemId: { in: menuIds } } : {}),
       },
@@ -103,7 +128,7 @@ export async function GET(request: Request, { params }: Params) {
     };
 
     const byMenu = new Map<string, MenuAgg>();
-    const dayOrderIds = new Set<string>();
+    const rangeOrderIds = new Set<string>();
 
     for (const row of orderItems) {
       if (!row.branchMenuItemId) continue;
@@ -122,11 +147,11 @@ export async function GET(request: Request, { params }: Params) {
       dayPrev.revenue += lineRev;
       prev.byDay.set(day, dayPrev);
 
-      if (day === date) {
+      if (day >= from && day <= to) {
         prev.quantity += row.quantity;
         prev.revenue += lineRev;
         prev.orderIds.add(row.orderId);
-        dayOrderIds.add(row.orderId);
+        rangeOrderIds.add(row.orderId);
       }
       byMenu.set(menuId, prev);
     }
@@ -173,7 +198,6 @@ export async function GET(request: Request, { params }: Params) {
       Math.round(items.reduce((s, i) => s + i.revenue, 0) * 100) / 100;
     const menusSold = items.filter((i) => i.quantity > 0).length;
 
-    // Trend series: top menus by qty over the whole window
     let trend: {
       days: { date: string; label: string }[];
       series: {
@@ -233,10 +257,12 @@ export async function GET(request: Request, { params }: Params) {
     }
 
     return jsonOk({
-      date,
+      from,
+      to,
+      date: to,
       operatingDay: dayState.operatingDay,
       summary: {
-        completedOrders: dayOrderIds.size,
+        completedOrders: rangeOrderIds.size,
         totalQty,
         menuRevenue,
         menusSold,

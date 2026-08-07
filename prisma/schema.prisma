@@ -54,6 +54,21 @@ enum PriceRange {
   OVER_1000
 }
 
+enum ExpensePaymentMode {
+  IMMEDIATE
+  SCHEDULED
+}
+
+enum ExpenseSchedule {
+  WEEKLY
+  MONTHLY
+}
+
+enum ExpensePayChannel {
+  CASH
+  TRANSFER
+}
+
 enum MenuPromoType {
   AMOUNT
   PERCENT
@@ -62,6 +77,18 @@ enum MenuPromoType {
 enum OptionGroupMode {
   MANUAL
   FROM_MENU
+}
+
+/// NORMAL = mala / queue storefront; SKEWER = skewer-prep orders only
+enum BranchOperatingMode {
+  NORMAL
+  SKEWER
+}
+
+enum SkewerOrderStatus {
+  PENDING_CONFIRM
+  CONFIRMED
+  CANCELLED
 }
 
 enum StockLocationType {
@@ -129,6 +156,18 @@ enum StockTransferKind {
   BRANCH_TO_BRANCH
 }
 
+enum KitchenProductionStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum BranchStockRequestStatus {
+  PENDING
+  FULFILLED
+  REJECTED
+  CANCELLED
+}
+
 model Admin {
   id                     String             @id @default(cuid())
   username               String             @unique
@@ -151,6 +190,10 @@ model Admin {
   stockTransfers         StockTransfer[]
   stockCounts            StockCount[]
   purchaseOrders         PurchaseOrder[]
+  branchExpenses         BranchExpense[]
+  kitchenProductions     KitchenProduction[]
+  stockRequestsHandled   BranchStockRequest[] @relation("StockRequestFulfilledBy")
+  confirmedSkewerOrders  SkewerOrder[]      @relation("SkewerOrderConfirmedByAdmin")
 
   @@index([lineLinkCode])
 }
@@ -188,9 +231,11 @@ model Brand {
   stockMovements     StockMovement[]
   stockTransfers     StockTransfer[]
   stockCounts        StockCount[]
-  suppliers          Supplier[]
-  purchaseOrders     PurchaseOrder[]
-  stockLots          StockLot[]
+  suppliers            Supplier[]
+  purchaseOrders       PurchaseOrder[]
+  stockLots            StockLot[]
+  kitchenProductions   KitchenProduction[]
+  branchStockRequests  BranchStockRequest[]
 }
 
 /**
@@ -333,6 +378,8 @@ model Branch {
   isOpen                       Boolean                      @default(true)
   /// Hidden from customer storefront; still visible in admin
   isHidden                     Boolean                      @default(false)
+  /// Sandbox / QA branch for the brand — show “ทดลอง” badge; not production ops
+  isTest                       Boolean                      @default(false)
   /**
    * @deprecated Prefer storefrontHours / deliveryHours
    */
@@ -347,6 +394,8 @@ model Branch {
   autoAcceptOrders             Boolean                      @default(false)
   /// Opt-in stock for this branch (requires brand.stockEnabled + brandId)
   stockEnabled                 Boolean                      @default(false)
+  /// NORMAL = mala queue storefront; SKEWER = skewer-prep ordering only
+  operatingMode                BranchOperatingMode          @default(NORMAL)
   /// Staff new-order alert sound (from platform library)
   alertSoundId                 String?
   createdAt                    DateTime                     @default(now())
@@ -358,6 +407,7 @@ model Branch {
   optionGroups                 BranchOptionGroup[]
   deliveryLocations            DeliveryLocation[]
   orders                       Order[]
+  skewerOrders                 SkewerOrder[]
   shifts                       BranchShift[]
   shareCodes                   BranchShareCode[]
   lineDailySummaries           LineDailySummaryLog[]
@@ -369,6 +419,8 @@ model Branch {
   branchMenuItemStocks         BranchMenuItemStock[]
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
   branchNonMenuItems           BranchNonMenuItem[]
+  expenses                     BranchExpense[]
+  stockRequests                BranchStockRequest[]
 
   @@unique([brandId, code])
   @@index([alertSoundId])
@@ -389,11 +441,16 @@ model BranchShift {
   openingCash     Decimal      @db.Decimal(10, 2)
   /// Optional note when opening the round (e.g. เงินทอนสำหรับเปิดร้าน)
   note            String?
+  /// Admin cancelled this shift (void/mistake) — still shown in history, not active
+  cancelledAt     DateTime?
+  /// Optional reason when admin cancels the shift
+  cancelNote      String?
   branch          Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   openedByStaff   Staff?       @relation("ShiftOpenedByStaff", fields: [openedByStaffId], references: [id], onDelete: SetNull)
   closedByStaff   Staff?       @relation("ShiftClosedByStaff", fields: [closedByStaffId], references: [id], onDelete: SetNull)
   orders          Order[]
   stockCounts     StockCount[]
+  expenses        BranchExpense[]
 
   @@unique([branchId, calendarDate, roundNumber])
   @@index([branchId, closedAt])
@@ -423,6 +480,8 @@ model Staff {
   stockCounts                  StockCount[]                 @relation("StockCountByStaff")
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
   branchNonMenuItemHistories   BranchNonMenuItemHistory[]
+  expenses                     BranchExpense[]
+  stockRequests                BranchStockRequest[]
 }
 
 model StaffRoleAssignment {
@@ -471,6 +530,7 @@ model BranchMenuItem {
   optionGroupLinks             BranchMenuItemOptionGroup[]
   optionGroupMenuSources       BranchOptionGroupMenuItem[]
   orderItems                   OrderItem[]
+  skewerOrderItems             SkewerOrderItem[]
   stock                        BranchMenuItemStock?
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
 
@@ -498,6 +558,11 @@ model BranchMenuItemStockHistory {
   type             String // "ADJUST", "SALE", "RESTOCK", "ISSUE"
   note             String?
   imageUrl         String?
+  /// Groups lines from one staff submit (รับเข้า / จ่ายออก)
+  batchId          String?
+  /// When set, this line was cancelled (stock effect reversed)
+  cancelledAt      DateTime?
+  cancelNote       String?
   createdAt        DateTime @default(now())
   createdByStaffId String?
 
@@ -507,6 +572,8 @@ model BranchMenuItemStockHistory {
 
   @@index([branchId])
   @@index([menuItemId])
+  @@index([batchId])
+  @@index([branchId, type, createdAt])
 }
 
 model MenuCategory {
@@ -606,11 +673,12 @@ model DeliveryLocation {
 }
 
 model Customer {
-  id        String   @id @default(cuid())
-  phone     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  orders    Order[]
+  id           String        @id @default(cuid())
+  phone        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  orders       Order[]
+  skewerOrders SkewerOrder[]
 }
 
 /// Pending Taximail OTP challenge for customer phone login
@@ -651,6 +719,12 @@ model Order {
   note               String?
   /// Snapshot of applied cart promo, e.g. "โปร 10+1 (−฿15)"
   promoSummary       String?
+  /// Staff storefront packaging: cup size in oz (22 / 32)
+  cupSizeOz          Int?
+  /// Number of cups used for this order
+  cupCount           Int?
+  /// Number of bags (usually equals cupCount)
+  bagCount           Int?
   paymentMethod      PaymentMethod     @default(CASH)
   /// Staff-selected channel; customer online orders are always ORDER_CUSTOMER
   salesChannel       SalesChannel      @default(STOREFRONT)
@@ -678,12 +752,57 @@ model Order {
   createdByStaff     Staff?            @relation("OrderCreatedByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
   shift              BranchShift?      @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   items              OrderItem[]
+  consumableLines    OrderConsumableLine[]
   stockMovements     StockMovement[]
 
   @@unique([branchId, queueBusinessDate, queueNumber])
   @@index([branchId, queueBusinessDate])
   @@index([branchId, awaitingPhotoKey])
   @@index([shiftId])
+}
+
+/// Customer skewer-prep request (branch operatingMode = SKEWER); no queue/shift/price in v1
+model SkewerOrder {
+  id                   String            @id @default(cuid())
+  orderNumber          String            @unique
+  branchId             String
+  customerId           String
+  customerPhone        String            @default("")
+  customerName         String            @default("")
+  /// Calendar date the customer wants the skewers (Bangkok date stored as Date)
+  requestedDate        DateTime          @db.Date
+  addressText          String
+  latitude             Float?
+  longitude            Float?
+  note                 String?
+  status               SkewerOrderStatus @default(PENDING_CONFIRM)
+  adminNote            String?
+  confirmedAt          DateTime?
+  confirmedByAdminId   String?
+  cancelReason         String?
+  cancelledAt          DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  branch               Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer             Customer          @relation(fields: [customerId], references: [id])
+  confirmedByAdmin     Admin?            @relation("SkewerOrderConfirmedByAdmin", fields: [confirmedByAdminId], references: [id], onDelete: SetNull)
+  items                SkewerOrderItem[]
+
+  @@index([branchId, status, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model SkewerOrderItem {
+  id                 String          @id @default(cuid())
+  skewerOrderId      String
+  branchMenuItemId   String?
+  itemName           String
+  requestedQuantity  Int
+  confirmedQuantity  Int?
+  skewerOrder        SkewerOrder     @relation(fields: [skewerOrderId], references: [id], onDelete: Cascade)
+  branchMenuItem     BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
+
+  @@index([skewerOrderId])
 }
 
 model OrderItem {
@@ -732,8 +851,11 @@ model BrandProduct {
   countLines         StockCountLine[]
   lots               StockLot[]
   purchaseOrderLines PurchaseOrderLine[]
-  recipeLines        ProductRecipeLine[] @relation("RecipeParent")
-  usedInRecipes      ProductRecipeLine[] @relation("RecipeComponent")
+  recipeLines          ProductRecipeLine[] @relation("RecipeParent")
+  usedInRecipes        ProductRecipeLine[] @relation("RecipeComponent")
+  kitchenProductions   KitchenProduction[]
+  kitchenComponents    KitchenProductionComponent[]
+  branchStockRequests  BranchStockRequest[]
 
   @@unique([brandId, name])
   @@index([brandId, stockType])
@@ -757,6 +879,7 @@ model StockLocation {
   counts         StockCount[]
   lots           StockLot[]
   purchaseOrders PurchaseOrder[]
+  kitchenProductions KitchenProduction[]
 
   @@unique([branchId])
   @@index([brandId, type])
@@ -996,6 +1119,76 @@ model ProductRecipeLine {
   @@index([componentProductId])
 }
 
+/// Kitchen prep run: raw materials → finished skewers/sale items at warehouse
+model KitchenProduction {
+  id                  String                   @id @default(cuid())
+  brandId             String
+  stockLocationId     String
+  finishedProductId   String
+  /// Usable finished units added to warehouse stock
+  quantityProduced    Int
+  /// Finished units damaged during prep (not stocked)
+  quantityWasted      Int                      @default(0)
+  status              KitchenProductionStatus  @default(COMPLETED)
+  note                String?
+  lotNumber           String?
+  completedAt         DateTime                 @default(now())
+  createdByAdminId    String?
+  createdAt           DateTime                 @default(now())
+  brand               Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  location            StockLocation            @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
+  finishedProduct     BrandProduct             @relation(fields: [finishedProductId], references: [id], onDelete: Restrict)
+  createdByAdmin      Admin?                   @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  components          KitchenProductionComponent[]
+
+  @@index([brandId, completedAt])
+  @@index([finishedProductId, completedAt])
+  @@index([status, completedAt])
+}
+
+model KitchenProductionComponent {
+  id               String             @id @default(cuid())
+  productionId     String
+  brandProductId   String
+  /// Planned from recipe × (produced + waste)
+  quantityPlanned  Int
+  /// Actually deducted
+  quantityUsed     Int
+  production       KitchenProduction  @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  product          BrandProduct       @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
+
+  @@unique([productionId, brandProductId])
+  @@index([brandProductId])
+}
+
+/// Branch asks kitchen/HQ for finished goods before production/shipping
+model BranchStockRequest {
+  id                 String                   @id @default(cuid())
+  brandId            String
+  branchId           String
+  brandProductId     String
+  quantityRequested  Int
+  quantityFulfilled  Int                      @default(0)
+  status             BranchStockRequestStatus @default(PENDING)
+  note               String?
+  adminNote          String?
+  requestedByStaffId String?
+  fulfilledByAdminId String?
+  transferId         String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  fulfilledAt        DateTime?
+  brand              Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  branch             Branch                   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product            BrandProduct             @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
+  requestedByStaff   Staff?                   @relation(fields: [requestedByStaffId], references: [id], onDelete: SetNull)
+  fulfilledByAdmin   Admin?                   @relation("StockRequestFulfilledBy", fields: [fulfilledByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([brandId, status, createdAt])
+  @@index([branchId, status, createdAt])
+  @@index([brandProductId])
+}
+
 model BranchNonMenuItem {
   id          String   @id @default(cuid())
   branchId    String
@@ -1006,13 +1199,35 @@ model BranchNonMenuItem {
   imageUrl    String?
   stockType   String   // "CONSUMABLE" | "EQUIPMENT"
   quantity    Int      @default(0)
+  /// Show on staff key-order “เลือกสินค้าสิ้นเปลือง”
+  showOnKeyOrder Boolean @default(false)
+  /// Sort among key-order consumables (lower first)
+  keyOrderSortOrder Int @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
   histories   BranchNonMenuItemHistory[]
+  orderLines  OrderConsumableLine[]
 
   @@index([branchId])
+  @@index([branchId, showOnKeyOrder])
+}
+
+/// Consumables (cups/bags/etc.) used on a staff order — deducted from BranchNonMenuItem
+model OrderConsumableLine {
+  id                  String @id @default(cuid())
+  orderId             String
+  branchNonMenuItemId String
+  /// Snapshot name at order time
+  itemName            String
+  quantity            Int
+  unit                String @default("ใบ")
+  order               Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item                BranchNonMenuItem @relation(fields: [branchNonMenuItemId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([branchNonMenuItemId])
 }
 
 model BranchNonMenuItemHistory {
@@ -1022,6 +1237,10 @@ model BranchNonMenuItemHistory {
   type                String   // "ADJUST", "STOCK_IN", "ISSUE"
   note                String?
   imageUrl            String?
+  /// Groups lines from one staff submit (รับเข้า / จ่ายออก)
+  batchId             String?
+  cancelledAt         DateTime?
+  cancelNote          String?
   createdAt           DateTime @default(now())
   createdByStaffId    String?
 
@@ -1029,4 +1248,36 @@ model BranchNonMenuItemHistory {
   createdByStaff      Staff?            @relation(fields: [createdByStaffId], references: [id], onDelete: SetNull)
 
   @@index([branchNonMenuItemId])
+  @@index([batchId])
+  @@index([type, createdAt])
+}
+
+/// Branch operating expense (cash out) — separate from stock movements
+model BranchExpense {
+  id               String             @id @default(cuid())
+  branchId         String
+  shiftId          String?
+  title            String
+  amount           Decimal            @db.Decimal(12, 2)
+  /// @deprecated kept for existing rows; new records use IMMEDIATE
+  paymentMode      ExpensePaymentMode @default(IMMEDIATE)
+  schedule         ExpenseSchedule?
+  payChannel       ExpensePayChannel  @default(CASH)
+  /// Bangkok calendar date of the expense
+  expenseDate      DateTime           @db.Date
+  note             String?
+  createdByStaffId String?
+  createdByAdminId String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  branch           Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shift            BranchShift?       @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  createdByStaff   Staff?             @relation(fields: [createdByStaffId], references: [id], onDelete: SetNull)
+  createdByAdmin   Admin?             @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, expenseDate])
+  @@index([branchId, payChannel])
+  @@index([createdByStaffId])
+  @@index([createdByAdminId])
 }

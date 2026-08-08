@@ -10,4 +10,6 @@ export type LineSettingsPublic = {
   webhookUrl: string;
   linkedStaffCount: number;
   linkedAdminCount: number;
+  adminRichMenuId: string | null;
+  guestRichMenuId: string | null;
 };

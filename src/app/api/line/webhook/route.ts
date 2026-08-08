@@ -6,7 +6,9 @@ import {
   tryLinkLineAccountFromMessage,
   verifyLineWebhookSignature,
 } from "@/lib/line";
+import { tryHandleLineAdminPostback } from "@/lib/line-admin-menu";
 import { tryHandleLineOrderDelete } from "@/lib/line-order-delete";
+import type { LineReplyPayload } from "@/lib/line-postback";
 
 export const runtime = "nodejs";
 
@@ -15,16 +17,23 @@ type LineEvent = {
   replyToken?: string;
   source?: { type?: string; userId?: string };
   message?: { type?: string; text?: string };
+  postback?: { data?: string };
 };
 
 type LineWebhookBody = {
   events?: LineEvent[];
 };
 
+async function replyPayload(replyToken: string, payload: LineReplyPayload) {
+  await lineReplyText(replyToken, payload.text, {
+    quickReply: payload.quickReply,
+  });
+}
+
 /**
  * LINE Messaging API webhook.
  * Staff link by phone; brand admins link by 6-digit code.
- * Linked admins may hard-delete orders: `ลบ A1048` → confirm with `ยืนยัน`.
+ * Linked admins: rich menu postbacks + hard-delete confirm flow.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -55,6 +64,17 @@ export async function POST(request: Request) {
       continue;
     }
 
+    if (event.type === "postback" && event.replyToken && event.postback?.data) {
+      const result = await tryHandleLineAdminPostback(
+        userId,
+        event.postback.data,
+      );
+      if (result.handled) {
+        await replyPayload(event.replyToken, result.reply);
+      }
+      continue;
+    }
+
     if (
       event.type === "message" &&
       event.message?.type === "text" &&
@@ -66,7 +86,7 @@ export async function POST(request: Request) {
         event.message.text,
       );
       if (deleteResult.handled) {
-        await lineReplyText(event.replyToken, deleteResult.reply);
+        await replyPayload(event.replyToken, deleteResult.reply);
         continue;
       }
 

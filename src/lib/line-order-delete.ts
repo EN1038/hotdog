@@ -15,19 +15,28 @@ import {
 } from "@/lib/order-hard-delete";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { orderGrandTotal } from "@/lib/order-totals";
+import {
+  LINE_POSTBACK,
+  type LineReplyPayload,
+} from "@/lib/line-postback";
 
 export const LINE_DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
 export const LINE_DELETE_CONFIRM_KEYWORD = "ยืนยัน";
 
 const DELETE_COMMAND_RE = /^ลบ\s*#?([A-Za-z]\d{4})\s*$/i;
+const BARE_ORDER_RE = /^#?([A-Za-z]\d{4})$/i;
 const CONFIRM_RE = /^(ยืนยัน|ยืนยันลบ|ใช่)$/i;
+const EXIT_MODE_RE = /^(ยกเลิกโหมด|ออกโหมด|exit)$/i;
 
-type LinkedAdmin = {
+export type LinkedAdmin = {
   id: string;
   username: string;
   isPlatformAdmin: boolean;
+  lineNotifyEnabled: boolean;
+  lineNotifyDailySummary: boolean;
   linePendingDeleteOrderId: string | null;
   linePendingDeleteExpiresAt: Date | null;
+  lineDeleteModeExpiresAt: Date | null;
   brandMembers: Array<{ role: string; brandId: string }>;
 };
 
@@ -60,7 +69,7 @@ function canAdminDeleteBranchOrder(
   );
 }
 
-async function findLinkedAdmin(
+export async function findLinkedAdmin(
   lineUserId: string,
 ): Promise<LinkedAdmin | null> {
   return prisma.admin.findFirst({
@@ -69,8 +78,11 @@ async function findLinkedAdmin(
       id: true,
       username: true,
       isPlatformAdmin: true,
+      lineNotifyEnabled: true,
+      lineNotifyDailySummary: true,
       linePendingDeleteOrderId: true,
       linePendingDeleteExpiresAt: true,
+      lineDeleteModeExpiresAt: true,
       brandMembers: {
         select: { role: true, brandId: true },
       },
@@ -78,7 +90,7 @@ async function findLinkedAdmin(
   });
 }
 
-async function clearPendingDelete(adminId: string) {
+export async function clearPendingDelete(adminId: string) {
   await prisma.admin.update({
     where: { id: adminId },
     data: {
@@ -86,6 +98,21 @@ async function clearPendingDelete(adminId: string) {
       linePendingDeleteExpiresAt: null,
     },
   });
+}
+
+function deleteConfirmQuickReply() {
+  return [
+    {
+      label: "ยืนยันลบ",
+      data: LINE_POSTBACK.DELETE_CONFIRM,
+      displayText: "ยืนยัน",
+    },
+    {
+      label: "ยกเลิก",
+      data: LINE_POSTBACK.DELETE_CANCEL,
+      displayText: "ยกเลิก",
+    },
+  ];
 }
 
 function formatOrderPreview(order: {
@@ -146,17 +173,17 @@ function formatOrderPreview(order: {
     "",
     `รวม ฿${formatPrice(total)}`,
     "",
-    `พิมพ์ "${LINE_DELETE_CONFIRM_KEYWORD}" เพื่อลบถาวร`,
-    "พิมพ์อย่างอื่น = ยกเลิก",
+    "กดปุ่มด้านล่าง หรือพิมพ์ ยืนยัน",
+    "กดยกเลิก / พิมพ์อย่างอื่น = ยกเลิก",
   ]
     .filter((l) => l !== null)
     .join("\n");
 }
 
-async function startDeletePreview(
+export async function startDeletePreview(
   admin: LinkedAdmin,
   orderNumber: string,
-): Promise<string> {
+): Promise<LineReplyPayload> {
   const order = await prisma.order.findUnique({
     where: { orderNumber },
     include: {
@@ -175,11 +202,11 @@ async function startDeletePreview(
   });
 
   if (!order) {
-    return `ไม่พบออเดอร์ #${orderNumber}`;
+    return { text: `ไม่พบออเดอร์ #${orderNumber}` };
   }
 
   if (!canAdminDeleteBranchOrder(admin, order.branch.brandId)) {
-    return `ไม่มีสิทธิ์ลบออเดอร์สาขา ${order.branch.name}`;
+    return { text: `ไม่มีสิทธิ์ลบออเดอร์สาขา ${order.branch.name}` };
   }
 
   await prisma.admin.update({
@@ -192,15 +219,20 @@ async function startDeletePreview(
     },
   });
 
-  return formatOrderPreview(order);
+  return {
+    text: formatOrderPreview(order),
+    quickReply: deleteConfirmQuickReply(),
+  };
 }
 
-async function confirmPendingDelete(admin: LinkedAdmin): Promise<string> {
+export async function confirmPendingDelete(
+  admin: LinkedAdmin,
+): Promise<LineReplyPayload> {
   const orderId = admin.linePendingDeleteOrderId;
   const expiresAt = admin.linePendingDeleteExpiresAt;
   if (!orderId || !expiresAt || expiresAt.getTime() < Date.now()) {
     await clearPendingDelete(admin.id);
-    return "คำขอลบหมดอายุแล้ว\nพิมพ์ใหม่ เช่น ลบ A1048";
+    return { text: "คำขอลบหมดอายุแล้ว\nพิมพ์ใหม่ เช่น A1048 หรือ ลบ A1048" };
   }
 
   const order = await prisma.order.findUnique({
@@ -215,12 +247,12 @@ async function confirmPendingDelete(admin: LinkedAdmin): Promise<string> {
 
   if (!order) {
     await clearPendingDelete(admin.id);
-    return "ไม่พบออเดอร์แล้ว (อาจถูกลบไปก่อนหน้า)";
+    return { text: "ไม่พบออเดอร์แล้ว (อาจถูกลบไปก่อนหน้า)" };
   }
 
   if (!canAdminDeleteBranchOrder(admin, order.branch.brandId)) {
     await clearPendingDelete(admin.id);
-    return `ไม่มีสิทธิ์ลบออเดอร์สาขา ${order.branch.name}`;
+    return { text: `ไม่มีสิทธิ์ลบออเดอร์สาขา ${order.branch.name}` };
   }
 
   try {
@@ -249,33 +281,48 @@ async function confirmPendingDelete(admin: LinkedAdmin): Promise<string> {
       },
     });
 
-    return [
-      "ลบออเดอร์ถาวรแล้ว",
-      `คิว ${formatQueueNumber(snapshot.queueNumber)} · #${snapshot.orderNumber}`,
-      ctx?.name ? `สาขา ${ctx.name}` : null,
-      snapshot.stockDeducted ? "คืนสต๊อกแล้ว" : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    return {
+      text: [
+        "ลบออเดอร์ถาวรแล้ว",
+        `คิว ${formatQueueNumber(snapshot.queueNumber)} · #${snapshot.orderNumber}`,
+        ctx?.name ? `สาขา ${ctx.name}` : null,
+        snapshot.stockDeducted ? "คืนสต๊อกแล้ว" : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    };
   } catch (err) {
     await clearPendingDelete(admin.id);
     if (err instanceof OrderHardDeleteError) {
-      return `ลบไม่สำเร็จ: ${err.message}`;
+      return { text: `ลบไม่สำเร็จ: ${err.message}` };
     }
     console.error("[line] order delete failed", err);
-    return "ลบไม่สำเร็จ กรุณาลองใหม่จากหน้าแอดมิน";
+    return { text: "ลบไม่สำเร็จ กรุณาลองใหม่จากหน้าแอดมิน" };
   }
 }
 
+export function isDeleteModeActive(admin: LinkedAdmin): boolean {
+  return (
+    Boolean(admin.lineDeleteModeExpiresAt) &&
+    (admin.lineDeleteModeExpiresAt?.getTime() ?? 0) >= Date.now()
+  );
+}
+
+export function isPendingDeleteActive(admin: LinkedAdmin): boolean {
+  return (
+    Boolean(admin.linePendingDeleteOrderId) &&
+    Boolean(admin.linePendingDeleteExpiresAt) &&
+    (admin.linePendingDeleteExpiresAt?.getTime() ?? 0) >= Date.now()
+  );
+}
+
 /**
- * Admin-only LINE hard-delete:
- * 1) `ลบ A1048` → preview + wait for confirm
- * 2) `ยืนยัน` → delete; anything else cancels pending
+ * Admin-only LINE hard-delete text flow.
  */
 export async function tryHandleLineOrderDelete(
   lineUserId: string,
   rawText: string,
-): Promise<{ handled: boolean; reply: string }> {
+): Promise<{ handled: boolean; reply: LineReplyPayload }> {
   const text = rawText.trim();
   const deleteMatch = text.match(DELETE_COMMAND_RE);
   const admin = await findLinkedAdmin(lineUserId);
@@ -285,8 +332,10 @@ export async function tryHandleLineOrderDelete(
     if (!admin) {
       return {
         handled: true,
-        reply:
-          "คำสั่งลบออเดอร์ใช้ได้เฉพาะแอดมินที่เชื่อม LINE แล้ว\nเข้าแอดมิน → เชื่อม LINE",
+        reply: {
+          text:
+            "คำสั่งลบออเดอร์ใช้ได้เฉพาะแอดมินที่เชื่อม LINE แล้ว\nเข้าแอดมิน → เชื่อม LINE",
+        },
       };
     }
     const reply = await startDeletePreview(admin, orderNumber);
@@ -294,29 +343,67 @@ export async function tryHandleLineOrderDelete(
   }
 
   if (!admin) {
-    return { handled: false, reply: "" };
+    return { handled: false, reply: { text: "" } };
   }
 
-  const pendingActive =
-    Boolean(admin.linePendingDeleteOrderId) &&
-    Boolean(admin.linePendingDeleteExpiresAt) &&
-    (admin.linePendingDeleteExpiresAt?.getTime() ?? 0) >= Date.now();
+  if (EXIT_MODE_RE.test(text)) {
+    await prisma.admin.update({
+      where: { id: admin.id },
+      data: {
+        lineDeleteModeExpiresAt: null,
+        linePendingDeleteOrderId: null,
+        linePendingDeleteExpiresAt: null,
+      },
+    });
+    return { handled: true, reply: { text: "ออกจากโหมดลบแล้ว" } };
+  }
 
-  if (!pendingActive) {
-    if (admin.linePendingDeleteOrderId) {
-      await clearPendingDelete(admin.id);
+  if (isPendingDeleteActive(admin)) {
+    if (CONFIRM_RE.test(text)) {
+      return {
+        handled: true,
+        reply: await confirmPendingDelete(admin),
+      };
     }
-    return { handled: false, reply: "" };
+    const bareWhilePending = text.match(BARE_ORDER_RE);
+    if (bareWhilePending) {
+      const reply = await startDeletePreview(
+        admin,
+        bareWhilePending[1]!.toUpperCase(),
+      );
+      return { handled: true, reply };
+    }
+    await clearPendingDelete(admin.id);
+    return {
+      handled: true,
+      reply: { text: "ยกเลิกการลบออเดอร์แล้ว" },
+    };
   }
 
-  if (CONFIRM_RE.test(text)) {
-    const reply = await confirmPendingDelete(admin);
-    return { handled: true, reply };
+  if (admin.linePendingDeleteOrderId) {
+    await clearPendingDelete(admin.id);
   }
 
-  await clearPendingDelete(admin.id);
-  return {
-    handled: true,
-    reply: "ยกเลิกการลบออเดอร์แล้ว",
-  };
+  if (isDeleteModeActive(admin)) {
+    const bare = text.match(BARE_ORDER_RE);
+    if (bare) {
+      const reply = await startDeletePreview(admin, bare[1]!.toUpperCase());
+      return { handled: true, reply };
+    }
+    return {
+      handled: true,
+      reply: {
+        text: "โหมดลบเปิดอยู่ — พิมพ์เลขที่ออเดอร์ เช่น A1048\nหรือพิมพ์ ยกเลิกโหมด เพื่อออก",
+      },
+    };
+  }
+
+  if (admin.lineDeleteModeExpiresAt) {
+    await prisma.admin.update({
+      where: { id: admin.id },
+      data: { lineDeleteModeExpiresAt: null },
+    });
+  }
+
+  return { handled: false, reply: { text: "" } };
 }

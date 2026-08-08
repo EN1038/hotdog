@@ -37,6 +37,7 @@ export default function AdminLinePage() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [summaryTesting, setSummaryTesting] = useState(false);
+  const [richMenuBusy, setRichMenuBusy] = useState(false);
   const [settings, setSettings] = useState<LineSettingsPublic | null>(null);
   const [token, setToken] = useState("");
   const [secret, setSecret] = useState("");
@@ -247,6 +248,48 @@ export default function AdminLinePage() {
     }
   }
 
+  async function deployRichMenu() {
+    setRichMenuBusy(true);
+    try {
+      const res = await fetch("/api/admin/line-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deployRichMenu: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "สร้างเมนูไม่สำเร็จ");
+      if (data.settings) setSettings(data.settings as LineSettingsPublic);
+      const linked = data.richMenu?.linkedAdmins ?? 0;
+      toast.success("สร้างเมนูแอดมินแล้ว", `ลิงก์ให้แอดมิน ${linked} คน`);
+      if (Array.isArray(data.richMenu?.errors) && data.richMenu.errors.length) {
+        toast.error("บางคนลิงก์ไม่สำเร็จ", String(data.richMenu.errors[0]));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "สร้างเมนูไม่สำเร็จ");
+    } finally {
+      setRichMenuBusy(false);
+    }
+  }
+
+  async function relinkRichMenu() {
+    setRichMenuBusy(true);
+    try {
+      const res = await fetch("/api/admin/line-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkRichMenu: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "ลิงก์เมนูไม่สำเร็จ");
+      const linked = data.richMenuLink?.linked ?? 0;
+      toast.success("ลิงก์เมนูแล้ว", `${linked} แอดมิน`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "ลิงก์เมนูไม่สำเร็จ");
+    } finally {
+      setRichMenuBusy(false);
+    }
+  }
+
   if (!sessionLoaded || loading || !settings) {
     return <AdminLoadingState />;
   }
@@ -403,6 +446,61 @@ export default function AdminLinePage() {
           {saving ? "กำลังบันทึก..." : "บันทึก Channel"}
         </button>
       </form>
+
+      <section className={`${adminCardClass} space-y-4`}>
+        <h2 className="text-base font-semibold text-slate-900">
+          เมนูแอดมิน (Rich Menu)
+        </h2>
+        <p className="text-sm text-slate-600">
+          สร้าง 2 เมนู: <strong>เมนูทั่วไป</strong> (เข้าสู่ระบบ / ช่วยเหลือ)
+          เป็นค่าเริ่มต้นทั้ง OA และ <strong>เมนูแอดมิน</strong>{" "}
+          (แจ้งเตือน / โหมดลบ / ดูข้อมูล / ออกจากระบบ) ให้เฉพาะแอดมินที่เชื่อมแล้ว
+        </p>
+        <ul className="space-y-1 text-sm text-slate-700">
+          <li>
+            เมนูแอดมิน:{" "}
+            <strong>
+              {settings.adminRichMenuId ? "สร้างแล้ว" : "ยังไม่สร้าง"}
+            </strong>
+          </li>
+          <li>
+            เมนูเข้าสู่ระบบ:{" "}
+            <strong>
+              {settings.guestRichMenuId ? "สร้างแล้ว" : "ยังไม่สร้าง"}
+            </strong>
+          </li>
+          {settings.adminRichMenuId ? (
+            <li className="break-all text-xs text-slate-500">
+              admin: {settings.adminRichMenuId}
+            </li>
+          ) : null}
+          {settings.guestRichMenuId ? (
+            <li className="break-all text-xs text-slate-500">
+              guest: {settings.guestRichMenuId}
+            </li>
+          ) : null}
+        </ul>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={richMenuBusy || !settings.configured}
+            onClick={() => void deployRichMenu()}
+            className={btnPrimary}
+          >
+            {richMenuBusy ? "กำลังทำงาน…" : "สร้าง / อัปเดตเมนู LINE"}
+          </button>
+          <button
+            type="button"
+            disabled={
+              richMenuBusy || !settings.configured || !settings.adminRichMenuId
+            }
+            onClick={() => void relinkRichMenu()}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            ลิงก์เมนูแอดมินให้ทุกคนที่เชื่อมแล้ว
+          </button>
+        </div>
+      </section>
 
       <section className={`${adminCardClass} space-y-4`}>
         <h2 className="text-base font-semibold text-slate-900">การแจ้งเตือน</h2>

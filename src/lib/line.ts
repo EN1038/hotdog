@@ -324,6 +324,7 @@ export async function tryLinkAdminByLinkCodeMessage(
       brandMembers: {
         select: {
           role: true,
+          brandId: true,
           brand: { select: { name: true } },
         },
       },
@@ -381,6 +382,25 @@ export async function tryLinkAdminByLinkCodeMessage(
   const brandLine =
     brandNames.slice(0, 3).join(", ") +
     (brandNames.length > 3 ? ` และอีก ${brandNames.length - 3}` : "");
+
+  const { logLineAdminActivity } = await import("@/lib/line-activity");
+  await logLineAdminActivity(
+    {
+      id: admin.id,
+      username: admin.username,
+      isPlatformAdmin: admin.isPlatformAdmin,
+      brandMembers: brandRoles.map((m) => ({
+        role: m.role,
+        brandId: m.brandId,
+        brand: m.brand,
+      })),
+    },
+    {
+      action: "line.link",
+      summary: `เชื่อม LINE สำเร็จ — ${admin.username} · ${brandLine}`,
+      metadata: { source: "line_chat_code" },
+    },
+  );
 
   return {
     linked: true,

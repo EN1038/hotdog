@@ -8,6 +8,10 @@ import {
   linePushText,
 } from "@/lib/line";
 import { runLineDailySummaries } from "@/lib/line-daily-summary";
+import {
+  deployLineRichMenus,
+  linkAdminRichMenuToAllLinkedAdmins,
+} from "@/lib/line-rich-menu";
 
 const patchSchema = z.object({
   channelAccessToken: z.string().optional(),
@@ -29,6 +33,10 @@ const testSchema = z.object({
   branchId: z.string().min(1).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   force: z.boolean().optional(),
+  /** Create/upload admin rich menu and link to all linked admins */
+  deployRichMenu: z.boolean().optional(),
+  /** Re-link existing rich menu to all linked admins */
+  linkRichMenu: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -108,8 +116,37 @@ export async function PATCH(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await requirePlatformAdmin();
+    const session = await requirePlatformAdmin();
     const body = testSchema.parse(await request.json());
+
+    if (body.deployRichMenu) {
+      const result = await deployLineRichMenus();
+      await logAdminActivity(session, {
+        action: "line.update",
+        summary: `สร้างเมนู LINE แอดมิน/เข้าสู่ระบบ · ลิงก์แอดมิน ${result.linkedAdmins} คน`,
+        metadata: {
+          adminRichMenuId: result.adminRichMenuId,
+          guestRichMenuId: result.guestRichMenuId,
+          linkedAdmins: result.linkedAdmins,
+          errors: result.errors.slice(0, 10),
+        },
+      });
+      return jsonOk({
+        ok: true,
+        richMenu: {
+          richMenuId: result.adminRichMenuId,
+          guestRichMenuId: result.guestRichMenuId,
+          linkedAdmins: result.linkedAdmins,
+          errors: result.errors,
+        },
+        settings: await getLineSettingsPublic(),
+      });
+    }
+
+    if (body.linkRichMenu) {
+      const result = await linkAdminRichMenuToAllLinkedAdmins();
+      return jsonOk({ ok: true, richMenuLink: result });
+    }
 
     if (body.dailySummary) {
       const result = await runLineDailySummaries({

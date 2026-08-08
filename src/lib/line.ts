@@ -26,6 +26,8 @@ export async function getLineSettingsPublic(): Promise<LineSettingsPublic> {
       lineMessagingEnabled: true,
       lineNotifyStaffOnNewOrder: true,
       lineNotifyBrandDailySummary: true,
+      lineAdminRichMenuId: true,
+      lineGuestRichMenuId: true,
     },
   });
 
@@ -68,6 +70,8 @@ export async function getLineSettingsPublic(): Promise<LineSettingsPublic> {
     webhookUrl: appAbsoluteUrl("/api/line/webhook"),
     linkedStaffCount,
     linkedAdminCount,
+    adminRichMenuId: row?.lineAdminRichMenuId ?? null,
+    guestRichMenuId: row?.lineGuestRichMenuId ?? null,
   };
 }
 
@@ -165,19 +169,86 @@ export async function linePushText(lineUserId: string, text: string) {
   return { ok: true as const };
 }
 
-export async function lineReplyText(replyToken: string, text: string) {
+export type LineReplyOptions = {
+  quickReply?: Array<{ label: string; data: string; displayText?: string }>;
+};
+
+export async function lineReplyText(
+  replyToken: string,
+  text: string,
+  options?: LineReplyOptions,
+) {
   const creds = await getLineCredentials();
   if (!creds) {
     return { ok: false as const, error: "ยังไม่ได้ตั้งค่า LINE Channel" };
   }
+  const message: Record<string, unknown> = { type: "text", text };
+  if (options?.quickReply?.length) {
+    message.quickReply = {
+      items: options.quickReply.slice(0, 13).map((item) => ({
+        type: "action",
+        action: {
+          type: "postback",
+          label: item.label.slice(0, 20),
+          data: item.data.slice(0, 300),
+          displayText: (item.displayText ?? item.label).slice(0, 300),
+        },
+      })),
+    };
+  }
   const result = await lineApiPost(LINE_REPLY_URL, creds.accessToken, {
     replyToken,
-    messages: [{ type: "text", text }],
+    messages: [message],
   });
   if (!result.ok) {
     return { ok: false as const, error: result.error ?? "ตอบกลับไม่สำเร็จ" };
   }
   return { ok: true as const };
+}
+
+export async function linkRichMenuToUser(
+  lineUserId: string,
+  richMenuId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const creds = await getLineCredentials();
+  if (!creds) return { ok: false, error: "ยังไม่ได้ตั้งค่า LINE Channel" };
+  const res = await fetch(
+    `https://api.line.me/v2/bot/user/${encodeURIComponent(lineUserId)}/richmenu/${encodeURIComponent(richMenuId)}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.accessToken}` },
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return {
+      ok: false,
+      error: text.slice(0, 300) || `LINE rich menu link ${res.status}`,
+    };
+  }
+  return { ok: true };
+}
+
+export async function unlinkRichMenuFromUser(
+  lineUserId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const creds = await getLineCredentials();
+  if (!creds) return { ok: false, error: "ยังไม่ได้ตั้งค่า LINE Channel" };
+  const res = await fetch(
+    `https://api.line.me/v2/bot/user/${encodeURIComponent(lineUserId)}/richmenu`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${creds.accessToken}` },
+    },
+  );
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => "");
+    return {
+      ok: false,
+      error: text.slice(0, 300) || `LINE rich menu unlink ${res.status}`,
+    };
+  }
+  return { ok: true };
 }
 
 /** Link staff by phone digits typed in LINE chat. */
@@ -296,6 +367,16 @@ export async function tryLinkAdminByLinkCodeMessage(
     },
   });
 
+  const settings = await prisma.siteSettings.findUnique({
+    where: { id: "default" },
+    select: { lineAdminRichMenuId: true },
+  });
+  if (settings?.lineAdminRichMenuId) {
+    await linkRichMenuToUser(lineUserId, settings.lineAdminRichMenuId).catch(
+      () => undefined,
+    );
+  }
+
   const brandNames = brandRoles.map((m) => m.brand.name).filter(Boolean);
   const brandLine =
     brandNames.slice(0, 3).join(", ") +
@@ -307,7 +388,8 @@ export async function tryLinkAdminByLinkCodeMessage(
       "เชื่อมต่อแอดมินสำเร็จ",
       `${admin.username} · ${brandLine}`,
       "จะได้รับสรุปรอบขายของสาขาทาง LINE",
-      "ลบออเดอร์: พิมพ์ เช่น ลบ A1048 แล้วพิมพ์ ยืนยัน",
+      "ใช้เมนูล่าง: เปิด/ปิดแจ้งเตือน · โหมดลบ · ช่วยเหลือ",
+      "หรือพิมพ์ เช่น ลบ A1048 แล้วกดยืนยัน",
     ].join("\n"),
   };
 }
@@ -327,7 +409,7 @@ export async function tryLinkLineAccountFromMessage(
 }
 
 export const LINE_FOLLOW_REPLY =
-  "ยินดีต้อนรับ\n• พนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678\n• เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักมาที่นี่\n• แอดมินลบออเดอร์: พิมพ์ เช่น ลบ A1048 แล้วพิมพ์ ยืนยัน";
+  "ยินดีต้อนรับ\n• พนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678\n• เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักมาที่นี่\n• แอดมิน: ใช้เมนูล่าง หรือพิมพ์ ลบ A1048";
 
 export const ADMIN_LINE_LINK_CODE_TTL_MS = 10 * 60 * 1000;
 

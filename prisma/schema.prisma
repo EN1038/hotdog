@@ -186,6 +186,8 @@ model Admin {
   /// Pending hard-delete via LINE chat (confirm with "ยืนยัน")
   linePendingDeleteOrderId    String?
   linePendingDeleteExpiresAt  DateTime?
+  /// When set (and not expired), bare order numbers enter delete preview
+  lineDeleteModeExpiresAt     DateTime?
   createdAt              DateTime           @default(now())
   brandMembers           BrandMember[]
   activityLogs           AdminActivityLog[]
@@ -331,6 +333,10 @@ model SiteSettings {
   lineNotifyStaffOnNewOrder   Boolean  @default(true)
   /// Notify linked brand owners/managers with daily cutoff summary
   lineNotifyBrandDailySummary Boolean  @default(true)
+  /// LINE rich menu id for linked brand admins (Messaging API)
+  lineAdminRichMenuId         String?
+  /// Default rich menu for guests (login / help) before admin link
+  lineGuestRichMenuId         String?
   updatedAt                   DateTime @updatedAt
 }
 

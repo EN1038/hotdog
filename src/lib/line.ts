@@ -307,6 +307,7 @@ export async function tryLinkAdminByLinkCodeMessage(
       "เชื่อมต่อแอดมินสำเร็จ",
       `${admin.username} · ${brandLine}`,
       "จะได้รับสรุปรอบขายของสาขาทาง LINE",
+      "ลบออเดอร์: พิมพ์ เช่น ลบ A1048 แล้วพิมพ์ ยืนยัน",
     ].join("\n"),
   };
 }
@@ -326,7 +327,7 @@ export async function tryLinkLineAccountFromMessage(
 }
 
 export const LINE_FOLLOW_REPLY =
-  "ยินดีต้อนรับ\n• พนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678\n• เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักมาที่นี่";
+  "ยินดีต้อนรับ\n• พนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678\n• เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักมาที่นี่\n• แอดมินลบออเดอร์: พิมพ์ เช่น ลบ A1048 แล้วพิมพ์ ยืนยัน";
 
 export const ADMIN_LINE_LINK_CODE_TTL_MS = 10 * 60 * 1000;
 

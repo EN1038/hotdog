@@ -11,6 +11,7 @@ import {
   isAdminBranchPath,
 } from "@/components/admin/AdminBranchSwitcher";
 import {
+  IconBell,
   IconClose,
   IconHome,
   IconMoney,
@@ -144,6 +145,12 @@ const NAV_GROUPS: NavGroup[] = [
         label: "เสียงแจ้งเตือน",
         platformOnly: true,
         icon: IconVolume,
+      },
+      {
+        href: "/admin/line",
+        label: "LINE Official Account",
+        platformOnly: true,
+        icon: IconBell,
       },
       {
         href: "/admin/site",

@@ -6,6 +6,7 @@ import {
   tryLinkLineAccountFromMessage,
   verifyLineWebhookSignature,
 } from "@/lib/line";
+import { tryHandleLineOrderDelete } from "@/lib/line-order-delete";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,8 @@ type LineWebhookBody = {
 
 /**
  * LINE Messaging API webhook.
- * Staff link by phone; brand admins link by username.
+ * Staff link by phone; brand admins link by 6-digit code.
+ * Linked admins may hard-delete orders: `ลบ A1048` → confirm with `ยืนยัน`.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -59,6 +61,15 @@ export async function POST(request: Request) {
       event.message.text &&
       event.replyToken
     ) {
+      const deleteResult = await tryHandleLineOrderDelete(
+        userId,
+        event.message.text,
+      );
+      if (deleteResult.handled) {
+        await lineReplyText(event.replyToken, deleteResult.reply);
+        continue;
+      }
+
       const { reply } = await tryLinkLineAccountFromMessage(
         userId,
         event.message.text,

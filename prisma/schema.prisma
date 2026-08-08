@@ -183,6 +183,9 @@ model Admin {
   /// One-time LINE link code (shown only while logged into admin)
   lineLinkCode           String?
   lineLinkCodeExpiresAt  DateTime?
+  /// Pending hard-delete via LINE chat (confirm with "ยืนยัน")
+  linePendingDeleteOrderId    String?
+  linePendingDeleteExpiresAt  DateTime?
   createdAt              DateTime           @default(now())
   brandMembers           BrandMember[]
   activityLogs           AdminActivityLog[]

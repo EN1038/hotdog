@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import type { SessionPayload } from "@/lib/auth";
 import {
   FULFILLMENT_LABELS,
   ORDER_STATUS_LABELS,
@@ -9,6 +8,7 @@ import {
   getBranchActivityContext,
   logAdminActivity,
 } from "@/lib/admin-activity";
+import { sessionFromLineAdmin } from "@/lib/line-activity";
 import {
   hardDeleteOrderWithStockRestore,
   OrderHardDeleteError,
@@ -39,23 +39,6 @@ export type LinkedAdmin = {
   lineDeleteModeExpiresAt: Date | null;
   brandMembers: Array<{ role: string; brandId: string }>;
 };
-
-function adminSession(admin: LinkedAdmin): SessionPayload {
-  const brandIds = [
-    ...new Set(
-      admin.brandMembers
-        .filter((m) => m.role === "OWNER" || m.role === "MANAGER")
-        .map((m) => m.brandId),
-    ),
-  ];
-  return {
-    type: "admin",
-    adminId: admin.id,
-    username: admin.username,
-    isPlatformAdmin: admin.isPlatformAdmin,
-    brandIds,
-  };
-}
 
 function canAdminDeleteBranchOrder(
   admin: LinkedAdmin,
@@ -219,6 +202,23 @@ export async function startDeletePreview(
     },
   });
 
+  const { logLineAdminActivity } = await import("@/lib/line-activity");
+  await logLineAdminActivity(admin, {
+    action: "line.order_delete.request",
+    summary: `ขออนุมัติลบออเดอร์ #${order.orderNumber} คิว ${order.queueNumber} สาขา ${order.branch.name} ผ่าน LINE — ${admin.username}`,
+    brandId: order.branch.brandId,
+    branchId: order.branch.id,
+    branchName: order.branch.name,
+    entityType: "order",
+    entityId: order.id,
+    entityName: order.orderNumber,
+    metadata: {
+      queueNumber: order.queueNumber,
+      status: order.status,
+      stockDeducted: order.stockDeducted,
+    },
+  });
+
   return {
     text: formatOrderPreview(order),
     quickReply: deleteConfirmQuickReply(),
@@ -260,7 +260,7 @@ export async function confirmPendingDelete(
     await clearPendingDelete(admin.id);
 
     const ctx = await getBranchActivityContext(snapshot.branchId);
-    await logAdminActivity(adminSession(admin), {
+    await logAdminActivity(sessionFromLineAdmin(admin), {
       action: "order.delete",
       summary: `ลบออเดอร์ถาวรผ่าน LINE คิว ${snapshot.queueNumber} #${snapshot.orderNumber} (${ORDER_STATUS_LABELS[snapshot.status]}) — ยืนยันผ่านแชท`,
       brandId: ctx?.brandId ?? ctx?.brand?.id ?? null,
@@ -355,6 +355,11 @@ export async function tryHandleLineOrderDelete(
         linePendingDeleteExpiresAt: null,
       },
     });
+    const { logLineAdminActivity } = await import("@/lib/line-activity");
+    await logLineAdminActivity(admin, {
+      action: "line.delete_mode.exit",
+      summary: `ออกจากโหมดลบผ่าน LINE (พิมพ์คำสั่ง) — ${admin.username}`,
+    });
     return { handled: true, reply: { text: "ออกจากโหมดลบแล้ว" } };
   }
 
@@ -374,6 +379,12 @@ export async function tryHandleLineOrderDelete(
       return { handled: true, reply };
     }
     await clearPendingDelete(admin.id);
+    const { logLineAdminActivity } = await import("@/lib/line-activity");
+    await logLineAdminActivity(admin, {
+      action: "line.order_delete.request",
+      summary: `ยกเลิกคำขอลบออเดอร์ผ่าน LINE — ${admin.username}`,
+      metadata: { cancelled: true },
+    });
     return {
       handled: true,
       reply: { text: "ยกเลิกการลบออเดอร์แล้ว" },

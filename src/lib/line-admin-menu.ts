@@ -6,6 +6,7 @@ import {
   isPendingDeleteActive,
   type LinkedAdmin,
 } from "@/lib/line-order-delete";
+import { logLineAdminActivity } from "@/lib/line-activity";
 import { logoutAdminLineLink } from "@/lib/line-rich-menu";
 import {
   LINE_ADMIN_HELP_TEXT,
@@ -26,6 +27,12 @@ async function setNotify(
       lineNotifyDailySummary: enabled,
     },
   });
+  await logLineAdminActivity(admin, {
+    action: enabled ? "line.notify.enable" : "line.notify.disable",
+    summary: enabled
+      ? `เปิดแจ้งเตือน LINE (ผ่านแชท) — ${admin.username}`
+      : `ปิดแจ้งเตือน LINE (ผ่านแชท) — ${admin.username}`,
+  });
   return {
     text: enabled
       ? "เปิดรับแจ้งเตือน LINE แล้ว (สรุปรอบขาย)"
@@ -41,6 +48,10 @@ async function enterDeleteMode(admin: LinkedAdmin): Promise<LineReplyPayload> {
       linePendingDeleteOrderId: null,
       linePendingDeleteExpiresAt: null,
     },
+  });
+  await logLineAdminActivity(admin, {
+    action: "line.delete_mode.enter",
+    summary: `เข้าโหมดลบออเดอร์ผ่าน LINE — ${admin.username}`,
   });
   return {
     text: [
@@ -67,6 +78,10 @@ async function exitDeleteMode(admin: LinkedAdmin): Promise<LineReplyPayload> {
       linePendingDeleteOrderId: null,
       linePendingDeleteExpiresAt: null,
     },
+  });
+  await logLineAdminActivity(admin, {
+    action: "line.delete_mode.exit",
+    summary: `ออกจากโหมดลบผ่าน LINE — ${admin.username}`,
   });
   return { text: "ออกจากโหมดลบแล้ว" };
 }
@@ -101,6 +116,11 @@ async function infoReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
     Boolean(full?.lineDeleteModeExpiresAt) &&
     (full?.lineDeleteModeExpiresAt?.getTime() ?? 0) >= Date.now();
 
+  await logLineAdminActivity(admin, {
+    action: "line.info",
+    summary: `ดูข้อมูลบัญชีผ่าน LINE — ${admin.username}`,
+  });
+
   return {
     text: [
       "ข้อมูลบัญชี LINE",
@@ -119,6 +139,11 @@ async function logoutReply(
   admin: LinkedAdmin,
   lineUserId: string,
 ): Promise<LineReplyPayload> {
+  await logLineAdminActivity(admin, {
+    action: "line.unlink",
+    summary: `ออกจากระบบ LINE (ยกเลิกเชื่อม) — ${admin.username}`,
+    metadata: { source: "line_menu_logout" },
+  });
   await logoutAdminLineLink(admin.id, lineUserId);
   return {
     text: [
@@ -139,6 +164,10 @@ async function logoutReply(
 
 function helpReply(admin: LinkedAdmin): LineReplyPayload {
   const notifyOn = admin.lineNotifyEnabled || admin.lineNotifyDailySummary;
+  void logLineAdminActivity(admin, {
+    action: "line.help",
+    summary: `เปิดช่วยเหลือผ่าน LINE — ${admin.username}`,
+  });
   return {
     text: [
       LINE_ADMIN_HELP_TEXT,
@@ -264,6 +293,11 @@ export async function tryHandleLineAdminPostback(
     }
     case LINE_POSTBACK.DELETE_CANCEL: {
       await clearPendingDelete(admin.id);
+      await logLineAdminActivity(admin, {
+        action: "line.delete_mode.exit",
+        summary: `ยกเลิกรายการรอยืนยันลบผ่าน LINE — ${admin.username}`,
+        metadata: { cancelledPendingDelete: true },
+      });
       return { handled: true, reply: { text: "ยกเลิกการลบออเดอร์แล้ว" } };
     }
     default:

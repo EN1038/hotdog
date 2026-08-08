@@ -153,6 +153,11 @@ const NAV_GROUPS: NavGroup[] = [
         icon: IconBell,
       },
       {
+        href: "/admin/line-connect",
+        label: "เชื่อม LINE",
+        icon: IconBell,
+      },
+      {
         href: "/admin/site",
         label: "ตั้งค่าแพลตฟอร์ม",
         platformOnly: true,

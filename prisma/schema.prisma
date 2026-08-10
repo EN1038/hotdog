@@ -188,6 +188,10 @@ model Admin {
   linePendingDeleteExpiresAt  DateTime?
   /// When set (and not expired), bare order numbers enter delete preview
   lineDeleteModeExpiresAt     DateTime?
+  /// When set (and not expired), bare order numbers enter edit flow
+  lineEditModeExpiresAt       DateTime?
+  /// Conversational edit-order draft/session (JSON state machine)
+  lineEditSession             Json?
   createdAt              DateTime           @default(now())
   brandMembers           BrandMember[]
   activityLogs           AdminActivityLog[]

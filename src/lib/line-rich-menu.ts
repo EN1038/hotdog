@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { ImageResponse } from "next/og";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   getLineCredentials,
@@ -19,7 +20,8 @@ function menuCell(
   bg: string,
   width: number,
   height: number,
-  fontSize = 52,
+  fontSize = 48,
+  icon?: string,
 ) {
   return createElement(
     "div",
@@ -35,12 +37,25 @@ function menuCell(
         color: "#ffffff",
       },
     },
+    icon
+      ? createElement(
+          "div",
+          {
+            style: {
+              fontSize: Math.round(fontSize * 1.15),
+              marginBottom: 12,
+              lineHeight: 1,
+            },
+          },
+          icon,
+        )
+      : null,
     createElement("div", { style: { fontSize, fontWeight: 700 } }, title),
     createElement(
       "div",
       {
         style: {
-          fontSize: Math.round(fontSize * 0.55),
+          fontSize: Math.round(fontSize * 0.5),
           marginTop: 10,
           opacity: 0.92,
         },
@@ -78,8 +93,8 @@ async function generateGuestRichMenuPng(): Promise<Buffer> {
   const cw = COMPACT_W / 2;
   const ch = COMPACT_H;
   return pngFromCells(COMPACT_W, COMPACT_H, [
-    menuCell("LOGIN", "Enter code", "#1d4ed8", cw, ch, 72),
-    menuCell("HELP", "How to link", "#334155", cw, ch, 72),
+    menuCell("เข้าสู่ระบบ", "พิมพ์รหัส 6 หลัก", "#1d4ed8", cw, ch, 56, "🔑"),
+    menuCell("ช่วยเหลือ", "วิธีเชื่อมบัญชี", "#334155", cw, ch, 56, "❓"),
   ]);
 }
 
@@ -87,12 +102,12 @@ async function generateAdminRichMenuPng(): Promise<Buffer> {
   const cw = FULL_W / 2;
   const ch = FULL_H / 3;
   return pngFromCells(FULL_W, FULL_H, [
-    menuCell("NOTIFY ON", "Open alerts", "#047857", cw, ch),
-    menuCell("NOTIFY OFF", "Mute alerts", "#b45309", cw, ch),
-    menuCell("DELETE", "Delete mode", "#b91c1c", cw, ch),
-    menuCell("INFO", "Account status", "#0f766e", cw, ch),
-    menuCell("LOGOUT", "Unlink LINE", "#7f1d1d", cw, ch),
-    menuCell("HELP", "How to use", "#1e3a8a", cw, ch),
+    menuCell("เปิดแจ้งเตือน", "รับสรุปรอบขาย", "#047857", cw, ch, 44, "🔔"),
+    menuCell("ปิดแจ้งเตือน", "หยุดแจ้งเตือน", "#b45309", cw, ch, 44, "🔕"),
+    menuCell("ลบออเดอร์", "โหมดลบถาวร", "#b91c1c", cw, ch, 44, "🗑"),
+    menuCell("ข้อมูล", "สถานะบัญชี", "#0f766e", cw, ch, 44, "ℹ"),
+    menuCell("ออกจากระบบ", "ยกเลิกการเชื่อม", "#7f1d1d", cw, ch, 44, "↩"),
+    menuCell("แก้ไขออเดอร์", "แก้เมนู/จำนวน", "#1e3a8a", cw, ch, 44, "✎"),
   ]);
 }
 
@@ -140,11 +155,16 @@ function adminRichMenuBody() {
     ],
     [
       LINE_POSTBACK.MODE_DELETE,
-      "โหมดลบ",
+      "ลบออเดอร์",
       LINE_POSTBACK.INFO,
       "ดูข้อมูล",
     ],
-    [LINE_POSTBACK.LOGOUT, "ออกจากระบบ", LINE_POSTBACK.HELP, "ช่วยเหลือ"],
+    [
+      LINE_POSTBACK.LOGOUT,
+      "ออกจากระบบ",
+      LINE_POSTBACK.MODE_EDIT,
+      "แก้ไขออเดอร์",
+    ],
   ] as const;
 
   const areas = [];
@@ -368,6 +388,8 @@ export async function logoutAdminLineLink(
       linePendingDeleteOrderId: null,
       linePendingDeleteExpiresAt: null,
       lineDeleteModeExpiresAt: null,
+      lineEditModeExpiresAt: null,
+      lineEditSession: Prisma.DbNull,
     },
   });
   await unlinkRichMenuFromUser(lineUserId).catch(() => undefined);

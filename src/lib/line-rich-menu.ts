@@ -20,9 +20,11 @@ function menuCell(
   bg: string,
   width: number,
   height: number,
-  fontSize = 48,
+  fontSize = 72,
   icon?: string,
+  iconSize?: number,
 ) {
+  const resolvedIconSize = iconSize ?? Math.round(fontSize * 1.55);
   return createElement(
     "div",
     {
@@ -35,6 +37,8 @@ function menuCell(
         height,
         backgroundColor: bg,
         color: "#ffffff",
+        paddingLeft: 24,
+        paddingRight: 24,
       },
     },
     icon
@@ -42,22 +46,35 @@ function menuCell(
           "div",
           {
             style: {
-              fontSize: Math.round(fontSize * 1.15),
-              marginBottom: 12,
+              fontSize: resolvedIconSize,
+              marginBottom: 18,
               lineHeight: 1,
             },
           },
           icon,
         )
       : null,
-    createElement("div", { style: { fontSize, fontWeight: 700 } }, title),
     createElement(
       "div",
       {
         style: {
-          fontSize: Math.round(fontSize * 0.5),
-          marginTop: 10,
-          opacity: 0.92,
+          fontSize,
+          fontWeight: 800,
+          textAlign: "center",
+          lineHeight: 1.15,
+        },
+      },
+      title,
+    ),
+    createElement(
+      "div",
+      {
+        style: {
+          fontSize: Math.round(fontSize * 0.48),
+          marginTop: 14,
+          opacity: 0.95,
+          textAlign: "center",
+          lineHeight: 1.2,
         },
       },
       subtitle,
@@ -93,8 +110,8 @@ async function generateGuestRichMenuPng(): Promise<Buffer> {
   const cw = COMPACT_W / 2;
   const ch = COMPACT_H;
   return pngFromCells(COMPACT_W, COMPACT_H, [
-    menuCell("เข้าสู่ระบบ", "พิมพ์รหัส 6 หลัก", "#1d4ed8", cw, ch, 56, "🔑"),
-    menuCell("ช่วยเหลือ", "วิธีเชื่อมบัญชี", "#334155", cw, ch, 56, "❓"),
+    menuCell("เข้าสู่ระบบ", "พิมพ์รหัส 6 หลัก", "#1d4ed8", cw, ch, 84, "🔑", 130),
+    menuCell("ช่วยเหลือ", "วิธีเชื่อมบัญชี", "#334155", cw, ch, 84, "❓", 130),
   ]);
 }
 
@@ -102,12 +119,12 @@ async function generateAdminRichMenuPng(): Promise<Buffer> {
   const cw = FULL_W / 2;
   const ch = FULL_H / 3;
   return pngFromCells(FULL_W, FULL_H, [
-    menuCell("เปิดแจ้งเตือน", "รับสรุปรอบขาย", "#047857", cw, ch, 44, "🔔"),
-    menuCell("ปิดแจ้งเตือน", "หยุดแจ้งเตือน", "#b45309", cw, ch, 44, "🔕"),
-    menuCell("ลบออเดอร์", "โหมดลบถาวร", "#b91c1c", cw, ch, 44, "🗑"),
-    menuCell("ข้อมูล", "สถานะบัญชี", "#0f766e", cw, ch, 44, "ℹ"),
-    menuCell("ออกจากระบบ", "ยกเลิกการเชื่อม", "#7f1d1d", cw, ch, 44, "↩"),
-    menuCell("แก้ไขออเดอร์", "แก้เมนู/จำนวน", "#1e3a8a", cw, ch, 44, "✎"),
+    menuCell("เปิดแจ้งเตือน", "รับสรุปรอบขาย", "#047857", cw, ch, 68, "🔔", 110),
+    menuCell("ปิดแจ้งเตือน", "หยุดแจ้งเตือน", "#b45309", cw, ch, 68, "🔕", 110),
+    menuCell("ลบออเดอร์", "โหมดลบถาวร", "#b91c1c", cw, ch, 68, "🗑", 110),
+    menuCell("ข้อมูล", "สถานะบัญชี", "#0f766e", cw, ch, 68, "ℹ", 110),
+    menuCell("ออกจากระบบ", "ยกเลิกการเชื่อม", "#7f1d1d", cw, ch, 68, "↩", 110),
+    menuCell("แก้ไขออเดอร์", "แก้เมนู/จำนวน", "#1e3a8a", cw, ch, 68, "✎", 110),
   ]);
 }
 

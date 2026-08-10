@@ -37,10 +37,12 @@ export type LinkedAdmin = {
   linePendingDeleteOrderId: string | null;
   linePendingDeleteExpiresAt: Date | null;
   lineDeleteModeExpiresAt: Date | null;
+  lineEditModeExpiresAt: Date | null;
+  lineEditSession: unknown;
   brandMembers: Array<{ role: string; brandId: string }>;
 };
 
-function canAdminDeleteBranchOrder(
+export function canAdminManageBranchOrder(
   admin: LinkedAdmin,
   brandId: string | null | undefined,
 ): boolean {
@@ -50,6 +52,13 @@ function canAdminDeleteBranchOrder(
     (m) =>
       m.brandId === brandId && (m.role === "OWNER" || m.role === "MANAGER"),
   );
+}
+
+function canAdminDeleteBranchOrder(
+  admin: LinkedAdmin,
+  brandId: string | null | undefined,
+): boolean {
+  return canAdminManageBranchOrder(admin, brandId);
 }
 
 export async function findLinkedAdmin(
@@ -66,6 +75,8 @@ export async function findLinkedAdmin(
       linePendingDeleteOrderId: true,
       linePendingDeleteExpiresAt: true,
       lineDeleteModeExpiresAt: true,
+      lineEditModeExpiresAt: true,
+      lineEditSession: true,
       brandMembers: {
         select: { role: true, brandId: true },
       },
@@ -77,6 +88,17 @@ export async function clearPendingDelete(adminId: string) {
   await prisma.admin.update({
     where: { id: adminId },
     data: {
+      linePendingDeleteOrderId: null,
+      linePendingDeleteExpiresAt: null,
+    },
+  });
+}
+
+export async function clearDeleteMode(adminId: string) {
+  await prisma.admin.update({
+    where: { id: adminId },
+    data: {
+      lineDeleteModeExpiresAt: null,
       linePendingDeleteOrderId: null,
       linePendingDeleteExpiresAt: null,
     },
@@ -191,6 +213,10 @@ export async function startDeletePreview(
   if (!canAdminDeleteBranchOrder(admin, order.branch.brandId)) {
     return { text: `ไม่มีสิทธิ์ลบออเดอร์สาขา ${order.branch.name}` };
   }
+
+  // Clear edit session if open (ลบ A1048 shortcut while editing)
+  const { clearEditMode } = await import("@/lib/line-order-edit");
+  await clearEditMode(admin.id);
 
   await prisma.admin.update({
     where: { id: admin.id },
@@ -347,6 +373,9 @@ export async function tryHandleLineOrderDelete(
   }
 
   if (EXIT_MODE_RE.test(text)) {
+    if (!isDeleteModeActive(admin) && !isPendingDeleteActive(admin)) {
+      return { handled: false, reply: { text: "" } };
+    }
     await prisma.admin.update({
       where: { id: admin.id },
       data: {

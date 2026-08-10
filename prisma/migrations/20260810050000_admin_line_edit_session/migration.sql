@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Admin" ADD COLUMN IF NOT EXISTS "lineEditModeExpiresAt" TIMESTAMP(3);
+ALTER TABLE "Admin" ADD COLUMN IF NOT EXISTS "lineEditSession" JSONB;

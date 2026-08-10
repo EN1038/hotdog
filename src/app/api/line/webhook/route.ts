@@ -8,6 +8,7 @@ import {
 } from "@/lib/line";
 import { tryHandleLineAdminPostback } from "@/lib/line-admin-menu";
 import { tryHandleLineOrderDelete } from "@/lib/line-order-delete";
+import { tryHandleLineOrderEdit } from "@/lib/line-order-edit";
 import type { LineReplyPayload } from "@/lib/line-postback";
 
 export const runtime = "nodejs";
@@ -88,6 +89,26 @@ export async function POST(request: Request) {
       if (deleteResult.handled) {
         await replyPayload(event.replyToken, deleteResult.reply);
         continue;
+      }
+
+      const editResult = await tryHandleLineOrderEdit(
+        userId,
+        event.message.text,
+      );
+      if (editResult.handled) {
+        await replyPayload(event.replyToken, editResult.reply);
+        continue;
+      }
+
+      if (/^ช่วยเหลือ$/i.test(event.message.text.trim())) {
+        const helpResult = await tryHandleLineAdminPostback(
+          userId,
+          "admin:help",
+        );
+        if (helpResult.handled) {
+          await replyPayload(event.replyToken, helpResult.reply);
+          continue;
+        }
       }
 
       const { reply } = await tryLinkLineAccountFromMessage(

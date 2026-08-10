@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { FulfillmentType, OrderStatus, PaymentMethod } from "@prisma/client";
@@ -26,6 +26,13 @@ import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { IconBack } from "@/components/icons";
 import { LoadingState } from "@/components/LoadingState";
 import { formatQueueNumber } from "@/lib/order-queue-format";
+import {
+  AdminEditOrderItemsModal,
+  type EditOrderLineDraft,
+} from "@/components/admin/AdminEditOrderItemsModal";
+import { btnPrimary } from "@/components/admin/AdminShell";
+import type { MenuItemData } from "@/lib/customer-types";
+import { reconstructOptionIdsFromText } from "@/lib/order-item-options-text";
 
 type AdminOrderDetail = {
   id: string;
@@ -40,6 +47,7 @@ type AdminOrderDetail = {
   addressDetail: string | null;
   scheduledAt: string | null;
   note: string | null;
+  awaitingPhotoKey?: boolean;
   deliveryFee: string;
   discountAmount: string;
   createdAt: string;
@@ -48,6 +56,7 @@ type AdminOrderDetail = {
   deliveryLocation: { name: string } | null;
   items: Array<{
     id: string;
+    branchMenuItemId: string | null;
     itemName: string;
     quantity: number;
     unitPrice: string;
@@ -64,6 +73,12 @@ export default function AdminOrderDetailPage() {
   const [order, setOrder] = useState<AdminOrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editInitialLines, setEditInitialLines] = useState<EditOrderLineDraft[]>(
+    [],
+  );
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/orders/${orderId}`);
@@ -83,6 +98,97 @@ export default function AdminOrderDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const canEditItems = useMemo(() => {
+    if (!order) return false;
+    if (order.status === "CANCELLED") return false;
+    if (order.awaitingPhotoKey) return false;
+    return order.items.some((i) => Boolean(i.branchMenuItemId));
+  }, [order]);
+
+  async function openEditModal() {
+    if (!order) return;
+    setEditError("");
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${order.branch.id}/menu-items`,
+      );
+      const menus = res.ok
+        ? ((await res.json()) as Array<
+            MenuItemData & {
+              optionGroups?: Array<{
+                mode: string;
+                options: Array<{ id: string; name: string }>;
+                menuItemSources?: Array<{
+                  isEnabled: boolean;
+                  menuItemId: string;
+                  menuItem: { name: string; isHidden: boolean } | null;
+                }>;
+              }>;
+            }
+          >)
+        : [];
+      const menuMap = new Map(menus.map((m) => [m.id, m]));
+      const lines: EditOrderLineDraft[] = order.items
+        .filter((it) => it.branchMenuItemId)
+        .map((it) => {
+          const menu = menuMap.get(it.branchMenuItemId!);
+          const optionIds = reconstructOptionIdsFromText(
+            menu?.optionGroups ?? [],
+            it.optionsText,
+          );
+          return {
+            key: it.id,
+            branchMenuItemId: it.branchMenuItemId!,
+            name: it.itemName,
+            quantity: it.quantity,
+            optionIds,
+            note: it.note ?? "",
+          };
+        });
+      setEditInitialLines(lines);
+      setEditOpen(true);
+    } catch {
+      setEditError("โหลดเมนูสำหรับแก้ไขไม่สำเร็จ");
+    }
+  }
+
+  async function saveEditItems(input: {
+    items: Array<{
+      branchMenuItemId: string;
+      quantity: number;
+      optionIds: string[];
+      note?: string;
+    }>;
+    reason?: string;
+  }) {
+    if (!order) return;
+    setEditBusy(true);
+    setEditError("");
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${order.branch.id}/orders/${order.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setEditError(
+          typeof data.error === "string" ? data.error : "บันทึกไม่สำเร็จ",
+        );
+        return;
+      }
+      setEditOpen(false);
+      await load();
+    } catch {
+      setEditError("บันทึกไม่สำเร็จ");
+    } finally {
+      setEditBusy(false);
+    }
+  }
 
   if (loading) {
     return <LoadingState />;
@@ -240,7 +346,21 @@ export default function AdminOrderDetailPage() {
         </section>
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-900">รายการสินค้า</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold text-gray-900">รายการสินค้า</h3>
+            {canEditItems ? (
+              <button
+                type="button"
+                className={`${btnPrimary} !px-3 !py-1.5 text-sm`}
+                onClick={() => void openEditModal()}
+              >
+                แก้ไขรายการ
+              </button>
+            ) : null}
+          </div>
+          {editError ? (
+            <p className="mt-2 text-sm text-red-600">{editError}</p>
+          ) : null}
           <ul className="mt-3 divide-y divide-gray-100">
             {order.items.map((it) => {
               const line =
@@ -314,6 +434,21 @@ export default function AdminOrderDetailPage() {
           </div>
         </section>
       </div>
+
+      <AdminEditOrderItemsModal
+        open={editOpen}
+        branchId={order.branch.id}
+        orderNumber={order.orderNumber}
+        fulfillmentType={order.fulfillmentType}
+        initialLines={editInitialLines}
+        busy={editBusy}
+        onClose={() => {
+          if (!editBusy) setEditOpen(false);
+        }}
+        onSave={(input) => {
+          void saveEditItems(input);
+        }}
+      />
     </div>
   );
 }

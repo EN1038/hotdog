@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   confirmPendingDelete,
@@ -6,6 +7,13 @@ import {
   isPendingDeleteActive,
   type LinkedAdmin,
 } from "@/lib/line-order-delete";
+import {
+  clearEditMode,
+  enterEditMode,
+  exitEditMode,
+  handleEditPostback,
+  isEditModeActive,
+} from "@/lib/line-order-edit";
 import { logLineAdminActivity } from "@/lib/line-activity";
 import { logoutAdminLineLink } from "@/lib/line-rich-menu";
 import {
@@ -41,6 +49,7 @@ async function setNotify(
 }
 
 async function enterDeleteMode(admin: LinkedAdmin): Promise<LineReplyPayload> {
+  await clearEditMode(admin.id);
   await prisma.admin.update({
     where: { id: admin.id },
     data: {
@@ -70,20 +79,38 @@ async function enterDeleteMode(admin: LinkedAdmin): Promise<LineReplyPayload> {
   };
 }
 
-async function exitDeleteMode(admin: LinkedAdmin): Promise<LineReplyPayload> {
+async function exitAllModes(admin: LinkedAdmin): Promise<LineReplyPayload> {
+  const wasEdit = isEditModeActive(admin) || Boolean(admin.lineEditSession);
+  const wasDelete =
+    Boolean(admin.lineDeleteModeExpiresAt) &&
+    (admin.lineDeleteModeExpiresAt?.getTime() ?? 0) >= Date.now();
+
   await prisma.admin.update({
     where: { id: admin.id },
     data: {
       lineDeleteModeExpiresAt: null,
       linePendingDeleteOrderId: null,
       linePendingDeleteExpiresAt: null,
+      lineEditModeExpiresAt: null,
+      lineEditSession: Prisma.DbNull,
     },
   });
-  await logLineAdminActivity(admin, {
-    action: "line.delete_mode.exit",
-    summary: `ออกจากโหมดลบผ่าน LINE — ${admin.username}`,
-  });
-  return { text: "ออกจากโหมดลบแล้ว" };
+
+  if (wasEdit) {
+    await logLineAdminActivity(admin, {
+      action: "line.edit_mode.exit",
+      summary: `ออกจากโหมดแก้ไขผ่าน LINE — ${admin.username}`,
+    });
+    return { text: "ออกจากโหมดแก้ไขแล้ว" };
+  }
+  if (wasDelete) {
+    await logLineAdminActivity(admin, {
+      action: "line.delete_mode.exit",
+      summary: `ออกจากโหมดลบผ่าน LINE — ${admin.username}`,
+    });
+    return { text: "ออกจากโหมดลบแล้ว" };
+  }
+  return { text: "ไม่มีโหมดที่เปิดอยู่" };
 }
 
 async function infoReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
@@ -95,6 +122,7 @@ async function infoReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
       lineNotifyEnabled: true,
       lineNotifyDailySummary: true,
       lineDeleteModeExpiresAt: true,
+      lineEditModeExpiresAt: true,
       brandMembers: {
         where: { role: { in: ["OWNER", "MANAGER"] } },
         select: {
@@ -115,6 +143,9 @@ async function infoReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
   const deleteOn =
     Boolean(full?.lineDeleteModeExpiresAt) &&
     (full?.lineDeleteModeExpiresAt?.getTime() ?? 0) >= Date.now();
+  const editOn =
+    Boolean(full?.lineEditModeExpiresAt) &&
+    (full?.lineEditModeExpiresAt?.getTime() ?? 0) >= Date.now();
 
   await logLineAdminActivity(admin, {
     action: "line.info",
@@ -129,6 +160,9 @@ async function infoReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
       brands.length ? `แบรนด์: ${brands.join(", ")}` : "แบรนด์: —",
       `แจ้งเตือน: ${notifyOn ? "เปิด" : "ปิด"}`,
       `โหมดลบ: ${deleteOn ? "เปิดอยู่" : "ปิด"}`,
+      `โหมดแก้ไข: ${editOn ? "เปิดอยู่" : "ปิด"}`,
+      "",
+      "พิมพ์ ช่วยเหลือ เพื่อดูวิธีใช้",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -150,7 +184,7 @@ async function logoutReply(
       "ออกจากระบบแล้ว",
       "ยกเลิกการเชื่อม LINE กับบัญชีแอดมินนี้แล้ว",
       "",
-      "เข้าใหม่: กด LOGIN แล้วทำตามขั้นตอน",
+      "เข้าใหม่: กดเข้าสู่ระบบแล้วทำตามขั้นตอน",
     ].join("\n"),
     quickReply: [
       {
@@ -179,6 +213,12 @@ function helpReply(admin: LinkedAdmin): LineReplyPayload {
           ? "เปิดอยู่"
           : "ปิด"
       }`,
+      `โหมดแก้ไข: ${
+        admin.lineEditModeExpiresAt &&
+        admin.lineEditModeExpiresAt.getTime() >= Date.now()
+          ? "เปิดอยู่"
+          : "ปิด"
+      }`,
     ].join("\n"),
     quickReply: [
       {
@@ -186,6 +226,7 @@ function helpReply(admin: LinkedAdmin): LineReplyPayload {
         data: notifyOn ? LINE_POSTBACK.NOTIFY_OFF : LINE_POSTBACK.NOTIFY_ON,
       },
       { label: "โหมดลบ", data: LINE_POSTBACK.MODE_DELETE },
+      { label: "แก้ไขออเดอร์", data: LINE_POSTBACK.MODE_EDIT },
       { label: "ดูข้อมูล", data: LINE_POSTBACK.INFO },
       { label: "ออกจากระบบ", data: LINE_POSTBACK.LOGOUT },
     ],
@@ -267,6 +308,18 @@ export async function tryHandleLineAdminPostback(
     };
   }
 
+  if (
+    payload === LINE_POSTBACK.HELP ||
+    payload === "admin:help"
+  ) {
+    return { handled: true, reply: helpReply(admin) };
+  }
+
+  const editReply = await handleEditPostback(admin, payload);
+  if (editReply) {
+    return { handled: true, reply: editReply };
+  }
+
   switch (payload) {
     case LINE_POSTBACK.NOTIFY_ON:
       return { handled: true, reply: await setNotify(admin, true) };
@@ -275,9 +328,7 @@ export async function tryHandleLineAdminPostback(
     case LINE_POSTBACK.MODE_DELETE:
       return { handled: true, reply: await enterDeleteMode(admin) };
     case LINE_POSTBACK.MODE_EXIT:
-      return { handled: true, reply: await exitDeleteMode(admin) };
-    case LINE_POSTBACK.HELP:
-      return { handled: true, reply: helpReply(admin) };
+      return { handled: true, reply: await exitAllModes(admin) };
     case LINE_POSTBACK.INFO:
       return { handled: true, reply: await infoReply(admin) };
     case LINE_POSTBACK.LOGOUT:
@@ -307,3 +358,6 @@ export async function tryHandleLineAdminPostback(
       };
   }
 }
+
+// keep export for callers that imported exitEditMode path via menu
+export { enterEditMode, exitEditMode };

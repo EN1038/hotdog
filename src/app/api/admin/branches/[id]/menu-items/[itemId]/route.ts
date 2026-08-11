@@ -122,6 +122,12 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.sellStorefront !== undefined && {
           sellStorefront: body.sellStorefront,
         }),
+        ...(body.sellByWeight !== undefined && {
+          sellByWeight: body.sellByWeight,
+        }),
+        ...(body.pricePerKg !== undefined && {
+          pricePerKg: body.pricePerKg,
+        }),
       },
       include: itemInclude,
     });

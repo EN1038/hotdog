@@ -416,6 +416,16 @@ export default function StorePage() {
           router.replace(`/skewer/${branchId}`);
           return;
         }
+        if (found?.operatingMode === "BBQ_WEIGH") {
+          const brandCode = found.brand?.code;
+          const code = found.code;
+          if (brandCode && code) {
+            router.replace(`/${brandCode}/${code}`);
+          } else {
+            router.replace("/order");
+          }
+          return;
+        }
         setBranch(found);
         if (found?.brand) {
           syncActiveBrandFromApi({

@@ -39,7 +39,7 @@ const branchSchema = z.object({
   isTest: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
-  operatingMode: z.enum(["NORMAL", "SKEWER"]).optional(),
+  operatingMode: z.enum(["NORMAL", "SKEWER", "BBQ_WEIGH"]),
   storefrontHours: weeklyScheduleSchema.optional(),
   deliveryHours: weeklyScheduleSchema.optional(),
 });
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
           body.isTest ?? nameLooksLikeTestBranch(body.name),
         allowAdvanceOrder: body.allowAdvanceOrder ?? true,
         autoAcceptOrders: body.autoAcceptOrders ?? false,
-        operatingMode: body.operatingMode ?? "NORMAL",
+        operatingMode: body.operatingMode,
         storefrontHours: storefrontHours as unknown as Prisma.InputJsonValue,
         deliveryHours: deliveryHours as unknown as Prisma.InputJsonValue,
         opensAt:

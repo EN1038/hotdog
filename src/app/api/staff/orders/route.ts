@@ -295,6 +295,11 @@ export async function POST(request: Request) {
         "สาขานี้เป็นโหมดเสียบไม้ — ใช้แดชบอร์ดแอดมินยืนยันออเดอร์ลูกค้าแทนการคีย์ออเดอร์",
       );
     }
+    if (branch.operatingMode === BranchOperatingMode.BBQ_WEIGH) {
+      return jsonError(
+        "สาขานี้เป็นโหมดหมูกระทะ — ใช้บิลโต๊ะ / จุดชั่งในแอดมินแทนการคีย์ออเดอร์คิว",
+      );
+    }
 
     let activeShift;
     try {

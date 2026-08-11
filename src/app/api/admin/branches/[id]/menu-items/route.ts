@@ -84,6 +84,11 @@ export async function POST(request: Request, { params }: Params) {
         sellDelivery: body.sellDelivery ?? true,
         sellPickup: body.sellPickup ?? true,
         sellStorefront: body.sellStorefront ?? true,
+        sellByWeight: body.sellByWeight ?? false,
+        pricePerKg:
+          body.sellByWeight && body.pricePerKg != null
+            ? body.pricePerKg
+            : body.pricePerKg ?? null,
         description: body.description ?? null,
         categoryId,
         imageUrl: body.imageUrl ?? null,

@@ -37,6 +37,12 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "branch.stock.disable": "ปิดสต๊อกสาขา",
   "branch.shift.cancel": "ยกเลิกรอบขาย",
   "branch.shift.restore": "กู้คืนรอบขายที่ยกเลิก",
+  "bbq.table.create": "เพิ่มโต๊ะหมูกระทะ",
+  "bbq.table.update": "แก้ไขโต๊ะหมูกระทะ",
+  "bbq.table.delete": "ลบโต๊ะหมูกระทะ",
+  "bbq.session.open": "เปิดบิลโต๊ะ",
+  "bbq.session.add_line": "เพิ่มรายการบิลโต๊ะ",
+  "bbq.session.close": "ปิดบิลโต๊ะ",
   "branch.stock.history.cancel": "ยกเลิกรายการเคลื่อนไหวสต๊อก",
   "branch.stock.history.restore": "กู้คืนรายการเคลื่อนไหวสต๊อก",
   "order.delete": "ลบออเดอร์ถาวร",
@@ -127,6 +133,8 @@ export function summarizeBranchPatch(
     parts.push("ตั้งโหมดเสียบไม้");
   } else if (body.operatingMode === "NORMAL") {
     parts.push("ตั้งโหมดหมาล่าปกติ");
+  } else if (body.operatingMode === "BBQ_WEIGH") {
+    parts.push("ตั้งโหมดหมูกระทะชั่งกิโล");
   }
   if (body.storefrontHours !== undefined) parts.push("แก้เวลาหน้าร้าน");
   if (body.deliveryHours !== undefined) parts.push("แก้เวลาเดลิเวอรี");

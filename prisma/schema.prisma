@@ -79,10 +79,21 @@ enum OptionGroupMode {
   FROM_MENU
 }
 
-/// NORMAL = mala / queue storefront; SKEWER = skewer-prep orders only
+/// NORMAL = mala / queue storefront; SKEWER = skewer-prep; BBQ_WEIGH = dine-in weigh-by-kg
 enum BranchOperatingMode {
   NORMAL
   SKEWER
+  BBQ_WEIGH
+}
+
+enum TableSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum TableSessionLineKind {
+  PIECE
+  WEIGHT
 }
 
 enum SkewerOrderStatus {
@@ -203,6 +214,8 @@ model Admin {
   kitchenProductions     KitchenProduction[]
   stockRequestsHandled   BranchStockRequest[] @relation("StockRequestFulfilledBy")
   confirmedSkewerOrders  SkewerOrder[]      @relation("SkewerOrderConfirmedByAdmin")
+  closedTableSessions    TableSession[]     @relation("TableSessionClosedByAdmin")
+  tableSessionLines      TableSessionLine[] @relation("TableSessionLineCreatedByAdmin")
 
   @@index([lineLinkCode])
 }
@@ -407,7 +420,7 @@ model Branch {
   autoAcceptOrders             Boolean                      @default(false)
   /// Opt-in stock for this branch (requires brand.stockEnabled + brandId)
   stockEnabled                 Boolean                      @default(false)
-  /// NORMAL = mala queue storefront; SKEWER = skewer-prep ordering only
+  /// NORMAL = mala queue; SKEWER = skewer-prep; BBQ_WEIGH = dine-in weigh-by-kg (locked after create)
   operatingMode                BranchOperatingMode          @default(NORMAL)
   /// Staff new-order alert sound (from platform library)
   alertSoundId                 String?
@@ -421,6 +434,8 @@ model Branch {
   deliveryLocations            DeliveryLocation[]
   orders                       Order[]
   skewerOrders                 SkewerOrder[]
+  diningTables                 DiningTable[]
+  tableSessions                TableSession[]
   shifts                       BranchShift[]
   shareCodes                   BranchShareCode[]
   lineDailySummaries           LineDailySummaryLog[]
@@ -532,6 +547,10 @@ model BranchMenuItem {
   /// Hidden from staff keyed-order menu (still visible to customers unless isHidden)
   hideFromStaff                Boolean                      @default(false)
   isOutOfStock                 Boolean                      @default(false)
+  /// BBQ_WEIGH: sell by kilogram (uses pricePerKg)
+  sellByWeight                 Boolean                      @default(false)
+  /// Price per kg when sellByWeight; null for piece items
+  pricePerKg                   Decimal?                     @db.Decimal(10, 2)
   /// Link to brand SKU for quantity stock (null = manual sold-out only)
   brandProductId               String?
   sortOrder                    Int                          @default(0)
@@ -544,6 +563,7 @@ model BranchMenuItem {
   optionGroupMenuSources       BranchOptionGroupMenuItem[]
   orderItems                   OrderItem[]
   skewerOrderItems             SkewerOrderItem[]
+  tableSessionLines            TableSessionLine[]
   stock                        BranchMenuItemStock?
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
 
@@ -816,6 +836,70 @@ model SkewerOrderItem {
   branchMenuItem     BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
 
   @@index([skewerOrderId])
+}
+
+/// Physical table for BBQ_WEIGH dine-in (QR token → open check)
+model DiningTable {
+  id        String         @id @default(cuid())
+  branchId  String
+  name      String
+  /// Opaque token used in customer QR URL
+  token     String         @unique @default(cuid())
+  sortOrder Int            @default(0)
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sessions  TableSession[]
+
+  @@index([branchId, sortOrder])
+}
+
+/// Open check / visit for a dining table (bill closed at end)
+model TableSession {
+  id               String             @id @default(cuid())
+  branchId         String
+  tableId          String
+  status           TableSessionStatus  @default(OPEN)
+  openedAt         DateTime           @default(now())
+  closedAt         DateTime?
+  paymentMethod    PaymentMethod?
+  discountAmount   Decimal            @default(0) @db.Decimal(10, 2)
+  /// Snapshot grand total at close (items − discount)
+  closedTotal      Decimal?           @db.Decimal(10, 2)
+  note             String?
+  closedByAdminId  String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  branch           Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  table            DiningTable        @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  closedByAdmin    Admin?             @relation("TableSessionClosedByAdmin", fields: [closedByAdminId], references: [id], onDelete: SetNull)
+  lines            TableSessionLine[]
+
+  @@index([branchId, status, openedAt])
+  @@index([tableId, status])
+}
+
+model TableSessionLine {
+  id               String               @id @default(cuid())
+  sessionId        String
+  branchMenuItemId String?
+  itemName         String
+  kind             TableSessionLineKind
+  /// Piece count when kind = PIECE
+  quantity         Int                  @default(1)
+  /// Kilograms when kind = WEIGHT
+  weightKg         Decimal?             @db.Decimal(10, 3)
+  /// Per piece or per kg
+  unitPrice        Decimal              @db.Decimal(10, 2)
+  lineTotal        Decimal              @db.Decimal(10, 2)
+  createdAt        DateTime             @default(now())
+  createdByAdminId String?
+  session          TableSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  branchMenuItem   BranchMenuItem?      @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
+  createdByAdmin   Admin?               @relation("TableSessionLineCreatedByAdmin", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
 }
 
 model OrderItem {

@@ -34,6 +34,11 @@ import { BRANCH_IMAGE_SIZE_HINT } from "@/lib/image-guides";
 import { BrandOverviewPanel } from "@/components/admin/BrandOverviewPanel";
 import { parseBrandHqSection } from "@/lib/brand-hq-nav";
 import { isTestBranch } from "@/lib/branch-test";
+import {
+  BRANCH_OPERATING_MODE_META,
+  BRANCH_OPERATING_MODES,
+  type BranchOperatingModeId,
+} from "@/lib/branch-operating-mode";
 
 export type DashboardBrand = {
   id: string;
@@ -71,6 +76,8 @@ function resetFormState(setters: {
   setStorefrontHours: (v: WeeklySchedule) => void;
   setDeliveryHours: (v: WeeklySchedule) => void;
   setError: (v: string | null) => void;
+  setCreateStep: (v: 1 | 2) => void;
+  setOperatingMode: (v: BranchOperatingModeId | null) => void;
   defaultBrandId: string;
 }) {
   setters.setName("");
@@ -84,6 +91,8 @@ function resetFormState(setters: {
   setters.setStorefrontHours(defaultWeeklyHours());
   setters.setDeliveryHours(defaultWeeklyHours());
   setters.setError(null);
+  setters.setCreateStep(1);
+  setters.setOperatingMode(null);
 }
 
 type BranchListDashboardProps = {
@@ -144,6 +153,9 @@ function BranchListDashboardInner({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createStep, setCreateStep] = useState<1 | 2>(1);
+  const [operatingMode, setOperatingMode] =
+    useState<BranchOperatingModeId | null>(null);
 
   const defaultBrandId = effectiveLockedBrandId ?? "";
 
@@ -211,6 +223,8 @@ function BranchListDashboardInner({
       setStorefrontHours,
       setDeliveryHours,
       setError,
+      setCreateStep,
+      setOperatingMode,
       defaultBrandId,
     };
   }
@@ -235,6 +249,7 @@ function BranchListDashboardInner({
 
   async function createBranch(e: React.FormEvent) {
     e.preventDefault();
+    if (createStep !== 2 || !operatingMode) return;
     setError(null);
     setSaving(true);
     try {
@@ -253,6 +268,7 @@ function BranchListDashboardInner({
           longitude,
           storefrontHours,
           deliveryHours,
+          operatingMode,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -471,9 +487,14 @@ function BranchListDashboardInner({
                   เพิ่มสาขาใหม่
                 </h3>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  {selectedBrand
-                    ? `ภายใต้แบรนด์ ${selectedBrand.name}`
-                    : "อัปโหลดรูปจากเครื่อง หรือวางลิงก์รูปได้"}
+                  {createStep === 1
+                    ? "เลือกโหมดการทำงานของสาขาก่อน — เลือกแล้วเปลี่ยนไม่ได้"
+                    : selectedBrand
+                      ? `ภายใต้แบรนด์ ${selectedBrand.name}`
+                      : "กรอกรายละเอียดสาขา"}
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-400">
+                  ขั้นตอน {createStep} / 2
                 </p>
               </div>
               <button
@@ -492,6 +513,66 @@ function BranchListDashboardInner({
               className="flex min-h-0 flex-1 flex-col"
             >
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                {createStep === 1 ? (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        โหมดสาขา
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        เลือกรูปแบบธุรกิจของสาขานี้ การ์ดที่เลือกจะกำหนด
+                        flow การขายทั้งหมด
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {BRANCH_OPERATING_MODES.map((modeId) => {
+                        const meta = BRANCH_OPERATING_MODE_META[modeId];
+                        const selected = operatingMode === modeId;
+                        return (
+                          <button
+                            key={modeId}
+                            type="button"
+                            onClick={() => setOperatingMode(modeId)}
+                            className={`rounded-2xl border px-4 py-5 text-left transition ${
+                              selected
+                                ? meta.selectedClass
+                                : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            <p className="text-base font-semibold">
+                              {meta.title}
+                            </p>
+                            <p
+                              className={`mt-1.5 text-xs leading-relaxed ${
+                                selected ? "text-white/80" : "text-slate-500"
+                              }`}
+                            >
+                              {meta.description}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {error && (
+                      <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {error}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {operatingMode && (
+                      <div className="mb-5 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${BRANCH_OPERATING_MODE_META[operatingMode].badgeClass}`}
+                        >
+                          {BRANCH_OPERATING_MODE_META[operatingMode].title}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          โหมดล็อกหลังสร้างสาขา
+                        </span>
+                      </div>
+                    )}
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,240px)_1fr]">
                   <ImageField
                     label="รูปสาขา"
@@ -641,28 +722,68 @@ function BranchListDashboardInner({
                     {error}
                   </p>
                 )}
+                  </>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  disabled={saving}
-                  className="cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    saving ||
-                    !name.trim() ||
-                    (!brandLocked && brands.length > 0 && !brandId)
-                  }
-                  className="cursor-pointer rounded-xl bg-site-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-site-primary-hover hover:shadow active:bg-site-primary-active disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving ? "กำลังบันทึก..." : "สร้างสาขา"}
-                </button>
+                {createStep === 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      disabled={saving}
+                      className="cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!operatingMode}
+                      onClick={() => {
+                        setError(null);
+                        setCreateStep(2);
+                      }}
+                      className="cursor-pointer rounded-xl bg-site-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-site-primary-hover hover:shadow active:bg-site-primary-active disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      ถัดไป
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setCreateStep(1);
+                      }}
+                      disabled={saving}
+                      className="cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      กลับ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      disabled={saving}
+                      className="cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        saving ||
+                        !name.trim() ||
+                        (!brandLocked && brands.length > 0 && !brandId) ||
+                        !operatingMode
+                      }
+                      className="cursor-pointer rounded-xl bg-site-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-site-primary-hover hover:shadow active:bg-site-primary-active disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {saving ? "กำลังบันทึก..." : "สร้างสาขา"}
+                    </button>
+                  </>
+                )}
               </div>
             </form>
           </div>

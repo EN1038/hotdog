@@ -73,8 +73,8 @@ export type BranchData = {
   ownerMessage?: string | null;
   extraMessage?: string | null;
   isOpen: boolean;
-  /** NORMAL = mala storefront; SKEWER = skewer-prep ordering */
-  operatingMode?: "NORMAL" | "SKEWER";
+  /** NORMAL = mala; SKEWER = skewer-prep; BBQ_WEIGH = dine-in weigh-by-kg */
+  operatingMode?: "NORMAL" | "SKEWER" | "BBQ_WEIGH";
   /** @deprecated Prefer storefrontHours */
   opensAt: string | null;
   /** @deprecated Prefer deliveryHours / storefrontHours */

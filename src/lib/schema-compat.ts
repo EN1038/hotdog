@@ -20,6 +20,8 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "isTest" BOOLEAN NOT NULL DEFAULT false`,
         `ALTER TABLE "${schema}"."BranchShift" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3)`,
         `ALTER TABLE "${schema}"."BranchShift" ADD COLUMN IF NOT EXISTS "cancelNote" TEXT`,
+        `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "paymentSlipUrl" TEXT`,
+        `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "publicShareToken" TEXT`,
       ];
       for (const sql of statements) {
         try {
@@ -29,6 +31,16 @@ export async function ensureProdSchemaCompat(): Promise<void> {
           if (!/already exists|duplicate/i.test(msg)) {
             console.error("[schema-compat] ensure failed", msg);
           }
+        }
+      }
+      try {
+        await prisma.$executeRawUnsafe(
+          `CREATE UNIQUE INDEX IF NOT EXISTS "Order_publicShareToken_key" ON "${schema}"."Order"("publicShareToken")`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error("[schema-compat] publicShareToken index", msg);
         }
       }
       try {

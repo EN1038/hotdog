@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { OrderStatus, type FulfillmentType, type SalesChannel } from "@prisma/client";
 import {
@@ -19,10 +19,17 @@ import { PhoneCallButton } from "@/components/PhoneCallButton";
 import { distanceKm, formatDistanceKm, hasMapPin } from "@/lib/geo";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import {
-  countOptionsInText,
+  countPackStickPieces,
   isPackLikeOptions,
 } from "@/lib/order-item-display";
 import { canUsePrintActions, printQueueTickets } from "@/lib/print-bridge";
+import {
+  absoluteUrlFromPath,
+  captureElementToPng,
+  downloadPngDataUrl,
+  sharePngDataUrl,
+  sharePublicLink,
+} from "@/lib/share-media";
 
 type OrderItem = {
   id: string;
@@ -30,6 +37,7 @@ type OrderItem = {
   unitPrice: string | number;
   optionsPrice?: string | number;
   optionsText?: string | null;
+  giftQuantity?: number | null;
   note?: string | null;
   itemName: string;
   branchMenuItem?: { name: string } | null;
@@ -62,6 +70,7 @@ export type OrderCardData = {
     unit?: string | null;
   }> | null;
   photoUrl?: string | null;
+  paymentMethod?: string | null;
   awaitingPhotoKey?: boolean;
   promoSummary?: string | null;
   customer?: { phone: string; name?: string | null } | null;
@@ -127,9 +136,107 @@ export function OrderCard({
   queueTicketCopies = 1,
   ticketDateLabel = "",
 }: OrderCardProps) {
+  const captureRef = useRef<HTMLDivElement>(null);
   const [itemsExpanded, setItemsExpanded] = useState(false);
   const [canPrint, setCanPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [exportBusy, setExportBusy] = useState<
+    "save" | "share" | "link" | null
+  >(null);
+  const [shareHint, setShareHint] = useState<string | null>(null);
+
+  function flashShare(msg: string) {
+    setShareHint(msg);
+    window.setTimeout(() => setShareHint(null), 2500);
+  }
+
+  async function getStaffPublicShareUrl(): Promise<string> {
+    const res = await fetch(`/api/staff/orders/${order.id}/share`, {
+      method: "POST",
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.error ?? "สร้างลิงก์ไม่สำเร็จ");
+    }
+    return absoluteUrlFromPath(String(body.path ?? ""));
+  }
+
+  async function captureCardPng(): Promise<string> {
+    const node = captureRef.current;
+    if (!node) throw new Error("ไม่พบใบออเดอร์");
+    return captureElementToPng(node);
+  }
+
+  async function handleSaveImage() {
+    if (exportBusy) return;
+    setExportBusy("save");
+    try {
+      const dataUrl = await captureCardPng();
+      const r = await downloadPngDataUrl(
+        dataUrl,
+        `order-${order.orderNumber ?? order.id}`,
+      );
+      flashShare(r.ok ? "บันทึกรูปแล้ว" : r.error ?? "บันทึกไม่สำเร็จ");
+    } catch (e) {
+      flashShare(e instanceof Error ? e.message : "บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleShareImage() {
+    if (exportBusy) return;
+    setExportBusy("share");
+    try {
+      const dataUrl = await captureCardPng();
+      const r = await sharePngDataUrl(
+        dataUrl,
+        `order-${order.orderNumber ?? order.id}`,
+        `ออเดอร์ #${order.orderNumber ?? order.id.slice(-6)}`,
+      );
+      if (r.error === "cancelled") return;
+      flashShare(
+        r.mode === "share"
+          ? "แชร์รูปแล้ว"
+          : r.ok
+            ? "บันทึกรูปแทน"
+            : r.error ?? "แชร์ไม่สำเร็จ",
+      );
+    } catch (e) {
+      flashShare(e instanceof Error ? e.message : "แชร์รูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleSharePublicLink() {
+    if (exportBusy) return;
+    setExportBusy("link");
+    try {
+      const url = await getStaffPublicShareUrl();
+      const q =
+        order.queueNumber != null
+          ? ` · คิว ${formatQueueNumber(order.queueNumber)}`
+          : "";
+      const r = await sharePublicLink({
+        url,
+        title: `ออเดอร์ #${order.orderNumber ?? order.id.slice(-6)}${q}`,
+        text: `ตรวจออเดอร์ #${order.orderNumber ?? ""}`,
+      });
+      if (r.error === "cancelled") return;
+      flashShare(
+        r.mode === "share"
+          ? "แชร์ลิงก์แล้ว"
+          : r.mode === "copy"
+            ? "คัดลอกลิงก์แล้ว"
+            : r.error ?? "แชร์ไม่สำเร็จ",
+      );
+    } catch (e) {
+      flashShare(e instanceof Error ? e.message : "แชร์ลิงก์ไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
 
   useEffect(() => {
     const refresh = () => setCanPrint(canUsePrintActions());
@@ -197,9 +304,44 @@ export function OrderCard({
         highlight ? "ring-4 ring-site-primary/30 ring-offset-2" : ""
       } ${colorClass}`}
     >
-      <div className="flex-1 p-3">
+      <div className="relative flex-1 p-3">
+        <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-1">
+          <div className="flex flex-wrap justify-end gap-1">
+            <button
+              type="button"
+              disabled={exportBusy != null}
+              onClick={() => void handleSaveImage()}
+              className="rounded-md bg-white/95 px-1.5 py-1 text-[10px] font-semibold text-gray-800 shadow-sm ring-1 ring-black/10 hover:bg-white disabled:opacity-50"
+            >
+              {exportBusy === "save" ? "…" : "บันทึกรูป"}
+            </button>
+            <button
+              type="button"
+              disabled={exportBusy != null}
+              onClick={() => void handleShareImage()}
+              className="rounded-md bg-white/95 px-1.5 py-1 text-[10px] font-semibold text-gray-800 shadow-sm ring-1 ring-black/10 hover:bg-white disabled:opacity-50"
+            >
+              {exportBusy === "share" ? "…" : "แชร์รูป"}
+            </button>
+            <button
+              type="button"
+              disabled={exportBusy != null}
+              onClick={() => void handleSharePublicLink()}
+              className="rounded-md bg-violet-50 px-1.5 py-1 text-[10px] font-semibold text-violet-950 shadow-sm ring-1 ring-violet-200 hover:bg-violet-100 disabled:opacity-50"
+            >
+              {exportBusy === "link" ? "…" : "ลิงก์"}
+            </button>
+          </div>
+          {shareHint ? (
+            <p className="max-w-[7.5rem] text-right text-[9px] font-medium text-violet-800">
+              {shareHint}
+            </p>
+          ) : null}
+        </div>
+
+        <div ref={captureRef} className="pr-[5.5rem]">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-lg font-extrabold tracking-tight text-gray-900">
                 คิว {formatQueueNumber(order.queueNumber)}
@@ -403,7 +545,7 @@ export function OrderCard({
                 <ul className="mt-1.5 divide-y divide-gray-100 overflow-hidden rounded-lg bg-white/70 ring-1 ring-black/5">
                   {order.items.map((item) => {
                     const packPieces = isPackLikeOptions(item.optionsText)
-                      ? countOptionsInText(item.optionsText) * item.quantity
+                      ? countPackStickPieces(item)
                       : 0;
                     return (
                     <li
@@ -443,7 +585,7 @@ export function OrderCard({
             <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg bg-white/70 ring-1 ring-black/5">
               {order.items.map((item) => {
                 const packPieces = isPackLikeOptions(item.optionsText)
-                  ? countOptionsInText(item.optionsText) * item.quantity
+                  ? countPackStickPieces(item)
                   : 0;
                 return (
                 <li
@@ -483,6 +625,7 @@ export function OrderCard({
         <p className="mt-2 text-right text-sm font-bold text-gray-900">
           รวม {total.toLocaleString("th-TH")} บาท
         </p>
+        </div>
       </div>
 
       {showActions && hasActions ? (

@@ -17,10 +17,14 @@ import {
   restoreStockForOrder,
   StockError,
 } from "@/lib/stock";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 const statusSchema = z.object({
-  status: z.nativeEnum(OrderStatus),
+  status: z.nativeEnum(OrderStatus).optional(),
   cancelReason: z.string().trim().min(2).max(200).optional(),
+  paymentSlipUrl: z
+    .union([z.string().min(1).max(2000), z.literal(""), z.null()])
+    .optional(),
 });
 
 type Params = { params: Promise<{ id: string }> };
@@ -32,12 +36,14 @@ async function loadStaffOrder(id: string, branchId: string) {
       customer: true,
       deliveryLocation: true,
       items: { include: { branchMenuItem: true } },
+      consumableLines: true,
     },
   });
 }
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
+    await ensureProdSchemaCompat();
     const session = await requireStaff();
     const { id } = await params;
     const body = statusSchema.parse(await request.json());
@@ -46,6 +52,27 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { id, branchId: session.branchId },
     });
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
+
+    // Slip-only update: may attach anytime for current shift orders (closed shift OK for view+patch on today's orders)
+    if (body.paymentSlipUrl !== undefined && body.status === undefined) {
+      const url =
+        body.paymentSlipUrl == null || body.paymentSlipUrl === ""
+          ? null
+          : String(body.paymentSlipUrl).trim();
+      if (url && !/^https?:\/\//i.test(url) && !url.startsWith("/uploads/")) {
+        return jsonError("ลิงก์รูปสลิปไม่ถูกต้อง");
+      }
+      await prisma.order.update({
+        where: { id },
+        data: { paymentSlipUrl: url },
+      });
+      const latest = await loadStaffOrder(id, session.branchId);
+      return jsonOk(latest);
+    }
+
+    if (body.status === undefined) {
+      return jsonError("ไม่มีข้อมูลให้อัปเดต");
+    }
 
     try {
       await assertOrderMutableInActiveShift({
@@ -169,8 +196,23 @@ export async function PATCH(request: Request, { params }: Params) {
       }
     }
 
-    const updated = await loadStaffOrder(id, session.branchId);
-    return jsonOk(updated);
+    // Optional slip on same request as status change
+    if (body.paymentSlipUrl !== undefined) {
+      const url =
+        body.paymentSlipUrl == null || body.paymentSlipUrl === ""
+          ? null
+          : String(body.paymentSlipUrl).trim();
+      if (url && !/^https?:\/\//i.test(url) && !url.startsWith("/uploads/")) {
+        return jsonError("ลิงก์รูปสลิปไม่ถูกต้อง");
+      }
+      await prisma.order.update({
+        where: { id },
+        data: { paymentSlipUrl: url },
+      });
+    }
+
+    const latest = await loadStaffOrder(id, session.branchId);
+    return jsonOk(latest);
   } catch (error) {
     return handleApiError(error);
   }

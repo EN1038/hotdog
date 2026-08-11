@@ -234,6 +234,8 @@ export async function GET(request: Request, { params }: Params) {
       wasteValue: Math.round(wasteValue * 100) / 100,
       expenseTotal: expenseSummary.total,
       expenseCount: expenseSummary.count,
+      cashExpense: Math.round(expenseSummary.cash * 100) / 100,
+      transferExpense: Math.round(expenseSummary.transfer * 100) / 100,
       netRevenue: Math.round(netRevenue * 100) / 100,
       days,
     });

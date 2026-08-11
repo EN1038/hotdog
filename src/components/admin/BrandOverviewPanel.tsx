@@ -14,7 +14,11 @@ import {
   bangkokMonthRangeToToday,
   formatPrice,
 } from "@/lib/constants";
-import type { BrandHqSection } from "@/lib/brand-hq-nav";
+import {
+  brandHqHref,
+  type BrandHqSection,
+} from "@/lib/brand-hq-nav";
+import { usePathname } from "next/navigation";
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const res = await fetch(dataUrl);
@@ -71,7 +75,11 @@ type BranchRow = {
   issueValue: number;
   expenseTotal: number;
   expenseCount: number;
+  cashExpense?: number;
+  transferExpense?: number;
   completedRevenue: number;
+  cashRevenue?: number;
+  transferRevenue?: number;
   soldQty: number;
   netRevenue: number;
   stockItems: StockItem[];
@@ -90,7 +98,11 @@ type BrandOverview = {
   issueValue: number;
   expenseTotal: number;
   expenseCount: number;
+  cashExpense?: number;
+  transferExpense?: number;
   completedRevenue: number;
+  cashRevenue?: number;
+  transferRevenue?: number;
   soldQty: number;
   netRevenue: number;
   branches: BranchRow[];
@@ -138,7 +150,7 @@ const SECTION_COPY: Record<
   sales: {
     title: "สรุปยอดขาย",
     description:
-      "จำนวนขายตัดสต๊อกและรายได้ตามช่วงวันที่ — เทียบทุกสาขาหรือแยกสาขา",
+      "รายได้แยกเงินสด/โอน และจำนวนขายตัดสต๊อกตามช่วงวันที่ — เทียบทุกสาขาหรือแยกสาขา",
   },
   stock_now: {
     title: "สต๊อกขายปัจจุบัน",
@@ -164,6 +176,7 @@ export function BrandOverviewPanel({
   brandId?: string;
   section?: BrandHqSection;
 }) {
+  const pathname = usePathname() || "/admin";
   const initial = bangkokMonthRangeToToday();
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
@@ -197,6 +210,11 @@ export function BrandOverviewPanel({
   const showDateFilter = !isStockNow;
   const showExpand = isHome || isStockNow || isRestock || isIssue || isSales;
   const copy = SECTION_COPY[section];
+  const salesReportHref = brandHqHref(pathname, "sales");
+  const cashTotal = data?.cashRevenue ?? 0;
+  const transferTotal = data?.transferRevenue ?? 0;
+  const cashExpenseTotal = data?.cashExpense ?? 0;
+  const transferExpenseTotal = data?.transferExpense ?? 0;
 
   const showBrandCol = (() => {
     if (brandId) return false;
@@ -599,11 +617,11 @@ export function BrandOverviewPanel({
 
     if (isHome) {
       lines.push(
-        `ขายได้ ${money(b.completedRevenue)} ฿ · ค่าใช้จ่าย ${money(b.expenseTotal)} ฿ · ขายไป ${money(b.soldQty)} · สต๊อก ${money(b.saleStockQty)} · ของเสีย ${money(b.wasteQty)}`,
+        `ขายได้ ${money(b.completedRevenue)} ฿ (เงินสด ${money(b.cashRevenue ?? 0)} · โอน ${money(b.transferRevenue ?? 0)}) · ค่าใช้จ่าย ${money(b.expenseTotal)} ฿ (เงินสด ${money(b.cashExpense ?? 0)} · โอน ${money(b.transferExpense ?? 0)}) · ขายไป ${money(b.soldQty)} · สต๊อก ${money(b.saleStockQty)} · ของเสีย ${money(b.wasteQty)}`,
       );
     } else if (isSales) {
       lines.push(
-        `ขาย ${money(b.soldQty)} ชิ้น · รายได้ ${money(b.completedRevenue)} ฿`,
+        `ขาย ${money(b.soldQty)} ชิ้น · รายได้ ${money(b.completedRevenue)} ฿ (เงินสด ${money(b.cashRevenue ?? 0)} · โอน ${money(b.transferRevenue ?? 0)})`,
       );
     } else if (isStockNow) {
       lines.push(
@@ -755,21 +773,54 @@ export function BrandOverviewPanel({
         ) : null}
         {isHome ? (
           <>
-            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
+            <Link
+              href={salesReportHref}
+              className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm transition hover:border-emerald-400 hover:shadow-md"
+            >
               <p className="text-sm text-emerald-700">ขายได้ (รายได้)</p>
               <p className="mt-1 text-2xl font-bold text-emerald-800">
                 {money(data?.completedRevenue ?? 0)} ฿
               </p>
-              <p className="mt-1 text-xs text-emerald-600/80">
-                {money(data?.soldQty ?? 0)} ชิ้น · ช่วงที่เลือก
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-emerald-800/90">
+                <span>
+                  เงินสด{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(cashTotal)} ฿
+                  </span>
+                </span>
+                <span className="text-emerald-400">·</span>
+                <span>
+                  เงินโอน{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(transferTotal)} ฿
+                  </span>
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-emerald-600/80">
+                {money(data?.soldQty ?? 0)} ชิ้น · ช่วงที่เลือก · กดดูรายงานขาย
               </p>
-            </div>
+            </Link>
             <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 shadow-sm">
               <p className="text-sm text-rose-700">ค่าใช้จ่าย</p>
               <p className="mt-1 text-2xl font-bold text-rose-800">
                 {money(data?.expenseTotal ?? 0)} ฿
               </p>
-              <p className="mt-1 text-xs text-rose-600/80">
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-rose-800/90">
+                <span>
+                  เงินสด{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(cashExpenseTotal)} ฿
+                  </span>
+                </span>
+                <span className="text-rose-300">·</span>
+                <span>
+                  เงินโอน{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(transferExpenseTotal)} ฿
+                  </span>
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-rose-600/80">
                 {data?.expenseCount ?? 0} รายการ · ช่วงที่เลือก
               </p>
             </div>
@@ -778,6 +829,29 @@ export function BrandOverviewPanel({
               <p className="mt-1 text-2xl font-bold text-indigo-800">
                 {money(data?.netRevenue ?? 0)} ฿
               </p>
+              <div className="mt-2 space-y-0.5 text-xs text-indigo-800/85">
+                <p>
+                  เงินสด{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(cashTotal - cashExpenseTotal)} ฿
+                  </span>
+                  <span className="text-indigo-400">
+                    {" "}
+                    (รับ {money(cashTotal)} − จ่าย {money(cashExpenseTotal)})
+                  </span>
+                </p>
+                <p>
+                  เงินโอน{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(transferTotal - transferExpenseTotal)} ฿
+                  </span>
+                  <span className="text-indigo-400">
+                    {" "}
+                    (รับ {money(transferTotal)} − จ่าย{" "}
+                    {money(transferExpenseTotal)})
+                  </span>
+                </p>
+              </div>
             </div>
             <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 shadow-sm">
               <p className="text-sm text-orange-700">ของเสีย</p>
@@ -797,8 +871,41 @@ export function BrandOverviewPanel({
               <p className="mt-1 text-2xl font-bold text-emerald-800">
                 {money(data?.completedRevenue ?? 0)} ฿
               </p>
-              <p className="mt-1 text-xs text-emerald-600/80">
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-emerald-800/90">
+                <span>
+                  เงินสด{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(cashTotal)} ฿
+                  </span>
+                </span>
+                <span className="text-emerald-400">·</span>
+                <span>
+                  เงินโอน{" "}
+                  <span className="font-semibold tabular-nums">
+                    {money(transferTotal)} ฿
+                  </span>
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-emerald-600/80">
                 จากออเดอร์สำเร็จ · ช่วงที่เลือก
+              </p>
+            </div>
+            <div className="rounded-2xl border border-lime-200 bg-gradient-to-br from-lime-50 to-white p-4 shadow-sm">
+              <p className="text-sm text-lime-800">เงินสด</p>
+              <p className="mt-1 text-2xl font-bold text-lime-900">
+                {money(cashTotal)} ฿
+              </p>
+              <p className="mt-1 text-xs text-lime-700/80">
+                ชำระเงินสด · ช่วงที่เลือก
+              </p>
+            </div>
+            <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
+              <p className="text-sm text-sky-700">เงินโอน</p>
+              <p className="mt-1 text-2xl font-bold text-sky-800">
+                {money(transferTotal)} ฿
+              </p>
+              <p className="mt-1 text-xs text-sky-600/80">
+                ชำระโอน · ช่วงที่เลือก
               </p>
             </div>
             <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
@@ -1157,7 +1264,11 @@ export function BrandOverviewPanel({
                 {isHome ? (
                   <>
                     <th className="px-3 py-2.5 text-right">ขายได้</th>
+                    <th className="px-3 py-2.5 text-right">เงินสด(ขาย)</th>
+                    <th className="px-3 py-2.5 text-right">โอน(ขาย)</th>
                     <th className="px-3 py-2.5 text-right">ค่าใช้จ่าย</th>
+                    <th className="px-3 py-2.5 text-right">เงินสด(จ่าย)</th>
+                    <th className="px-3 py-2.5 text-right">โอน(จ่าย)</th>
                     <th className="px-3 py-2.5 text-right">ขายไป</th>
                     <th className="px-3 py-2.5 text-right">สต๊อก</th>
                     <th className="px-3 py-2.5 text-right">ของเสีย</th>
@@ -1173,6 +1284,8 @@ export function BrandOverviewPanel({
                   <>
                     <th className="px-3 py-2.5 text-right">ขาย (ชิ้น)</th>
                     <th className="px-3 py-2.5 text-right">รายได้</th>
+                    <th className="px-3 py-2.5 text-right">เงินสด</th>
+                    <th className="px-3 py-2.5 text-right">เงินโอน</th>
                   </>
                 ) : null}
                 {isRestock ? (
@@ -1216,8 +1329,20 @@ export function BrandOverviewPanel({
                           <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-800">
                             {money(b.completedRevenue)} ฿
                           </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-lime-800">
+                            {money(b.cashRevenue ?? 0)} ฿
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-sky-800">
+                            {money(b.transferRevenue ?? 0)} ฿
+                          </td>
                           <td className="px-3 py-2.5 text-right tabular-nums text-rose-700">
                             {money(b.expenseTotal)} ฿
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-rose-800/90">
+                            {money(b.cashExpense ?? 0)} ฿
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-rose-800/90">
+                            {money(b.transferExpense ?? 0)} ฿
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums">
                             {money(b.soldQty)}
@@ -1247,6 +1372,12 @@ export function BrandOverviewPanel({
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-800">
                             {money(b.completedRevenue)} ฿
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-lime-800">
+                            {money(b.cashRevenue ?? 0)} ฿
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-sky-800">
+                            {money(b.transferRevenue ?? 0)} ฿
                           </td>
                         </>
                       ) : null}

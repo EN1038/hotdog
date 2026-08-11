@@ -652,6 +652,8 @@ function BranchDetailContent() {
     wasteValue: number;
     expenseTotal: number;
     expenseCount: number;
+    cashExpense: number;
+    transferExpense: number;
     netRevenue: number;
     days: OrderStats["last7Days"];
   } | null>(null);
@@ -1866,8 +1868,23 @@ function BranchDetailContent() {
                   <p className="mt-1 text-2xl font-bold text-rose-800">
                     {money(stats?.expenseTotal ?? 0)} ฿
                   </p>
-                  <p className="mt-1 text-xs text-rose-600/80">
-                    {stats?.expenseCount ?? 0} รายการ · ดูแท็บค่าใช้จ่าย
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-rose-800/90">
+                    <span>
+                      เงินสด{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(stats?.cashExpense ?? 0)} ฿
+                      </span>
+                    </span>
+                    <span className="text-rose-300">·</span>
+                    <span>
+                      เงินโอน{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(stats?.transferExpense ?? 0)} ฿
+                      </span>
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-rose-600/80">
+                    {stats?.expenseCount ?? 0} รายการ · กดดูแท็บค่าใช้จ่าย
                   </p>
                 </button>
                 <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
@@ -1875,7 +1892,28 @@ function BranchDetailContent() {
                   <p className="mt-1 text-2xl font-bold text-indigo-900">
                     {money(stats?.netRevenue ?? 0)} ฿
                   </p>
-                  <p className="mt-1 text-xs text-indigo-600/80">
+                  <div className="mt-2 space-y-0.5 text-xs text-indigo-800/85">
+                    <p>
+                      เงินสด{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(
+                          (stats?.cashRevenue ?? 0) - (stats?.cashExpense ?? 0),
+                        )}{" "}
+                        ฿
+                      </span>
+                    </p>
+                    <p>
+                      เงินโอน{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(
+                          (stats?.transferRevenue ?? 0) -
+                            (stats?.transferExpense ?? 0),
+                        )}{" "}
+                        ฿
+                      </span>
+                    </p>
+                  </div>
+                  <p className="mt-1.5 text-xs text-indigo-600/80">
                     รายได้สำเร็จหักค่าใช้จ่ายช่วงนี้
                   </p>
                 </div>

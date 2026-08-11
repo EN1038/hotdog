@@ -773,6 +773,10 @@ model Order {
   shiftId            String?
   /// Reference photo for rush “key later” orders
   photoUrl           String?
+  /// Transfer / payment slip image URL (โอนเงิน)
+  paymentSlipUrl     String?
+  /// Unguessable token for public receipt page (customer verify)
+  publicShareToken   String?           @unique
   /// True until staff finishes keying items from the photo (not counted as sales yet)
   awaitingPhotoKey   Boolean           @default(false)
   /// True after stock was deducted on accept / auto-accept

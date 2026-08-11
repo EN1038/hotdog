@@ -55,7 +55,11 @@ export type HqBranchRow = {
   issueValue: number;
   expenseTotal: number;
   expenseCount: number;
+  cashExpense: number;
+  transferExpense: number;
   completedRevenue: number;
+  cashRevenue: number;
+  transferRevenue: number;
   soldQty: number;
   netRevenue: number;
   stockItems: HqStockItem[];
@@ -74,7 +78,11 @@ export type HqOverviewResult = {
   issueValue: number;
   expenseTotal: number;
   expenseCount: number;
+  cashExpense: number;
+  transferExpense: number;
   completedRevenue: number;
+  cashRevenue: number;
+  transferRevenue: number;
   soldQty: number;
   netRevenue: number;
   branches: HqBranchRow[];
@@ -99,7 +107,11 @@ function emptyTotals() {
     issueValue: 0,
     expenseTotal: 0,
     expenseCount: 0,
+    cashExpense: 0,
+    transferExpense: 0,
     completedRevenue: 0,
+    cashRevenue: 0,
+    transferRevenue: 0,
     soldQty: 0,
   };
 }
@@ -155,6 +167,7 @@ export async function buildHqOverview(
         branchId: true,
         status: true,
         awaitingPhotoKey: true,
+        paymentMethod: true,
         deliveryFee: true,
         discountAmount: true,
         items: {
@@ -225,7 +238,11 @@ export async function buildHqOverview(
       issueValue: 0,
       expenseTotal: 0,
       expenseCount: 0,
+      cashExpense: 0,
+      transferExpense: 0,
       completedRevenue: 0,
+      cashRevenue: 0,
+      transferRevenue: 0,
       soldQty: 0,
       netRevenue: 0,
       stockItems: [],
@@ -354,7 +371,11 @@ export async function buildHqOverview(
       Number(order.discountAmount),
     );
     const agg = byBranch.get(order.branchId);
-    if (agg) agg.completedRevenue += total;
+    if (agg) {
+      agg.completedRevenue += total;
+      if (order.paymentMethod === "CASH") agg.cashRevenue += total;
+      else if (order.paymentMethod === "TRANSFER") agg.transferRevenue += total;
+    }
 
     for (const it of order.items) {
       if (!it.branchMenuItemId) continue;
@@ -391,6 +412,8 @@ export async function buildHqOverview(
     );
     agg.expenseTotal = summary.total;
     agg.expenseCount = summary.count;
+    agg.cashExpense = summary.cash;
+    agg.transferExpense = summary.transfer;
   }
 
   for (const agg of byBranch.values()) {
@@ -398,7 +421,11 @@ export async function buildHqOverview(
     agg.wasteValue = Math.round(agg.wasteValue * 100) / 100;
     agg.restockValue = Math.round(agg.restockValue * 100) / 100;
     agg.issueValue = Math.round(agg.issueValue * 100) / 100;
+    agg.cashExpense = Math.round(agg.cashExpense * 100) / 100;
+    agg.transferExpense = Math.round(agg.transferExpense * 100) / 100;
     agg.completedRevenue = Math.round(agg.completedRevenue * 100) / 100;
+    agg.cashRevenue = Math.round(agg.cashRevenue * 100) / 100;
+    agg.transferRevenue = Math.round(agg.transferRevenue * 100) / 100;
     agg.netRevenue =
       Math.round((agg.completedRevenue - agg.expenseTotal) * 100) / 100;
     agg.stockItems.sort(
@@ -419,7 +446,11 @@ export async function buildHqOverview(
     acc.issueValue += b.issueValue;
     acc.expenseTotal += b.expenseTotal;
     acc.expenseCount += b.expenseCount;
+    acc.cashExpense += b.cashExpense;
+    acc.transferExpense += b.transferExpense;
     acc.completedRevenue += b.completedRevenue;
+    acc.cashRevenue += b.cashRevenue;
+    acc.transferRevenue += b.transferRevenue;
     acc.soldQty += b.soldQty;
     return acc;
   }, emptyTotals());
@@ -437,7 +468,11 @@ export async function buildHqOverview(
     issueValue: Math.round(totals.issueValue * 100) / 100,
     expenseTotal: Math.round(totals.expenseTotal * 100) / 100,
     expenseCount: totals.expenseCount,
+    cashExpense: Math.round(totals.cashExpense * 100) / 100,
+    transferExpense: Math.round(totals.transferExpense * 100) / 100,
     completedRevenue: Math.round(totals.completedRevenue * 100) / 100,
+    cashRevenue: Math.round(totals.cashRevenue * 100) / 100,
+    transferRevenue: Math.round(totals.transferRevenue * 100) / 100,
     soldQty: totals.soldQty,
     netRevenue:
       Math.round((totals.completedRevenue - totals.expenseTotal) * 100) / 100,

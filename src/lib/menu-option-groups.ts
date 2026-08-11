@@ -213,18 +213,42 @@ export function resolveOrderItemOptionsFromPrisma(
 ):
   | {
       ok: true;
-      chosen: Array<{ name: string; priceDelta: number }>;
+      chosen: Array<{
+        name: string;
+        priceDelta: number;
+        mode: "MANUAL" | "FROM_MENU";
+      }>;
     }
   | { ok: false; error: string } {
   const serialized = groups.map(serializeOptionGroup);
   const validationError = validateOrderItemOptionIds(serialized, optionIds);
   if (validationError) return { ok: false, error: validationError };
-  const all = serialized.flatMap((g) => g.options);
-  const chosen: Array<{ name: string; priceDelta: number }> = [];
+  const idToMeta = new Map<
+    string,
+    { name: string; priceDelta: number; mode: "MANUAL" | "FROM_MENU" }
+  >();
+  for (const g of serialized) {
+    const mode = g.mode === "FROM_MENU" ? "FROM_MENU" : "MANUAL";
+    for (const o of g.options) {
+      // First group wins if id collision (should not happen across groups)
+      if (!idToMeta.has(o.id)) {
+        idToMeta.set(o.id, {
+          name: o.name,
+          priceDelta: Number(o.priceDelta),
+          mode,
+        });
+      }
+    }
+  }
+  const chosen: Array<{
+    name: string;
+    priceDelta: number;
+    mode: "MANUAL" | "FROM_MENU";
+  }> = [];
   for (const id of optionIds) {
-    const o = all.find((x) => x.id === id);
+    const o = idToMeta.get(id);
     if (!o) return { ok: false, error: "ตัวเลือกไม่ถูกต้อง" };
-    chosen.push({ name: o.name, priceDelta: Number(o.priceDelta) });
+    chosen.push(o);
   }
   return { ok: true, chosen };
 }

@@ -28,6 +28,7 @@ import {
   optionGroupDetailInclude,
   resolveOrderItemOptionsFromPrisma,
 } from "@/lib/menu-option-groups";
+import { formatOrderItemOptionsText } from "@/lib/order-item-display";
 import {
   fulfillmentToChannel,
   isChannelSellEnabled,
@@ -584,7 +585,7 @@ export async function POST(request: Request) {
         itemName: menu.name,
         quantity: item.quantity,
         unitPrice: new Prisma.Decimal(priced.final),
-        optionsText: chosen.map((o) => o.name).join(", ") || null,
+        optionsText: formatOrderItemOptionsText(chosen),
         optionsPrice,
         giftQuantity: computeLineGiftQuantity(
           groups,

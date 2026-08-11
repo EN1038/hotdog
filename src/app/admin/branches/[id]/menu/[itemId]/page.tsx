@@ -33,6 +33,8 @@ type MenuItemDetail = {
   sellDelivery?: boolean;
   sellPickup?: boolean;
   sellStorefront?: boolean;
+  sellByWeight?: boolean;
+  pricePerKg?: string | null;
   description: string | null;
   categoryId: string | null;
   category: { id: string; name: string; sortOrder: number } | null;
@@ -58,6 +60,8 @@ type FormState = {
   sellDelivery: boolean;
   sellPickup: boolean;
   sellStorefront: boolean;
+  sellByWeight: boolean;
+  pricePerKg: string;
   description: string;
   categoryId: string;
   imageUrl: string;
@@ -75,6 +79,8 @@ const EMPTY_ITEM: MenuItemDetail = {
   sellDelivery: true,
   sellPickup: true,
   sellStorefront: true,
+  sellByWeight: false,
+  pricePerKg: null,
   description: null,
   categoryId: null,
   category: null,
@@ -94,6 +100,8 @@ const EMPTY_FORM: FormState = {
   sellDelivery: true,
   sellPickup: true,
   sellStorefront: true,
+  sellByWeight: false,
+  pricePerKg: "",
   description: "",
   categoryId: "",
   imageUrl: "",
@@ -166,6 +174,9 @@ export default function MenuItemEditorPage() {
       sellDelivery: data.sellDelivery !== false,
       sellPickup: data.sellPickup !== false,
       sellStorefront: data.sellStorefront !== false,
+      sellByWeight: Boolean(data.sellByWeight),
+      pricePerKg:
+        data.pricePerKg != null ? String(data.pricePerKg) : "",
       description: data.description ?? "",
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
@@ -293,6 +304,13 @@ export default function MenuItemEditorPage() {
       toast.error("ต้องเปิดขายอย่างน้อย 1 ช่องทาง");
       return;
     }
+    if (form.sellByWeight) {
+      const perKg = optionalPricePayload(form.pricePerKg);
+      if (!perKg) {
+        toast.error("กรอกราคาต่อกิโลกรัม");
+        return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -304,6 +322,10 @@ export default function MenuItemEditorPage() {
         sellDelivery: form.sellDelivery,
         sellPickup: form.sellPickup,
         sellStorefront: form.sellStorefront,
+        sellByWeight: form.sellByWeight,
+        pricePerKg: form.sellByWeight
+          ? optionalPricePayload(form.pricePerKg)
+          : null,
         description: form.description.trim() || null,
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
@@ -557,6 +579,41 @@ export default function MenuItemEditorPage() {
             <p className="mb-3 text-sm text-gray-500">
               ถ้าไม่ใส่ราคา「รับที่ร้าน」หรือ「หน้าร้าน」ระบบจะใช้ราคาเดลิเวอรี่ให้อัตโนมัติ
             </p>
+            <div className="mb-3 rounded-xl border border-rose-100 bg-rose-50/60 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-rose-900">
+                    ขายชั่งกิโล (หมูกระทะ)
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-rose-800/80">
+                    ใช้กับโหมดหมูกระทะ — จุดชั่งจะคิดราคาจาก กก. × ราคา/กก.
+                  </p>
+                </div>
+                <AdminToggle
+                  checked={form.sellByWeight}
+                  onChange={(next) =>
+                    setForm((f) => ({ ...f, sellByWeight: next }))
+                  }
+                  label="ชั่งกิโล"
+                  size="sm"
+                />
+              </div>
+              {form.sellByWeight && (
+                <>
+                  <label className={adminLabelClass}>ราคาต่อกิโล (บาท) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className={adminInputClass}
+                    value={form.pricePerKg}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, pricePerKg: e.target.value }))
+                    }
+                  />
+                </>
+              )}
+            </div>
             <div className="space-y-3">
               <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">

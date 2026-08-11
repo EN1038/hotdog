@@ -28,6 +28,13 @@ import type { MapLocationValue } from "@/components/admin/AdminMapLocationField"
 import { BranchHoursEditor } from "@/components/admin/BranchHoursEditor";
 import { BranchOptionLibrary } from "@/components/admin/BranchOptionLibrary";
 import { BranchCategoryLibrary } from "@/components/admin/BranchCategoryLibrary";
+import { BranchBbqPanel } from "@/components/admin/BranchBbqPanel";
+import {
+  BRANCH_OPERATING_MODE_META,
+  branchOperatingModeLabel,
+  isBranchOperatingMode,
+  type BranchOperatingModeId,
+} from "@/lib/branch-operating-mode";
 import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
 import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
@@ -140,7 +147,7 @@ type BranchDetail = {
   allowAdvanceOrder: boolean;
   autoAcceptOrders: boolean;
   stockEnabled: boolean;
-  operatingMode?: "NORMAL" | "SKEWER";
+  operatingMode?: BranchOperatingModeId;
   brand: Brand | null;
   staff: {
     id: string;
@@ -194,6 +201,9 @@ type TabId =
   | "copy"
   | "orders"
   | "skewer-orders"
+  | "bbq-tables"
+  | "bbq-sessions"
+  | "bbq-bills"
   | "shifts"
   | "stock"
   | "expenses"
@@ -205,6 +215,9 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "ภาพรวม" },
   { id: "orders", label: "ออเดอร์" },
   { id: "skewer-orders", label: "ออเดอร์เสียบไม้" },
+  { id: "bbq-tables", label: "โต๊ะ / QR" },
+  { id: "bbq-sessions", label: "บิลเปิด / ชั่ง" },
+  { id: "bbq-bills", label: "บิลปิดแล้ว" },
   { id: "shifts", label: "รอบขาย" },
   { id: "stock", label: "สต๊อกสาขา" },
   { id: "expenses", label: "ค่าใช้จ่าย" },
@@ -227,7 +240,17 @@ const TAB_GROUPS: {
   {
     id: "sales",
     label: "ขาย",
-    tabIds: ["overview", "orders", "skewer-orders", "shifts", "stock", "expenses"],
+    tabIds: [
+      "overview",
+      "orders",
+      "skewer-orders",
+      "bbq-tables",
+      "bbq-sessions",
+      "bbq-bills",
+      "shifts",
+      "stock",
+      "expenses",
+    ],
   },
   {
     id: "menu",
@@ -253,6 +276,9 @@ const TAB_BY_ID = Object.fromEntries(TABS.map((t) => [t.id, t])) as Record<
 
 const SKEWER_HIDDEN_TABS = new Set<TabId>([
   "orders",
+  "bbq-tables",
+  "bbq-sessions",
+  "bbq-bills",
   "shifts",
   "stock",
   "expenses",
@@ -261,7 +287,34 @@ const SKEWER_HIDDEN_TABS = new Set<TabId>([
   "options",
 ]);
 
-const NORMAL_HIDDEN_TABS = new Set<TabId>(["skewer-orders"]);
+const NORMAL_HIDDEN_TABS = new Set<TabId>([
+  "skewer-orders",
+  "bbq-tables",
+  "bbq-sessions",
+  "bbq-bills",
+]);
+
+const BBQ_WEIGH_HIDDEN_TABS = new Set<TabId>([
+  "orders",
+  "skewer-orders",
+  "shifts",
+  "stock",
+  "expenses",
+  "locations",
+  "options",
+]);
+
+function hiddenTabsForMode(mode: BranchOperatingModeId): Set<TabId> {
+  if (mode === "SKEWER") return SKEWER_HIDDEN_TABS;
+  if (mode === "BBQ_WEIGH") return BBQ_WEIGH_HIDDEN_TABS;
+  return NORMAL_HIDDEN_TABS;
+}
+
+function defaultTabForMode(mode: BranchOperatingModeId): TabId {
+  if (mode === "SKEWER") return "skewer-orders";
+  if (mode === "BBQ_WEIGH") return "bbq-tables";
+  return "orders";
+}
 
 type TabAttention = {
   tone: "warn" | "info";
@@ -514,7 +567,7 @@ function BranchDetailContent() {
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
     stockEnabled: false,
-    operatingMode: "NORMAL" as "NORMAL" | "SKEWER",
+    operatingMode: "NORMAL" as BranchOperatingModeId,
     storefrontHours: null as WeeklySchedule | null,
     deliveryHours: null as WeeklySchedule | null,
   });
@@ -670,7 +723,9 @@ function BranchDetailContent() {
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
       stockEnabled: data.stockEnabled ?? false,
-      operatingMode: data.operatingMode === "SKEWER" ? "SKEWER" : "NORMAL",
+      operatingMode: isBranchOperatingMode(data.operatingMode)
+        ? data.operatingMode
+        : "NORMAL",
       storefrontHours: ensureWeeklySchedule(
         data.storefrontHours,
         data.opensAt,
@@ -719,13 +774,14 @@ function BranchDetailContent() {
 
   useEffect(() => {
     if (!branch) return;
-    const mode = branch.operatingMode === "SKEWER" ? "SKEWER" : "NORMAL";
-    const hidden =
-      mode === "SKEWER"
-        ? SKEWER_HIDDEN_TABS.has(activeTab)
-        : NORMAL_HIDDEN_TABS.has(activeTab);
-    if (hidden) {
-      setTab(mode === "SKEWER" ? "skewer-orders" : "orders");
+    const mode: BranchOperatingModeId = isBranchOperatingMode(
+      branch.operatingMode,
+    )
+      ? branch.operatingMode
+      : "NORMAL";
+    const hidden = hiddenTabsForMode(mode);
+    if (hidden.has(activeTab)) {
+      setTab(defaultTabForMode(mode));
     }
   }, [branch?.operatingMode, activeTab, branch]);
 
@@ -835,7 +891,6 @@ function BranchDetailContent() {
         isOpen: settings.isOpen,
         allowAdvanceOrder: settings.allowAdvanceOrder,
         autoAcceptOrders: settings.autoAcceptOrders,
-        operatingMode: settings.operatingMode,
         storefrontHours: settings.storefrontHours,
         deliveryHours: settings.deliveryHours,
       }),
@@ -1523,6 +1578,11 @@ function BranchDetailContent() {
                 โหมดเสียบไม้
               </span>
             )}
+            {branch.operatingMode === "BBQ_WEIGH" && (
+              <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900">
+                โหมดหมูกระทะ
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {branch.brand && branch.code ? (
@@ -1550,11 +1610,15 @@ function BranchDetailContent() {
       <div className="sticky top-[3rem] z-20 -mx-1 mt-4 overflow-x-auto filter-scroll-row bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.25rem]">
         <div className="flex min-w-max items-center gap-0.5 rounded-2xl border border-slate-200 bg-white/90 p-1.5 shadow-sm">
           {TAB_GROUPS.map((group, groupIndex) => {
-            const mode = branch.operatingMode === "SKEWER" ? "SKEWER" : "NORMAL";
-            const visibleTabIds = group.tabIds.filter((tabId) => {
-              if (mode === "SKEWER") return !SKEWER_HIDDEN_TABS.has(tabId);
-              return !NORMAL_HIDDEN_TABS.has(tabId);
-            });
+            const mode: BranchOperatingModeId = isBranchOperatingMode(
+              branch.operatingMode,
+            )
+              ? branch.operatingMode
+              : "NORMAL";
+            const hidden = hiddenTabsForMode(mode);
+            const visibleTabIds = group.tabIds.filter(
+              (tabId) => !hidden.has(tabId),
+            );
             if (visibleTabIds.length === 0) return null;
             return (
             <div key={group.id} className="flex items-center gap-0.5">
@@ -1631,6 +1695,34 @@ function BranchDetailContent() {
       <div className="mt-4">
         {activeTab === "overview" && (
           <div className="space-y-4">
+            {branch.operatingMode === "BBQ_WEIGH" && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                โหมดหมูกระทะชั่งกิโล — ใช้แท็บ{" "}
+                <button
+                  type="button"
+                  className="font-semibold underline"
+                  onClick={() => setTab("bbq-tables")}
+                >
+                  โต๊ะ / QR
+                </button>
+                {" · "}
+                <button
+                  type="button"
+                  className="font-semibold underline"
+                  onClick={() => setTab("bbq-sessions")}
+                >
+                  บิลเปิด / ชั่ง
+                </button>
+                {" · "}
+                <button
+                  type="button"
+                  className="font-semibold underline"
+                  onClick={() => setTab("bbq-bills")}
+                >
+                  บิลปิดแล้ว
+                </button>
+              </div>
+            )}
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div className="min-w-0">
@@ -2301,6 +2393,25 @@ function BranchDetailContent() {
         {activeTab === "skewer-orders" && (
           <BranchSkewerOrdersPanel branchId={id} />
         )}
+
+        {(activeTab === "bbq-tables" ||
+          activeTab === "bbq-sessions" ||
+          activeTab === "bbq-bills") &&
+          branch.brand?.code &&
+          branch.code && (
+            <BranchBbqPanel
+              branchId={id}
+              brandCode={branch.brand.code}
+              branchCode={branch.code}
+              section={
+                activeTab === "bbq-tables"
+                  ? "tables"
+                  : activeTab === "bbq-sessions"
+                    ? "sessions"
+                    : "bills"
+              }
+            />
+          )}
 
         {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
 
@@ -2991,65 +3102,38 @@ function BranchDetailContent() {
                   </div>
                 );
               })()}
-              {/* Operating mode */}
+              {/* Operating mode (locked after create) */}
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
                     โหมดการทำงานของสาขา
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    โหมดเสียบไม้ใช้สำหรับรับคำสั่งเสียบไม้ (ไม่ใช่คิวหมาล่า) — ลูกค้าสั่งแล้วแอดมินยืนยันจำนวน
+                    เลือกตอนสร้างสาขาแล้วเปลี่ยนไม่ได้
                   </p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSettings((s) => ({ ...s, operatingMode: "NORMAL" }))
+                <div
+                  className={`rounded-xl border px-4 py-3 ${
+                    BRANCH_OPERATING_MODE_META[
+                      isBranchOperatingMode(settings.operatingMode)
+                        ? settings.operatingMode
+                        : "NORMAL"
+                    ].badgeClass
+                  }`}
+                >
+                  <p className="text-sm font-semibold">
+                    {branchOperatingModeLabel(settings.operatingMode)}
+                  </p>
+                  <p className="mt-0.5 text-xs opacity-80">
+                    {
+                      BRANCH_OPERATING_MODE_META[
+                        isBranchOperatingMode(settings.operatingMode)
+                          ? settings.operatingMode
+                          : "NORMAL"
+                      ].description
                     }
-                    className={`rounded-xl border px-4 py-3 text-left transition ${
-                      settings.operatingMode === "NORMAL"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-gray-200 bg-white text-gray-800 hover:border-gray-300"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold">หมาล่าปกติ</p>
-                    <p
-                      className={`mt-0.5 text-xs ${
-                        settings.operatingMode === "NORMAL"
-                          ? "text-slate-300"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      คิวออเดอร์ · กะ · หน้าร้านลูกค้าเดิม
-                    </p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSettings((s) => ({ ...s, operatingMode: "SKEWER" }))
-                    }
-                    className={`rounded-xl border px-4 py-3 text-left transition ${
-                      settings.operatingMode === "SKEWER"
-                        ? "border-amber-700 bg-amber-700 text-white"
-                        : "border-gray-200 bg-white text-gray-800 hover:border-gray-300"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold">เสียบไม้</p>
-                    <p
-                      className={`mt-0.5 text-xs ${
-                        settings.operatingMode === "SKEWER"
-                          ? "text-amber-100"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      สั่งไม้ขั้นต่ำ 12 · รอแอดมินยืนยัน · ไม่ใช้คิว
-                    </p>
-                  </button>
+                  </p>
                 </div>
-                <p className="text-xs text-amber-800">
-                  กดบันทึกตั้งค่าด้านล่างเพื่อใช้โหมดที่เลือก
-                </p>
               </div>
               {/* 1. Daily ops status */}
               <div className="space-y-3">

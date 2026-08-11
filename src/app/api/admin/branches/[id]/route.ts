@@ -53,7 +53,6 @@ const updateSchema = z.object({
   isTest: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
-  operatingMode: z.enum(["NORMAL", "SKEWER"]).optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
   deliveryHours: weeklyScheduleSchema.optional(),
 });
@@ -210,7 +209,16 @@ export async function PATCH(request: Request, { params }: Params) {
   try {
     const { id } = await params;
     const { session } = await requireBranchAccess(id);
-    const body = updateSchema.parse(await request.json());
+    const raw = await request.json();
+    if (
+      raw &&
+      typeof raw === "object" &&
+      !Array.isArray(raw) &&
+      "operatingMode" in raw
+    ) {
+      return jsonError("โหมดสาขาเลือกตอนสร้างแล้วเปลี่ยนไม่ได้", 400);
+    }
+    const body = updateSchema.parse(raw);
 
     if (
       body.primaryCategory !== undefined ||
@@ -281,9 +289,6 @@ export async function PATCH(request: Request, { params }: Params) {
         }),
         ...(body.autoAcceptOrders !== undefined && {
           autoAcceptOrders: body.autoAcceptOrders,
-        }),
-        ...(body.operatingMode !== undefined && {
-          operatingMode: body.operatingMode,
         }),
         ...(body.storefrontHours !== undefined && {
           storefrontHours:

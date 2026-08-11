@@ -29,6 +29,7 @@ export function CustomerEntryGate({
     heroImageUrl: string | null;
   } | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [bbqTableOnly, setBbqTableOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,13 +83,16 @@ export function CustomerEntryGate({
                 heroImageUrl: branchImage,
               });
             }
-            const isSkewer = branches[0]?.operatingMode === "SKEWER";
-            setDestination(
-              isSkewer
-                ? `/skewer/${branches[0].id}`
-                : `/order/store/${branches[0].id}`,
-            );
-            setRequireLogin(Boolean(isSkewer));
+            const mode = branches[0]?.operatingMode;
+            if (mode === "BBQ_WEIGH") {
+              setBbqTableOnly(true);
+              setDestination(null);
+            } else if (mode === "SKEWER") {
+              setDestination(`/skewer/${branches[0].id}`);
+              setRequireLogin(true);
+            } else {
+              setDestination(`/order/store/${branches[0].id}`);
+            }
           } else {
             setNotFound(true);
           }
@@ -125,6 +129,19 @@ export function CustomerEntryGate({
   }
 
   if (session) return null;
+
+  if (bbqTableOnly) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-stone-100 p-6">
+        <p className="text-center text-lg font-semibold text-stone-900">
+          {brandInfo?.name ?? "หมูกระทะ"}
+        </p>
+        <p className="max-w-sm text-center text-sm text-stone-600">
+          สาขานี้เป็นโหมดหมูกระทะชั่งกิโล — กรุณาสแกน QR ที่ติดบนโต๊ะเพื่อเปิดบิล
+        </p>
+      </main>
+    );
+  }
 
   if (notFound || !destination) {
     return (

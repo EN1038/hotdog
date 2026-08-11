@@ -98,6 +98,11 @@ export async function POST(request: Request) {
     if (branch.operatingMode === BranchOperatingMode.SKEWER) {
       return jsonError("สาขานี้รับออเดอร์เสียบไม้ผ่านหน้าสั่งไม้เท่านั้น");
     }
+    if (branch.operatingMode === BranchOperatingMode.BBQ_WEIGH) {
+      return jsonError(
+        "สาขานี้เป็นโหมดหมูกระทะ — สั่งผ่าน QR โต๊ะ / บิลโต๊ะเท่านั้น",
+      );
+    }
 
     const service = getBranchServiceStatus(branch, body.fulfillmentType);
     if (!service.acceptingOrders) {

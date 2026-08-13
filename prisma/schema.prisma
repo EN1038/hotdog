@@ -46,6 +46,20 @@ enum BrandMemberRole {
   MANAGER
 }
 
+enum BrandStatus {
+  TRIAL
+  ACTIVE
+  PAUSED
+  EXPIRED
+}
+
+enum BrandPlan {
+  RETAIL
+  WEIGH_TABLE
+  MALA
+  MULTI
+}
+
 enum PriceRange {
   UNDER_100
   FROM_101_250
@@ -237,13 +251,23 @@ model Brand {
    * เบอร์ติดต่อแบรนด์ (ลูกค้ากด “แจ้งให้เราทราบ” ฯลฯ)
    */
   contactPhone       String?
-  color              String             @default("#dc2626")
+  color              String             @default("#0B2A4A")
   /// How many queue tickets to print when opening a queue (1–5). 2 = shop + customer.
   queueTicketCopies  Int                @default(1)
   /// Master switch: brand warehouse + branch stock features
   stockEnabled       Boolean            @default(false)
   /// When true, managers may push balances below zero
   allowNegativeStock Boolean            @default(false)
+  /// Lifecycle for selling / pausing a tenant
+  status             BrandStatus        @default(ACTIVE)
+  /// Commercial plan (limits + default modules)
+  plan               BrandPlan          @default(RETAIL)
+  maxBranches        Int                @default(10)
+  maxStaff           Int                @default(50)
+  kitchenEnabled     Boolean            @default(true)
+  bbqEnabled         Boolean            @default(true)
+  skewerEnabled      Boolean            @default(true)
+  trialEndsAt        DateTime?
   createdAt          DateTime           @default(now())
   branches           Branch[]
   members            BrandMember[]
@@ -420,8 +444,10 @@ model Branch {
   autoAcceptOrders             Boolean                      @default(false)
   /// Opt-in stock for this branch (requires brand.stockEnabled + brandId)
   stockEnabled                 Boolean                      @default(false)
-  /// NORMAL = mala queue; SKEWER = skewer-prep; BBQ_WEIGH = dine-in weigh-by-kg (locked after create)
+  /// NORMAL = queue counter (mala/grill/fry/shabu); SKEWER = skewer-prep; BBQ_WEIGH = weigh-only (locked after create)
   operatingMode                BranchOperatingMode          @default(NORMAL)
+  /// NORMAL only: also allow BBQ weigh sales (tables/sessions) in the same branch
+  weighSalesEnabled            Boolean                      @default(false)
   /// Staff new-order alert sound (from platform library)
   alertSoundId                 String?
   createdAt                    DateTime                     @default(now())
@@ -547,10 +573,20 @@ model BranchMenuItem {
   /// Hidden from staff keyed-order menu (still visible to customers unless isHidden)
   hideFromStaff                Boolean                      @default(false)
   isOutOfStock                 Boolean                      @default(false)
+  /// Sell by piece / keyed order
+  sellPiece                    Boolean                      @default(true)
   /// BBQ_WEIGH: sell by kilogram (uses pricePerKg)
   sellByWeight                 Boolean                      @default(false)
   /// Price per kg when sellByWeight; null for piece items
   pricePerKg                   Decimal?                     @db.Decimal(10, 2)
+  /// Capability: skewer / stick sales
+  sellSkewer                   Boolean                      @default(false)
+  /// Capability: grill / BBQ style
+  sellGrill                    Boolean                      @default(false)
+  /// Capability: deep-fried
+  sellFry                      Boolean                      @default(false)
+  /// Capability: shabu / hotpot
+  sellShabu                    Boolean                      @default(false)
   /// Link to brand SKU for quantity stock (null = manual sold-out only)
   brandProductId               String?
   sortOrder                    Int                          @default(0)
@@ -648,6 +684,8 @@ model BranchOptionGroup {
   maxSelect                Int                         @default(1)
   allowDuplicateSelections Boolean                     @default(false)
   sortOrder                Int                         @default(0)
+  /// Show this group only when one of these option IDs is selected (empty = always)
+  visibleWhenOptionIds     String[]                    @default([])
   createdAt                DateTime                    @default(now())
   branch                   Branch                      @relation(fields: [branchId], references: [id], onDelete: Cascade)
   options                  BranchOption[]

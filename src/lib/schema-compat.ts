@@ -18,11 +18,64 @@ export async function ensureProdSchemaCompat(): Promise<void> {
       const schema = dbSchema();
       const statements = [
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "isTest" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "weighSalesEnabled" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "sellPiece" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "sellSkewer" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "sellGrill" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "sellFry" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "sellShabu" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."BranchOptionGroup" ADD COLUMN IF NOT EXISTS "visibleWhenOptionIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]`,
         `ALTER TABLE "${schema}"."BranchShift" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3)`,
         `ALTER TABLE "${schema}"."BranchShift" ADD COLUMN IF NOT EXISTS "cancelNote" TEXT`,
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "paymentSlipUrl" TEXT`,
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "publicShareToken" TEXT`,
       ];
+      const enumSql = [
+        `DO $$ BEGIN CREATE TYPE "BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+        `DO $$ BEGIN CREATE TYPE "BrandPlan" AS ENUM ('RETAIL', 'WEIGH_TABLE', 'MALA', 'MULTI'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+        `DO $$ BEGIN CREATE TYPE "${schema}"."BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+        `DO $$ BEGIN CREATE TYPE "${schema}"."BrandPlan" AS ENUM ('RETAIL', 'WEIGH_TABLE', 'MALA', 'MULTI'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      ];
+      for (const sql of enumSql) {
+        try {
+          await prisma.$executeRawUnsafe(sql);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!/already exists|duplicate/i.test(msg)) {
+            console.error("[schema-compat] enum", msg);
+          }
+        }
+      }
+      const brandPlanCols = [
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "status" "BrandStatus" NOT NULL DEFAULT 'ACTIVE'`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "plan" "BrandPlan" NOT NULL DEFAULT 'RETAIL'`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "maxBranches" INTEGER NOT NULL DEFAULT 10`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "maxStaff" INTEGER NOT NULL DEFAULT 50`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "kitchenEnabled" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "bbqEnabled" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "skewerEnabled" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "trialEndsAt" TIMESTAMP(3)`,
+      ];
+      for (const sql of brandPlanCols) {
+        try {
+          await prisma.$executeRawUnsafe(sql);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!/already exists|duplicate/i.test(msg)) {
+            console.error("[schema-compat] brand plan col", msg);
+          }
+        }
+      }
+      try {
+        await prisma.$executeRawUnsafe(
+          `CREATE INDEX IF NOT EXISTS "Brand_status_idx" ON "${schema}"."Brand"("status")`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error("[schema-compat] Brand_status_idx", msg);
+        }
+      }
       for (const sql of statements) {
         try {
           await prisma.$executeRawUnsafe(sql);

@@ -1,6 +1,7 @@
 import { BranchOperatingMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import { publicUsableBrandWhere } from "@/lib/brand-plan";
 import {
   flattenMenuItemOptionGroups,
   menuItemOptionGroupInclude,
@@ -16,7 +17,11 @@ export async function GET(request: Request) {
       where: {
         id: branchId,
         isHidden: false,
+        isTest: false,
         operatingMode: BranchOperatingMode.SKEWER,
+        brand: {
+          is: { AND: [publicUsableBrandWhere(), { skewerEnabled: true }] },
+        },
       },
       include: {
         brand: {

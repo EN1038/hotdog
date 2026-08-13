@@ -122,12 +122,17 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.sellStorefront !== undefined && {
           sellStorefront: body.sellStorefront,
         }),
+        ...(body.sellPiece !== undefined && { sellPiece: body.sellPiece }),
         ...(body.sellByWeight !== undefined && {
           sellByWeight: body.sellByWeight,
         }),
         ...(body.pricePerKg !== undefined && {
           pricePerKg: body.pricePerKg,
         }),
+        ...(body.sellSkewer !== undefined && { sellSkewer: body.sellSkewer }),
+        ...(body.sellGrill !== undefined && { sellGrill: body.sellGrill }),
+        ...(body.sellFry !== undefined && { sellFry: body.sellFry }),
+        ...(body.sellShabu !== undefined && { sellShabu: body.sellShabu }),
       },
       include: itemInclude,
     });

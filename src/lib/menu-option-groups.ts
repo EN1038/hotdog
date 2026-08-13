@@ -54,6 +54,7 @@ type GroupWithSources = {
   allowDuplicateSelections: boolean;
   sortOrder?: number;
   createdAt?: Date | string;
+  visibleWhenOptionIds?: string[];
   options: Array<{
     id: string;
     name: string;
@@ -146,6 +147,7 @@ export function serializeOptionGroup(group: GroupWithSources) {
     allowDuplicateSelections: group.allowDuplicateSelections,
     sortOrder: group.sortOrder ?? 0,
     createdAt: group.createdAt,
+    visibleWhenOptionIds: group.visibleWhenOptionIds ?? [],
     options: expandGroupOptions(group).map((o) => {
       const base = {
         id: o.id,
@@ -271,6 +273,7 @@ export function computeLineGiftQuantity(
       lineQuantity,
       selectedFromMenuCount: selectedCount,
       maxSelect: group.maxSelect,
+      promoLabel: group.name,
     });
   }
   return total;

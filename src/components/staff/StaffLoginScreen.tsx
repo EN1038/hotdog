@@ -1,21 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PhoneInput } from "@/components/PhoneInput";
 import { PlatformMark } from "@/components/PlatformMark";
 import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
+import {
+  merchantButtonClass,
+  merchantInputClass,
+  merchantLabelClass,
+} from "@/components/merchant-login-ui";
 
 export function StaffLoginScreen() {
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setReady(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,16 +33,14 @@ export function StaffLoginScreen() {
         data = text ? (JSON.parse(text) as typeof data) : {};
       } catch {
         if (res.status === 502 || res.status === 503 || res.status === 504) {
-          setError(
-            "ระบบล็อกอินขัดข้องชั่วคราว — ลองใหม่ในอีกสักครู่ หรือแจ้งแอดมิน",
-          );
+          setError("ระบบล็อกอินขัดข้องชั่วคราว — ลองใหม่ในอีกสักครู่");
         } else {
-          setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
+          setError("เข้าไม่ได้ — ลองใหม่");
         }
         return;
       }
       if (!res.ok) {
-        setError(data.error ?? "เข้าสู่ระบบไม่สำเร็จ");
+        setError(data.error ?? "ไม่พบเบอร์นี้ในระบบ — ถามเจ้าของร้าน");
         return;
       }
       syncStaffBrandFromLogin(data.brand);
@@ -56,68 +53,59 @@ export function StaffLoginScreen() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-hidden">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[#f3f1ef]"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-24 left-1/2 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full opacity-40 blur-3xl"
-        style={{
-          background:
-            "radial-gradient(circle, color-mix(in srgb, var(--site-primary) 35%, transparent), transparent 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.045]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, #171717 1px, transparent 1px), linear-gradient(to bottom, #171717 1px, transparent 1px)",
-          backgroundSize: "28px 28px",
-        }}
-      />
-
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
-        <div
-          className={`transition-all duration-700 ease-out ${
-            ready ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
-          }`}
+    <main className="flex min-h-dvh flex-col bg-[#f4f5f7]">
+      <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-2 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <Link
+          href="/"
+          className="flex h-12 w-12 items-center justify-center rounded-xl text-gray-700"
+          aria-label="กลับ"
         >
-          <PlatformMark placement="login" height={44} priority />
-          <h1 className="mt-6 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-            เข้าสู่ระบบพนักงาน
-          </h1>
-          <p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-600">
-            ใช้เบอร์ที่ผูกกับสาขาของคุณ หลังเข้าสู่ระบบจะพาไปหน้าคิวของแบรนด์และสาขานั้นโดยอัตโนมัติ
-          </p>
-        </div>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M15 5l-7 7 7 7"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </Link>
+        <h1 className="flex-1 pr-12 text-center text-base font-bold text-gray-900">
+          เข้าใช้งาน SkillSale
+        </h1>
+      </header>
 
-        <form
-          onSubmit={handleSubmit}
-          className={`mt-10 space-y-5 transition-all delay-150 duration-700 ease-out ${
-            ready ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
-          }`}
-        >
+      <div className="mx-auto w-full max-w-md flex-1 px-5 py-8">
+        <PlatformMark placement="login" height={36} priority />
+        <form onSubmit={handleSubmit} className="mt-10 space-y-6">
           <div>
-            <label
-              htmlFor="staff-phone"
-              className="mb-2 block text-sm font-medium text-gray-800"
-            >
-              เบอร์โทรศัพท์
+            <label htmlFor="staff-phone" className={merchantLabelClass}>
+              เบอร์โทรสำหรับเข้าใช้งาน
             </label>
             <PhoneInput
               id="staff-phone"
               value={phone}
               onChange={setPhone}
-              className="w-full rounded-2xl border border-gray-200 bg-white/90 px-4 py-3.5 text-base text-gray-900 shadow-sm backdrop-blur-sm placeholder:text-gray-400 focus:border-site-primary focus:outline-none focus:ring-2 ring-site-primary"
+              className={merchantInputClass}
               required
             />
           </div>
 
+          <div className="flex gap-2 rounded-2xl bg-sky-50 px-4 py-4 text-sm leading-relaxed text-sky-950">
+            <span className="mt-0.5 text-lg" aria-hidden>
+              💡
+            </span>
+            <div className="space-y-1">
+              <p>ขอเบอร์ที่ลงทะเบียนได้ที่เจ้าของร้าน</p>
+              <p>
+                เจ้าของร้านเข้าจากปุ่ม{" "}
+                <span className="font-semibold">เจ้าของร้าน</span> ไม่ใช่หน้านี้
+              </p>
+            </div>
+          </div>
+
           {error ? (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-base text-red-600" role="alert">
               {error}
             </p>
           ) : null}
@@ -125,24 +113,11 @@ export function StaffLoginScreen() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-2xl bg-site-primary px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-site-primary-hover active:bg-site-primary-active active:scale-[0.99] disabled:opacity-50"
+            className={merchantButtonClass}
           >
-            {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+            {loading ? "กำลังเข้าสู่ระบบ..." : "ถัดไป"}
           </button>
         </form>
-
-        <p
-          className={`mt-8 text-center transition-opacity delay-300 duration-700 ${
-            ready ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          <Link
-            href="/"
-            className="text-sm font-medium text-gray-500 hover:text-site-primary"
-          >
-            กลับหน้าหลัก
-          </Link>
-        </p>
       </div>
     </main>
   );

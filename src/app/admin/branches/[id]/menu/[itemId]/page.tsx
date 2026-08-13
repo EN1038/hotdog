@@ -33,8 +33,13 @@ type MenuItemDetail = {
   sellDelivery?: boolean;
   sellPickup?: boolean;
   sellStorefront?: boolean;
+  sellPiece?: boolean;
   sellByWeight?: boolean;
   pricePerKg?: string | null;
+  sellSkewer?: boolean;
+  sellGrill?: boolean;
+  sellFry?: boolean;
+  sellShabu?: boolean;
   description: string | null;
   categoryId: string | null;
   category: { id: string; name: string; sortOrder: number } | null;
@@ -60,8 +65,13 @@ type FormState = {
   sellDelivery: boolean;
   sellPickup: boolean;
   sellStorefront: boolean;
+  sellPiece: boolean;
   sellByWeight: boolean;
   pricePerKg: string;
+  sellSkewer: boolean;
+  sellGrill: boolean;
+  sellFry: boolean;
+  sellShabu: boolean;
   description: string;
   categoryId: string;
   imageUrl: string;
@@ -79,8 +89,13 @@ const EMPTY_ITEM: MenuItemDetail = {
   sellDelivery: true,
   sellPickup: true,
   sellStorefront: true,
+  sellPiece: true,
   sellByWeight: false,
   pricePerKg: null,
+  sellSkewer: false,
+  sellGrill: false,
+  sellFry: false,
+  sellShabu: false,
   description: null,
   categoryId: null,
   category: null,
@@ -100,8 +115,13 @@ const EMPTY_FORM: FormState = {
   sellDelivery: true,
   sellPickup: true,
   sellStorefront: true,
+  sellPiece: true,
   sellByWeight: false,
   pricePerKg: "",
+  sellSkewer: false,
+  sellGrill: false,
+  sellFry: false,
+  sellShabu: false,
   description: "",
   categoryId: "",
   imageUrl: "",
@@ -174,9 +194,14 @@ export default function MenuItemEditorPage() {
       sellDelivery: data.sellDelivery !== false,
       sellPickup: data.sellPickup !== false,
       sellStorefront: data.sellStorefront !== false,
+      sellPiece: data.sellPiece !== false,
       sellByWeight: Boolean(data.sellByWeight),
       pricePerKg:
         data.pricePerKg != null ? String(data.pricePerKg) : "",
+      sellSkewer: Boolean(data.sellSkewer),
+      sellGrill: Boolean(data.sellGrill),
+      sellFry: Boolean(data.sellFry),
+      sellShabu: Boolean(data.sellShabu),
       description: data.description ?? "",
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
@@ -322,10 +347,15 @@ export default function MenuItemEditorPage() {
         sellDelivery: form.sellDelivery,
         sellPickup: form.sellPickup,
         sellStorefront: form.sellStorefront,
+        sellPiece: form.sellPiece,
         sellByWeight: form.sellByWeight,
         pricePerKg: form.sellByWeight
           ? optionalPricePayload(form.pricePerKg)
           : null,
+        sellSkewer: form.sellSkewer,
+        sellGrill: form.sellGrill,
+        sellFry: form.sellFry,
+        sellShabu: form.sellShabu,
         description: form.description.trim() || null,
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
@@ -583,10 +613,11 @@ export default function MenuItemEditorPage() {
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-rose-900">
-                    ขายชั่งกิโล (หมูกระทะ)
+                    ขายชั่งกิโล
                   </p>
                   <p className="mt-0.5 text-[11px] text-rose-800/80">
-                    ใช้กับโหมดหมูกระทะ — จุดชั่งจะคิดราคาจาก กก. × ราคา/กก.
+                    ใช้กับโหมดชั่งกิโล / คิวเคาน์เตอร์ที่เปิดชั่งคู่ —
+                    จุดชั่งคิดราคาจาก กก. × ราคา/กก. (เนื้อ ผัก ของสด)
                   </p>
                 </div>
                 <AdminToggle
@@ -614,6 +645,44 @@ export default function MenuItemEditorPage() {
                 </>
               )}
             </div>
+
+            <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+              <p className="text-sm font-semibold text-slate-900">
+                ความสามารถขาย (Master)
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                สินค้าหนึ่งชื่อ — เปิดเฉพาะวิธีที่ร้านนี้ใช้ ไม่สร้างรายการซ้ำตามวิธีขาย
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    ["sellPiece", "ขายเป็นชิ้น / คีย์ออเดอร์"],
+                    ["sellSkewer", "ขายเป็นไม้"],
+                    ["sellGrill", "ปิ้ง"],
+                    ["sellFry", "ทอด"],
+                    ["sellShabu", "ชาบู"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <span className="text-sm font-medium text-slate-800">
+                      {label}
+                    </span>
+                    <AdminToggle
+                      checked={form[key]}
+                      onChange={(next) =>
+                        setForm((f) => ({ ...f, [key]: next }))
+                      }
+                      label={label}
+                      size="sm"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-3">
               <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">

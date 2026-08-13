@@ -12,6 +12,8 @@ export type StaffRoundSelectorProps = {
   isViewingCurrent: boolean;
   onChangeRound: (roundKey: string) => void;
   onGoToCurrent: () => void;
+  /** โหมดสั้น — ใช้ในหัวหน้าออเดอร์ */
+  compact?: boolean;
 };
 
 export function StaffRoundSelector({
@@ -20,6 +22,7 @@ export function StaffRoundSelector({
   isViewingCurrent,
   onChangeRound,
   onGoToCurrent,
+  compact = false,
 }: StaffRoundSelectorProps) {
   const dateRef = useRef<HTMLInputElement>(null);
 
@@ -37,19 +40,31 @@ export function StaffRoundSelector({
   }
 
   return (
-    <div className="max-w-[12rem] text-right" role="group" aria-label="เลือกรอบทำงาน">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-        รอบทำงาน
-      </p>
+    <div
+      className={compact ? "text-right" : "max-w-[12rem] text-right"}
+      role="group"
+      aria-label="เลือกรอบทำงาน"
+    >
+      {!compact ? (
+        <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+          รอบทำงาน
+        </p>
+      ) : null}
 
       <button
         type="button"
         onClick={openRoundPicker}
-        className="mt-1 inline-flex max-w-full cursor-pointer items-center justify-end gap-1.5 rounded-lg border border-site-primary/30 bg-site-primary-soft/60 px-2 py-1.5 text-right shadow-sm transition hover:border-site-primary hover:bg-site-primary-soft active:scale-[0.98]"
+        className={`inline-flex max-w-full cursor-pointer items-center justify-end gap-1.5 rounded-lg border border-site-primary/30 bg-site-primary-soft/60 text-right shadow-sm transition hover:border-site-primary hover:bg-site-primary-soft active:scale-[0.98] ${
+          compact ? "px-2.5 py-2" : "mt-1 px-2 py-1.5"
+        }`}
         aria-label={`เลือกรอบ — รอบ ${dayLabel || "…"}`}
       >
-        <span className="min-w-0 truncate text-[11px] font-bold leading-snug text-site-primary">
-          เลือกรอบ {dayLabel || "…"}
+        <span
+          className={`min-w-0 truncate font-bold leading-snug text-site-primary ${
+            compact ? "text-[12px]" : "text-[11px]"
+          }`}
+        >
+          {compact ? dayLabel || "…" : `เลือกรอบ ${dayLabel || "…"}`}
         </span>
         <svg
           width="15"
@@ -83,12 +98,14 @@ export function StaffRoundSelector({
       />
 
       {!isViewingCurrent ? (
-        <div className="mt-2.5 space-y-0.5">
-          <p className="text-[10px] leading-snug text-gray-600">ดูย้อนหลัง</p>
+        <div className={compact ? "mt-1" : "mt-2.5 space-y-0.5"}>
+          {!compact ? (
+            <p className="text-[10px] leading-snug text-gray-600">ดูย้อนหลัง</p>
+          ) : null}
           <button
             type="button"
             onClick={onGoToCurrent}
-            className="mt-1 cursor-pointer text-[11px] font-semibold text-site-primary underline"
+            className="cursor-pointer text-[11px] font-semibold text-site-primary underline"
           >
             กลับรอบปัจจุบัน
           </button>

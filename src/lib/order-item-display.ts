@@ -21,12 +21,19 @@ export function giftQuantityForFromMenuPack(params: {
   lineQuantity: number;
   selectedFromMenuCount: number;
   maxSelect: number;
+  /** Promo menu / FROM_MENU group name, e.g. "โปร 18 ไม้แถม 2" */
+  promoLabel?: string | null;
 }): number {
   const qty = Math.max(0, Math.floor(params.lineQuantity));
   const selected = Math.max(0, Math.floor(params.selectedFromMenuCount));
   const maxSelect = Math.max(0, Math.floor(params.maxSelect));
   if (qty <= 0 || maxSelect < 2) return 0;
-  const giftPerPack = Math.max(0, selected - (maxSelect - 1));
+  const parsed = parsePromoWoodGiftName(params.promoLabel);
+  const paidThreshold = parsed?.paid ?? maxSelect - 1;
+  let giftPerPack = Math.max(0, selected - paidThreshold);
+  if (parsed?.free != null) {
+    giftPerPack = Math.min(giftPerPack, parsed.free);
+  }
   return giftPerPack * qty;
 }
 
@@ -59,12 +66,12 @@ export function packStickOptionsSegment(
   return raw;
 }
 
-/** Parse “โปร 10 ไม้แถม 1” → { paid: 10, free: 1, total: 11 }. */
+/** Parse “โปร 10 ไม้แถม 1” / “โปร 18 แถม 2” → { paid, free, total }. */
 export function parsePromoWoodGiftName(
   itemName?: string | null,
 ): { paid: number; free: number; total: number } | null {
   if (!itemName?.trim()) return null;
-  const m = itemName.match(/(\d+)\s*ไม้\s*แถม\s*(\d+)/i);
+  const m = itemName.match(/(\d+)\s*(?:ไม้\s*)?แถม\s*(\d+)/i);
   if (!m) return null;
   const paid = Number(m[1]);
   const free = Number(m[2]);

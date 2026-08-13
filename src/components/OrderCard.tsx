@@ -21,6 +21,7 @@ import { formatQueueNumber } from "@/lib/order-queue-format";
 import {
   countPackStickPieces,
   isPackLikeOptions,
+  parseOrderItemOptionsForDisplay,
 } from "@/lib/order-item-display";
 import { canUsePrintActions, printQueueTickets } from "@/lib/print-bridge";
 import {
@@ -86,6 +87,8 @@ type OrderCardProps = {
   showActions?: boolean;
   /** รายการเมนูพับได้ — ใช้บนหน้า staff */
   collapsibleItems?: boolean;
+  /** ซ่อนปุ่มบันทึก/แชร์ไว้ในแถวรอง — เหมาะมือถือแม่ค้า */
+  compactTools?: boolean;
   /** Branch pin — used to show delivery distance */
   branchPin?: { latitude: number; longitude: number } | null;
   highlight?: boolean;
@@ -124,6 +127,56 @@ function splitPrimaryAction(
   return { primary, secondary };
 }
 
+function OrderItemOptionChips({
+  optionsText,
+  itemName,
+  giftQuantity,
+  quantity,
+}: {
+  optionsText?: string | null;
+  itemName?: string | null;
+  giftQuantity?: number | null;
+  quantity?: number;
+}) {
+  const parsed = parseOrderItemOptionsForDisplay({
+    optionsText,
+    itemName,
+    giftQuantity,
+    quantity,
+  });
+  const labels = parsed.isPack
+    ? [...parsed.stickNames, ...parsed.extraNames]
+    : parsed.optionNames;
+  if (labels.length === 0) return null;
+  return (
+    <ul className="mt-1 flex flex-wrap gap-1">
+      {labels.map((label, idx) => (
+        <li
+          key={`${label}-${idx}`}
+          className="rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-900"
+        >
+          {label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** ป้ายปุ่มหลักให้แม่ค้าเข้าใจทันที */
+function primaryActionLabel(
+  current: OrderStatus,
+  next: OrderStatus,
+  roles: StaffRole[],
+): string {
+  if (
+    current === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE &&
+    next === OrderStatus.PREPARING
+  ) {
+    return "รับออเดอร์";
+  }
+  return getStaffStatusLabel(next, roles);
+}
+
 export function OrderCard({
   order,
   roles = [],
@@ -131,19 +184,21 @@ export function OrderCard({
   onRequestCancel,
   showActions = false,
   collapsibleItems = false,
+  compactTools = false,
   branchPin = null,
   highlight = false,
   queueTicketCopies = 1,
   ticketDateLabel = "",
 }: OrderCardProps) {
   const captureRef = useRef<HTMLDivElement>(null);
-  const [itemsExpanded, setItemsExpanded] = useState(false);
+  const [itemsExpanded, setItemsExpanded] = useState(true);
   const [canPrint, setCanPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [exportBusy, setExportBusy] = useState<
     "save" | "share" | "link" | null
   >(null);
   const [shareHint, setShareHint] = useState<string | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   function flashShare(msg: string) {
     setShareHint(msg);
@@ -164,7 +219,17 @@ export function OrderCard({
   async function captureCardPng(): Promise<string> {
     const node = captureRef.current;
     if (!node) throw new Error("ไม่พบใบออเดอร์");
-    return captureElementToPng(node);
+    const wasExpanded = itemsExpanded;
+    if (collapsibleItems && !wasExpanded) {
+      setItemsExpanded(true);
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise<void>((r) => setTimeout(r, 50));
+    }
+    try {
+      return await captureElementToPng(node);
+    } finally {
+      if (collapsibleItems && !wasExpanded) setItemsExpanded(false);
+    }
   }
 
   async function handleSaveImage() {
@@ -300,50 +365,52 @@ export function OrderCard({
   return (
     <div
       id={`staff-order-card-${order.id}`}
-      className={`flex flex-col overflow-hidden rounded-xl border-2 bg-white shadow-sm transition-all ${
+      className={`flex flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition-all ${
         highlight ? "ring-4 ring-site-primary/30 ring-offset-2" : ""
       } ${colorClass}`}
     >
-      <div className="relative flex-1 p-3">
-        <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-1">
-          <div className="flex flex-wrap justify-end gap-1">
-            <button
-              type="button"
-              disabled={exportBusy != null}
-              onClick={() => void handleSaveImage()}
-              className="rounded-md bg-white/95 px-1.5 py-1 text-[10px] font-semibold text-gray-800 shadow-sm ring-1 ring-black/10 hover:bg-white disabled:opacity-50"
-            >
-              {exportBusy === "save" ? "…" : "บันทึกรูป"}
-            </button>
-            <button
-              type="button"
-              disabled={exportBusy != null}
-              onClick={() => void handleShareImage()}
-              className="rounded-md bg-white/95 px-1.5 py-1 text-[10px] font-semibold text-gray-800 shadow-sm ring-1 ring-black/10 hover:bg-white disabled:opacity-50"
-            >
-              {exportBusy === "share" ? "…" : "แชร์รูป"}
-            </button>
-            <button
-              type="button"
-              disabled={exportBusy != null}
-              onClick={() => void handleSharePublicLink()}
-              className="rounded-md bg-violet-50 px-1.5 py-1 text-[10px] font-semibold text-violet-950 shadow-sm ring-1 ring-violet-200 hover:bg-violet-100 disabled:opacity-50"
-            >
-              {exportBusy === "link" ? "…" : "ลิงก์"}
-            </button>
+      <div className="relative flex-1 p-4">
+        {!compactTools ? (
+          <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-1">
+            <div className="flex flex-wrap justify-end gap-1">
+              <button
+                type="button"
+                disabled={exportBusy != null}
+                onClick={() => void handleSaveImage()}
+                className="rounded-md bg-white/95 px-1.5 py-1 text-[10px] font-semibold text-gray-800 shadow-sm ring-1 ring-black/10 hover:bg-white disabled:opacity-50"
+              >
+                {exportBusy === "save" ? "…" : "บันทึกรูป"}
+              </button>
+              <button
+                type="button"
+                disabled={exportBusy != null}
+                onClick={() => void handleShareImage()}
+                className="rounded-md bg-white/95 px-1.5 py-1 text-[10px] font-semibold text-gray-800 shadow-sm ring-1 ring-black/10 hover:bg-white disabled:opacity-50"
+              >
+                {exportBusy === "share" ? "…" : "แชร์รูป"}
+              </button>
+              <button
+                type="button"
+                disabled={exportBusy != null}
+                onClick={() => void handleSharePublicLink()}
+                className="rounded-md bg-violet-50 px-1.5 py-1 text-[10px] font-semibold text-violet-950 shadow-sm ring-1 ring-violet-200 hover:bg-violet-100 disabled:opacity-50"
+              >
+                {exportBusy === "link" ? "…" : "ลิงก์"}
+              </button>
+            </div>
+            {shareHint ? (
+              <p className="max-w-[7.5rem] text-right text-[9px] font-medium text-violet-800">
+                {shareHint}
+              </p>
+            ) : null}
           </div>
-          {shareHint ? (
-            <p className="max-w-[7.5rem] text-right text-[9px] font-medium text-violet-800">
-              {shareHint}
-            </p>
-          ) : null}
-        </div>
+        ) : null}
 
-        <div ref={captureRef} className="pr-[5.5rem]">
+        <div ref={captureRef} className={compactTools ? "" : "pr-[5.5rem]"}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-lg font-extrabold tracking-tight text-gray-900">
+              <p className="text-2xl font-black tracking-tight text-gray-900">
                 คิว {formatQueueNumber(order.queueNumber)}
               </p>
               {canPrint && order.queueNumber != null ? (
@@ -372,48 +439,48 @@ export function OrderCard({
                   }}
                   aria-label="พิมพ์เลขคิว"
                   title="พิมพ์เลขคิว"
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2 text-xs font-semibold text-orange-800 hover:bg-orange-100 disabled:opacity-60"
+                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2.5 text-[13px] font-bold text-orange-800 hover:bg-orange-100 disabled:opacity-60"
                 >
-                  <IconPrinter size={14} aria-hidden />
+                  <IconPrinter size={16} aria-hidden />
                   {printing ? "พิมพ์…" : "พิมพ์คิว"}
                 </button>
               ) : null}
             </div>
             {order.orderNumber ? (
-              <p className="mt-0 text-xs font-medium text-gray-500">
+              <p className="mt-0.5 text-[13px] font-medium text-gray-500">
                 บิล #{order.orderNumber}
               </p>
             ) : null}
-            <p className="mt-0 text-xs font-medium text-gray-700">
+            <p className="mt-0.5 text-[13px] font-semibold text-gray-700">
               {locationLabel}
             </p>
             {order.createdByStaffId ? (
-              <span className="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
+              <span className="mt-1.5 inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-[12px] font-semibold text-violet-800">
                 คีย์โดยพนักงาน
               </span>
             ) : null}
             {order.salesChannel ? (
-              <span className="mt-1 ml-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+              <span className="mt-1.5 ml-1 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-semibold text-slate-700">
                 {SALES_CHANNEL_LABELS[order.salesChannel]}
               </span>
             ) : null}
             {order.awaitingPhotoKey ? (
-              <span className="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-800">
+              <span className="mt-1.5 inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-[12px] font-semibold text-orange-800">
                 รอคีย์จากรูป
               </span>
             ) : null}
             {order.deliveryLocation?.isCustomAddress ? (
-              <span className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+              <span className="mt-1.5 inline-flex rounded-full bg-sky-100 px-2.5 py-1 text-[12px] font-semibold text-sky-800">
                 ที่อยู่ลูกค้า
               </span>
             ) : null}
             {deliveryDistanceLabel ? (
-              <p className="mt-1.5 text-sm font-bold text-sky-800">
+              <p className="mt-1.5 text-[15px] font-bold text-sky-800">
                 ห่างจากร้าน ~{deliveryDistanceLabel}
               </p>
             ) : null}
           </div>
-          <span className="shrink-0 rounded-md bg-white/80 px-2 py-1 text-[11px] font-semibold text-gray-800 ring-1 ring-black/5">
+          <span className="shrink-0 rounded-lg bg-white/90 px-2.5 py-1.5 text-[12px] font-bold text-gray-800 ring-1 ring-black/5">
             {getStaffStatusLabel(order.status, roles)}
           </span>
         </div>
@@ -449,9 +516,9 @@ export function OrderCard({
           </a>
         ) : null}
 
-        <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="mt-3 flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <p className="text-xs text-gray-600">
+            <p className="text-[15px] font-bold text-gray-800">
               {order.customerName || order.customer?.name || "-"}
             </p>
             {typeof order.isNewCustomer === "boolean" && (
@@ -462,7 +529,7 @@ export function OrderCard({
             <PhoneCallButton
               phone={contactPhone}
               showNumber={false}
-              size={14}
+              size={16}
             />
           ) : null}
         </div>
@@ -521,24 +588,24 @@ export function OrderCard({
           </p>
         ) : null}
 
-        <div className="mt-2.5">
+        <div className="mt-3">
           {collapsibleItems ? (
             <>
               <button
                 type="button"
                 onClick={() => setItemsExpanded((v) => !v)}
-                className="flex w-full items-center justify-between gap-2 rounded-lg bg-white/70 px-2.5 py-2 text-left text-xs ring-1 ring-black/5"
+                className="flex w-full items-center justify-between gap-2 rounded-xl bg-white/70 px-3 py-3 text-left text-[14px] ring-1 ring-black/5"
               >
-                <span className="font-medium text-gray-800">
+                <span className="font-bold text-gray-800">
                   {order.items.length} รายการ
                   {!itemsExpanded ? (
-                    <span className="ml-1 font-normal text-gray-500">
-                      · แตะเพื่อดูรายละเอียด
+                    <span className="ml-1 font-medium text-gray-500">
+                      · แตะเพื่อดู
                     </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 text-xs font-semibold text-site-primary">
-                  {itemsExpanded ? "ซ่อนรายการ" : "ดูรายการ"}
+                <span className="shrink-0 text-[13px] font-bold text-site-primary">
+                  {itemsExpanded ? "ซ่อน" : "ดูรายการ"}
                 </span>
               </button>
               {itemsExpanded ? (
@@ -565,9 +632,12 @@ export function OrderCard({
                           ) : null}
                         </p>
                         {item.optionsText ? (
-                          <p className="mt-0.5 text-[11px] text-gray-500">
-                            {item.optionsText}
-                          </p>
+                          <OrderItemOptionChips
+                            optionsText={item.optionsText}
+                            itemName={item.itemName || item.branchMenuItem?.name}
+                            giftQuantity={item.giftQuantity}
+                            quantity={item.quantity}
+                          />
                         ) : null}
                         {item.note ? (
                           <p className="mt-0.5 text-[11px] text-orange-600">
@@ -605,9 +675,12 @@ export function OrderCard({
                       ) : null}
                     </p>
                     {item.optionsText ? (
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        {item.optionsText}
-                      </p>
+                      <OrderItemOptionChips
+                        optionsText={item.optionsText}
+                        itemName={item.itemName || item.branchMenuItem?.name}
+                        giftQuantity={item.giftQuantity}
+                        quantity={item.quantity}
+                      />
                     ) : null}
                     {item.note ? (
                       <p className="mt-0.5 text-[11px] text-orange-600">
@@ -622,28 +695,28 @@ export function OrderCard({
           )}
         </div>
 
-        <p className="mt-2 text-right text-sm font-bold text-gray-900">
+        <p className="mt-3 text-right text-xl font-black tabular-nums text-gray-900">
           รวม {total.toLocaleString("th-TH")} บาท
         </p>
         </div>
       </div>
 
       {showActions && hasActions ? (
-        <div className="border-t border-black/10 bg-white/90 p-2.5">
+        <div className="border-t border-black/10 bg-white/90 p-3">
           {primary ? (
             <button
               type="button"
               onClick={() => onStatusChange?.(order.id, primary)}
-              className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-site-primary px-4 text-sm font-bold text-white shadow-sm active:scale-[0.98] hover:opacity-95"
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-site-primary px-4 text-[16px] font-extrabold text-white shadow-sm active:scale-[0.98] hover:opacity-95"
             >
-              {getStaffStatusLabel(primary, roles)}
-              <IconArrowRight size={18} />
+              {primaryActionLabel(order.status, primary, roles)}
+              <IconArrowRight size={20} />
             </button>
           ) : null}
 
           {(secondary.length > 0 || showCancel) && (
             <div
-              className={`grid gap-2 ${primary ? "mt-2" : ""} ${
+              className={`grid gap-2 ${primary ? "mt-2.5" : ""} ${
                 secondary.length + (showCancel ? 1 : 0) > 1
                   ? "grid-cols-2"
                   : "grid-cols-1"
@@ -654,7 +727,7 @@ export function OrderCard({
                   key={status}
                   type="button"
                   onClick={() => onStatusChange?.(order.id, status)}
-                  className="flex min-h-9 items-center justify-center rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-800 active:bg-gray-50"
+                  className="flex min-h-11 items-center justify-center rounded-xl border-2 border-gray-300 bg-white px-3 text-[13px] font-bold text-gray-800 active:bg-gray-50"
                 >
                   {getStaffStatusLabel(status, roles)}
                 </button>
@@ -663,7 +736,7 @@ export function OrderCard({
                 <button
                   type="button"
                   onClick={() => onRequestCancel(order.id)}
-                  className={`flex min-h-9 items-center justify-center rounded-lg border-2 border-red-300 bg-red-50 px-3 text-xs font-semibold text-red-700 active:bg-red-100 ${
+                  className={`flex min-h-11 items-center justify-center rounded-xl border-2 border-red-300 bg-red-50 px-3 text-[13px] font-bold text-red-700 active:bg-red-100 ${
                     secondary.length === 0 ? "col-span-full" : ""
                   }`}
                 >
@@ -672,6 +745,94 @@ export function OrderCard({
               ) : null}
             </div>
           )}
+
+          {compactTools ? (
+            <div className="mt-2.5">
+              <button
+                type="button"
+                onClick={() => setToolsOpen((v) => !v)}
+                className="w-full rounded-lg py-2 text-center text-[13px] font-semibold text-slate-500"
+              >
+                {toolsOpen ? "ซ่อนเครื่องมือ" : "บันทึกรูป / แชร์ / ลิงก์"}
+              </button>
+              {toolsOpen ? (
+                <div className="mt-1 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    disabled={exportBusy != null}
+                    onClick={() => void handleSaveImage()}
+                    className="rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-[12px] font-bold text-slate-700 disabled:opacity-50"
+                  >
+                    {exportBusy === "save" ? "…" : "บันทึกรูป"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={exportBusy != null}
+                    onClick={() => void handleShareImage()}
+                    className="rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-[12px] font-bold text-slate-700 disabled:opacity-50"
+                  >
+                    {exportBusy === "share" ? "…" : "แชร์รูป"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={exportBusy != null}
+                    onClick={() => void handleSharePublicLink()}
+                    className="rounded-xl border border-violet-200 bg-violet-50 px-2 py-2.5 text-[12px] font-bold text-violet-900 disabled:opacity-50"
+                  >
+                    {exportBusy === "link" ? "…" : "ลิงก์"}
+                  </button>
+                </div>
+              ) : null}
+              {shareHint ? (
+                <p className="mt-1 text-center text-[12px] font-medium text-violet-800">
+                  {shareHint}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : compactTools ? (
+        <div className="border-t border-black/10 bg-white/90 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setToolsOpen((v) => !v)}
+            className="w-full rounded-lg py-2 text-center text-[13px] font-semibold text-slate-500"
+          >
+            {toolsOpen ? "ซ่อนเครื่องมือ" : "บันทึกรูป / แชร์ / ลิงก์"}
+          </button>
+          {toolsOpen ? (
+            <div className="mt-1 grid grid-cols-3 gap-2 pb-1">
+              <button
+                type="button"
+                disabled={exportBusy != null}
+                onClick={() => void handleSaveImage()}
+                className="rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-[12px] font-bold text-slate-700 disabled:opacity-50"
+              >
+                {exportBusy === "save" ? "…" : "บันทึกรูป"}
+              </button>
+              <button
+                type="button"
+                disabled={exportBusy != null}
+                onClick={() => void handleShareImage()}
+                className="rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-[12px] font-bold text-slate-700 disabled:opacity-50"
+              >
+                {exportBusy === "share" ? "…" : "แชร์รูป"}
+              </button>
+              <button
+                type="button"
+                disabled={exportBusy != null}
+                onClick={() => void handleSharePublicLink()}
+                className="rounded-xl border border-violet-200 bg-violet-50 px-2 py-2.5 text-[12px] font-bold text-violet-900 disabled:opacity-50"
+              >
+                {exportBusy === "link" ? "…" : "ลิงก์"}
+              </button>
+            </div>
+          ) : null}
+          {shareHint ? (
+            <p className="mt-1 pb-1 text-center text-[12px] font-medium text-violet-800">
+              {shareHint}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -681,15 +842,21 @@ export function OrderCard({
 export function StatusLegend({
   roles = [],
   autoAcceptOrders = false,
+  waitingCount = 0,
   value,
   onChange,
 }: {
   roles?: StaffRole[];
   autoAcceptOrders?: boolean;
+  /** จำนวนออเดอร์รอร้านรับ — ใช้โชว์แท็บแม้เปิดรับออโต้ */
+  waitingCount?: number;
   value?: OrderStatus | null;
   onChange?: (status: OrderStatus) => void;
 }) {
-  const statuses = getStaffLegendStatuses(roles, { autoAcceptOrders });
+  const statuses = getStaffLegendStatuses(roles, {
+    autoAcceptOrders,
+    hasWaitingOrders: waitingCount > 0,
+  });
   if (statuses.length === 0) return null;
 
   const active = value ?? statuses[0];
@@ -702,6 +869,7 @@ export function StatusLegend({
       <div className="flex w-full min-w-0 border-b border-gray-200">
         {statuses.map((status) => {
           const selected = status === active;
+          const isWaiting = status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE;
           return (
             <button
               key={status}
@@ -709,14 +877,25 @@ export function StatusLegend({
               role="tab"
               aria-selected={selected}
               onClick={() => onChange?.(status)}
-              className={`min-h-11 min-w-0 flex-1 cursor-pointer border-b-2 px-1 py-2.5 text-center text-xs font-semibold leading-tight transition-colors sm:text-sm ${
+              className={`relative min-h-12 min-w-0 flex-1 cursor-pointer border-b-2 px-1 py-2.5 text-center text-[13px] font-bold leading-tight transition-colors sm:text-sm ${
                 selected
-                  ? "-mb-px border-site-primary text-site-primary"
-                  : "border-transparent text-gray-500 hover:text-gray-800"
+                  ? isWaiting
+                    ? "-mb-px border-amber-500 text-amber-700"
+                    : "-mb-px border-site-primary text-site-primary"
+                  : isWaiting && waitingCount > 0
+                    ? "border-transparent text-amber-700"
+                    : "border-transparent text-gray-500 hover:text-gray-800"
               }`}
             >
-              <span className="block truncate">
-                {getStaffStatusLabel(status, roles)}
+              <span className="inline-flex items-center justify-center gap-1">
+                <span className="truncate">
+                  {getStaffStatusLabel(status, roles)}
+                </span>
+                {isWaiting && waitingCount > 0 ? (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-black text-white">
+                    {waitingCount > 99 ? "99+" : waitingCount}
+                  </span>
+                ) : null}
               </span>
             </button>
           );

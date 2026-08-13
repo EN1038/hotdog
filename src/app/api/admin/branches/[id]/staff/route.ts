@@ -7,6 +7,7 @@ import { StaffRole } from "@prisma/client";
 import {
   logAdminActivity,
 } from "@/lib/admin-activity";
+import { assertCanCreateStaff } from "@/lib/brand-plan";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -51,6 +52,9 @@ export async function POST(request: Request, { params }: Params) {
       include: { brand: { select: { name: true } } },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
+    if (branch.brandId) {
+      await assertCanCreateStaff(branch.brandId);
+    }
 
     const body = createSchema.parse(await request.json());
     const phone = normalizePhone(body.phone);

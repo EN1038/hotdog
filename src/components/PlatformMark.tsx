@@ -1,6 +1,6 @@
 "use client";
 
-import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
+import { usePlatformBranding } from "@/components/customer/SiteBrandingProvider";
 import {
   resolvePlatformMarkForPlacement,
   type MarkPlacement,
@@ -21,7 +21,7 @@ export function PlatformMark({
   className = "",
   priority = false,
 }: PlatformMarkProps) {
-  const branding = useSiteBranding();
+  const branding = usePlatformBranding();
   const { kind, src } = resolvePlatformMarkForPlacement(branding, placement);
 
   return (

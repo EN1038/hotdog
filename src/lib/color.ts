@@ -1,3 +1,5 @@
+import { SKILLSALE_PRIMARY } from "@/lib/brand-assets";
+
 /** Parse #RGB / #RRGGBB to components */
 export function parseHexColor(input: string | null | undefined): {
   r: number;
@@ -26,9 +28,11 @@ export function rgba(hex: string, alpha: number): string {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
-export const DEFAULT_BRAND_COLOR = "#dc2626";
+/** Default theme = SkillSale logo / platform primary */
+export const DEFAULT_BRAND_COLOR = SKILLSALE_PRIMARY.toLowerCase();
 
 export const BRAND_COLOR_PRESETS = [
+  DEFAULT_BRAND_COLOR,
   "#dc2626",
   "#ea580c",
   "#d97706",

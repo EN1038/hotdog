@@ -10,6 +10,7 @@ import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { hashAndSealPassword } from "@/lib/admin-password";
+import { NEW_BRAND_DEFAULTS, trialEndsAtFromNow } from "@/lib/brand-plan";
 
 const brandSchema = z.object({
   code: z
@@ -98,6 +99,15 @@ export async function POST(request: Request) {
           coverImageUrl: body.coverImageUrl ?? null,
           contactPhone: body.contactPhone?.replace(/\D/g, "").trim() || null,
           color: normalizeColor(body.color),
+          status: NEW_BRAND_DEFAULTS.status,
+          plan: NEW_BRAND_DEFAULTS.plan,
+          maxBranches: NEW_BRAND_DEFAULTS.maxBranches,
+          maxStaff: NEW_BRAND_DEFAULTS.maxStaff,
+          stockEnabled: NEW_BRAND_DEFAULTS.stockEnabled,
+          kitchenEnabled: NEW_BRAND_DEFAULTS.kitchenEnabled,
+          bbqEnabled: NEW_BRAND_DEFAULTS.bbqEnabled,
+          skewerEnabled: NEW_BRAND_DEFAULTS.skewerEnabled,
+          trialEndsAt: trialEndsAtFromNow(),
         },
       });
 

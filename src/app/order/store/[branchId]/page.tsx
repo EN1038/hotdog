@@ -24,6 +24,7 @@ import { StoreHistoryTab } from "@/components/customer/StoreHistoryTab";
 import {
   MenuBestSellerTag,
   MenuPromoPrice,
+  MenuWeighPriceTag,
   menuItemSellPrice,
   menuItemVisibleForFulfillment,
 } from "@/components/customer/MenuChannelPrice";
@@ -947,6 +948,7 @@ export default function StorePage() {
                               )}
                               <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
                                 <MenuPromoPrice priced={priced} />
+                                <MenuWeighPriceTag item={item} />
                                 <MenuBestSellerTag show={item.isBestSeller} />
                               </p>
                             </div>

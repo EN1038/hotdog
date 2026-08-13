@@ -24,19 +24,45 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { IconPlus } from "@/components/icons";
 import { ImageField } from "@/components/admin/ImageField";
 import {
-  BRAND_COLOR_PRESETS,
   DEFAULT_BRAND_COLOR,
 } from "@/lib/color";
+import { BrandColorPicker } from "@/components/BrandColorPicker";
 import {
   BRAND_COVER_IMAGE_SIZE_HINT,
   BRAND_LOGO_SIZE_HINT,
 } from "@/lib/image-guides";
+import { bangkokDateKey } from "@/lib/constants";
+import {
+  BRAND_PLAN_HINTS,
+  BRAND_PLAN_LABELS,
+  BRAND_PLAN_PRESETS,
+  BRAND_PLAN_PRICES,
+  BRAND_PLANS_ORDERED,
+} from "@/lib/brand-plan-shared";
+import {
+  BrandPlanBanner,
+  BRAND_STATUS_BADGE,
+  BRAND_STATUS_LABELS,
+  effectiveStatus,
+  formatTrialEndsAt,
+  type BrandPlanId,
+  type BrandStatusId,
+} from "@/components/admin/BrandPlanBanner";
 
 type Brand = {
   id: string;
   code: string;
   name: string;
   color: string;
+  status?: BrandStatusId;
+  plan?: BrandPlanId;
+  maxBranches?: number;
+  maxStaff?: number;
+  stockEnabled?: boolean;
+  kitchenEnabled?: boolean;
+  bbqEnabled?: boolean;
+  skewerEnabled?: boolean;
+  trialEndsAt?: string | null;
   _count: { branches: number; members: number };
   members?: Array<{
     role: string;
@@ -44,48 +70,45 @@ type Brand = {
   }>;
 };
 
-function ColorPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (color: string) => void;
-}) {
-  return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="color"
-          value={value || DEFAULT_BRAND_COLOR}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-10 w-12 cursor-pointer rounded-xl border border-slate-200 bg-white p-1"
-          aria-label="เลือกสีแบรนด์"
-        />
-        <input
-          className={`${adminInputClass} max-w-[8rem] font-mono text-xs`}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="#dc2626"
-        />
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {BRAND_COLOR_PRESETS.map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            title={preset}
-            onClick={() => onChange(preset)}
-            className={`h-6 w-6 rounded-full border-2 ${
-              value.toLowerCase() === preset
-                ? "border-slate-900"
-                : "border-transparent"
-            }`}
-            style={{ backgroundColor: preset }}
-          />
-        ))}
-      </div>
-    </div>
-  );
+type PlanForm = {
+  status: BrandStatusId;
+  plan: BrandPlanId;
+  maxBranches: number;
+  maxStaff: number;
+  stockEnabled: boolean;
+  kitchenEnabled: boolean;
+  bbqEnabled: boolean;
+  skewerEnabled: boolean;
+  trialEndsAt: string;
+};
+
+function emptyPlanForm(): PlanForm {
+  const trial = new Date();
+  trial.setDate(trial.getDate() + 30);
+  const preset = BRAND_PLAN_PRESETS.RETAIL;
+  return {
+    status: "TRIAL",
+    ...preset,
+    trialEndsAt: bangkokDateKey(trial),
+  };
+}
+
+function planFormFromBrand(brand: Brand): PlanForm {
+  const trialEnds = brand.trialEndsAt
+    ? bangkokDateKey(new Date(brand.trialEndsAt))
+    : emptyPlanForm().trialEndsAt;
+  const plan = brand.plan ?? "RETAIL";
+  return {
+    status: brand.status ?? "ACTIVE",
+    plan,
+    maxBranches: brand.maxBranches ?? BRAND_PLAN_PRESETS[plan].maxBranches,
+    maxStaff: brand.maxStaff ?? BRAND_PLAN_PRESETS[plan].maxStaff,
+    stockEnabled: Boolean(brand.stockEnabled),
+    kitchenEnabled: Boolean(brand.kitchenEnabled),
+    bbqEnabled: Boolean(brand.bbqEnabled),
+    skewerEnabled: Boolean(brand.skewerEnabled),
+    trialEndsAt: trialEnds,
+  };
 }
 
 function emptyCreateForm() {
@@ -109,6 +132,9 @@ export function PlatformBrandsHome() {
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(emptyCreateForm);
+  const [planBrand, setPlanBrand] = useState<Brand | null>(null);
+  const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
+  const [savingPlan, setSavingPlan] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/brands");
@@ -200,6 +226,55 @@ export function PlatformBrandsHome() {
     load();
   }
 
+  function openPlan(brand: Brand) {
+    setPlanBrand(brand);
+    setPlanForm(planFormFromBrand(brand));
+  }
+
+  function closePlan() {
+    if (savingPlan) return;
+    setPlanBrand(null);
+  }
+
+  function applyPlanLimits(plan: BrandPlanId) {
+    const preset = BRAND_PLAN_PRESETS[plan];
+    setPlanForm((f) => ({ ...f, ...preset }));
+  }
+
+  async function savePlan(e: React.FormEvent) {
+    e.preventDefault();
+    if (!planBrand) return;
+    setSavingPlan(true);
+    const trialIso =
+      planForm.status === "TRIAL" && planForm.trialEndsAt
+        ? new Date(`${planForm.trialEndsAt}T23:59:59.999+07:00`).toISOString()
+        : null;
+    const res = await fetch(`/api/admin/brands/${planBrand.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: planForm.status,
+        plan: planForm.plan,
+        maxBranches: planForm.maxBranches,
+        maxStaff: planForm.maxStaff,
+        stockEnabled: planForm.stockEnabled,
+        kitchenEnabled: planForm.kitchenEnabled,
+        bbqEnabled: planForm.bbqEnabled,
+        skewerEnabled: planForm.skewerEnabled,
+        trialEndsAt: trialIso,
+      }),
+    });
+    setSavingPlan(false);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error("บันทึกแพ็กเกจไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+      return;
+    }
+    toast.success("อัปเดตแพ็กเกจแล้ว", planBrand.name);
+    setPlanBrand(null);
+    load();
+  }
+
   if (loading) {
     return <AdminLoadingState />;
   }
@@ -241,6 +316,7 @@ export function PlatformBrandsHome() {
                 <tr>
                   <th className="px-4 py-3 font-semibold">แบรนด์</th>
                   <th className="px-4 py-3 font-semibold">รหัส</th>
+                  <th className="px-4 py-3 font-semibold">สถานะ / แพ็ก</th>
                   <th className="px-4 py-3 font-semibold">สาขา</th>
                   <th className="px-4 py-3 font-semibold">ผู้ดูแล</th>
                   <th className="px-4 py-3 font-semibold" />
@@ -252,6 +328,9 @@ export function PlatformBrandsHome() {
                     brand.members
                       ?.filter((m) => !m.admin.isPlatformAdmin)
                       .map((m) => m.admin.username) ?? [];
+                  const status = effectiveStatus(brand);
+                  const plan = brand.plan ?? "RETAIL";
+                  const trialLabel = formatTrialEndsAt(brand.trialEndsAt);
                   return (
                     <tr key={brand.id} className={adminTrHoverClass}>
                       <td className="px-4 py-3 font-medium text-slate-900">
@@ -264,13 +343,40 @@ export function PlatformBrandsHome() {
                       <td className="px-4 py-3 font-mono text-xs text-slate-600">
                         {brand.code}
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BRAND_STATUS_BADGE[status]}`}
+                          >
+                            {BRAND_STATUS_LABELS[status]}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                            {BRAND_PLAN_LABELS[plan]}
+                          </span>
+                        </div>
+                        {status === "TRIAL" && trialLabel ? (
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            ถึง {trialLabel}
+                          </p>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">
                         {brand._count.branches}
+                        {typeof brand.maxBranches === "number"
+                          ? `/${brand.maxBranches}`
+                          : ""}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600">
                         {owners.length ? owners.join(", ") : "—"}
                       </td>
                       <td className="space-x-2 px-4 py-3 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => openPlan(brand)}
+                          className={btnOutline}
+                        >
+                          แพ็กเกจ
+                        </button>
                         <Link
                           href={`/admin/brands/${brand.id}`}
                           className={btnPrimary}
@@ -312,7 +418,7 @@ export function PlatformBrandsHome() {
         onClose={closeModal}
         busy={creating}
         title="สร้างแบรนด์ใหม่"
-        description="สร้างแบรนด์พร้อมบัญชีเข้าใช้หลังบ้าน — โลโก้/รูปปกอัปโหลดทีหลังได้ในโปรไฟล์แบรนด์"
+        description="สร้างแบรนด์พร้อมบัญชีเข้าใช้หลังบ้าน — เริ่ม Retail ทดลอง 30 วัน ปรับแพ็กทีหลังได้"
         maxWidthClassName="max-w-xl"
       >
         <form onSubmit={createBrand} className="p-5">
@@ -351,10 +457,11 @@ export function PlatformBrandsHome() {
               </p>
             </div>
             <div className="sm:col-span-2">
-              <label className={adminLabelClass}>สีเริ่มต้น</label>
-              <ColorPicker
+              <label className={adminLabelClass}>สีแบรนด์ / ธีม</label>
+              <BrandColorPicker
                 value={form.color}
                 onChange={(color) => setForm((f) => ({ ...f, color }))}
+                inputClassName={adminInputClass}
               />
             </div>
             <div className="sm:col-span-2">
@@ -438,6 +545,197 @@ export function PlatformBrandsHome() {
               className={btnPrimary}
             >
               {creating ? "กำลังสร้าง..." : "สร้างแบรนด์ + บัญชีผู้ดูแล"}
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      <AdminModal
+        open={Boolean(planBrand)}
+        onClose={closePlan}
+        busy={savingPlan}
+        title={planBrand ? `แพ็กเกจ · ${planBrand.name}` : "แพ็กเกจ"}
+        description="สถานะ แพ็กเกจ โควต้า และโมดูล — PAUSED/EXPIRED จะปิดหน้าร้านและล็อกอินพนักงาน"
+        maxWidthClassName="max-w-xl"
+      >
+        <form onSubmit={savePlan} className="space-y-5 p-5">
+          <BrandPlanBanner
+            brand={{
+              ...planForm,
+              trialEndsAt:
+                planForm.status === "TRIAL" && planForm.trialEndsAt
+                  ? `${planForm.trialEndsAt}T23:59:59.999+07:00`
+                  : null,
+              _count: planBrand?._count,
+            }}
+            editable
+          />
+
+          <div>
+            <p className={adminLabelClass}>สถานะ</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(
+                [
+                  "TRIAL",
+                  "ACTIVE",
+                  "PAUSED",
+                  "EXPIRED",
+                ] as const satisfies readonly BrandStatusId[]
+              ).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setPlanForm((f) => ({ ...f, status }))}
+                  className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                    planForm.status === status
+                      ? BRAND_STATUS_BADGE[status]
+                      : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {BRAND_STATUS_LABELS[status]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {planForm.status === "TRIAL" ? (
+            <div>
+              <label className={adminLabelClass}>วันสิ้นสุดทดลอง</label>
+              <input
+                type="date"
+                className={adminInputClass}
+                value={planForm.trialEndsAt}
+                onChange={(e) =>
+                  setPlanForm((f) => ({ ...f, trialEndsAt: e.target.value }))
+                }
+              />
+            </div>
+          ) : null}
+
+          <div>
+            <p className={adminLabelClass}>แพ็กเกจ</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {BRAND_PLANS_ORDERED.map((plan) => {
+                const preset = BRAND_PLAN_PRESETS[plan];
+                const selected = planForm.plan === plan;
+                return (
+                  <button
+                    key={plan}
+                    type="button"
+                    onClick={() => applyPlanLimits(plan)}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      selected
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+                    }`}
+                  >
+                    <p className="font-semibold">{BRAND_PLAN_LABELS[plan]}</p>
+                    <p
+                      className={`mt-0.5 text-xs font-medium ${
+                        selected ? "text-white/90" : "text-slate-600"
+                      }`}
+                    >
+                      ฿{BRAND_PLAN_PRICES[plan]}/เดือน
+                    </p>
+                    <p
+                      className={`mt-1 text-xs ${
+                        selected ? "text-white/75" : "text-slate-500"
+                      }`}
+                    >
+                      สาขา {preset.maxBranches} · พนักงาน {preset.maxStaff}
+                      {preset.stockEnabled ? " · สต็อกรวม" : ""}
+                    </p>
+                    <p
+                      className={`mt-1 text-[11px] leading-snug ${
+                        selected ? "text-white/65" : "text-slate-400"
+                      }`}
+                    >
+                      {BRAND_PLAN_HINTS[plan]}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              กดแพ็กเพื่อใส่โควต้าและโมดูลตามค่าเริ่มต้น — ปรับเองได้ด้านล่าง
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={adminLabelClass}>สาขาสูงสุด</label>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                className={adminInputClass}
+                value={planForm.maxBranches}
+                onChange={(e) =>
+                  setPlanForm((f) => ({
+                    ...f,
+                    maxBranches: Math.max(1, Number(e.target.value) || 1),
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className={adminLabelClass}>พนักงานสูงสุด</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                className={adminInputClass}
+                value={planForm.maxStaff}
+                onChange={(e) =>
+                  setPlanForm((f) => ({
+                    ...f,
+                    maxStaff: Math.max(1, Number(e.target.value) || 1),
+                  }))
+                }
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className={adminLabelClass}>โมดูล</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ["stockEnabled", "สต็อก / บ้านกลาง"],
+                  ["kitchenEnabled", "ครัว / ผลิต"],
+                  ["bbqEnabled", "หมูกระทะชั่งกิโล"],
+                  ["skewerEnabled", "เสียบไม้"],
+                ] as const
+              ).map(([key, label]) => (
+                <label
+                  key={key}
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+                >
+                  <input
+                    type="checkbox"
+                    checked={planForm[key]}
+                    onChange={(e) =>
+                      setPlanForm((f) => ({ ...f, [key]: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">
+            <button
+              type="button"
+              onClick={closePlan}
+              disabled={savingPlan}
+              className="cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+            >
+              ยกเลิก
+            </button>
+            <button type="submit" disabled={savingPlan} className={btnPrimary}>
+              {savingPlan ? "กำลังบันทึก..." : "บันทึกแพ็กเกจ"}
             </button>
           </div>
         </form>

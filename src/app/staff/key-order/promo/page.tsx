@@ -6,17 +6,17 @@ import { useRouter } from "next/navigation";
 import { StaffKeyOrderLayout } from "@/components/staff/StaffKeyOrderLayout";
 import {
   StaffRoundGateLoading,
-  StaffRoundStatusStrip,
   useStaffRoundGate,
 } from "@/components/staff/StaffRoundGate";
 import { formatPrice } from "@/lib/constants";
 import type { MenuItemData } from "@/lib/customer-types";
 import { resolveSellPrice } from "@/lib/menu-pricing";
-import { isPromoMenuItem, isMenuItemSoldOut, isStockExemptMenuItem } from "@/lib/staff-key-order";
 import {
-  assignStableMenuSequence,
-  sortMenuItemData,
-} from "@/lib/staff-menu-order";
+  describePromoMenuItem,
+  isStockExemptMenuItem,
+  listActivePromoMenuItems,
+} from "@/lib/staff-key-order";
+import { assignStableMenuSequence } from "@/lib/staff-menu-order";
 
 export default function StaffPromoKeyOrderIndexPage() {
   const router = useRouter();
@@ -47,9 +47,7 @@ export default function StaffPromoKeyOrderIndexPage() {
       setMenuItems(items);
       setLoading(false);
 
-      const promos = sortMenuItemData(
-        items.filter((item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item)),
-      );
+      const promos = listActivePromoMenuItems(items);
       if (promos.length === 1) {
         router.replace(`/staff/key-order/promo/${promos[0]!.id}`);
       }
@@ -60,10 +58,7 @@ export default function StaffPromoKeyOrderIndexPage() {
   }, [router, blocked, roundLoading, roundState]);
 
   const promoItems = useMemo(
-    () =>
-      sortMenuItemData(
-        menuItems.filter((item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item)),
-      ),
+    () => listActivePromoMenuItems(menuItems),
     [menuItems],
   );
 
@@ -85,74 +80,86 @@ export default function StaffPromoKeyOrderIndexPage() {
       title="คีย์ออเดอร์แบบโปรโมชั่น"
       subtitle={branchName || undefined}
     >
-      <StaffRoundStatusStrip state={roundState} />
-
       {promoItems.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center">
-          <p className="text-sm font-medium text-gray-800">
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-12 text-center shadow-sm">
+          <p className="text-[17px] font-extrabold text-slate-900">
             ยังไม่มีเมนูโปรโมชั่นในสาขานี้
           </p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-2 text-[14px] leading-relaxed text-slate-500">
             โปรโมชั่นคือเมนูที่มีตัวเลือกแบบเลือกจากเมนู (โปรเลือกไม้)
           </p>
           <Link
             href="/staff/key-order/regular"
-            className="mt-4 inline-flex rounded-xl bg-site-primary px-4 py-2.5 text-sm font-bold text-white"
+            className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-site-primary px-5 text-[15px] font-extrabold text-white"
           >
             ไปคีย์แบบธรรมดา
           </Link>
         </div>
       ) : (
-        <section className="rounded-2xl border border-gray-200 bg-white p-4">
-          <h2 className="mb-1 text-sm font-semibold text-gray-900">
-            เลือกโปรโมชั่น
-          </h2>
-          <p className="mb-3 text-xs text-gray-500">
-            เรียงตามลำดับเมนู · มี {promoItems.length} รายการ
-          </p>
-          <ul className="divide-y divide-gray-100">
-            {promoItems.map((item) => {
+        <section className="space-y-3">
+          <header>
+            <h2 className="text-[18px] font-extrabold text-slate-900">
+              เลือกโปรโมชั่น
+            </h2>
+            <p className="mt-1 text-[13px] font-medium text-slate-500">
+              แตะการ์ดเพื่อคีย์ · มี {promoItems.length} รายการ
+            </p>
+          </header>
+
+          <div className="grid grid-cols-1 gap-3">
+            {promoItems.map((item, index) => {
               const price = resolveSellPrice(item, "pickup").final;
-              const seq = promoSeqById.get(item.id) ?? 0;
+              const seq = promoSeqById.get(item.id) ?? index + 1;
+              const stockLeft =
+                !isStockExemptMenuItem(item) && item.stockQuantity != null
+                  ? item.stockQuantity
+                  : null;
+              const tone =
+                index % 3 === 0
+                  ? "from-amber-500 to-orange-500"
+                  : index % 3 === 1
+                    ? "from-sky-500 to-blue-600"
+                    : "from-emerald-500 to-teal-600";
+
               return (
-                <li key={item.id}>
-                  <Link
-                    href={`/staff/key-order/promo/${item.id}`}
-                    className="flex items-center gap-3 py-3"
-                  >
-                    <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                      {seq}
+                <Link
+                  key={item.id}
+                  href={`/staff/key-order/promo/${item.id}`}
+                  className={`relative flex min-h-[6.5rem] items-center gap-3.5 overflow-hidden rounded-2xl bg-gradient-to-br ${tone} px-4 py-4 text-white shadow-sm transition active:scale-[0.98]`}
+                >
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20 text-[18px] font-black tabular-nums">
+                    {seq}
+                  </span>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block text-[18px] font-black leading-snug">
+                      {item.name}
                     </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900">{item.name}</p>
-                      <p className="text-xs text-gray-500">
+                    <span className="mt-1 block text-[14px] font-medium text-white/90">
+                      {describePromoMenuItem(item)}
+                    </span>
+                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-white/85">
+                      <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[14px] font-black tabular-nums">
                         {formatPrice(price)}฿
-                        {item.optionGroups?.some((g) => g.mode === "FROM_MENU")
-                          ? ` · เลือก ${
-                              item.optionGroups.find(
-                                (g) => g.mode === "FROM_MENU",
-                              )?.maxSelect ?? ""
-                            } ไม้`
-                          : ""}
-                        {!isStockExemptMenuItem(item) &&
-                        item.stockQuantity != null ? (
-                          <>
-                            {" · "}
-                            <span className="font-bold text-gray-900">
-                              เหลือ {item.stockQuantity}
-                            </span>
-                          </>
-                        ) : null}
-                      </p>
-                    </div>
-                    <span className="text-sm font-semibold text-site-primary">
-                      เลือก
+                      </span>
+                      {stockLeft != null ? (
+                        <span>เหลือ {stockLeft}</span>
+                      ) : null}
                     </span>
-                  </Link>
-                </li>
+                  </span>
+                  <span className="flex h-11 shrink-0 items-center justify-center rounded-full bg-white px-4 text-[14px] font-extrabold text-slate-900">
+                    เลือก
+                  </span>
+                </Link>
               );
             })}
-          </ul>
+          </div>
+
+          <Link
+            href="/staff/key-order/regular"
+            className="flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white text-[14px] font-bold text-slate-600"
+          >
+            คีย์แบบธรรมดาแทน
+          </Link>
         </section>
       )}
     </StaffKeyOrderLayout>

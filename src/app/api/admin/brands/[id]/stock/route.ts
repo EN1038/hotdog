@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { getStockDashboard, setBrandStockEnabled, StockError } from "@/lib/stock";
+import { canBrandAdminEnableStock } from "@/lib/brand-plan";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -141,6 +142,18 @@ export async function PATCH(request: Request, { params }: Params) {
     const body = patchSchema.parse(await request.json());
 
     if (body.stockEnabled !== undefined) {
+      if (body.stockEnabled === true && !session.isPlatformAdmin) {
+        const current = await prisma.brand.findUnique({
+          where: { id },
+          select: { plan: true },
+        });
+        if (current?.plan && !canBrandAdminEnableStock(current.plan)) {
+          return jsonError(
+            "แพ็กนี้ยังไม่เปิดสต็อก — อัปเกรดเป็น Multi หรือติดต่อแพลตฟอร์ม",
+            403,
+          );
+        }
+      }
       await setBrandStockEnabled({
         brandId: id,
         enabled: body.stockEnabled,

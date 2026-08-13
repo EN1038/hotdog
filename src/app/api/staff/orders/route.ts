@@ -208,7 +208,6 @@ export async function GET(request: Request) {
           },
         },
       });
-    const dayStats = computeStaffDayStats(statsOrders);
 
     const where: Prisma.OrderWhereInput = {
       branchId: session.branchId,
@@ -226,13 +225,69 @@ export async function GET(request: Request) {
       orderBy: [{ status: "asc" }, { createdAt: "asc" }],
     });
 
+    // ออเดอร์รอรับที่ค้างข้ามวัน — ต้องโชว์ให้ร้านเคลียร์ได้ (แบดจ์นับทั้งหมด)
+    let mergedOrders = orders;
+    let pendingWaitingCount = 0;
+    let waitingExtraForStats: typeof statsOrders = [];
+    if (isToday) {
+      const waitingExtra = await prisma.order.findMany({
+        where: {
+          branchId: session.branchId,
+          status: OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+          NOT: { queueBusinessDate: businessDate },
+        },
+        include: {
+          customer: true,
+          deliveryLocation: true,
+          items: { include: { branchMenuItem: true } },
+          consumableLines: true,
+        },
+        orderBy: { createdAt: "asc" },
+        take: 200,
+      });
+      if (waitingExtra.length > 0) {
+        const seen = new Set(orders.map((o) => o.id));
+        mergedOrders = [
+          ...waitingExtra.filter((o) => !seen.has(o.id)),
+          ...orders,
+        ];
+        waitingExtraForStats = waitingExtra.map((o) => ({
+          status: o.status,
+          awaitingPhotoKey: o.awaitingPhotoKey,
+          deliveryFee: o.deliveryFee,
+          discountAmount: o.discountAmount,
+          items: o.items.map((it) => ({
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            optionsPrice: it.optionsPrice,
+          })),
+        }));
+      }
+      pendingWaitingCount = await prisma.order.count({
+        where: {
+          branchId: session.branchId,
+          status: OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+        },
+      });
+    } else {
+      pendingWaitingCount = orders.filter(
+        (o) => o.status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+      ).length;
+    }
+
+    const dayStats = computeStaffDayStats([
+      ...statsOrders,
+      ...waitingExtraForStats,
+    ]);
+
     const canToggleStore =
       session.staffRoles.includes("SELLER") ||
       session.staffRoles.includes("BOTH");
     const canSell = Boolean(activeShift);
 
     return jsonOk({
-      orders,
+      orders: mergedOrders,
+      pendingWaitingCount,
       viewDate: viewDateKey,
       isToday,
       operatingDay: currentRoundKey,

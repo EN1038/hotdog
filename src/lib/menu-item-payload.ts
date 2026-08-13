@@ -28,8 +28,13 @@ export const menuItemCreateSchema = z
     sellDelivery: z.boolean().optional(),
     sellPickup: z.boolean().optional(),
     sellStorefront: z.boolean().optional(),
+    sellPiece: z.boolean().optional(),
     sellByWeight: z.boolean().optional(),
     pricePerKg: optionalPositivePrice,
+    sellSkewer: z.boolean().optional(),
+    sellGrill: z.boolean().optional(),
+    sellFry: z.boolean().optional(),
+    sellShabu: z.boolean().optional(),
   })
   .merge(menuChannelPriceSchema);
 
@@ -51,8 +56,13 @@ export const menuItemPatchSchema = z
     sellDelivery: z.boolean().optional(),
     sellPickup: z.boolean().optional(),
     sellStorefront: z.boolean().optional(),
+    sellPiece: z.boolean().optional(),
     sellByWeight: z.boolean().optional(),
     pricePerKg: optionalPositivePrice,
+    sellSkewer: z.boolean().optional(),
+    sellGrill: z.boolean().optional(),
+    sellFry: z.boolean().optional(),
+    sellShabu: z.boolean().optional(),
   })
   .merge(menuChannelPriceSchema.partial());
 

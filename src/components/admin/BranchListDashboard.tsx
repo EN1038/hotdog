@@ -35,16 +35,22 @@ import { BrandOverviewPanel } from "@/components/admin/BrandOverviewPanel";
 import { parseBrandHqSection } from "@/lib/brand-hq-nav";
 import { isTestBranch } from "@/lib/branch-test";
 import {
+  allowedOperatingModesForBrand,
   BRANCH_OPERATING_MODE_META,
-  BRANCH_OPERATING_MODES,
   type BranchOperatingModeId,
 } from "@/lib/branch-operating-mode";
+import { HOTPOT_COUNTER_GROUP } from "@/lib/hotpot-counter-group";
 
 export type DashboardBrand = {
   id: string;
   name: string;
   code: string;
   color?: string;
+  kitchenEnabled?: boolean;
+  bbqEnabled?: boolean;
+  skewerEnabled?: boolean;
+  maxBranches?: number;
+  plan?: string;
 };
 
 type Branch = {
@@ -64,6 +70,12 @@ type Branch = {
   };
 };
 
+function defaultWeighAddonForBrand(brand: DashboardBrand | null | undefined) {
+  if (!brand?.bbqEnabled) return false;
+  const plan = brand.plan;
+  return plan === "MALA" || plan === "MULTI" || plan === "WEIGH_TABLE";
+}
+
 function resetFormState(setters: {
   setName: (v: string) => void;
   setBrandId: (v: string) => void;
@@ -78,7 +90,9 @@ function resetFormState(setters: {
   setError: (v: string | null) => void;
   setCreateStep: (v: 1 | 2) => void;
   setOperatingMode: (v: BranchOperatingModeId | null) => void;
+  setWeighSalesEnabled: (v: boolean) => void;
   defaultBrandId: string;
+  defaultWeighSalesEnabled?: boolean;
 }) {
   setters.setName("");
   setters.setBrandId(setters.defaultBrandId);
@@ -92,7 +106,8 @@ function resetFormState(setters: {
   setters.setDeliveryHours(defaultWeeklyHours());
   setters.setError(null);
   setters.setCreateStep(1);
-  setters.setOperatingMode(null);
+  setters.setOperatingMode("NORMAL");
+  setters.setWeighSalesEnabled(Boolean(setters.defaultWeighSalesEnabled));
 }
 
 type BranchListDashboardProps = {
@@ -156,6 +171,7 @@ function BranchListDashboardInner({
   const [createStep, setCreateStep] = useState<1 | 2>(1);
   const [operatingMode, setOperatingMode] =
     useState<BranchOperatingModeId | null>(null);
+  const [weighSalesEnabled, setWeighSalesEnabled] = useState(false);
 
   const defaultBrandId = effectiveLockedBrandId ?? "";
 
@@ -211,6 +227,9 @@ function BranchListDashboardInner({
   }, [modalOpen, saving]);
 
   function formSetters() {
+    const brand =
+      brands.find((b) => b.id === (effectiveLockedBrandId || defaultBrandId)) ||
+      brandMeta;
     return {
       setName,
       setBrandId,
@@ -225,12 +244,23 @@ function BranchListDashboardInner({
       setError,
       setCreateStep,
       setOperatingMode,
+      setWeighSalesEnabled,
       defaultBrandId,
+      defaultWeighSalesEnabled: defaultWeighAddonForBrand(brand),
     };
   }
 
   function openModal() {
     resetFormState(formSetters());
+    const brand =
+      brands.find((b) => b.id === (effectiveLockedBrandId || defaultBrandId)) ||
+      brandMeta;
+    const modes = allowedOperatingModesForBrand(brand);
+    setWeighSalesEnabled(defaultWeighAddonForBrand(brand));
+    if (modes.length === 1) {
+      setOperatingMode(modes[0]);
+      setCreateStep(2);
+    }
     setModalOpen(true);
   }
 
@@ -254,6 +284,8 @@ function BranchListDashboardInner({
     setSaving(true);
     try {
       const resolvedBrandId = effectiveLockedBrandId || brandId || null;
+      const brandForCreate =
+        brands.find((b) => b.id === (resolvedBrandId || "")) || brandMeta;
       const autoCode = slugifyCode(name);
       const res = await fetch("/api/admin/branches", {
         method: "POST",
@@ -269,6 +301,10 @@ function BranchListDashboardInner({
           storefrontHours,
           deliveryHours,
           operatingMode,
+          weighSalesEnabled:
+            operatingMode === "NORMAL" &&
+            Boolean(brandForCreate?.bbqEnabled) &&
+            weighSalesEnabled,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -298,6 +334,10 @@ function BranchListDashboardInner({
   const previewCode = code || slugifyCode(name) || "…";
   const accent = selectedBrand?.color || DEFAULT_BRAND_COLOR;
   const brandLocked = Boolean(effectiveLockedBrandId);
+  const availableModes = allowedOperatingModesForBrand(selectedBrand);
+  const atBranchLimit =
+    typeof selectedBrand?.maxBranches === "number" &&
+    branches.length >= selectedBrand.maxBranches;
 
   return (
     <div>
@@ -311,6 +351,21 @@ function BranchListDashboardInner({
         </Link>
       ) : null}
 
+      {!session?.isPlatformAdmin ? (
+        <Link
+          href="/owner"
+          className="mb-4 flex items-center justify-between rounded-2xl bg-[#0b2a4a] px-4 py-3 text-white shadow-sm"
+        >
+          <div>
+            <p className="text-sm font-bold">โหมดใช้งานทุกวัน</p>
+            <p className="text-xs text-white/75">
+              ปุ่มใหญ่ · ดูยอดวันนี้ · ไม่ต้องหาเมนู
+            </p>
+          </div>
+          <span className="text-sm font-semibold">เปิด ›</span>
+        </Link>
+      ) : null}
+
       <AdminPageHeader
         title={title}
         description={description}
@@ -318,9 +373,23 @@ function BranchListDashboardInner({
           <>
             {headerActions}
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm">
-              {branches.length} สาขา
+              {branches.length}
+              {typeof selectedBrand?.maxBranches === "number"
+                ? `/${selectedBrand.maxBranches}`
+                : ""}{" "}
+              สาขา
             </span>
-            <button type="button" onClick={openModal} className={btnPrimaryXl}>
+            <button
+              type="button"
+              onClick={openModal}
+              disabled={atBranchLimit}
+              title={
+                atBranchLimit
+                  ? `แพ็กนี้เปิดสาขาได้สูงสุด ${selectedBrand?.maxBranches} สาขา`
+                  : undefined
+              }
+              className={btnPrimaryXl}
+            >
               <IconPlus size={16} />
               เพิ่มสาขา
             </button>
@@ -520,19 +589,34 @@ function BranchListDashboardInner({
                         โหมดสาขา
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
-                        เลือกรูปแบบธุรกิจของสาขานี้ การ์ดที่เลือกจะกำหนด
-                        flow การขายทั้งหมด
+                        กลุ่ม {HOTPOT_COUNTER_GROUP.shortLabel} เลือก「คิวเคาน์เตอร์」
+                        แล้วติ๊กชั่งกิโลได้ — พนักงานใช้บัญชีเดียวสลับโหมดขาย
                       </p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      {BRANCH_OPERATING_MODES.map((modeId) => {
+                    <div
+                      className={`grid gap-3 ${
+                        availableModes.length === 1
+                          ? "sm:grid-cols-1"
+                          : "sm:grid-cols-3"
+                      }`}
+                    >
+                      {availableModes.map((modeId) => {
                         const meta = BRANCH_OPERATING_MODE_META[modeId];
                         const selected = operatingMode === modeId;
                         return (
                           <button
                             key={modeId}
                             type="button"
-                            onClick={() => setOperatingMode(modeId)}
+                            onClick={() => {
+                              setOperatingMode(modeId);
+                              if (modeId === "NORMAL") {
+                                setWeighSalesEnabled(
+                                  defaultWeighAddonForBrand(selectedBrand),
+                                );
+                              } else {
+                                setWeighSalesEnabled(false);
+                              }
+                            }}
                             className={`rounded-2xl border px-4 py-5 text-left transition ${
                               selected
                                 ? meta.selectedClass
@@ -553,6 +637,32 @@ function BranchListDashboardInner({
                         );
                       })}
                     </div>
+                    {operatingMode === "NORMAL" &&
+                    selectedBrand?.bbqEnabled ? (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3.5">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-rose-300 text-rose-700 focus:ring-rose-500"
+                          checked={weighSalesEnabled}
+                          onChange={(e) =>
+                            setWeighSalesEnabled(e.target.checked)
+                          }
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-rose-950">
+                            {HOTPOT_COUNTER_GROUP.weighAddonTitle}
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-rose-900/75">
+                            {HOTPOT_COUNTER_GROUP.weighAddonHint}
+                          </span>
+                        </span>
+                      </label>
+                    ) : null}
+                    {availableModes.length === 1 ? (
+                      <p className="text-xs text-slate-500">
+                        แพ็กเกจนี้ใช้โหมดร้านทั่วไป — เปิดหมูกระทะ/เสียบไม้ได้ที่ผู้ดูแลแพลตฟอร์ม
+                      </p>
+                    ) : null}
                     {error && (
                       <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
                         {error}
@@ -603,7 +713,15 @@ function BranchListDashboardInner({
                         <select
                           className={adminInputClass}
                           value={brandId}
-                          onChange={(e) => setBrandId(e.target.value)}
+                          onChange={(e) => {
+                            const nextId = e.target.value;
+                            setBrandId(nextId);
+                            const nextBrand = brands.find((b) => b.id === nextId);
+                            const modes = allowedOperatingModesForBrand(nextBrand);
+                            setOperatingMode((prev) =>
+                              prev && modes.includes(prev) ? prev : "NORMAL",
+                            );
+                          }}
                           required={brands.length > 0}
                         >
                           <option value="">— เลือกแบรนด์ —</option>

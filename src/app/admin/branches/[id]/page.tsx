@@ -35,6 +35,7 @@ import {
   isBranchOperatingMode,
   type BranchOperatingModeId,
 } from "@/lib/branch-operating-mode";
+import { HOTPOT_COUNTER_GROUP } from "@/lib/hotpot-counter-group";
 import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
 import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
@@ -103,6 +104,7 @@ type Brand = {
   nameTh?: string | null;
   nameEn?: string | null;
   stockEnabled?: boolean;
+  bbqEnabled?: boolean;
 };
 
 type OrderStats = {
@@ -147,6 +149,7 @@ type BranchDetail = {
   allowAdvanceOrder: boolean;
   autoAcceptOrders: boolean;
   stockEnabled: boolean;
+  weighSalesEnabled?: boolean;
   operatingMode?: BranchOperatingModeId;
   brand: Brand | null;
   staff: {
@@ -304,9 +307,16 @@ const BBQ_WEIGH_HIDDEN_TABS = new Set<TabId>([
   "options",
 ]);
 
-function hiddenTabsForMode(mode: BranchOperatingModeId): Set<TabId> {
+function hiddenTabsForMode(
+  mode: BranchOperatingModeId,
+  weighSalesEnabled = false,
+): Set<TabId> {
   if (mode === "SKEWER") return SKEWER_HIDDEN_TABS;
   if (mode === "BBQ_WEIGH") return BBQ_WEIGH_HIDDEN_TABS;
+  // Dual: mala + weigh — show BBQ tabs alongside NORMAL
+  if (weighSalesEnabled) {
+    return new Set<TabId>(["skewer-orders"]);
+  }
   return NORMAL_HIDDEN_TABS;
 }
 
@@ -567,6 +577,7 @@ function BranchDetailContent() {
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
     stockEnabled: false,
+    weighSalesEnabled: false,
     operatingMode: "NORMAL" as BranchOperatingModeId,
     storefrontHours: null as WeeklySchedule | null,
     deliveryHours: null as WeeklySchedule | null,
@@ -725,6 +736,7 @@ function BranchDetailContent() {
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
       stockEnabled: data.stockEnabled ?? false,
+      weighSalesEnabled: data.weighSalesEnabled ?? false,
       operatingMode: isBranchOperatingMode(data.operatingMode)
         ? data.operatingMode
         : "NORMAL",
@@ -781,11 +793,14 @@ function BranchDetailContent() {
     )
       ? branch.operatingMode
       : "NORMAL";
-    const hidden = hiddenTabsForMode(mode);
+    const hidden = hiddenTabsForMode(
+      mode,
+      Boolean(branch.weighSalesEnabled),
+    );
     if (hidden.has(activeTab)) {
       setTab(defaultTabForMode(mode));
     }
-  }, [branch?.operatingMode, activeTab, branch]);
+  }, [branch?.operatingMode, branch?.weighSalesEnabled, activeTab, branch]);
 
   useEffect(() => {
     if (!staffModalOpen) {
@@ -1585,6 +1600,16 @@ function BranchDetailContent() {
                 โหมดหมูกระทะ
               </span>
             )}
+            {branch.operatingMode === "NORMAL" && branch.weighSalesEnabled && (
+              <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900">
+                {HOTPOT_COUNTER_GROUP.withWeighLabel}
+              </span>
+            )}
+            {branch.operatingMode === "NORMAL" && !branch.weighSalesEnabled && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+                {HOTPOT_COUNTER_GROUP.shortLabel}
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {branch.brand && branch.code ? (
@@ -1617,7 +1642,10 @@ function BranchDetailContent() {
             )
               ? branch.operatingMode
               : "NORMAL";
-            const hidden = hiddenTabsForMode(mode);
+            const hidden = hiddenTabsForMode(
+              mode,
+              Boolean(branch.weighSalesEnabled),
+            );
             const visibleTabIds = group.tabIds.filter(
               (tabId) => !hidden.has(tabId),
             );
@@ -3342,6 +3370,79 @@ function BranchDetailContent() {
                       </button>
                     )}
                   </div>
+
+                  {settings.operatingMode === "NORMAL" ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {HOTPOT_COUNTER_GROUP.weighAddonTitle}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {branch?.brand && branch.brand.bbqEnabled === false
+                            ? "แพ็กเกจแบรนด์ยังไม่เปิดโหมดชั่งกิโล"
+                            : settings.weighSalesEnabled
+                              ? `เปิดอยู่ — ${HOTPOT_COUNTER_GROUP.withWeighLabel} · พนักงานสลับโหมดได้`
+                              : `ปิดอยู่ — เปิดเพื่อครอบคลุม ${HOTPOT_COUNTER_GROUP.withWeighLabel}`}
+                        </p>
+                      </div>
+                      {settings.weighSalesEnabled ? (
+                        <button
+                          type="button"
+                          className={`${btnDanger} shrink-0`}
+                          onClick={() =>
+                            patchBranchSetting(
+                              { weighSalesEnabled: false },
+                              {
+                                successMessage: "ปิดขายชั่งกิโลแล้ว",
+                                errorTitle: "บันทึกไม่สำเร็จ",
+                                onSuccessLocal: () => {
+                                  setSettings((s) => ({
+                                    ...s,
+                                    weighSalesEnabled: false,
+                                  }));
+                                  setBranch((prev) =>
+                                    prev
+                                      ? { ...prev, weighSalesEnabled: false }
+                                      : prev,
+                                  );
+                                },
+                              },
+                            )
+                          }
+                        >
+                          ปิดชั่งกิโล
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`${btnPrimary} shrink-0 disabled:opacity-50`}
+                          disabled={branch?.brand?.bbqEnabled === false}
+                          onClick={() =>
+                            patchBranchSetting(
+                              { weighSalesEnabled: true },
+                              {
+                                successMessage: "เปิดขายชั่งกิโลแล้ว",
+                                errorTitle: "บันทึกไม่สำเร็จ",
+                                onSuccessLocal: () => {
+                                  setSettings((s) => ({
+                                    ...s,
+                                    weighSalesEnabled: true,
+                                  }));
+                                  setBranch((prev) =>
+                                    prev
+                                      ? { ...prev, weighSalesEnabled: true }
+                                      : prev,
+                                  );
+                                },
+                              },
+                            )
+                          }
+                        >
+                          เปิดชั่งกิโล
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                     <div className="min-w-0 flex-1">

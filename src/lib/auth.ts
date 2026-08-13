@@ -3,6 +3,12 @@ import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
 import type { StaffRole } from "./constants";
 import { prisma } from "./db";
+import {
+  BrandInactiveError,
+  brandInactiveMessage,
+  effectiveBrandStatus,
+  isBrandStorefrontOpen,
+} from "./brand-plan-shared";
 
 export const SESSION_COOKIE_NAME = "skillsale_session";
 
@@ -175,6 +181,8 @@ export async function requireStaff() {
               siteTitle: true,
               siteDescription: true,
               queueTicketCopies: true,
+              status: true,
+              trialEndsAt: true,
             },
           },
         },
@@ -193,6 +201,11 @@ export async function requireStaff() {
   const brand = staff.branch.brand;
   if (!brand) {
     throw new Error("UNAUTHORIZED");
+  }
+  if (!isBrandStorefrontOpen(brand)) {
+    throw new BrandInactiveError(
+      brandInactiveMessage(effectiveBrandStatus(brand)),
+    );
   }
 
   return {

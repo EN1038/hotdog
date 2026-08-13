@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { StaffKeyOrderLayout } from "@/components/staff/StaffKeyOrderLayout";
+import { StaffKeyOrderLayout, STAFF_KEY_ORDER_STICKY_OFFSET } from "@/components/staff/StaffKeyOrderLayout";
 import {
   StaffRoundGateLoading,
-  StaffRoundStatusStrip,
   useStaffRoundGate,
 } from "@/components/staff/StaffRoundGate";
 import {
@@ -38,17 +37,18 @@ import {
 } from "@/lib/menu-pricing";
 import {
   isMenuItemSoldOut,
-  isPromoMenuItem,
+  listActivePromoMenuItems,
   orderOptionGroupsForStaffPromo,
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
 import { readStaffOrderMode } from "@/lib/staff-order-mode";
 import {
   computeSelectedOptions,
+  filterVisibleOptionGroups,
+  pruneHiddenGroupSelections,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
-import { sortMenuItemData } from "@/lib/staff-menu-order";
 import {
   autoPrintQueueTickets,
   clampTicketCopies,
@@ -107,9 +107,7 @@ export default function StaffPromoKeyOrderDetailPage() {
       const items = Array.isArray(data.menuItems)
         ? (data.menuItems as MenuItemData[])
         : [];
-      const promos = sortMenuItemData(
-        items.filter((m) => isPromoMenuItem(m) && !isMenuItemSoldOut(m)),
-      );
+      const promos = listActivePromoMenuItems(items);
       const found = promos.find((m) => m.id === itemId) ?? null;
       setBranchName(data.branchName ?? "");
       setPromoCount(promos.length);
@@ -132,6 +130,11 @@ export default function StaffPromoKeyOrderDetailPage() {
   const orderedGroups = useMemo(
     () => orderOptionGroupsForStaffPromo(item?.optionGroups ?? []),
     [item],
+  );
+
+  const visibleGroups = useMemo(
+    () => filterVisibleOptionGroups(orderedGroups, selectedByGroup),
+    [orderedGroups, selectedByGroup],
   );
 
   const canSell = useMemo(() => {
@@ -398,7 +401,6 @@ export default function StaffPromoKeyOrderDetailPage() {
   if (!item) {
     return (
       <StaffKeyOrderLayout title="คีย์ออเดอร์แบบโปรโมชั่น">
-        <StaffRoundStatusStrip state={roundState} />
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center">
           <p className="text-sm font-medium text-gray-800">
             ไม่พบโปรโมชั่นนี้
@@ -432,7 +434,10 @@ export default function StaffPromoKeyOrderDetailPage() {
       }
     >
       {showStickySummary ? (
-        <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
+        <div
+          className="fixed inset-x-0 z-20 px-4"
+          style={{ bottom: STAFF_KEY_ORDER_STICKY_OFFSET }}
+        >
           <div className="mx-auto max-w-lg">
             <StaffOrderStickySummary
               lineCount={summaryLines.length}
@@ -443,8 +448,6 @@ export default function StaffPromoKeyOrderDetailPage() {
           </div>
         </div>
       ) : null}
-
-      <StaffRoundStatusStrip state={roundState} />
 
       {promoCount > 1 ? (
         <Link
@@ -486,7 +489,7 @@ export default function StaffPromoKeyOrderDetailPage() {
                   clearValidation();
                   setQuantity((q) => Math.max(1, q - 1));
                 }}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-lg font-bold disabled:opacity-40"
+                className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 text-xl font-bold disabled:opacity-40"
               >
                 −
               </button>
@@ -499,7 +502,7 @@ export default function StaffPromoKeyOrderDetailPage() {
                   clearValidation();
                   setQuantity((q) => Math.min(20, q + 1));
                 }}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-site-primary text-lg font-bold text-white"
+                className="flex h-12 w-12 items-center justify-center rounded-xl bg-site-primary text-xl font-bold text-white"
               >
                 +
               </button>
@@ -513,7 +516,7 @@ export default function StaffPromoKeyOrderDetailPage() {
         <p className="text-xs text-gray-500">
           รายการในตัวเลือกเรียงตามพยัญชนะไทย · กรอกแล้วบันทึกในหน้านี้
         </p>
-        {orderedGroups.map((group) => {
+        {visibleGroups.map((group) => {
           const isPack = group.mode === "FROM_MENU";
           return (
             <section
@@ -527,6 +530,11 @@ export default function StaffPromoKeyOrderDetailPage() {
               <div className="mb-2">
                 <h2 className="text-sm font-semibold text-gray-900">
                   {group.name}
+                  {group.required || (group.minSelect ?? 0) > 0 ? (
+                    <span className="ml-1 text-xs font-medium text-red-500">
+                      *จำเป็น
+                    </span>
+                  ) : null}
                 </h2>
                 {isPack ? (
                   <p className="text-xs text-gray-600">เลือกไม้ในชุดโปร</p>
@@ -539,10 +547,12 @@ export default function StaffPromoKeyOrderDetailPage() {
                 highlightError={optionErrorGroupId === group.id}
                 onChange={(ids) => {
                   clearValidation();
-                  setSelectedByGroup((prev) => ({
-                    ...prev,
-                    [group.id]: ids,
-                  }));
+                  setSelectedByGroup((prev) =>
+                    pruneHiddenGroupSelections(orderedGroups, {
+                      ...prev,
+                      [group.id]: ids,
+                    }),
+                  );
                 }}
               />
             </section>

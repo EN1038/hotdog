@@ -140,7 +140,7 @@ export default async function ProductPage() {
             </p>
             <ul className="grid gap-2 sm:grid-cols-2 text-[15px] leading-relaxed text-[#44403c]">
               {[
-                "ร้านหม่าล่า · ปิ้งย่างเสียบไม้",
+                "ร้านหม่าล่า · ปิ้ง · ทอด · ชาบู (+ ชั่งกิโลได้)",
                 "ร้านเครื่องดื่ม · น้ำผลไม้ · กาแฟ",
                 "ร้านของทอด · ลูกชิ้น · ไส้กรอก",
                 "ร้านก๋วยเตี๋ยว · ข้าวแกง · อาหารจานด่วน",
@@ -329,7 +329,7 @@ export default async function ProductPage() {
                 หน้าขาย (พนักงาน)
               </Link>
               <Link
-                href="/admin/login"
+                href="/owner/login"
                 className="rounded-full border border-[#d6d3d1] bg-[#fafaf9] px-5 py-2.5 text-sm font-bold text-[#44403c]"
               >
                 หลังบ้าน (เจ้าของ)

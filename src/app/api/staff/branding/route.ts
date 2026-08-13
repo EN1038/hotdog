@@ -24,20 +24,69 @@ const COUNTABLE_STATUSES: OrderStatus[] = [
 export async function GET() {
   try {
     const { ensureProdSchemaCompat } = await import("@/lib/schema-compat");
-    void ensureProdSchemaCompat();
+    await ensureProdSchemaCompat();
 
     const session = await requireStaff();
-    const [branch, activeShift, pendingOrderCount, pendingStockCount] =
-      await Promise.all([
-        prisma.branch.findUnique({
+
+    type BranchBranding = {
+      isOpen: boolean;
+      stockEnabled: boolean;
+      brandId: string | null;
+      operatingMode: string;
+      weighSalesEnabled?: boolean;
+      brand: {
+        stockEnabled: boolean;
+        coverImageUrl: string | null;
+        bbqEnabled: boolean;
+      } | null;
+    };
+
+    async function loadBranch(): Promise<BranchBranding | null> {
+      try {
+        return await prisma.branch.findUnique({
           where: { id: session.branchId },
           select: {
             isOpen: true,
             stockEnabled: true,
             brandId: true,
-            brand: { select: { stockEnabled: true, coverImageUrl: true } },
+            operatingMode: true,
+            weighSalesEnabled: true,
+            brand: {
+              select: {
+                stockEnabled: true,
+                coverImageUrl: true,
+                bbqEnabled: true,
+              },
+            },
           },
-        }),
+        });
+      } catch (e) {
+        // Stale Prisma client / migrate lag — degrade without weigh fields
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/weighSalesEnabled|Unknown field|column/i.test(msg)) throw e;
+        console.error("[staff/branding] weighSalesEnabled fallback", msg);
+        return prisma.branch.findUnique({
+          where: { id: session.branchId },
+          select: {
+            isOpen: true,
+            stockEnabled: true,
+            brandId: true,
+            operatingMode: true,
+            brand: {
+              select: {
+                stockEnabled: true,
+                coverImageUrl: true,
+                bbqEnabled: true,
+              },
+            },
+          },
+        });
+      }
+    }
+
+    const [branch, activeShift, pendingOrderCount, pendingStockCount] =
+      await Promise.all([
+        loadBranch(),
         getActiveShift(session.branchId),
         prisma.order.count({
           where: {
@@ -56,10 +105,35 @@ export async function GET() {
     const canSell = Boolean(activeShift);
     const brandStockEnabled = Boolean(branch?.brand?.stockEnabled);
     const stockEnabled = Boolean(branch?.stockEnabled);
+    const operatingMode = branch?.operatingMode ?? "NORMAL";
+    const weighSalesEnabled = Boolean(branch?.weighSalesEnabled);
+    const brandBbqEnabled = branch?.brand?.bbqEnabled !== false;
+    const weighSalesAvailable =
+      (operatingMode === "BBQ_WEIGH" ||
+        (operatingMode === "NORMAL" && weighSalesEnabled)) &&
+      brandBbqEnabled;
+    const dualSellModes =
+      operatingMode === "NORMAL" && weighSalesEnabled && brandBbqEnabled;
     const operatingDay = activeShift
       ? shiftCalendarDateKey(activeShift)
       : day.operatingDay;
     const businessDate = queueBusinessDateFromKey(operatingDay);
+
+    let todayOrderCount = 0;
+    try {
+      todayOrderCount = await prisma.order.count({
+        where: {
+          branchId: session.branchId,
+          queueBusinessDate: businessDate,
+          status: { in: COUNTABLE_STATUSES },
+        },
+      });
+    } catch (e) {
+      console.error(
+        "[staff/branding] today order count skipped",
+        e instanceof Error ? e.message : e,
+      );
+    }
 
     // Bounded scan — avoid loading unbounded/cancelled orders as a full day bloates branding.
     let todayRevenueBaht = 0;
@@ -137,8 +211,13 @@ export async function GET() {
         brandStockEnabled,
         branchStockEnabled: stockEnabled,
       }),
+      operatingMode,
+      weighSalesEnabled,
+      weighSalesAvailable,
+      dualSellModes,
       pendingOrderCount,
       pendingStockCount,
+      todayOrderCount,
       todayRevenueBaht,
     });
   } catch (error) {

@@ -1,4 +1,7 @@
 import type { MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
+import { parsePromoWoodGiftName } from "@/lib/order-item-display";
+import { computeSelectedOptions } from "@/lib/option-selection";
+import { sortMenuItemData } from "@/lib/staff-menu-order";
 
 /** Minimal shape for promo / sold-out checks (API may only select `mode`). */
 type StockCheckItem = {
@@ -39,6 +42,82 @@ export function isRegularMenuItem(item: StockCheckItem): boolean {
   return !isPromoMenuItem(item);
 }
 
+/** Promo packs configured in admin (FROM_MENU option group on a menu item). */
+export function listActivePromoMenuItems(
+  menuItems: MenuItemData[],
+): MenuItemData[] {
+  return sortMenuItemData(
+    menuItems.filter(
+      (item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item),
+    ),
+  );
+}
+
+/**
+ * Short label for staff home / promo list — follows promo pack structure
+ * (ชื่อโปร + FROM_MENU maxSelect จากหลังบ้าน).
+ */
+export function describePromoMenuItem(item: MenuItemData): string {
+  const parsed = parsePromoWoodGiftName(item.name);
+  if (parsed) {
+    return `จ่าย ${parsed.paid} · แถม ${parsed.free}`;
+  }
+  const group = (item.optionGroups ?? []).find((g) => g.mode === "FROM_MENU");
+  if (!group) return "คีย์โปรโมชั่น";
+  const max = group.maxSelect ?? 0;
+  const min = group.minSelect ?? 0;
+  if (max <= 0) return "คีย์โปรโมชั่น";
+  // Convention: gift ≈ 1 when min=max and name has no “แถม N”
+  if (min === max && min > 1) {
+    return `เลือก ${max} ไม้`;
+  }
+  if (min > 0) {
+    return `เลือก ${min}–${max} ไม้`;
+  }
+  return `เลือกได้สูงสุด ${max} ไม้`;
+}
+
+export type StaffHomePromoButton = {
+  key: string;
+  href: string;
+  label: string;
+  description: string;
+};
+
+/**
+ * Single home shortcut for promotions (original structure).
+ * Opens promo picker; if only one pack exists, deep-links to it.
+ */
+export function resolveStaffHomePromoButton(
+  menuItems: MenuItemData[],
+): StaffHomePromoButton | null {
+  const promos = listActivePromoMenuItems(menuItems);
+  if (promos.length === 0) return null;
+  if (promos.length === 1) {
+    const only = promos[0]!;
+    return {
+      key: "promo",
+      href: `/staff/key-order/promo/${only.id}`,
+      label: "คีย์โปรโมชั่น",
+      description: "เลือกเมนูเซ็ตโปร",
+    };
+  }
+  return {
+    key: "promo",
+    href: "/staff/key-order/promo",
+    label: "คีย์โปรโมชั่น",
+    description: "เลือกเมนูเซ็ตโปร",
+  };
+}
+
+/** @deprecated use resolveStaffHomePromoButton — home keeps one promo entry */
+export function resolveStaffHomePromoButtons(
+  menuItems: MenuItemData[],
+): StaffHomePromoButton[] {
+  const one = resolveStaffHomePromoButton(menuItems);
+  return one ? [one] : [];
+}
+
 /** Unique MANUAL option groups across items.
  * When `onlySelected` is true (default), only items with qty > 0 contribute.
  * Pass `onlySelected: false` to show all groups linked to the item list (e.g. spice level before qty).
@@ -71,11 +150,9 @@ export function optionIdsForMenuItem(
   item: MenuItemData,
   selectedByGroup: Record<string, string[]>,
 ): string[] {
-  const ids: string[] = [];
-  for (const group of item.optionGroups ?? []) {
-    ids.push(...(selectedByGroup[group.id] ?? []));
-  }
-  return ids;
+  const groups = (item.optionGroups ?? []).filter((g) => g.mode !== "FROM_MENU");
+  // Respect visibleWhenOptionIds (e.g. น้ำชาบู only when ชาบู is chosen)
+  return computeSelectedOptions(groups, selectedByGroup).optionIds;
 }
 
 /** Staff promo: FROM_MENU first, then other groups by sortOrder. */

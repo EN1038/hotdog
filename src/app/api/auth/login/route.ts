@@ -8,6 +8,12 @@ import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { StaffRole } from "@prisma/client";
 import { completeCustomerLogin } from "@/lib/customer-login";
 import { isTaximailConfigured } from "@/lib/taximail";
+import {
+  brandInactiveMessage,
+  effectiveBrandStatus,
+  isBrandStorefrontOpen,
+} from "@/lib/brand-plan-shared";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 const adminSchema = z.object({
   username: z.string().min(1),
@@ -70,6 +76,7 @@ export async function POST(request: Request) {
     }
 
     if (type === "staff") {
+      await ensureProdSchemaCompat();
       const { phone } = staffSchema.parse(body);
       const normalized = normalizePhone(phone);
       // Critical for prod: use select only — `include: { branch }` pulls every
@@ -96,6 +103,8 @@ export async function POST(request: Request) {
                   color: true,
                   siteTitle: true,
                   siteDescription: true,
+                  status: true,
+                  trialEndsAt: true,
                 },
               },
             },
@@ -123,6 +132,12 @@ export async function POST(request: Request) {
         return jsonError("พนักงานยังไม่ได้ผูกสาขา", 403);
       }
       const brand = staff.branch.brand;
+      if (brand && !isBrandStorefrontOpen(brand)) {
+        return jsonError(
+          brandInactiveMessage(effectiveBrandStatus(brand)),
+          403,
+        );
+      }
       const res = NextResponse.json({
         ok: true,
         branchName: staff.branch.name,

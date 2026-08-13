@@ -239,7 +239,7 @@ export function isCombinedStaff(roles: StaffRole[]) {
  * (ระบบภายในยังเป็นสถานะละเอียดเหมือนเดิม)
  */
 export const SELLER_ORDER_STATUS_LABELS: Partial<Record<OrderStatus, string>> = {
-  WAITING_FOR_STORE_ACCEPTANCE: "ใหม่",
+  WAITING_FOR_STORE_ACCEPTANCE: "รอรับ",
   PREPARING: "กำลังเตรียม",
   READY_FOR_PICKUP: "จัดส่ง",
   READY_FOR_DELIVERY: "จัดส่ง",
@@ -261,17 +261,18 @@ export function getStaffStatusLabel(
 /** สถานะในแท็บของพนักงาน — คนขาย / คนส่ง / สอง role (ไม่ซ้ำซ้อน) */
 export function getStaffLegendStatuses(
   roles: StaffRole[],
-  options?: { autoAcceptOrders?: boolean },
+  options?: { autoAcceptOrders?: boolean; hasWaitingOrders?: boolean },
 ): OrderStatus[] {
   const seller = hasSellerRole(roles);
   const delivery = hasDeliveryRole(roles);
-  // รับออโต้: ออเดอร์ข้าม「ใหม่」ไปเตรียมเลย — ไม่โชว์แท็บว่าง
-  const showNew = !options?.autoAcceptOrders;
+  // รับออโต้: ซ่อนแท็บรอรับเมื่อว่าง — แต่ถ้ายังมีออเดอร์ค้างรอรับ ต้องโชว์เสมอ
+  const showWaiting =
+    !options?.autoAcceptOrders || Boolean(options?.hasWaitingOrders);
 
-  // สอง role: รวมแท็บที่ไม่ซ้ำ — ใหม่ / กำลังเตรียม / จัดส่ง / กำลังจัดส่ง / เสร็จสิ้น
+  // สอง role: รวมแท็บที่ไม่ซ้ำ — รอรับ / กำลังเตรียม / จัดส่ง / กำลังจัดส่ง / เสร็จสิ้น
   if (seller && delivery) {
     return [
-      ...(showNew ? [OrderStatus.WAITING_FOR_STORE_ACCEPTANCE] : []),
+      ...(showWaiting ? [OrderStatus.WAITING_FOR_STORE_ACCEPTANCE] : []),
       OrderStatus.PREPARING,
       OrderStatus.READY_FOR_DELIVERY,
       OrderStatus.DELIVERING,
@@ -279,10 +280,10 @@ export function getStaffLegendStatuses(
     ];
   }
 
-  // คนหน้าร้าน: ใหม่ / กำลังเตรียม / จัดส่ง / เสร็จสิ้น
+  // คนหน้าร้าน: รอรับ / กำลังเตรียม / จัดส่ง / เสร็จสิ้น
   if (seller) {
     return [
-      ...(showNew ? [OrderStatus.WAITING_FOR_STORE_ACCEPTANCE] : []),
+      ...(showWaiting ? [OrderStatus.WAITING_FOR_STORE_ACCEPTANCE] : []),
       OrderStatus.PREPARING,
       OrderStatus.READY_FOR_DELIVERY,
       OrderStatus.COMPLETED,
@@ -405,6 +406,13 @@ export function normalizeClockTime(value: string): string {
 export function formatPrice(price: number | string): string {
   const num = typeof price === "string" ? parseFloat(price) : price;
   return num.toLocaleString("th-TH", { minimumFractionDigits: 0 });
+}
+
+/** Display helper: 0฿ items (e.g. free seasonings) show as ฟรี */
+export function formatPriceLabel(price: number | string): string {
+  const num = typeof price === "string" ? parseFloat(price) : price;
+  if (!Number.isFinite(num) || num <= 0) return "ฟรี";
+  return `${formatPrice(num)}฿`;
 }
 
 /** Generates a short human-friendly order number like A1048. */

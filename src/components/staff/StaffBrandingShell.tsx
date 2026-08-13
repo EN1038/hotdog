@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   SiteBrandingProvider,
   type BrandingOverride,
@@ -36,6 +37,8 @@ export function StaffBrandingShell({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isAuthPage = pathname === "/staff/login";
   const [override, setOverride] = useState<BrandingOverride | null>(null);
 
   useEffect(() => {
@@ -45,6 +48,12 @@ export function StaffBrandingShell({
     }
     refreshFromCache();
     window.addEventListener(BRAND_UPDATED_EVENT, refreshFromCache);
+
+    if (isAuthPage) {
+      return () => {
+        window.removeEventListener(BRAND_UPDATED_EVENT, refreshFromCache);
+      };
+    }
 
     let cancelled = false;
     fetch("/api/staff/branding")
@@ -64,10 +73,10 @@ export function StaffBrandingShell({
       cancelled = true;
       window.removeEventListener(BRAND_UPDATED_EVENT, refreshFromCache);
     };
-  }, []);
+  }, [isAuthPage]);
 
   return (
-    <SiteBrandingProvider brandOverride={override}>
+    <SiteBrandingProvider brandOverride={isAuthPage ? null : override}>
       {children}
     </SiteBrandingProvider>
   );

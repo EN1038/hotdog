@@ -16,15 +16,18 @@ import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useToast } from "@/components/admin/Toast";
 import { ImageField } from "@/components/admin/ImageField";
 import { PhoneInput } from "@/components/PhoneInput";
-import {
-  BRAND_COLOR_PRESETS,
-  DEFAULT_BRAND_COLOR,
-} from "@/lib/color";
+import { DEFAULT_BRAND_COLOR } from "@/lib/color";
+import { BrandColorPicker } from "@/components/BrandColorPicker";
 import { getBrandProfileGaps } from "@/lib/brand-profile";
 import {
   BRAND_COVER_IMAGE_SIZE_HINT,
   BRAND_LOGO_SIZE_HINT,
 } from "@/lib/image-guides";
+import {
+  BrandPlanBanner,
+  type BrandPlanId,
+  type BrandStatusId,
+} from "@/components/admin/BrandPlanBanner";
 
 type Brand = {
   id: string;
@@ -40,50 +43,16 @@ type Brand = {
   color: string;
   queueTicketCopies?: number;
   stockEnabled?: boolean;
+  status?: BrandStatusId;
+  plan?: BrandPlanId;
+  maxBranches?: number;
+  maxStaff?: number;
+  kitchenEnabled?: boolean;
+  bbqEnabled?: boolean;
+  skewerEnabled?: boolean;
+  trialEndsAt?: string | null;
   _count: { branches: number; members: number };
 };
-
-function ColorPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (color: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <input
-        type="color"
-        value={value || DEFAULT_BRAND_COLOR}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-10 w-12 shrink-0 cursor-pointer rounded-xl border border-slate-200 bg-white p-1"
-        aria-label="เลือกสีแบรนด์"
-      />
-      <input
-        className={`${adminInputClass} max-w-[7.5rem] font-mono text-xs`}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="#dc2626"
-      />
-      <div className="flex flex-wrap gap-1.5">
-        {BRAND_COLOR_PRESETS.map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            title={preset}
-            onClick={() => onChange(preset)}
-            className={`h-6 w-6 rounded-full border-2 ${
-              value.toLowerCase() === preset
-                ? "border-slate-900"
-                : "border-transparent ring-1 ring-slate-200"
-            }`}
-            style={{ backgroundColor: preset }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function BrandsPage() {
   const router = useRouter();
@@ -215,6 +184,7 @@ export default function BrandsPage() {
               </div>
 
               <div className="space-y-6 p-5">
+                <BrandPlanBanner brand={brand} />
                 {draftGaps.length > 0 && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                     <p className="text-sm font-semibold text-amber-900">
@@ -377,12 +347,13 @@ export default function BrandsPage() {
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className={adminLabelClass}>สีแบรนด์</label>
-                      <ColorPicker
+                      <label className={adminLabelClass}>สีแบรนด์ / ธีมร้าน</label>
+                      <BrandColorPicker
                         value={accent}
                         onChange={(next) =>
                           patchBrand(brand.id, { color: next })
                         }
+                        inputClassName={adminInputClass}
                       />
                     </div>
                     <div className="sm:col-span-2" id={`brand-phone-${brand.id}`}>

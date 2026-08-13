@@ -53,6 +53,8 @@ const updateSchema = z.object({
   isTest: z.boolean().optional(),
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
+  /// NORMAL only — enable BBQ weigh sales alongside mala queue
+  weighSalesEnabled: z.boolean().optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
   deliveryHours: weeklyScheduleSchema.optional(),
 });
@@ -247,6 +249,26 @@ export async function PATCH(request: Request, { params }: Params) {
       await assertBrandAccess(session, body.brandId);
     }
 
+    if (body.weighSalesEnabled !== undefined) {
+      const existing = await prisma.branch.findUnique({
+        where: { id },
+        select: {
+          operatingMode: true,
+          brand: { select: { bbqEnabled: true } },
+        },
+      });
+      if (!existing) return jsonError("ไม่พบสาขา", 404);
+      if (existing.operatingMode !== "NORMAL") {
+        return jsonError(
+          "เปิดขายชั่งกิโลคู่คิวเคาน์เตอร์ได้เฉพาะโหมดคิวเคาน์เตอร์",
+          400,
+        );
+      }
+      if (body.weighSalesEnabled && existing.brand && !existing.brand.bbqEnabled) {
+        return jsonError("แพ็กเกจแบรนด์ยังไม่เปิดโหมดชั่งกิโล", 403);
+      }
+    }
+
     const branch = await prisma.branch.update({
       where: { id },
       data: {
@@ -290,6 +312,9 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.autoAcceptOrders !== undefined && {
           autoAcceptOrders: body.autoAcceptOrders,
         }),
+        ...(body.weighSalesEnabled !== undefined && {
+          weighSalesEnabled: body.weighSalesEnabled,
+        }),
         ...(body.storefrontHours !== undefined && {
           storefrontHours:
             body.storefrontHours as unknown as Prisma.InputJsonValue,
@@ -307,6 +332,11 @@ export async function PATCH(request: Request, { params }: Params) {
       },
       include: { brand: true },
     });
+
+    if (body.weighSalesEnabled === true) {
+      const { ensureTakeawayDiningTable } = await import("@/lib/bbq-branch");
+      await ensureTakeawayDiningTable(id);
+    }
 
     if (body.isOpen !== undefined) {
       const { syncShiftWithAdminIsOpen } = await import("@/lib/branch-shift");

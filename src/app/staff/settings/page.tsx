@@ -6,6 +6,8 @@ import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { logout } from "@/components/LoginForm";
+import { AddToHomeScreenBanner } from "@/components/staff/AddToHomeScreenBanner";
+import { PlatformSupportCard } from "@/components/PlatformSupportCard";
 
 import {
   IconLogout,
@@ -50,7 +52,7 @@ export default function StaffSettingsPage() {
       setLoading(false);
       return;
     }
-    const data = await res.json();
+    await res.json();
     setLoading(false);
   }, [router]);
 
@@ -130,10 +132,22 @@ export default function StaffSettingsPage() {
   return (
     <StaffAppShell active="settings">
       <div className="space-y-4 px-4 py-4">
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-[17px] font-extrabold text-slate-900">
+            บันทึกไอคอนลงมือถือ
+          </h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
+            เพิ่ม SkillSale ไปหน้าจอหลัก แล้วเปิดได้เหมือนแอป
+          </p>
+          <div className="mt-3">
+            <AddToHomeScreenBanner force className="" />
+          </div>
+        </section>
 
-
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900">เสียงแจ้งเตือน</h2>
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-[17px] font-extrabold text-slate-900">
+            เสียงแจ้งเตือน
+          </h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {!soundOn ? (
               <button
@@ -148,9 +162,9 @@ export default function StaffSettingsPage() {
                   setSoundOn(true);
                   playOrderAlertSound();
                 }}
-                className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950"
+                className="flex min-h-12 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[15px] font-bold text-amber-950"
               >
-                <IconVolumeOff size={18} /> เปิดเสียง
+                <IconVolumeOff size={20} /> เปิดเสียง
               </button>
             ) : (
               <button
@@ -163,14 +177,14 @@ export default function StaffSettingsPage() {
                   }
                   setSoundOn(false);
                 }}
-                className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900"
+                className="flex min-h-12 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-[15px] font-bold text-emerald-900"
               >
-                <IconVolume size={18} /> ปิดเสียง
+                <IconVolume size={20} /> ปิดเสียง
               </button>
             )}
           </div>
           <select
-            className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+            className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-3.5 text-[15px]"
             value={selectedAlertSoundId}
             disabled={savingAlertSound}
             onChange={(e) => void saveAlertSound(e.target.value)}
@@ -184,7 +198,7 @@ export default function StaffSettingsPage() {
           </select>
           <button
             type="button"
-            className="mt-2 text-xs font-semibold text-slate-600 underline"
+            className="mt-3 text-[13px] font-bold text-site-primary underline"
             onClick={() => {
               const url = selectedAlertSoundId
                 ? alertSounds.find((s) => s.id === selectedAlertSoundId)
@@ -199,34 +213,36 @@ export default function StaffSettingsPage() {
         </section>
 
         {printBridgeReady ? (
-          <section className="rounded-2xl bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-bold text-slate-900">เครื่องพิมพ์</h2>
-            <p className="mt-1 text-xs text-slate-500">{printerLabel}</p>
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="text-[17px] font-extrabold text-slate-900">
+              เครื่องพิมพ์
+            </h2>
+            <p className="mt-1.5 text-[13px] text-slate-500">{printerLabel}</p>
             <button
               type="button"
               onClick={() => selectPrinter()}
-              className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-bold ${
+              className={`mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border py-3.5 text-[15px] font-extrabold ${
                 printerConfigured
                   ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                   : "border-amber-300 bg-amber-50 text-amber-950"
               }`}
             >
-              <IconPrinter size={18} />
+              <IconPrinter size={20} />
               {printerConfigured ? "เปลี่ยนเครื่องพิมพ์" : "เชื่อมเครื่องพิมพ์"}
             </button>
           </section>
         ) : null}
 
+        <PlatformSupportCard />
+
         <button
           type="button"
           onClick={() => logout("/staff/login")}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-bold text-slate-700 shadow-sm"
+          className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-4 text-[15px] font-extrabold text-slate-700 shadow-sm"
         >
-          <IconLogout size={18} /> ออกจากระบบ
+          <IconLogout size={20} /> ออกจากระบบ
         </button>
       </div>
-
-
     </StaffAppShell>
   );
 }

@@ -51,6 +51,11 @@ export default function BrandBranchesPage() {
           code: data.code,
           color: data.color,
           logoUrl: data.logoUrl,
+          kitchenEnabled: data.kitchenEnabled,
+          bbqEnabled: data.bbqEnabled,
+          skewerEnabled: data.skewerEnabled,
+          maxBranches: data.maxBranches,
+          plan: data.plan,
         });
       }
       setLoading(false);
@@ -73,12 +78,14 @@ export default function BrandBranchesPage() {
       backLabel="กลับไปเลือกแบรนด์"
       headerActions={
         <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/admin/brands/${brand.id}/kitchen`}
-            className={btnOutline}
-          >
-            ครัว / ผลิต
-          </Link>
+          {brand.kitchenEnabled ? (
+            <Link
+              href={`/admin/brands/${brand.id}/kitchen`}
+              className={btnOutline}
+            >
+              ครัว / ผลิต
+            </Link>
+          ) : null}
           <Link
             href={`/admin/brands/${brand.id}/stock`}
             className={btnOutline}

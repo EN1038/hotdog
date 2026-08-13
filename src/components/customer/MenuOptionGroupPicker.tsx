@@ -174,8 +174,12 @@ export function MenuOptionGroupPicker({
         : group.options.filter(
             (o) => (o.categoryId ?? "__other__") === categoryFilter,
           );
-    return [...filtered].sort((a, b) => compareThaiText(a.name, b.name));
-  }, [group.options, showCategoryFilter, categoryFilter]);
+    // FROM_MENU: Thai A–Z. MANUAL: keep admin/API order (e.g. ปิ้ง → ทอด → ชาบู).
+    if (fromMenu) {
+      return [...filtered].sort((a, b) => compareThaiText(a.name, b.name));
+    }
+    return filtered;
+  }, [group.options, showCategoryFilter, categoryFilter, fromMenu]);
 
   const min =
     group.minSelect > 0 ? group.minSelect : group.required ? 1 : 0;

@@ -127,8 +127,10 @@ export async function POST(request: Request) {
       await assertBrandAccess(session, brandId);
     }
 
+    const isTest = body.isTest ?? nameLooksLikeTestBranch(body.name);
+
     if (brandId) {
-      await assertCanCreateBranch(brandId);
+      await assertCanCreateBranch(brandId, { isTest });
       const brand = await prisma.brand.findUnique({
         where: { id: brandId },
         select: brandUsageSelect,
@@ -182,8 +184,7 @@ export async function POST(request: Request) {
         ownerMessage: body.ownerMessage?.trim() || null,
         extraMessage: body.extraMessage?.trim() || null,
         isOpen: body.isOpen ?? true,
-        isTest:
-          body.isTest ?? nameLooksLikeTestBranch(body.name),
+        isTest,
         allowAdvanceOrder: body.allowAdvanceOrder ?? true,
         autoAcceptOrders: body.autoAcceptOrders ?? false,
         operatingMode: body.operatingMode,

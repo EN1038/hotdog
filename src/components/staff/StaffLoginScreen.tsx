@@ -11,24 +11,39 @@ import {
   merchantLabelClass,
 } from "@/components/merchant-login-ui";
 
+type BranchChoice = {
+  staffId: string;
+  branchId: string;
+  branchName: string;
+  brandName: string | null;
+  roles: string[];
+};
+
 export function StaffLoginScreen() {
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [branches, setBranches] = useState<BranchChoice[] | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function completeLogin(selectedBranchId?: string) {
     setError("");
     setLoading(true);
     try {
       const res = await fetch("/api/auth/login?type=staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({
+          phone,
+          ...(selectedBranchId ? { branchId: selectedBranchId } : {}),
+        }),
       });
       const text = await res.text();
-      let data: { error?: string; brand?: Parameters<typeof syncStaffBrandFromLogin>[0] } =
-        {};
+      let data: {
+        error?: string;
+        needsBranchSelect?: boolean;
+        branches?: BranchChoice[];
+        brand?: Parameters<typeof syncStaffBrandFromLogin>[0];
+      } = {};
       try {
         data = text ? (JSON.parse(text) as typeof data) : {};
       } catch {
@@ -43,6 +58,10 @@ export function StaffLoginScreen() {
         setError(data.error ?? "ไม่พบเบอร์นี้ในระบบ — ถามเจ้าของร้าน");
         return;
       }
+      if (data.needsBranchSelect && data.branches?.length) {
+        setBranches(data.branches);
+        return;
+      }
       syncStaffBrandFromLogin(data.brand);
       window.location.assign("/staff");
     } catch {
@@ -50,6 +69,12 @@ export function StaffLoginScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setBranches(null);
+    await completeLogin();
   }
 
   return (
@@ -77,47 +102,98 @@ export function StaffLoginScreen() {
 
       <div className="mx-auto w-full max-w-md flex-1 px-5 py-8">
         <PlatformMark placement="login" height={36} priority />
-        <form onSubmit={handleSubmit} className="mt-10 space-y-6">
-          <div>
-            <label htmlFor="staff-phone" className={merchantLabelClass}>
-              เบอร์โทรสำหรับเข้าใช้งาน
-            </label>
-            <PhoneInput
-              id="staff-phone"
-              value={phone}
-              onChange={setPhone}
-              className={merchantInputClass}
-              required
-            />
-          </div>
 
-          <div className="flex gap-2 rounded-2xl bg-sky-50 px-4 py-4 text-sm leading-relaxed text-sky-950">
-            <span className="mt-0.5 text-lg" aria-hidden>
-              💡
-            </span>
-            <div className="space-y-1">
-              <p>ขอเบอร์ที่ลงทะเบียนได้ที่เจ้าของร้าน</p>
-              <p>
-                เจ้าของร้านเข้าจากปุ่ม{" "}
-                <span className="font-semibold">เจ้าของร้าน</span> ไม่ใช่หน้านี้
+        {branches ? (
+          <div className="mt-10 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">เลือกสาขา</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                เบอร์นี้ทำงานได้หลายสาขา — เลือกสาขาที่ต้องการเข้าวันนี้
               </p>
             </div>
+            <ul className="space-y-2">
+              {branches.map((b) => (
+                <li key={b.branchId}>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void completeLogin(b.branchId)}
+                    className="flex w-full flex-col rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-left shadow-sm transition active:scale-[0.99] disabled:opacity-50"
+                  >
+                    <span className="text-base font-semibold text-gray-900">
+                      {b.branchName.replace(/^สาขา\s*/, "")}
+                    </span>
+                    {b.brandName ? (
+                      <span className="mt-0.5 text-xs text-gray-500">
+                        {b.brandName}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setBranches(null);
+                setError("");
+              }}
+              className="w-full py-2 text-sm font-medium text-gray-600"
+            >
+              ใช้เบอร์อื่น
+            </button>
+            {error ? (
+              <p className="text-base text-red-600" role="alert">
+                {error}
+              </p>
+            ) : null}
+            {loading ? (
+              <p className="text-center text-sm text-gray-500">กำลังเข้าสู่ระบบ...</p>
+            ) : null}
           </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="mt-10 space-y-6">
+            <div>
+              <label htmlFor="staff-phone" className={merchantLabelClass}>
+                เบอร์โทรสำหรับเข้าใช้งาน
+              </label>
+              <PhoneInput
+                id="staff-phone"
+                value={phone}
+                onChange={setPhone}
+                className={merchantInputClass}
+                required
+              />
+            </div>
 
-          {error ? (
-            <p className="text-base text-red-600" role="alert">
-              {error}
-            </p>
-          ) : null}
+            <div className="flex gap-2 rounded-2xl bg-sky-50 px-4 py-4 text-sm leading-relaxed text-sky-950">
+              <span className="mt-0.5 text-lg" aria-hidden>
+                💡
+              </span>
+              <div className="space-y-1">
+                <p>ขอเบอร์ที่ลงทะเบียนได้ที่เจ้าของร้าน</p>
+                <p>
+                  เบอร์เดียวทำงานหลายสาขาได้ — ระบบจะให้เลือกสาขาหลังล็อกอิน
+                </p>
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={merchantButtonClass}
-          >
-            {loading ? "กำลังเข้าสู่ระบบ..." : "ถัดไป"}
-          </button>
-        </form>
+            {error ? (
+              <p className="text-base text-red-600" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={merchantButtonClass}
+            >
+              {loading ? "กำลังเข้าสู่ระบบ..." : "ถัดไป"}
+            </button>
+          </form>
+        )}
       </div>
     </main>
   );

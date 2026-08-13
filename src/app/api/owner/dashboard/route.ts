@@ -49,6 +49,8 @@ export async function GET(request: Request) {
       fromParam && isBangkokDateKey(fromParam) ? fromParam : from;
     const rangeTo = toParam && isBangkokDateKey(toParam) ? toParam : to;
 
+    const includeTest = searchParams.get("includeTest") === "1";
+
     const [brand, branches] = await Promise.all([
       prisma.brand.findUnique({
         where: { id: brandId },
@@ -78,8 +80,12 @@ export async function GET(request: Request) {
 
     if (!brand) return jsonError("ไม่พบร้าน", 404);
 
-    const branchIds = branches.map((b) => b.id);
-    const branchNames = new Map(branches.map((b) => [b.id, b.name]));
+    const hasTestBranch = branches.some((b) => b.isTest);
+    const scopedBranches = includeTest
+      ? branches
+      : branches.filter((b) => !b.isTest);
+    const branchIds = scopedBranches.map((b) => b.id);
+    const branchNames = new Map(scopedBranches.map((b) => [b.id, b.name]));
 
     const report =
       branchIds.length === 0
@@ -155,6 +161,8 @@ export async function GET(request: Request) {
         ...b,
         isTest: isTestBranch(b),
       })),
+      hasTestBranch,
+      includeTest,
       operatingDay: dayState.operatingDay,
       period,
       from: rangeFrom,

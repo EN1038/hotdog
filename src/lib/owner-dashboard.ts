@@ -48,6 +48,8 @@ export type OwnerTodayOrder = {
 export type OwnerDashboardPayload = {
   brand: OwnerBrandRow | null;
   branches: OwnerBranchRow[];
+  hasTestBranch?: boolean;
+  includeTest?: boolean;
   operatingDay: string;
   period: OwnerPeriod;
   from: string;

@@ -35,6 +35,7 @@ export type BrandPlanSummary = {
   bbqEnabled?: boolean;
   skewerEnabled?: boolean;
   trialEndsAt?: string | Date | null;
+  hasTestBranch?: boolean;
   _count?: { branches: number; members?: number };
 };
 
@@ -118,6 +119,7 @@ export function BrandPlanBanner({
         <p className="text-sm text-slate-600">
           สาขาสูงสุด {maxBranches ?? "—"}
           {typeof branchUsed === "number" ? ` · ใช้แล้ว ${branchUsed}` : ""}
+          {brand.hasTestBranch ? " · +ทดลอง 1 (ไม่นับโควต้า)" : " · สล็อตทดลองว่าง"}
           {" · "}
           พนักงานสูงสุด {maxStaff ?? "—"}
           {modules.length > 0

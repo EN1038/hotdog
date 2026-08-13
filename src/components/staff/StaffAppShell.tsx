@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 import { logout } from "@/components/LoginForm";
 import {
@@ -11,6 +11,7 @@ import {
   IconReceipt,
   IconStore,
 } from "@/components/icons";
+import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 import { StaffOrderModeProvider } from "@/components/staff/StaffOrderModeContext";
 import { formatPrice } from "@/lib/constants";
 
@@ -35,6 +36,16 @@ type BrandingPayload = {
   todayRevenueBaht?: number;
   todayOrderCount?: number;
 };
+
+type BranchChoice = {
+  branchId: string;
+  branchName: string;
+  brandName: string | null;
+};
+
+function formatBranchLabel(name: string) {
+  return name.replace(/^สาขา\s*/i, "").trim() || name;
+}
 
 function IconKeyOrder({ size = 22 }: { size?: number }) {
   return (
@@ -116,7 +127,13 @@ function StaffAppShellInner({
 }) {
   const pathname = usePathname();
   const branding = useSiteBranding();
+  const branchPickerId = useId();
   const [meta, setMeta] = useState<BrandingPayload | null>(null);
+  const [branchChoices, setBranchChoices] = useState<BranchChoice[]>([]);
+  const [currentBranchId, setCurrentBranchId] = useState("");
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const [switchingBranch, setSwitchingBranch] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   const reloadMeta = () => {
     fetch("/api/staff/branding")
@@ -127,15 +144,77 @@ function StaffAppShellInner({
       .catch(() => {});
   };
 
+  const reloadBranches = () => {
+    fetch("/api/staff/switch-branch")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (
+          data: {
+            currentBranchId?: string;
+            branches?: BranchChoice[];
+          } | null,
+        ) => {
+          if (!data) return;
+          setCurrentBranchId(data.currentBranchId ?? "");
+          setBranchChoices(Array.isArray(data.branches) ? data.branches : []);
+        },
+      )
+      .catch(() => {});
+  };
+
   useEffect(() => {
     reloadMeta();
+    reloadBranches();
   }, [pathname]);
 
   useEffect(() => {
-    const onReload = () => reloadMeta();
+    const onReload = () => {
+      reloadMeta();
+      reloadBranches();
+    };
     window.addEventListener("staff-branding-reload", onReload);
     return () => window.removeEventListener("staff-branding-reload", onReload);
   }, []);
+
+  useEffect(() => {
+    if (!branchPickerOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !switchingBranch) setBranchPickerOpen(false);
+    }
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [branchPickerOpen, switchingBranch]);
+
+  async function switchBranch(branchId: string) {
+    if (branchId === currentBranchId || switchingBranch) return;
+    setSwitchingBranch(true);
+    setSwitchError(null);
+    try {
+      const res = await fetch("/api/staff/switch-branch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branchId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSwitchError(
+          typeof data.error === "string" ? data.error : "สลับสาขาไม่สำเร็จ",
+        );
+        return;
+      }
+      syncStaffBrandFromLogin(data.brand);
+      window.location.assign("/staff");
+    } catch {
+      setSwitchError("เชื่อมต่อไม่ได้ — ลองใหม่");
+    } finally {
+      setSwitchingBranch(false);
+    }
+  }
 
   const brandName =
     meta?.brand?.nameTh ||
@@ -146,6 +225,10 @@ function StaffAppShellInner({
   const logoUrl = meta?.brand?.logoUrl || branding.logoUrl;
   const coverUrl = meta?.brand?.coverImageUrl || null;
   const pendingOrders = meta?.pendingOrderCount ?? 0;
+  const canSwitchBranch = branchChoices.length > 1;
+  const branchLabel = branchName
+    ? `สาขา ${formatBranchLabel(branchName)}`
+    : "—";
 
   const navActive: StaffShellTab =
     active === "key" || active === "stock" || active === "shift-stock"
@@ -220,11 +303,42 @@ function StaffAppShellInner({
                 <p className="truncate text-[18px] font-extrabold leading-tight drop-shadow-sm">
                   {brandName}
                 </p>
-                <p className="mt-1 truncate text-sm font-medium text-white/90">
-                  {branchName
-                    ? `สาขา ${branchName.replace(/^สาขา\s*/, "")}`
-                    : "—"}
-                </p>
+                {canSwitchBranch ? (
+                  <button
+                    type="button"
+                    id={branchPickerId}
+                    onClick={() => {
+                      setSwitchError(null);
+                      setBranchPickerOpen(true);
+                    }}
+                    className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full border border-white/35 bg-white/15 px-2.5 py-1 text-left text-sm font-semibold text-white/95 shadow-sm backdrop-blur-[2px] transition active:bg-white/25"
+                    aria-haspopup="dialog"
+                    aria-expanded={branchPickerOpen}
+                    title="สลับสาขา"
+                  >
+                    <span className="truncate">{branchLabel}</span>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      aria-hidden
+                      className="shrink-0 opacity-90"
+                    >
+                      <path
+                        d="M6 9l6 6 6-6"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                ) : (
+                  <p className="mt-1 truncate text-sm font-medium text-white/90">
+                    {branchLabel}
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {active !== "home" ? (
@@ -253,6 +367,95 @@ function StaffAppShellInner({
             </div>
           </div>
         </header>
+      ) : null}
+
+      {branchPickerOpen && canSwitchBranch ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            aria-label="ปิด"
+            disabled={switchingBranch}
+            onClick={() => setBranchPickerOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${branchPickerId}-title`}
+            className="relative z-10 w-full max-w-lg rounded-t-3xl bg-white px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-xl sm:mx-4 sm:rounded-3xl"
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+            <div className="flex items-start justify-between gap-3 px-1">
+              <div>
+                <h2
+                  id={`${branchPickerId}-title`}
+                  className="text-[17px] font-extrabold text-slate-900"
+                >
+                  สลับสาขา
+                </h2>
+                <p className="mt-0.5 text-[13px] text-slate-500">
+                  เลือกสาขาที่ต้องการทำงานตอนนี้
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={switchingBranch}
+                onClick={() => setBranchPickerOpen(false)}
+                className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-500"
+              >
+                ปิด
+              </button>
+            </div>
+            {switchError ? (
+              <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+                {switchError}
+              </p>
+            ) : null}
+            <ul className="mt-3 max-h-[55vh] space-y-2 overflow-y-auto pb-1">
+              {branchChoices.map((b) => {
+                const activeBranch = b.branchId === currentBranchId;
+                return (
+                  <li key={b.branchId}>
+                    <button
+                      type="button"
+                      disabled={switchingBranch || activeBranch}
+                      onClick={() => void switchBranch(b.branchId)}
+                      className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
+                        activeBranch
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                          : "border-slate-200 bg-white text-slate-900 active:bg-slate-50"
+                      } disabled:opacity-70`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-[15px] font-bold">
+                          {formatBranchLabel(b.branchName)}
+                        </span>
+                        {b.brandName ? (
+                          <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
+                            {b.brandName}
+                          </span>
+                        ) : null}
+                      </span>
+                      {activeBranch ? (
+                        <span className="shrink-0 text-xs font-bold text-emerald-700">
+                          ใช้อยู่
+                        </span>
+                      ) : switchingBranch ? (
+                        <span className="shrink-0 text-xs font-semibold text-slate-400">
+                          …
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs font-semibold text-site-primary">
+                          เลือก
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
       ) : null}
 
       <div className="mx-auto max-w-lg">{children}</div>

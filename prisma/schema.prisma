@@ -514,14 +514,15 @@ model BranchShift {
 model Staff {
   id                           String                       @id @default(cuid())
   branchId                     String
-  phone                        String                       @unique
+  /// Unique per branch — same phone may work at multiple branches
+  phone                        String
   name                         String?
   gender                       String?
   age                          Int?
   imageUrl                     String?
   isActive                     Boolean                      @default(true)
   /// LINE user id after staff adds the Official Account and links by phone
-  lineUserId                   String?                      @unique
+  lineUserId                   String?
   lineNotifyEnabled            Boolean                      @default(true)
   createdAt                    DateTime                     @default(now())
   branch                       Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -536,6 +537,10 @@ model Staff {
   branchNonMenuItemHistories   BranchNonMenuItemHistory[]
   expenses                     BranchExpense[]
   stockRequests                BranchStockRequest[]
+
+  @@unique([branchId, phone])
+  @@index([phone])
+  @@index([lineUserId])
 }
 
 model StaffRoleAssignment {

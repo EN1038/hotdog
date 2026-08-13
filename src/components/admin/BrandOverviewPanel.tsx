@@ -65,6 +65,7 @@ type BranchRow = {
   branchName: string;
   brandId?: string | null;
   brandName?: string | null;
+  isTest?: boolean;
   saleStockQty: number;
   saleStockValue: number;
   wasteQty: number;
@@ -88,6 +89,8 @@ type BranchRow = {
 type BrandOverview = {
   from: string;
   to: string;
+  includeTest?: boolean;
+  hasTestBranch?: boolean;
   saleStockQty: number;
   saleStockValue: number;
   wasteQty: number;
@@ -145,7 +148,7 @@ const SECTION_COPY: Record<
   home: {
     title: "สรุปภาพรวมแบรนด์",
     description:
-      "ยอดขาย ค่าใช้จ่าย และสต๊อกขาย รวมทุกสาขาของแบรนด์นี้",
+      "ยอดขาย ค่าใช้จ่าย และสต๊อกขาย รวมทุกสาขา — ไม่รวมสาขาทดลอง (เปิดติ๊กได้)",
   },
   sales: {
     title: "สรุปยอดขาย",
@@ -200,6 +203,8 @@ export function BrandOverviewPanel({
   >(null);
   const compareCaptureRef = useRef<HTMLDivElement | null>(null);
   const [compareCaptureStamp, setCompareCaptureStamp] = useState("");
+  /** รวมยอดสาขาทดลองในสรุป — ค่าเริ่มต้นปิด */
+  const [includeTest, setIncludeTest] = useState(false);
 
   const isHome = section === "home";
   const isSales = section === "sales";
@@ -234,6 +239,7 @@ export function BrandOverviewPanel({
     const rangeTo = from <= to ? to : from;
     const params = new URLSearchParams({ from: rangeFrom, to: rangeTo });
     if (brandId) params.set("brandId", brandId);
+    if (includeTest) params.set("includeTest", "1");
     const url = brandId
       ? `/api/admin/brands/${brandId}/overview?${params}`
       : `/api/admin/overview?${params}`;
@@ -260,7 +266,7 @@ export function BrandOverviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [brandId, from, to]);
+  }, [brandId, from, to, includeTest]);
 
   useEffect(() => {
     setExpandedBranchId(null);
@@ -718,35 +724,47 @@ export function BrandOverviewPanel({
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">{copy.description}</p>
         </div>
-        {showDateFilter ? (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="w-[10.5rem]">
-              <label className={adminLabelClass}>วันที่เริ่ม</label>
-              <DateInput
-                className={adminInputClass}
-                value={from}
-                max={to || bangkokDateKey()}
-                onChange={(v) => {
-                  if (v) setFrom(v);
-                }}
+        <div className="flex flex-wrap items-end gap-3">
+          {showDateFilter ? (
+            <>
+              <div className="w-[10.5rem]">
+                <label className={adminLabelClass}>วันที่เริ่ม</label>
+                <DateInput
+                  className={adminInputClass}
+                  value={from}
+                  max={to || bangkokDateKey()}
+                  onChange={(v) => {
+                    if (v) setFrom(v);
+                  }}
+                />
+              </div>
+              <div className="w-[10.5rem]">
+                <label className={adminLabelClass}>วันที่สิ้นสุด</label>
+                <DateInput
+                  className={adminInputClass}
+                  value={to}
+                  min={from}
+                  max={bangkokDateKey()}
+                  onChange={(v) => {
+                    if (v) setTo(v);
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="pb-2 text-xs text-slate-500">ยอดคงเหลือ ณ ตอนนี้</p>
+          )}
+          {data?.hasTestBranch ? (
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
+              <input
+                type="checkbox"
+                checked={includeTest}
+                onChange={(e) => setIncludeTest(e.target.checked)}
               />
-            </div>
-            <div className="w-[10.5rem]">
-              <label className={adminLabelClass}>วันที่สิ้นสุด</label>
-              <DateInput
-                className={adminInputClass}
-                value={to}
-                min={from}
-                max={bangkokDateKey()}
-                onChange={(v) => {
-                  if (v) setTo(v);
-                }}
-              />
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-slate-500">ยอดคงเหลือ ณ ตอนนี้</p>
-        )}
+              รวมสาขาทดลอง
+            </label>
+          ) : null}
+        </div>
       </div>
 
       {error ? (
@@ -1097,6 +1115,12 @@ export function BrandOverviewPanel({
                       onChange={() => toggleCompareBranch(b.branchId)}
                     />
                     {b.branchName}
+                    {b.isTest ? (
+                      <span className="text-[10px] font-bold text-violet-700">
+                        {" "}
+                        ทดลอง
+                      </span>
+                    ) : null}
                     <span className="tabular-nums text-slate-400">
                       ({money(branchCompareBadgeQty(b))})
                     </span>
@@ -1317,6 +1341,11 @@ export function BrandOverviewPanel({
                           className="font-semibold text-slate-900 hover:text-sky-700 hover:underline"
                         >
                           {b.branchName}
+                          {b.isTest ? (
+                            <span className="ml-1.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-800">
+                              ทดลอง
+                            </span>
+                          ) : null}
                         </Link>
                       </td>
                       {showBrandCol ? (

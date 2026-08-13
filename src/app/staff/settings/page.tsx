@@ -8,6 +8,7 @@ import { useToast } from "@/components/admin/Toast";
 import { logout } from "@/components/LoginForm";
 import { AddToHomeScreenBanner } from "@/components/staff/AddToHomeScreenBanner";
 import { PlatformSupportCard } from "@/components/PlatformSupportCard";
+import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 
 import {
   IconLogout,
@@ -30,6 +31,12 @@ import {
 
 type AlertSoundOption = { id: string; name: string; fileUrl: string };
 
+type BranchChoice = {
+  branchId: string;
+  branchName: string;
+  brandName: string | null;
+};
+
 export default function StaffSettingsPage() {
   const router = useRouter();
   const toast = useToast();
@@ -41,6 +48,9 @@ export default function StaffSettingsPage() {
   const [printBridgeReady, setPrintBridgeReady] = useState(false);
   const [printerConfigured, setPrinterConfigured] = useState(false);
   const [printerLabel, setPrinterLabel] = useState("ยังไม่เชื่อมเครื่องพิมพ์");
+  const [branchChoices, setBranchChoices] = useState<BranchChoice[]>([]);
+  const [currentBranchId, setCurrentBranchId] = useState("");
+  const [switchingBranch, setSwitchingBranch] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/staff/orders");
@@ -53,6 +63,19 @@ export default function StaffSettingsPage() {
       return;
     }
     await res.json();
+    try {
+      const br = await fetch("/api/staff/switch-branch");
+      if (br.ok) {
+        const data = (await br.json()) as {
+          currentBranchId?: string;
+          branches?: BranchChoice[];
+        };
+        setCurrentBranchId(data.currentBranchId ?? "");
+        setBranchChoices(Array.isArray(data.branches) ? data.branches : []);
+      }
+    } catch {
+      /* ignore */
+    }
     setLoading(false);
   }, [router]);
 
@@ -121,6 +144,28 @@ export default function StaffSettingsPage() {
     }
   }
 
+  async function switchBranch(branchId: string) {
+    if (branchId === currentBranchId || switchingBranch) return;
+    setSwitchingBranch(true);
+    try {
+      const res = await fetch("/api/staff/switch-branch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branchId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "สลับสาขาไม่สำเร็จ");
+        return;
+      }
+      syncStaffBrandFromLogin(data.brand);
+      toast.success(`สลับไปสาขา ${String(data.branchName ?? "").replace(/^สาขา\s*/, "")}`);
+      window.location.assign("/staff");
+    } finally {
+      setSwitchingBranch(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
@@ -143,6 +188,54 @@ export default function StaffSettingsPage() {
             <AddToHomeScreenBanner force className="" />
           </div>
         </section>
+
+        {branchChoices.length > 1 ? (
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="text-[17px] font-extrabold text-slate-900">
+              สลับสาขา
+            </h2>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
+              เบอร์นี้ทำงานได้หลายสาขา — เลือกสาขาที่ต้องการทำงานตอนนี้
+            </p>
+            <ul className="mt-3 space-y-2">
+              {branchChoices.map((b) => {
+                const active = b.branchId === currentBranchId;
+                return (
+                  <li key={b.branchId}>
+                    <button
+                      type="button"
+                      disabled={switchingBranch || active}
+                      onClick={() => void switchBranch(b.branchId)}
+                      className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm font-semibold transition ${
+                        active
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                          : "border-slate-200 bg-white text-slate-900 active:bg-slate-50"
+                      } disabled:opacity-60`}
+                    >
+                      <span>
+                        {b.branchName.replace(/^สาขา\s*/, "")}
+                        {b.brandName ? (
+                          <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                            {b.brandName}
+                          </span>
+                        ) : null}
+                      </span>
+                      {active ? (
+                        <span className="text-xs font-bold text-emerald-700">
+                          ใช้งานอยู่
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-slate-500">
+                          สลับ
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="text-[17px] font-extrabold text-slate-900">

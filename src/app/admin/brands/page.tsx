@@ -51,6 +51,7 @@ type Brand = {
   bbqEnabled?: boolean;
   skewerEnabled?: boolean;
   trialEndsAt?: string | null;
+  hasTestBranch?: boolean;
   _count: { branches: number; members: number };
 };
 
@@ -170,8 +171,9 @@ export default function BrandsPage() {
                     )}
                   </div>
                   <p className="mt-1 text-sm text-slate-500">
-                    สาขา {brand._count.branches} แห่ง · ผู้ดูแล{" "}
-                    {brand._count.members} คน
+                    สาขา {brand._count.branches} แห่ง
+                    {brand.hasTestBranch ? " · +ทดลอง 1" : ""}
+                    {" · "}ผู้ดูแล {brand._count.members} คน
                   </p>
                 </div>
                 <Link

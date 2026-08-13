@@ -44,11 +44,12 @@ export async function PATCH(request: Request, { params }: Params) {
         return jsonError("เบอร์โทรไม่ถูกต้อง");
       }
       if (nextPhone !== existing.phone) {
-        const duplicate = await prisma.staff.findUnique({
-          where: { phone: nextPhone },
+        const duplicate = await prisma.staff.findFirst({
+          where: { branchId, phone: nextPhone, NOT: { id: staffId } },
+          select: { id: true },
         });
         if (duplicate) {
-          return jsonError("เบอร์โทรนี้ถูกใช้ในระบบแล้ว", 409);
+          return jsonError("เบอร์โทรนี้มีในสาขานี้แล้ว", 409);
         }
       }
     }

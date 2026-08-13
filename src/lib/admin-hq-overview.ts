@@ -45,6 +45,7 @@ export type HqBranchRow = {
   branchName: string;
   brandId: string | null;
   brandName: string | null;
+  isTest: boolean;
   saleStockQty: number;
   saleStockValue: number;
   wasteQty: number;
@@ -68,6 +69,8 @@ export type HqBranchRow = {
 export type HqOverviewResult = {
   from: string;
   to: string;
+  includeTest: boolean;
+  hasTestBranch: boolean;
   saleStockQty: number;
   saleStockValue: number;
   wasteQty: number;
@@ -121,7 +124,7 @@ export async function buildHqOverview(
   session: SessionPayload,
   from: string,
   to: string,
-  options?: { brandId?: string },
+  options?: { brandId?: string; includeTest?: boolean },
 ): Promise<HqOverviewResult> {
   const accessible = getAccessibleBrandIds(session);
   const branchWhere = options?.brandId
@@ -129,21 +132,29 @@ export async function buildHqOverview(
     : accessible === null
       ? {}
       : { brandId: { in: accessible } };
+  const includeTest = options?.includeTest === true;
 
-  const branches = await prisma.branch.findMany({
+  const allBranches = await prisma.branch.findMany({
     where: branchWhere,
     select: {
       id: true,
       name: true,
       brandId: true,
+      isTest: true,
       brand: { select: { id: true, name: true } },
     },
     orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
   });
+  const hasTestBranch = allBranches.some((b) => b.isTest);
+  const branches = includeTest
+    ? allBranches
+    : allBranches.filter((b) => !b.isTest);
 
   const empty: HqOverviewResult = {
     from,
     to,
+    includeTest,
+    hasTestBranch,
     ...emptyTotals(),
     netRevenue: 0,
     branches: [],
@@ -228,6 +239,7 @@ export async function buildHqOverview(
       branchName: b.name,
       brandId: b.brand?.id ?? b.brandId,
       brandName: b.brand?.name ?? null,
+      isTest: b.isTest,
       saleStockQty: 0,
       saleStockValue: 0,
       wasteQty: 0,
@@ -458,6 +470,8 @@ export async function buildHqOverview(
   return {
     from,
     to,
+    includeTest,
+    hasTestBranch,
     saleStockQty: totals.saleStockQty,
     saleStockValue: Math.round(totals.saleStockValue * 100) / 100,
     wasteQty: totals.wasteQty,

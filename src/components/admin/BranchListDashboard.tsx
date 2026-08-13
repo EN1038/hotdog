@@ -91,8 +91,10 @@ function resetFormState(setters: {
   setCreateStep: (v: 1 | 2) => void;
   setOperatingMode: (v: BranchOperatingModeId | null) => void;
   setWeighSalesEnabled: (v: boolean) => void;
+  setCreateAsTest: (v: boolean) => void;
   defaultBrandId: string;
   defaultWeighSalesEnabled?: boolean;
+  defaultCreateAsTest?: boolean;
 }) {
   setters.setName("");
   setters.setBrandId(setters.defaultBrandId);
@@ -108,6 +110,7 @@ function resetFormState(setters: {
   setters.setCreateStep(1);
   setters.setOperatingMode("NORMAL");
   setters.setWeighSalesEnabled(Boolean(setters.defaultWeighSalesEnabled));
+  setters.setCreateAsTest(Boolean(setters.defaultCreateAsTest));
 }
 
 type BranchListDashboardProps = {
@@ -172,6 +175,7 @@ function BranchListDashboardInner({
   const [operatingMode, setOperatingMode] =
     useState<BranchOperatingModeId | null>(null);
   const [weighSalesEnabled, setWeighSalesEnabled] = useState(false);
+  const [createAsTest, setCreateAsTest] = useState(false);
 
   const defaultBrandId = effectiveLockedBrandId ?? "";
 
@@ -230,6 +234,11 @@ function BranchListDashboardInner({
     const brand =
       brands.find((b) => b.id === (effectiveLockedBrandId || defaultBrandId)) ||
       brandMeta;
+    const liveCount = branches.filter((b) => !b.isTest).length;
+    const hasTest = branches.some((b) => b.isTest);
+    const liveAtLimit =
+      typeof brand?.maxBranches === "number" &&
+      liveCount >= brand.maxBranches;
     return {
       setName,
       setBrandId,
@@ -245,8 +254,10 @@ function BranchListDashboardInner({
       setCreateStep,
       setOperatingMode,
       setWeighSalesEnabled,
+      setCreateAsTest,
       defaultBrandId,
       defaultWeighSalesEnabled: defaultWeighAddonForBrand(brand),
+      defaultCreateAsTest: liveAtLimit && !hasTest,
     };
   }
 
@@ -287,6 +298,11 @@ function BranchListDashboardInner({
       const brandForCreate =
         brands.find((b) => b.id === (resolvedBrandId || "")) || brandMeta;
       const autoCode = slugifyCode(name);
+      const liveCount = branches.filter((b) => !b.isTest).length;
+      const alreadyHasTest = branches.some((b) => b.isTest);
+      const liveFull =
+        typeof brandForCreate?.maxBranches === "number" &&
+        liveCount >= brandForCreate.maxBranches;
       const res = await fetch("/api/admin/branches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -305,6 +321,11 @@ function BranchListDashboardInner({
             operatingMode === "NORMAL" &&
             Boolean(brandForCreate?.bbqEnabled) &&
             weighSalesEnabled,
+          ...(createAsTest || liveFull
+            ? { isTest: true }
+            : alreadyHasTest
+              ? { isTest: false }
+              : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -335,9 +356,12 @@ function BranchListDashboardInner({
   const accent = selectedBrand?.color || DEFAULT_BRAND_COLOR;
   const brandLocked = Boolean(effectiveLockedBrandId);
   const availableModes = allowedOperatingModesForBrand(selectedBrand);
-  const atBranchLimit =
+  const liveBranchCount = branches.filter((b) => !b.isTest).length;
+  const hasTestBranch = branches.some((b) => b.isTest);
+  const liveAtLimit =
     typeof selectedBrand?.maxBranches === "number" &&
-    branches.length >= selectedBrand.maxBranches;
+    liveBranchCount >= selectedBrand.maxBranches;
+  const atBranchLimit = liveAtLimit && hasTestBranch;
 
   return (
     <div>
@@ -373,11 +397,12 @@ function BranchListDashboardInner({
           <>
             {headerActions}
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm">
-              {branches.length}
+              {liveBranchCount}
               {typeof selectedBrand?.maxBranches === "number"
                 ? `/${selectedBrand.maxBranches}`
                 : ""}{" "}
               สาขา
+              {hasTestBranch ? " · +ทดลอง" : ""}
             </span>
             <button
               type="button"
@@ -385,8 +410,10 @@ function BranchListDashboardInner({
               disabled={atBranchLimit}
               title={
                 atBranchLimit
-                  ? `แพ็กนี้เปิดสาขาได้สูงสุด ${selectedBrand?.maxBranches} สาขา`
-                  : undefined
+                  ? `แพ็กนี้เปิดสาขาได้สูงสุด ${selectedBrand?.maxBranches} สาขา และใช้สล็อตทดลองแล้ว`
+                  : liveAtLimit
+                    ? "โควต้าสาขาจริงเต็ม — ยังสร้างสาขาทดลองได้อีก 1 สล็อต"
+                    : undefined
               }
               className={btnPrimaryXl}
             >
@@ -791,6 +818,37 @@ function BranchListDashboardInner({
                           : null}
                       </p>
                     </div>
+                    {!hasTestBranch ? (
+                      <label
+                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 ${
+                          createAsTest || liveAtLimit
+                            ? "border-violet-300 bg-violet-50"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={createAsTest || liveAtLimit}
+                          disabled={liveAtLimit}
+                          onChange={(e) => setCreateAsTest(e.target.checked)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-violet-950">
+                            สาขาทดลอง (ไม่นับโควต้า)
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-violet-900/75">
+                            {liveAtLimit
+                              ? "โควต้าสาขาจริงเต็มแล้ว — สร้างได้เฉพาะสล็อตทดลองนี้ (แบรนด์ละ 1)"
+                              : "ได้ 1 สล็อตต่อแบรนด์ · ไม่โชว์หน้าร้านลูกค้า"}
+                          </span>
+                        </span>
+                      </label>
+                    ) : (
+                      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        ใช้สล็อตสาขาทดลองแล้ว — สาขาใหม่จะนับโควต้าแพ็กเกจ
+                      </p>
+                    )}
                   </div>
                 </div>
 

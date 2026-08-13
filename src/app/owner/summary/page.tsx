@@ -19,18 +19,24 @@ function OwnerSummaryInner() {
   const [payload, setPayload] = useState<OwnerDashboardPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [includeTest, setIncludeTest] = useState(false);
 
-  const load = useCallback(async (period: "day" | "month") => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/owner/dashboard?period=${period}`);
-      if (!res.ok) return;
-      const json = (await res.json()) as OwnerDashboardPayload;
-      setPayload(json);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (period: "day" | "month") => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ period });
+        if (includeTest) params.set("includeTest", "1");
+        const res = await fetch(`/api/owner/dashboard?${params}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as OwnerDashboardPayload;
+        setPayload(json);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [includeTest],
+  );
 
   useEffect(() => {
     const sameDay = from === to && to === today;
@@ -38,6 +44,10 @@ function OwnerSummaryInner() {
   }, [load, from, to, today]);
 
   const stats = payload?.stats ?? data?.stats ?? EMPTY_SALES_REPORT_STATS;
+  const hasTestBranch =
+    payload?.hasTestBranch ??
+    data?.hasTestBranch ??
+    (data?.branches ?? []).some((b) => b.isTest);
   const byBranch = (payload?.byBranch ?? []).map((row) => ({
     key: row.branchId,
     label: row.branchName,
@@ -53,8 +63,20 @@ function OwnerSummaryInner() {
         </h1>
         <p className="mt-1 text-[14px] font-medium text-slate-500">
           ยอดขาย ค่าใช้จ่าย รวมทุกสาขาของแบรนด์นี้
+          {hasTestBranch && !includeTest ? " (ไม่รวมสาขาทดลอง)" : ""}
         </p>
       </header>
+
+      {hasTestBranch ? (
+        <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-950">
+          <input
+            type="checkbox"
+            checked={includeTest}
+            onChange={(e) => setIncludeTest(e.target.checked)}
+          />
+          รวมข้อมูลสาขาทดลอง
+        </label>
+      ) : null}
 
       <SalesDateRangeBar
         from={from}

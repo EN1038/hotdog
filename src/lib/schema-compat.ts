@@ -29,6 +29,13 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."BranchShift" ADD COLUMN IF NOT EXISTS "cancelNote" TEXT`,
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "paymentSlipUrl" TEXT`,
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "publicShareToken" TEXT`,
+        `DROP INDEX IF EXISTS "${schema}"."Staff_phone_key"`,
+        `DROP INDEX IF EXISTS "Staff_phone_key"`,
+        `DROP INDEX IF EXISTS "${schema}"."Staff_lineUserId_key"`,
+        `DROP INDEX IF EXISTS "Staff_lineUserId_key"`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "Staff_branchId_phone_key" ON "${schema}"."Staff"("branchId", "phone")`,
+        `CREATE INDEX IF NOT EXISTS "Staff_phone_idx" ON "${schema}"."Staff"("phone")`,
+        `CREATE INDEX IF NOT EXISTS "Staff_lineUserId_idx" ON "${schema}"."Staff"("lineUserId")`,
       ];
       const enumSql = [
         `DO $$ BEGIN CREATE TYPE "BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,

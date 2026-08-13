@@ -88,7 +88,7 @@ import type { StaffRole } from "@prisma/client";
 type PhoneCheckState =
   | { status: "idle" }
   | { status: "checking" }
-  | { status: "available" }
+  | { status: "available"; notice?: string | null }
   | { status: "incomplete" }
   | {
       status: "taken";
@@ -821,6 +821,7 @@ function BranchDetailContent() {
       try {
         const params = new URLSearchParams({ phone: digits });
         if (editingStaffId) params.set("excludeId", editingStaffId);
+        if (id) params.set("branchId", id);
         const res = await fetch(`/api/admin/staff/phone-check?${params}`);
         const data = await res.json();
         if (!res.ok) {
@@ -833,7 +834,11 @@ function BranchDetailContent() {
         if (data.available === null) {
           setPhoneCheck({ status: "incomplete" });
         } else if (data.available) {
-          setPhoneCheck({ status: "available" });
+          const notice =
+            data.multiBranch || data.otherBranches?.length
+              ? `เบอร์นี้มีในสาขาอื่นแล้ว — เพิ่มในสาขานี้ได้ (คนเดียวกันหลายสาขา)`
+              : null;
+          setPhoneCheck({ status: "available", notice });
         } else {
           setPhoneCheck({
             status: "taken",
@@ -850,7 +855,7 @@ function BranchDetailContent() {
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [staffPhone, staffModalOpen, editingStaffId]);
+  }, [staffPhone, staffModalOpen, editingStaffId, id]);
 
   async function saveBranch(e: React.FormEvent) {
     e.preventDefault();
@@ -989,7 +994,7 @@ function BranchDetailContent() {
       return;
     }
     if (phoneCheck.status === "taken") {
-      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้ถูกใช้ในระบบแล้ว");
+      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้มีในสาขานี้แล้ว");
       return;
     }
     const ageNum = staffAge.trim() ? parseInt(staffAge, 10) : null;
@@ -1069,7 +1074,7 @@ function BranchDetailContent() {
       return;
     }
     if (phoneCheck.status === "taken") {
-      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้ถูกใช้ในระบบแล้ว");
+      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้มีในสาขานี้แล้ว");
       return;
     }
     const ageNum = staffAge.trim() ? parseInt(staffAge, 10) : null;
@@ -2664,7 +2669,7 @@ function BranchDetailContent() {
                       )}
                       {phoneCheck.status === "available" && (
                         <p className="mt-1.5 text-xs font-medium text-emerald-700">
-                          เบอร์นี้ใช้ได้
+                          {phoneCheck.notice ?? "เบอร์นี้ใช้ได้"}
                         </p>
                       )}
                       {phoneCheck.status === "incomplete" && (
@@ -2674,7 +2679,7 @@ function BranchDetailContent() {
                       )}
                       {phoneCheck.status === "taken" && (
                         <p className="mt-1.5 text-xs font-medium text-red-600">
-                          เบอร์ซ้ำ — ใช้โดย{" "}
+                          เบอร์ซ้ำในสาขานี้ — ใช้โดย{" "}
                           {phoneCheck.staffName || "พนักงาน"}
                           {phoneCheck.branchName
                             ? ` (สาขา ${phoneCheck.branchName})`
@@ -4085,7 +4090,7 @@ function BranchDetailContent() {
                   สาขาทดลอง
                 </p>
                 <p className="mt-0.5 text-xs text-violet-900/70">
-                  ติดป้าย “ทดลอง” ในรายการสาขา — ใช้แยกจากสาขาเปิดขายจริงตอนทำระบบขาย
+                  ได้ 1 สล็อตต่อแบรนด์ — ไม่นับโควต้าแพ็กเกจ และไม่โชว์หน้าร้านลูกค้า
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
@@ -4097,8 +4102,8 @@ function BranchDetailContent() {
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">
                     {settings.isTest
-                      ? "แอดมินจะเห็นป้ายม่วง “⚗ ทดลอง” บนการ์ดและหัวหน้าสาขา"
-                      : "แนะนำตั้ง 1 สาขาต่อแบรนด์ สำหรับเทรนพนักงาน / ทดลอง stock และออเดอร์"}
+                      ? "แอดมินจะเห็นป้ายม่วง “⚗ ทดลอง” — ยกเลิกได้ถ้ามีโควต้าสาขาจริงว่าง"
+                      : "แบรนด์ละ 1 สาขาเท่านั้น สำหรับเทรนพนักงาน / ทดลอง stock และออเดอร์"}
                   </p>
                 </div>
                 <button

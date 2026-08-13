@@ -40,7 +40,8 @@ type SourceOptionGroup = {
   minSelect: number;
   maxSelect: number;
   allowDuplicateSelections: boolean;
-  options: Array<{ name: string; priceDelta: Prisma.Decimal }>;
+  sortOrder?: number;
+  options: Array<{ id: string; name: string; priceDelta: Prisma.Decimal }>;
   menuItemSources: Array<{
     menuItemId: string;
     sortOrder: number;
@@ -78,6 +79,7 @@ function buildOptionGroupCreateData(
     minSelect: src.minSelect,
     maxSelect: src.maxSelect,
     allowDuplicateSelections: src.allowDuplicateSelections,
+    sortOrder: src.sortOrder ?? 0,
     ...(!fromMenu && src.options.length > 0
       ? {
           options: {
@@ -173,6 +175,7 @@ export async function importBranchCatalog(opts: {
           branchId: targetBranchId,
           name: src.name,
           sortOrder: src.sortOrder,
+          stockExempt: src.stockExempt,
         },
       });
       categoryByName.set(dest.name, dest);
@@ -212,7 +215,17 @@ export async function importBranchCatalog(opts: {
           : null,
         imageUrl: item.imageUrl,
         isHidden: item.isHidden,
-        isOutOfStock: item.isOutOfStock,
+        hideFromStaff: item.hideFromStaff,
+        // Fresh import: never inherit sold-out flag
+        isOutOfStock: false,
+        sellPiece: item.sellPiece,
+        sellByWeight: item.sellByWeight,
+        pricePerKg: item.pricePerKg,
+        sellSkewer: item.sellSkewer,
+        sellGrill: item.sellGrill,
+        sellFry: item.sellFry,
+        sellShabu: item.sellShabu,
+        brandProductId: item.brandProductId,
         sortOrder: item.sortOrder,
       },
     });
@@ -279,7 +292,15 @@ export async function importBranchCatalog(opts: {
     for (const loc of sourceLocations) {
       if (locNames.has(loc.name)) continue;
       await prisma.deliveryLocation.create({
-        data: { branchId: targetBranchId, name: loc.name },
+        data: {
+          branchId: targetBranchId,
+          name: loc.name,
+          deliveryFee: loc.deliveryFee,
+          isCustomAddress: loc.isCustomAddress,
+          address: loc.address,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+        },
       });
       locNames.add(loc.name);
       locationsCreated += 1;
@@ -310,6 +331,8 @@ export async function importBranchCatalog(opts: {
             imageUrl: src.imageUrl,
             stockType: src.stockType,
             quantity: 0,
+            showOnKeyOrder: src.showOnKeyOrder,
+            keyOrderSortOrder: src.keyOrderSortOrder,
           },
         });
         targetByKey.set(key, created);
@@ -324,9 +347,63 @@ export async function importBranchCatalog(opts: {
           unit: src.unit,
           price: src.price,
           imageUrl: src.imageUrl,
+          showOnKeyOrder: src.showOnKeyOrder,
+          keyOrderSortOrder: src.keyOrderSortOrder,
         },
       });
       nonMenuUpdated += 1;
+    }
+  }
+
+  // Remap visibleWhenOptionIds by (group name + option name)
+  const sourceGroupsWithWhen = await prisma.branchOptionGroup.findMany({
+    where: {
+      branchId: sourceBranchId,
+      visibleWhenOptionIds: { isEmpty: false },
+    },
+    include: { options: true },
+  });
+  if (sourceGroupsWithWhen.length > 0) {
+    const allSourceOptions = await prisma.branchOption.findMany({
+      where: { group: { branchId: sourceBranchId } },
+      include: { group: { select: { name: true } } },
+    });
+    const sourceOptMeta = new Map(
+      allSourceOptions.map((o) => [
+        o.id,
+        { groupName: o.group.name, optionName: o.name },
+      ]),
+    );
+    const targetOptions = await prisma.branchOption.findMany({
+      where: { group: { branchId: targetBranchId } },
+      include: { group: { select: { id: true, name: true } } },
+    });
+    const targetOptByKey = new Map(
+      targetOptions.map((o) => [`${o.group.name}::${o.name}`, o.id]),
+    );
+    const targetGroupByName = new Map(
+      (
+        await prisma.branchOptionGroup.findMany({
+          where: { branchId: targetBranchId },
+          select: { id: true, name: true },
+        })
+      ).map((g) => [g.name, g.id]),
+    );
+
+    for (const src of sourceGroupsWithWhen) {
+      const destGroupId = targetGroupByName.get(src.name);
+      if (!destGroupId) continue;
+      const mapped = src.visibleWhenOptionIds
+        .map((oid) => {
+          const meta = sourceOptMeta.get(oid);
+          if (!meta) return null;
+          return targetOptByKey.get(`${meta.groupName}::${meta.optionName}`) ?? null;
+        })
+        .filter((id): id is string => Boolean(id));
+      await prisma.branchOptionGroup.update({
+        where: { id: destGroupId },
+        data: { visibleWhenOptionIds: mapped },
+      });
     }
   }
 

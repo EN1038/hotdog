@@ -34,10 +34,14 @@ function OwnerTodayInner() {
   const { data } = useOwnerDashboard();
   const [payload, setPayload] = useState<OwnerDashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [includeTest, setIncludeTest] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/owner/dashboard?period=day&orders=1")
+    setLoading(true);
+    const params = new URLSearchParams({ period: "day", orders: "1" });
+    if (includeTest) params.set("includeTest", "1");
+    fetch(`/api/owner/dashboard?${params}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((json: OwnerDashboardPayload | null) => {
         if (!cancelled && json) setPayload(json);
@@ -48,16 +52,32 @@ function OwnerTodayInner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [includeTest]);
 
   const stats = payload?.stats ?? data?.stats;
   const orders: OwnerTodayOrder[] = payload?.orders ?? [];
+  const hasTestBranch =
+    payload?.hasTestBranch ??
+    data?.hasTestBranch ??
+    (data?.branches ?? []).some((b) => b.isTest);
 
   return (
     <div className="px-4 pb-6 pt-4">
+      {hasTestBranch ? (
+        <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-950">
+          <input
+            type="checkbox"
+            checked={includeTest}
+            onChange={(e) => setIncludeTest(e.target.checked)}
+          />
+          รวมออเดอร์สาขาทดลอง
+        </label>
+      ) : null}
+
       <div className="rounded-3xl bg-white px-5 py-7 text-center shadow-sm">
         <p className="text-[15px] font-medium text-slate-500">
           ยอดรวม {stats?.completedCount ?? 0} รายการที่ขายได้
+          {hasTestBranch && !includeTest ? " · ไม่รวมทดลอง" : ""}
         </p>
         <p className="mt-2 text-5xl font-black tabular-nums leading-none text-slate-900">
           {formatPrice(stats?.completedRevenue ?? 0)}{" "}

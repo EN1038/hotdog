@@ -56,7 +56,13 @@ export async function GET(_request: Request, { params }: Params) {
       },
     });
     if (!brand) return jsonError("ไม่พบแบรนด์", 404);
-    return jsonOk(brand);
+    const liveBranchCount = brand.branches.filter((b) => !b.isTest).length;
+    const hasTestBranch = brand.branches.some((b) => b.isTest);
+    return jsonOk({
+      ...brand,
+      hasTestBranch,
+      _count: { ...brand._count, branches: liveBranchCount },
+    });
   } catch (error) {
     return handleApiError(error);
   }

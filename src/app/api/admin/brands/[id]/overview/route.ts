@@ -30,7 +30,11 @@ export async function GET(request: Request, { params }: Params) {
     }
 
     const { from, to } = normalizeRange(fromParam, toParam);
-    const data = await buildHqOverview(session, from, to, { brandId });
+    const includeTest = searchParams.get("includeTest") === "1";
+    const data = await buildHqOverview(session, from, to, {
+      brandId,
+      includeTest,
+    });
     return jsonOk({
       brandId,
       brandName: data.branches[0]?.brandName ?? null,

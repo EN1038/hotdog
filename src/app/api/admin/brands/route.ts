@@ -50,7 +50,12 @@ export async function GET() {
     const brands = await prisma.brand.findMany({
       where: scope === null ? undefined : { id: { in: scope } },
       include: {
-        _count: { select: { branches: true, members: true } },
+        _count: {
+          select: {
+            branches: { where: { isTest: false } },
+            members: true,
+          },
+        },
         members: {
           include: {
             admin: { select: { id: true, username: true, isPlatformAdmin: true } },
@@ -59,7 +64,26 @@ export async function GET() {
       },
       orderBy: { createdAt: "desc" },
     });
-    return jsonOk(brands);
+    const testBrandIds = new Set(
+      (
+        await prisma.branch.findMany({
+          where: {
+            isTest: true,
+            brandId: { in: brands.map((b) => b.id) },
+          },
+          select: { brandId: true },
+          distinct: ["brandId"],
+        })
+      )
+        .map((b) => b.brandId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    return jsonOk(
+      brands.map((b) => ({
+        ...b,
+        hasTestBranch: testBrandIds.has(b.id),
+      })),
+    );
   } catch (error) {
     return handleApiError(error);
   }

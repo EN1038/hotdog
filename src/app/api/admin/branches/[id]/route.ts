@@ -27,6 +27,7 @@ import {
   logAdminActivity,
   summarizeBranchPatch,
 } from "@/lib/admin-activity";
+import { assertCanSetBranchTestFlag } from "@/lib/brand-plan";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -266,6 +267,24 @@ export async function PATCH(request: Request, { params }: Params) {
       }
       if (body.weighSalesEnabled && existing.brand && !existing.brand.bbqEnabled) {
         return jsonError("แพ็กเกจแบรนด์ยังไม่เปิดโหมดชั่งกิโล", 403);
+      }
+    }
+
+    if (body.isTest !== undefined) {
+      const existing = await prisma.branch.findUnique({
+        where: { id },
+        select: { brandId: true, isTest: true },
+      });
+      if (!existing) return jsonError("ไม่พบสาขา", 404);
+      if (
+        existing.brandId &&
+        body.isTest !== existing.isTest
+      ) {
+        await assertCanSetBranchTestFlag(
+          existing.brandId,
+          id,
+          body.isTest,
+        );
       }
     }
 

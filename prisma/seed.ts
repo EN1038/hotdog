@@ -429,8 +429,10 @@ async function main() {
   }
 
   await prisma.staff.upsert({
-    where: { phone: "0811111111" },
-    update: { branchId: "seed-branch-1", isActive: true },
+    where: {
+      branchId_phone: { branchId: "seed-branch-1", phone: "0811111111" },
+    },
+    update: { isActive: true },
     create: {
       phone: "0811111111",
       branchId: "seed-branch-1",
@@ -439,8 +441,10 @@ async function main() {
   });
 
   await prisma.staff.upsert({
-    where: { phone: "0822222222" },
-    update: { branchId: "seed-branch-1", isActive: true },
+    where: {
+      branchId_phone: { branchId: "seed-branch-1", phone: "0822222222" },
+    },
+    update: { isActive: true },
     create: {
       phone: "0822222222",
       branchId: "seed-branch-1",

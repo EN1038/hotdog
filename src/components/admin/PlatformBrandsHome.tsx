@@ -63,6 +63,7 @@ type Brand = {
   bbqEnabled?: boolean;
   skewerEnabled?: boolean;
   trialEndsAt?: string | null;
+  hasTestBranch?: boolean;
   _count: { branches: number; members: number };
   members?: Array<{
     role: string;
@@ -365,6 +366,11 @@ export function PlatformBrandsHome() {
                         {typeof brand.maxBranches === "number"
                           ? `/${brand.maxBranches}`
                           : ""}
+                        {brand.hasTestBranch ? (
+                          <span className="ml-1 text-[11px] text-violet-700">
+                            +ทดลอง
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600">
                         {owners.length ? owners.join(", ") : "—"}

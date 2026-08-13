@@ -377,89 +377,94 @@ export function StaffShiftControls({
       {canSell && activeShift ? (
         variant === "merchant" ? (
           <div
-            className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+            className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm"
             role="status"
           >
-            <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700">
-                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
-                    เปิดขายอยู่
-                  </span>
-                  <span className="text-base font-extrabold text-slate-800">
-                    รอบที่ {activeShift.roundNumber}
-                  </span>
-                  <span className="text-sm font-medium text-slate-500">
-                    เปิด {formatShiftTime(activeShift.openedAt)} น.
-                  </span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl bg-emerald-50/80 px-3 py-3">
-                    <p className="text-xs font-semibold text-emerald-700">
-                      ยอดขายวันนี้
-                    </p>
-                    <p className="mt-1 text-lg font-black tabular-nums text-emerald-900">
-                      ฿{formatPrice(todayRevenueBaht)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-amber-50/80 px-3 py-3">
-                    <p className="text-xs font-semibold text-amber-700">
-                      ออเดอร์วันนี้
-                    </p>
-                    <p className="mt-1 text-lg font-black tabular-nums text-amber-900">
-                      {todayOrderCount} ออเดอร์
-                    </p>
-                  </div>
-                </div>
-                <p
-                  className="mt-2.5 text-xs font-medium tabular-nums text-slate-400"
-                  aria-live="polite"
-                >
-                  เปิดมาแล้ว {formatElapsed(elapsedMs)}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                  เปิดขายอยู่
+                </span>
+                <span className="text-sm font-extrabold text-slate-800">
+                  รอบที่ {activeShift.roundNumber}
+                </span>
+                <span className="text-xs font-medium text-slate-500">
+                  เปิด {formatShiftTime(activeShift.openedAt)} น.
+                </span>
+              </div>
+              <p
+                className="shrink-0 text-[11px] font-medium tabular-nums text-slate-400"
+                aria-live="polite"
+              >
+                {formatElapsed(elapsedMs)}
+              </p>
+            </div>
+
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-emerald-50/90 px-2.5 py-2">
+                <p className="text-[11px] font-semibold leading-none text-emerald-700">
+                  ยอดวันนี้
+                </p>
+                <p className="mt-1 text-[17px] font-black leading-none tabular-nums text-emerald-900">
+                  ฿{formatPrice(todayRevenueBaht)}
                 </p>
               </div>
-              <div className="flex w-[7.75rem] shrink-0 flex-col gap-2">
-                {canToggleStore ? (
-                  <button
-                    type="button"
-                    disabled={busy || submitting}
-                    onClick={startClose}
-                    className="flex h-[3.25rem] flex-col items-center justify-center rounded-xl bg-site-primary px-2 text-center text-[14px] font-extrabold leading-tight text-white shadow-sm transition active:scale-[0.98] disabled:opacity-60"
-                  >
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      aria-hidden
-                      className="mb-0.5"
-                    >
-                      <path
-                        d="M12 3v9"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M7.5 6.2a7.5 7.5 0 108.9 0"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    ปิดรอบขาย
-                  </button>
-                ) : null}
+              <div className="rounded-xl bg-amber-50/90 px-2.5 py-2">
+                <p className="text-[11px] font-semibold leading-none text-amber-700">
+                  ออเดอร์
+                </p>
+                <p className="mt-1 text-[17px] font-black leading-none tabular-nums text-amber-900">
+                  {todayOrderCount}
+                  <span className="ml-0.5 text-[11px] font-bold text-amber-700/80">
+                    รายการ
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-2.5 flex gap-2">
+              {canToggleStore ? (
                 <button
                   type="button"
                   disabled={busy || submitting}
-                  onClick={startDetail}
-                  className="flex h-[3.25rem] items-center justify-center rounded-xl border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-600 transition active:scale-[0.98] disabled:opacity-60"
+                  onClick={startClose}
+                  className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-site-primary px-3 text-sm font-extrabold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-60"
                 >
-                  ดูรายละเอียด
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden
+                    className="shrink-0"
+                  >
+                    <path
+                      d="M12 3v9"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M7.5 6.2a7.5 7.5 0 108.9 0"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  ปิดรอบขาย
                 </button>
-              </div>
+              ) : null}
+              <button
+                type="button"
+                disabled={busy || submitting}
+                onClick={startDetail}
+                className={`flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition active:scale-[0.98] disabled:opacity-60 ${
+                  canToggleStore ? "shrink-0" : "flex-1"
+                }`}
+              >
+                รายละเอียด
+              </button>
             </div>
           </div>
         ) : (

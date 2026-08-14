@@ -69,6 +69,8 @@ export async function POST(request: Request) {
       branchId: staff.branchId,
       staffRoles: toAppStaffRoles(roles),
       branchName: staff.branch.name,
+      jti: session.jti,
+      deviceId: session.deviceId,
     });
     return res;
   } catch (error) {

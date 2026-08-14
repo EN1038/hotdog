@@ -524,6 +524,8 @@ model Staff {
   /// LINE user id after staff adds the Official Account and links by phone
   lineUserId                   String?
   lineNotifyEnabled            Boolean                      @default(true)
+  /// Set after SMS OTP proves this person owns the phone. Cleared when admin changes the number.
+  phoneVerifiedAt              DateTime?
   createdAt                    DateTime                     @default(now())
   branch                       Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   roles                        StaffRoleAssignment[]
@@ -550,6 +552,23 @@ model StaffRoleAssignment {
   staff   Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   @@unique([staffId, role])
+}
+
+/// Server-side staff login slots — one row per phone + device (max 3 live devices)
+model StaffAuthSession {
+  id         String    @id @default(cuid())
+  phone      String
+  deviceId   String
+  tokenJti   String    @unique
+  userAgent  String?
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  @@unique([phone, deviceId])
+  @@index([phone])
+  @@index([expiresAt])
 }
 
 model BranchMenuItem {
@@ -764,11 +783,14 @@ model CustomerOtpChallenge {
   messageId   String
   otpRefNo    String?
   pendingName String?
+  /// "customer" | "staff"
+  purpose     String    @default("customer")
   expiresAt   DateTime
   createdAt   DateTime  @default(now())
   consumedAt  DateTime?
 
   @@index([phone, createdAt])
+  @@index([phone, purpose, createdAt])
   @@index([messageId])
 }
 

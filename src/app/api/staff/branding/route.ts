@@ -184,6 +184,7 @@ export async function GET() {
       branchId: session.branchId,
       branchName: session.branchName,
       staffDisplayName: session.staffDisplayName,
+      staffImageUrl: session.staffImageUrl,
       staffPhone: session.staffPhone,
       brand: {
         ...session.brand,

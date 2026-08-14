@@ -18,6 +18,7 @@ import {
   StockError,
 } from "@/lib/stock";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+import { orderGrandTotal } from "@/lib/order-totals";
 
 const statusSchema = z.object({
   status: z.nativeEnum(OrderStatus).optional(),
@@ -39,6 +40,64 @@ async function loadStaffOrder(id: string, branchId: string) {
       consumableLines: true,
     },
   });
+}
+
+/** GET — read-only order detail (history / share). */
+export async function GET(_request: Request, { params }: Params) {
+  try {
+    const session = await requireStaff();
+    const { id } = await params;
+    const order = await loadStaffOrder(id, session.branchId);
+    if (!order) return jsonError("ไม่พบออเดอร์", 404);
+
+    const items = order.items.map((it) => {
+      const unitPrice = Number(it.unitPrice);
+      const optionsPrice = Number(it.optionsPrice);
+      return {
+        id: it.id,
+        itemName: it.itemName,
+        quantity: it.quantity,
+        unitPrice,
+        optionsPrice,
+        optionsText: it.optionsText,
+        giftQuantity: it.giftQuantity ?? 0,
+        note: it.note,
+        lineTotal: (unitPrice + optionsPrice) * it.quantity,
+      };
+    });
+
+    return jsonOk({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      queueNumber: order.queueNumber,
+      status: order.status,
+      fulfillmentType: order.fulfillmentType,
+      paymentMethod: order.paymentMethod,
+      salesChannel: order.salesChannel,
+      customerName: order.customerName,
+      createdAt: order.createdAt.toISOString(),
+      note: order.note,
+      deliveryFee: Number(order.deliveryFee),
+      discountAmount: Number(order.discountAmount),
+      grandTotal: orderGrandTotal(
+        items.map((i) => ({
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          optionsPrice: i.optionsPrice,
+        })),
+        Number(order.deliveryFee),
+        Number(order.discountAmount),
+      ),
+      items,
+      consumableLines: order.consumableLines.map((c) => ({
+        itemName: c.itemName,
+        quantity: c.quantity,
+        unit: c.unit,
+      })),
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 export async function PATCH(request: Request, { params }: Params) {

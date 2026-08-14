@@ -73,7 +73,13 @@ export async function POST(request: Request, { params }: Params) {
 
     const peer = await prisma.staff.findFirst({
       where: { phone, NOT: { branchId } },
-      select: { name: true, gender: true, age: true, imageUrl: true },
+      select: {
+        name: true,
+        gender: true,
+        age: true,
+        imageUrl: true,
+        phoneVerifiedAt: true,
+      },
       orderBy: { createdAt: "asc" },
     });
 
@@ -82,7 +88,6 @@ export async function POST(request: Request, { params }: Params) {
       : peer?.name?.trim() || null;
 
     const staff = await prisma.staff.create({
-
       data: {
         branchId,
         phone,
@@ -90,6 +95,7 @@ export async function POST(request: Request, { params }: Params) {
         gender: body.gender ?? peer?.gender ?? null,
         age: body.age ?? peer?.age ?? null,
         imageUrl: body.imageUrl ?? peer?.imageUrl ?? null,
+        phoneVerifiedAt: peer?.phoneVerifiedAt ?? null,
         roles: {
           create: body.roles.map((role) => ({ role })),
         },

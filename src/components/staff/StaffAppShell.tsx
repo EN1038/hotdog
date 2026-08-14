@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
-import { logout } from "@/components/LoginForm";
 import {
   IconHome,
   IconLogout,
@@ -19,6 +18,8 @@ export type StaffShellTab = "home" | "key" | "orders" | "summary" | "stock" | "s
 
 type BrandingPayload = {
   branchName?: string;
+  staffDisplayName?: string;
+  staffImageUrl?: string | null;
   brand?: {
     name?: string | null;
     nameTh?: string | null;
@@ -222,7 +223,9 @@ function StaffAppShellInner({
     branding.siteName ||
     "SkillSale";
   const branchName = meta?.branchName || "";
-  const logoUrl = meta?.brand?.logoUrl || branding.logoUrl;
+  const brandLogo = meta?.brand?.logoUrl || branding.logoUrl;
+  const staffPhoto = meta?.staffImageUrl?.trim() || null;
+  const staffInitial = (meta?.staffDisplayName || brandName || "?").trim().slice(0, 1);
   const coverUrl = meta?.brand?.coverImageUrl || null;
   const pendingOrders = meta?.pendingOrderCount ?? 0;
   const canSwitchBranch = branchChoices.length > 1;
@@ -286,10 +289,10 @@ function StaffAppShellInner({
           <div className="relative z-[60] mx-auto max-w-lg px-4 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))]">
             <div className="flex items-center gap-3">
               <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-white/20 ring-2 ring-white/50 shadow-md">
-                {logoUrl ? (
+                {brandLogo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={logoUrl}
+                    src={brandLogo}
                     alt=""
                     className="h-full w-full object-cover"
                   />
@@ -354,15 +357,25 @@ function StaffAppShellInner({
                     </span>
                   </div>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => logout("/staff/login")}
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/50 bg-white/15 text-white"
-                  aria-label="ออกจากระบบ"
-                  title="ออกจากระบบ"
+                <Link
+                  href="/staff/settings#profile"
+                  className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-white/50 bg-white/15 shadow-sm ring-2 ring-white/40"
+                  aria-label="โปรไฟล์พนักงาน"
+                  title="โปรไฟล์พนักงาน"
                 >
-                  <IconLogout size={20} />
-                </button>
+                  {staffPhoto ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={staffPhoto}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-base font-extrabold text-white">
+                      {staffInitial}
+                    </span>
+                  )}
+                </Link>
               </div>
             </div>
           </div>

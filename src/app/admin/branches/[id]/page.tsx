@@ -160,6 +160,7 @@ type BranchDetail = {
     age: number | null;
     imageUrl: string | null;
     isActive: boolean;
+    phoneVerifiedAt?: string | null;
     lineUserId?: string | null;
     lineNotifyEnabled?: boolean;
     roles: { id: string; role: StaffRole }[];
@@ -1129,6 +1130,26 @@ function BranchDetailContent() {
       body: JSON.stringify({ lineUserId: null }),
     });
     load();
+  }
+
+  async function revokeStaffSessions(staffId: string, name: string | null) {
+    const ok = await confirm({
+      title: "ปลดทุกเครื่องที่เข้าใช้งาน?",
+      message:
+        "เบอร์นี้จะถูกออกจากระบบทุกเครื่อง (สูงสุด 3 เครื่อง) พนักงานต้องเข้าสู่ระบบใหม่",
+      confirmLabel: "ปลดเครื่อง",
+    });
+    if (!ok) return;
+    const res = await fetch(
+      `/api/admin/branches/${id}/staff/${staffId}/sessions`,
+      { method: "DELETE" },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error("ปลดเครื่องไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+      return;
+    }
+    toast.success("ปลดเครื่องแล้ว", `${name?.trim() || "พนักงาน"} ต้องเข้าสู่ระบบใหม่`);
   }
 
   async function toggleStaffActive(staffId: string, isActive: boolean) {
@@ -2498,7 +2519,7 @@ function BranchDetailContent() {
                   พนักงานประจำสาขา
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-600">
-                  {branch.staff.length} คน · รูปไม่บังคับ
+                  {branch.staff.length} คน · รูปไม่บังคับ · เข้าใช้งานได้สูงสุด 3 เครื่องต่อเบอร์
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   เชื่อม LINE: เพิ่มเพื่อน Official Account แล้วส่งเบอร์โทรในระบบมาในแชท
@@ -2548,6 +2569,15 @@ function BranchDetailContent() {
                           {formatThaiPhone(s.phone)}
                         </p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                          {s.phoneVerifiedAt ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+                              ยืนยันเบอร์แล้ว
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
+                              ยังไม่ยืนยันเบอร์
+                            </span>
+                          )}
                           {s.roles.map((r) => (
                             <span
                               key={r.id}
@@ -2595,6 +2625,13 @@ function BranchDetailContent() {
                         className={btnOutline}
                       >
                         แก้ไข
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => revokeStaffSessions(s.id, s.name)}
+                        className={btnOutline}
+                      >
+                        ปลดเครื่อง
                       </button>
                       <button
                         type="button"
@@ -2689,6 +2726,18 @@ function BranchDetailContent() {
                       {phoneCheck.status === "error" && (
                         <p className="mt-1.5 text-xs text-red-600">
                           {phoneCheck.message}
+                        </p>
+                      )}
+                      {editingStaffId ? (
+                        <p className="mt-1.5 text-xs text-gray-500">
+                          {branch.staff.find((s) => s.id === editingStaffId)
+                            ?.phoneVerifiedAt
+                            ? "ยืนยันเบอร์แล้ว — ถ้าเปลี่ยนเบอร์ พนักงานต้องยืนยัน OTP ใหม่ตอนเข้าสู่ระบบ"
+                            : "ยังไม่ยืนยันเบอร์ — พนักงานจะยืนยัน OTP ครั้งแรกตอนเข้าสู่ระบบ"}
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-xs text-gray-500">
+                          พนักงานจะยืนยัน OTP ครั้งแรกตอนเข้าสู่ระบบ
                         </p>
                       )}
                     </div>

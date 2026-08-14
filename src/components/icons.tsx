@@ -47,6 +47,21 @@ export function IconClose(props: IconProps) {
   );
 }
 
+export function IconSearch(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M16 16l5 5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function IconCheck(props: IconProps) {
   const p = baseProps(props);
   return (

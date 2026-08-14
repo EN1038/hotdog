@@ -15,6 +15,7 @@ import {
   getStaffFilterStatuses,
   getStaffLegendStatuses,
 } from "@/lib/constants";
+import { formatOperatingDayLabel } from "@/lib/operating-day";
 import {
   playOrderAlertSound,
   setOrderAlertSoundUrl,
@@ -316,6 +317,7 @@ export default function StaffPage() {
 
   function goToToday() {
     knownIdsRef.current = null;
+    userPickedStatusTabRef.current = false;
     setViewDate(null);
     setLoading(true);
   }
@@ -324,15 +326,23 @@ export default function StaffPage() {
   function goToTodayQuiet() {
     if (isViewingToday) return;
     knownIdsRef.current = null;
+    userPickedStatusTabRef.current = false;
     setViewDate(null);
   }
 
   function onViewRoundChange(next: string) {
     if (!next) return;
     knownIdsRef.current = null;
+    userPickedStatusTabRef.current = false;
     setViewDate(next);
     setLoading(true);
   }
+
+  useEffect(() => {
+    if (isViewingToday) return;
+    userPickedStatusTabRef.current = false;
+    setStatusFilter(OrderStatus.COMPLETED);
+  }, [isViewingToday, viewDate]);
 
   async function onPhotoSelected(file: File | null) {
     if (!file) return;
@@ -650,9 +660,15 @@ export default function StaffPage() {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-[18px] font-extrabold leading-tight text-gray-900">
-              ออเดอร์วันนี้
+              {isViewingToday
+                ? "ออเดอร์วันนี้"
+                : `ออเดอร์ · ${formatOperatingDayLabel(viewDate ?? operatingDay)}`}
             </h1>
             <p className="mt-0.5 truncate text-[12px] font-medium text-slate-500">
+              {!isViewingToday ? (
+                <span className="text-amber-800">ดูย้อนหลัง · แก้ไขไม่ได้</span>
+              ) : null}
+              {!isViewingToday ? " · " : null}
               {branchStatus?.isOpen ? (
                 <span className="text-emerald-700">ร้านเปิด</span>
               ) : (
@@ -890,7 +906,9 @@ export default function StaffPage() {
       {filteredOrders.length === 0 ? (
         <p className="rounded-lg bg-white p-8 text-center text-gray-500">
           {!isViewingToday
-            ? "ไม่มีออเดอร์ในวันนี้"
+            ? statusFilter === OrderStatus.COMPLETED
+              ? "ไม่มีออเดอร์เสร็จ/ยกเลิกในวันนี้"
+              : "ไม่มีออเดอร์ในสถานะนี้ — ลองแท็บเสร็จสิ้น"
             : statusFilter === OrderStatus.COMPLETED
               ? "ยังไม่มีออเดอร์ที่เสร็จสิ้นหรือยกเลิกวันนี้"
               : "ไม่มีออเดอร์ที่รอดำเนินการ"}

@@ -20,6 +20,7 @@ type StaffWithBranchRoles = {
   id: string;
   isActive: boolean;
   branchId: string;
+  phoneVerifiedAt: Date | null;
   roles: Array<{ role: StaffRole }>;
   branch: {
     id: string;
@@ -60,7 +61,7 @@ export function filterStaffLoginMemberships(
 ): { ok: StaffWithBranchRoles[]; blockedReason?: string } {
   const active = rows.filter((s) => s.isActive && s.branch);
   if (active.length === 0) {
-    return { ok: [], blockedReason: "ไม่พบเบอร์โทรนี้ในระบบ" };
+    return { ok: [], blockedReason: "เบอร์นี้ถูกปิดการใช้งานแล้ว กรุณาติดต่อเจ้าของร้าน" };
   }
 
   const withRoles = active.filter((s) => staffUiRoles(s.roles.map((r) => r.role)).length > 0);
@@ -119,6 +120,7 @@ export const staffLoginSelect = {
   phone: true,
   isActive: true,
   branchId: true,
+  phoneVerifiedAt: true,
   roles: { select: { role: true } },
   branch: {
     select: {

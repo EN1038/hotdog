@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
@@ -51,6 +51,13 @@ export default function StaffSettingsPage() {
   const [branchChoices, setBranchChoices] = useState<BranchChoice[]>([]);
   const [currentBranchId, setCurrentBranchId] = useState("");
   const [switchingBranch, setSwitchingBranch] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profilePhoneVerified, setProfilePhoneVerified] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/staff/orders");
@@ -72,6 +79,23 @@ export default function StaffSettingsPage() {
         };
         setCurrentBranchId(data.currentBranchId ?? "");
         setBranchChoices(Array.isArray(data.branches) ? data.branches : []);
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      const pr = await fetch("/api/staff/profile");
+      if (pr.ok) {
+        const data = (await pr.json()) as {
+          name?: string;
+          imageUrl?: string | null;
+          phone?: string;
+          phoneVerified?: boolean;
+        };
+        setProfileName(data.name ?? "");
+        setProfileImageUrl(data.imageUrl ?? null);
+        setProfilePhone(data.phone ?? "");
+        setProfilePhoneVerified(Boolean(data.phoneVerified));
       }
     } catch {
       /* ignore */
@@ -144,6 +168,58 @@ export default function StaffSettingsPage() {
     }
   }
 
+  async function saveProfile(next: { name?: string; imageUrl?: string | null }) {
+    setSavingProfile(true);
+    try {
+      const res = await fetch("/api/staff/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "บันทึกโปรไฟล์ไม่สำเร็จ");
+        return false;
+      }
+      if (typeof data.name === "string") setProfileName(data.name);
+      if ("imageUrl" in data) setProfileImageUrl(data.imageUrl ?? null);
+      window.dispatchEvent(new Event("staff-branding-reload"));
+      return true;
+    } catch {
+      toast.error("เชื่อมต่อไม่ได้");
+      return false;
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function uploadProfilePhoto(file: File) {
+    setUploadingPhoto(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("folder", "Staff");
+      const res = await fetch("/api/staff/uploads", { method: "POST", body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "อัปโหลดรูปไม่สำเร็จ");
+        return;
+      }
+      const url = typeof data.url === "string" ? data.url : "";
+      if (!url) {
+        toast.error("อัปโหลดรูปไม่สำเร็จ");
+        return;
+      }
+      const ok = await saveProfile({ imageUrl: url });
+      if (ok) toast.success("เปลี่ยนรูปแล้ว");
+    } catch {
+      toast.error("อัปโหลดรูปไม่สำเร็จ");
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
+
   async function switchBranch(branchId: string) {
     if (branchId === currentBranchId || switchingBranch) return;
     setSwitchingBranch(true);
@@ -177,6 +253,93 @@ export default function StaffSettingsPage() {
   return (
     <StaffAppShell active="settings">
       <div className="space-y-4 px-4 py-4">
+        <section
+          id="profile"
+          className="scroll-mt-4 rounded-2xl bg-white p-5 shadow-sm"
+        >
+          <h2 className="text-[17px] font-extrabold text-slate-900">
+            โปรไฟล์พนักงาน
+          </h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-slate-500">
+            เปลี่ยนรูปและชื่อที่ใช้แสดงในแอป
+          </p>
+          <div className="mt-4 flex items-center gap-4">
+            <button
+              type="button"
+              disabled={uploadingPhoto || savingProfile}
+              onClick={() => photoInputRef.current?.click()}
+              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-slate-100 ring-2 ring-slate-200"
+              aria-label="เปลี่ยนรูปโปรไฟล์"
+            >
+              {profileImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={profileImageUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-3xl font-black text-slate-400">
+                  {(profileName || profilePhone || "?").slice(0, 1)}
+                </span>
+              )}
+              <span className="absolute inset-x-0 bottom-0 bg-black/50 py-1 text-center text-[10px] font-bold text-white">
+                {uploadingPhoto ? "…" : "เปลี่ยนรูป"}
+              </span>
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadProfilePhoto(file);
+              }}
+            />
+            <div className="min-w-0 flex-1">
+              <label className="text-[12px] font-semibold text-slate-500">
+                ชื่อที่แสดง
+              </label>
+              <input
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[15px] font-semibold text-slate-900"
+                value={profileName}
+                maxLength={80}
+                placeholder="เช่น สมชาย"
+                onChange={(e) => setProfileName(e.target.value)}
+              />
+              {profilePhone ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <p className="text-[12px] text-slate-400">{profilePhone}</p>
+                  {profilePhoneVerified ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      ยืนยันเบอร์แล้ว
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                      ยังไม่ยืนยันเบอร์
+                    </span>
+                  )}
+                </div>
+              ) : null}
+              <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+                เข้าใช้งานได้พร้อมกันสูงสุด 3 เครื่องต่อเบอร์
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={savingProfile || !profileName.trim()}
+            onClick={async () => {
+              const ok = await saveProfile({ name: profileName.trim() });
+              if (ok) toast.success("บันทึกชื่อแล้ว");
+            }}
+            className="mt-4 w-full rounded-xl bg-site-primary px-4 py-3 text-[15px] font-extrabold text-white disabled:opacity-50"
+          >
+            {savingProfile ? "กำลังบันทึก…" : "บันทึกชื่อ"}
+          </button>
+        </section>
+
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="text-[17px] font-extrabold text-slate-900">
             บันทึกไอคอนลงมือถือ

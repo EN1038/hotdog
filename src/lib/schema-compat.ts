@@ -36,6 +36,14 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `CREATE UNIQUE INDEX IF NOT EXISTS "Staff_branchId_phone_key" ON "${schema}"."Staff"("branchId", "phone")`,
         `CREATE INDEX IF NOT EXISTS "Staff_phone_idx" ON "${schema}"."Staff"("phone")`,
         `CREATE INDEX IF NOT EXISTS "Staff_lineUserId_idx" ON "${schema}"."Staff"("lineUserId")`,
+        `ALTER TABLE "${schema}"."Staff" ADD COLUMN IF NOT EXISTS "phoneVerifiedAt" TIMESTAMP(3)`,
+        `ALTER TABLE "${schema}"."CustomerOtpChallenge" ADD COLUMN IF NOT EXISTS "purpose" TEXT NOT NULL DEFAULT 'customer'`,
+        `CREATE INDEX IF NOT EXISTS "CustomerOtpChallenge_phone_purpose_createdAt_idx" ON "${schema}"."CustomerOtpChallenge"("phone", "purpose", "createdAt")`,
+        `CREATE TABLE IF NOT EXISTS "${schema}"."StaffAuthSession" ("id" TEXT NOT NULL, "phone" TEXT NOT NULL, "deviceId" TEXT NOT NULL, "tokenJti" TEXT NOT NULL, "userAgent" TEXT, "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "expiresAt" TIMESTAMP(3) NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "revokedAt" TIMESTAMP(3), CONSTRAINT "StaffAuthSession_pkey" PRIMARY KEY ("id"))`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "StaffAuthSession_tokenJti_key" ON "${schema}"."StaffAuthSession"("tokenJti")`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "StaffAuthSession_phone_deviceId_key" ON "${schema}"."StaffAuthSession"("phone", "deviceId")`,
+        `CREATE INDEX IF NOT EXISTS "StaffAuthSession_phone_idx" ON "${schema}"."StaffAuthSession"("phone")`,
+        `CREATE INDEX IF NOT EXISTS "StaffAuthSession_expiresAt_idx" ON "${schema}"."StaffAuthSession"("expiresAt")`,
       ];
       const enumSql = [
         `DO $$ BEGIN CREATE TYPE "BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,

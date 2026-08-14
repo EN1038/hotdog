@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
 import type { StaffRole } from "./constants";
 import { prisma } from "./db";
+import { assertStaffAuthSessionLive } from "./staff-auth-session";
+import { STAFF_SESSION_MS } from "./staff-session-limits";
 import {
   BrandInactiveError,
   brandInactiveMessage,
@@ -48,6 +50,9 @@ export type SessionPayload = {
   branchId?: string;
   staffRoles?: StaffRole[];
   branchName?: string;
+  /** Staff auth session id — must exist in StaffAuthSession. */
+  jti?: string;
+  deviceId?: string;
   customerPhone?: string;
   customerId?: string;
   customerName?: string;
@@ -58,7 +63,9 @@ export function sessionCookieOptions(type?: SessionPayload["type"]) {
   const maxAge =
     type === "customer"
       ? 60 * 60 * 24 * 90 // 90 days
-      : 60 * 60 * 24 * 7;
+      : type === "staff"
+        ? Math.floor(STAFF_SESSION_MS / 1000)
+        : 60 * 60 * 24 * 7;
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -79,12 +86,15 @@ export async function signSessionToken(
     customerName: payload.customerName?.slice(0, 120),
     username: payload.username?.slice(0, 80),
   };
-  const expiration = payload.type === "customer" ? "90d" : "7d";
-  return new SignJWT({ ...safe })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(expiration)
-    .sign(getJwtSecret());
+  const expiration =
+    payload.type === "customer"
+      ? "90d"
+      : payload.type === "staff"
+        ? "7d"
+        : "7d";
+  const token = new SignJWT({ ...safe }).setProtectedHeader({ alg: "HS256" }).setIssuedAt();
+  if (safe.jti) token.setJti(safe.jti);
+  return token.setExpirationTime(expiration).sign(getJwtSecret());
 }
 
 export async function createSession(payload: SessionPayload) {
@@ -156,6 +166,13 @@ export async function requireStaff() {
   if (!session || session.type !== "staff" || !session.branchId) {
     throw new Error("UNAUTHORIZED");
   }
+  if (!session.jti || !session.staffPhone) {
+    throw new Error("UNAUTHORIZED");
+  }
+  await assertStaffAuthSessionLive({
+    jti: session.jti,
+    phone: session.staffPhone,
+  });
 
   const staff = await prisma.staff.findFirst({
     where: {
@@ -213,6 +230,7 @@ export async function requireStaff() {
     staffId: staff.id,
     staffPhone: staff.phone,
     staffDisplayName: staff.name?.trim() || staff.phone,
+    staffImageUrl: staff.imageUrl?.trim() || null,
     branchId: staff.branchId,
     staffRoles,
     branchName: staff.branch.name,

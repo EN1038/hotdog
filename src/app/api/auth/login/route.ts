@@ -7,7 +7,19 @@ import { normalizePhone } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { completeCustomerLogin } from "@/lib/customer-login";
 import { isTaximailConfigured } from "@/lib/taximail";
+import {
+  consumeOtpChallenge,
+  markStaffPhoneVerified,
+} from "@/lib/otp-challenge";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+import {
+  issueStaffAuthSession,
+  staffDeviceSlotAvailable,
+  STAFF_LOGIN_DEVICE_LIMIT,
+  STAFF_LOGIN_UNREGISTERED,
+  STAFF_MAX_DEVICES,
+  staffDeviceIdPattern,
+} from "@/lib/staff-auth-session";
 import {
   filterStaffLoginMemberships,
   staffBranchChoices,
@@ -78,7 +90,10 @@ export async function POST(request: Request) {
       const staffBody = z
         .object({
           phone: z.string().min(9),
+          deviceId: z.string().trim().regex(staffDeviceIdPattern),
           branchId: z.string().min(1).optional(),
+          challengeId: z.string().min(1).optional(),
+          otpCode: z.string().trim().min(4).max(8).optional(),
         })
         .parse(body);
       const normalized = normalizePhone(staffBody.phone);
@@ -88,9 +103,47 @@ export async function POST(request: Request) {
         orderBy: { createdAt: "asc" },
       });
 
+      if (memberships.length === 0) {
+        return jsonError("เบอร์นี้ยังไม่ได้ลงทะเบียน", 404, {
+          reason: STAFF_LOGIN_UNREGISTERED,
+        });
+      }
+
       const filtered = filterStaffLoginMemberships(memberships);
       if (filtered.ok.length === 0) {
         return jsonError(filtered.blockedReason ?? "ไม่พบเบอร์โทรนี้ในระบบ", 401);
+      }
+
+      const slot = await staffDeviceSlotAvailable(
+        normalized,
+        staffBody.deviceId,
+      );
+      if (!slot.ok) {
+        return jsonError(
+          `เข้าใช้งานครบ ${STAFF_MAX_DEVICES} เครื่องแล้ว`,
+          403,
+          {
+            reason: STAFF_LOGIN_DEVICE_LIMIT,
+            maxDevices: STAFF_MAX_DEVICES,
+          },
+        );
+      }
+
+      const phoneVerified = filtered.ok.some((s) => s.phoneVerifiedAt);
+      if (isTaximailConfigured() && !phoneVerified) {
+        if (!staffBody.challengeId || !staffBody.otpCode) {
+          return jsonOk({ ok: true, needsOtp: true });
+        }
+        const consumed = await consumeOtpChallenge({
+          phone: normalized,
+          challengeId: staffBody.challengeId,
+          otpCode: staffBody.otpCode,
+          purpose: "staff",
+        });
+        if (!consumed.ok) {
+          return jsonError(consumed.message, consumed.status);
+        }
+        await markStaffPhoneVerified(normalized);
       }
 
       let staff = filtered.ok[0]!;
@@ -121,6 +174,11 @@ export async function POST(request: Request) {
       if (!staff.branch) {
         return jsonError("พนักงานยังไม่ได้ผูกสาขา", 403);
       }
+      const issued = await issueStaffAuthSession({
+        phone: normalized,
+        deviceId: staffBody.deviceId,
+        userAgent: request.headers.get("user-agent"),
+      });
       const brand = staff.branch.brand;
       const res = NextResponse.json({
         ok: true,
@@ -135,6 +193,8 @@ export async function POST(request: Request) {
         branchId: staff.branchId,
         staffRoles: toAppStaffRoles(roles),
         branchName: staff.branch.name,
+        jti: issued.tokenJti,
+        deviceId: issued.deviceId,
       });
       return res;
     }

@@ -890,6 +890,28 @@ export async function listShiftsForBranchDate(
   return shifts.map(serializeShift);
 }
 
+export async function listShiftsForBranchDateRange(
+  branchId: string,
+  fromKey: string,
+  toKey: string,
+) {
+  const from = fromKey <= toKey ? fromKey : toKey;
+  const to = fromKey <= toKey ? toKey : fromKey;
+  const rows = await prisma.branchShift.findMany({
+    where: {
+      branchId,
+      calendarDate: {
+        gte: queueBusinessDateFromKey(from),
+        lte: queueBusinessDateFromKey(to),
+      },
+    },
+    select: baseShiftSelect,
+    orderBy: [{ calendarDate: "desc" }, { roundNumber: "desc" }],
+  });
+  const shifts = await attachCancelMeta(rows);
+  return shifts.map(serializeShift);
+}
+
 export type CancelShiftResult = ActiveShift & {
   /** Orders newly marked CANCELLED in this call */
   cancelledOrderCount: number;

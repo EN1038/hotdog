@@ -2,8 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { bangkokDateKey, formatPrice, isBangkokDateKey } from "@/lib/constants";
+import {
+  bangkokDateKey,
+  formatPrice,
+  isBangkokDateKey,
+  ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+} from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
+import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDetail";
+import { formatQueueNumber } from "@/lib/order-queue-format";
 
 type ShiftListItem = {
   id: string;
@@ -176,6 +184,21 @@ export function StaffShiftSummarySheet({
   const [exportMsg, setExportMsg] = useState("");
   const [brandName, setBrandName] = useState(brandNameProp?.trim() || "");
   const [branchName, setBranchName] = useState(branchNameProp?.trim() || "");
+  const [shiftOrders, setShiftOrders] = useState<
+    Array<{
+      id: string;
+      orderNumber: string;
+      queueNumber: number;
+      status: string;
+      paymentMethod: string;
+      customerName: string | null;
+      createdAt: string;
+      itemCount: number;
+      total: number;
+    }>
+  >([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -187,6 +210,8 @@ export function StaffShiftSummarySheet({
     setSelectedId(null);
     setSummary(null);
     setExportMsg("");
+    setDetailOrderId(null);
+    setShiftOrders([]);
   }, [open, initialDate]);
 
   useEffect(() => {
@@ -280,6 +305,30 @@ export function StaffShiftSummarySheet({
         if (!cancelled) setError("โหลดสรุปไม่สำเร็จ");
       } finally {
         if (!cancelled) setLoadingSummary(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selectedId]);
+
+  useEffect(() => {
+    if (!open || !selectedId) {
+      setShiftOrders([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoadingOrders(true);
+      try {
+        const res = await fetch(`/api/staff/shifts/${selectedId}/orders`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setShiftOrders(Array.isArray(data.orders) ? data.orders : []);
+      } catch {
+        if (!cancelled) setShiftOrders([]);
+      } finally {
+        if (!cancelled) setLoadingOrders(false);
       }
     })();
     return () => {
@@ -809,6 +858,58 @@ export function StaffShiftSummarySheet({
                 </div>
               </div>
 
+              <div>
+                <p className="mb-2 text-sm font-bold text-gray-900">
+                  ออเดอร์ในรอบนี้
+                </p>
+                {loadingOrders ? (
+                  <p className="text-sm text-gray-500">กำลังโหลดออเดอร์…</p>
+                ) : shiftOrders.length === 0 ? (
+                  <p className="text-sm text-gray-500">ยังไม่มีออเดอร์ในรอบนี้</p>
+                ) : (
+                  <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                    {shiftOrders.map((o) => (
+                      <li key={o.id}>
+                        <button
+                          type="button"
+                          onClick={() => setDetailOrderId(o.id)}
+                          className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left active:bg-gray-50"
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium text-gray-400">
+                              {formatHm(o.createdAt)}
+                              {o.queueNumber != null
+                                ? ` · คิว ${formatQueueNumber(o.queueNumber)}`
+                                : ""}
+                            </span>
+                            <span className="mt-0.5 block truncate text-sm font-bold text-gray-900">
+                              {o.customerName || `#${o.orderNumber}`}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-gray-500">
+                              {(ORDER_STATUS_LABELS as Record<string, string>)[
+                                o.status
+                              ] ?? o.status}
+                              {" · "}
+                              {(PAYMENT_METHOD_LABELS as Record<string, string>)[
+                                o.paymentMethod
+                              ] ?? o.paymentMethod}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-sm font-extrabold tabular-nums text-gray-900">
+                              ฿{formatPrice(o.total)}
+                            </span>
+                            <span className="text-[11px] font-semibold text-site-primary">
+                              ดู ›
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -848,6 +949,13 @@ export function StaffShiftSummarySheet({
           ) : null}
         </div>
       </div>
+      <StaffOrderHistoryDetail
+        open={Boolean(detailOrderId)}
+        orderId={detailOrderId}
+        onClose={() => setDetailOrderId(null)}
+        brandName={brandName}
+        branchName={branchName}
+      />
     </div>
   );
 }

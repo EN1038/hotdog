@@ -92,14 +92,17 @@ export function handleApiError(error: unknown) {
   if (error instanceof Prisma.PrismaClientValidationError) {
     console.error("[api] Prisma validation", error.message);
     const raw = error.message;
-    const msg = raw.includes("imageUrl")
-      ? "ระบบยังอัปเดตรูปไม่ครบ — ลองใหม่หรือแจ้งแอดมิน"
-      : raw.includes("status") ||
-          raw.includes("trialEndsAt") ||
-          raw.includes("BrandPlan") ||
-          raw.includes("cancelledAt")
-        ? "ระบบอัปเดตแล้ว — ปิดแอปแล้วเปิดใหม่ หรือรีเฟรชหน้านี้"
-        : "บันทึกไม่สำเร็จ — ตรวจข้อมูลแล้วลองใหม่";
+    const msg =
+      /Unknown (field|argument|arg)/i.test(raw)
+        ? "ระบบอัปเดตแล้ว — รีเฟรชหน้านี้หรือปิดแอปแล้วเปิดใหม่"
+        : raw.includes("imageUrl")
+          ? "ระบบยังอัปเดตรูปไม่ครบ — ลองใหม่หรือแจ้งแอดมิน"
+          : raw.includes("status") ||
+              raw.includes("trialEndsAt") ||
+              raw.includes("BrandPlan") ||
+              raw.includes("cancelledAt")
+            ? "ระบบอัปเดตแล้ว — ปิดแอปแล้วเปิดใหม่ หรือรีเฟรชหน้านี้"
+            : "บันทึกไม่สำเร็จ — ตรวจข้อมูลแล้วลองใหม่";
     return jsonError(msg, 400);
   }
 

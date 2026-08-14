@@ -8,6 +8,8 @@ import {
   getBranchActivityContext,
   logAdminActivity,
 } from "@/lib/admin-activity";
+import { peerStaffPhoneVerifiedAt } from "@/lib/otp-challenge";
+import { revokeStaffSessionsIfPhoneUnused } from "@/lib/staff-auth-session";
 
 type Params = { params: Promise<{ id: string; staffId: string }> };
 
@@ -38,6 +40,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!existing) return jsonError("ไม่พบพนักงาน", 404);
 
     let nextPhone: string | undefined;
+    let nextVerifiedAt: Date | null | undefined;
     if (body.phone !== undefined) {
       nextPhone = normalizePhone(body.phone);
       if (nextPhone.length < 9) {
@@ -51,6 +54,8 @@ export async function PATCH(request: Request, { params }: Params) {
         if (duplicate) {
           return jsonError("เบอร์โทรนี้มีในสาขานี้แล้ว", 409);
         }
+        nextVerifiedAt =
+          (await peerStaffPhoneVerifiedAt(nextPhone, staffId)) ?? null;
       }
     }
 
@@ -58,6 +63,7 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { id: staffId },
       data: {
         ...(nextPhone !== undefined && { phone: nextPhone }),
+        ...(nextVerifiedAt !== undefined && { phoneVerifiedAt: nextVerifiedAt }),
 
         ...(body.name !== undefined && {
           name: body.name?.trim() ? body.name.trim() : null,
@@ -96,6 +102,10 @@ export async function PATCH(request: Request, { params }: Params) {
       metadata: { fields: Object.keys(body) },
     });
 
+    if (nextPhone && nextPhone !== existing.phone) {
+      await revokeStaffSessionsIfPhoneUnused(existing.phone);
+    }
+
     return jsonOk(updated);
   } catch (error) {
     return handleApiError(error);
@@ -113,6 +123,7 @@ export async function DELETE(_request: Request, { params }: Params) {
 
     const ctx = await getBranchActivityContext(branchId);
     await prisma.staff.delete({ where: { id: staffId } });
+    await revokeStaffSessionsIfPhoneUnused(existing.phone);
 
     await logAdminActivity(session, {
       action: "staff.delete",

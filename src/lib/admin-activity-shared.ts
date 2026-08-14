@@ -92,6 +92,9 @@ export const ADMIN_ACTIVITY_ACTIONS = {
 
 export type AdminActivityAction = keyof typeof ADMIN_ACTIVITY_ACTIONS;
 
+export const STAFF_REVOKE_SESSIONS_ACTION: AdminActivityAction =
+  "staff.revoke_sessions";
+
 export const ADMIN_ACTIVITY_ACTION_OPTIONS = (
   Object.keys(ADMIN_ACTIVITY_ACTIONS) as AdminActivityAction[]
 ).map((value) => ({

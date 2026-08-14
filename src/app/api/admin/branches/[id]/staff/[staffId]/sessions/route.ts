@@ -5,6 +5,7 @@ import {
   getBranchActivityContext,
   logAdminActivity,
 } from "@/lib/admin-activity";
+import { STAFF_REVOKE_SESSIONS_ACTION } from "@/lib/admin-activity-shared";
 import { revokeStaffAuthSessionsForPhone } from "@/lib/staff-auth-session";
 
 type Params = { params: Promise<{ id: string; staffId: string }> };
@@ -24,7 +25,7 @@ export async function DELETE(_request: Request, { params }: Params) {
 
     const ctx = await getBranchActivityContext(branchId);
     await logAdminActivity(session, {
-      action: "staff.revoke_sessions",
+      action: STAFF_REVOKE_SESSIONS_ACTION,
       summary: `ปลดเครื่องเข้าใช้งาน ${existing.name || existing.phone}`,
       brandId: ctx?.brandId ?? null,
       brandName: ctx?.brand?.name ?? null,

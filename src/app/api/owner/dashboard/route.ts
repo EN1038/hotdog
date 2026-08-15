@@ -3,48 +3,20 @@ import { getAccessibleBrandIds } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import {
-  bangkokDateKey,
   bangkokMonthRangeToToday,
   isBangkokDateKey,
   queueBusinessDateFromKey,
 } from "@/lib/constants";
-import { addDaysToDateKey, getCalendarDayState } from "@/lib/operating-day";
-import {
-  isOrderCountableRevenue,
-  orderGrandTotal,
-} from "@/lib/order-totals";
+import { getCalendarDayState } from "@/lib/operating-day";
+import { orderGrandTotal } from "@/lib/order-totals";
 import { isTestBranch } from "@/lib/branch-test";
 import { buildSalesReport } from "@/lib/sales-report";
 import { EMPTY_SALES_REPORT_STATS } from "@/lib/sales-report-shared";
-import type {
-  OwnerDailyPoint,
-  OwnerPeriod,
-  OwnerTodayOrder,
-  OwnerTopSeller,
-} from "@/lib/owner-dashboard";
-
-const TOP_SELLERS_N = 10;
-
-function dayLabelTh(dateYmd: string): string {
-  const d = new Date(`${dateYmd}T12:00:00+07:00`);
-  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-}
-
-function buildEmptyDays(fromYmd: string, toYmd: string): OwnerDailyPoint[] {
-  const days: OwnerDailyPoint[] = [];
-  let cur = fromYmd;
-  for (let i = 0; i < 93; i += 1) {
-    days.push({
-      date: cur,
-      label: dayLabelTh(cur),
-      revenueBaht: 0,
-      orderCount: 0,
-    });
-    if (cur >= toYmd) break;
-    cur = addDaysToDateKey(cur, 1);
-  }
-  return days;
-}
+import {
+  loadShopDailySeries,
+  loadShopTopSellers,
+} from "@/lib/shop-overview-metrics";
+import type { OwnerPeriod, OwnerTodayOrder } from "@/lib/owner-dashboard";
 
 async function loadBrandSaleStockSnapshot(branchIds: string[]) {
   if (branchIds.length === 0) {
@@ -82,127 +54,6 @@ async function loadBrandSaleStockSnapshot(branchIds: string[]) {
     saleStockQty,
     saleStockValue: Math.round(saleStockValue * 100) / 100,
   };
-}
-
-async function loadTopSellers(
-  branchIds: string[],
-  from: string,
-  to: string,
-): Promise<OwnerTopSeller[]> {
-  if (branchIds.length === 0) return [];
-
-  const orders = await prisma.order.findMany({
-    where: {
-      branchId: { in: branchIds },
-      queueBusinessDate: {
-        gte: queueBusinessDateFromKey(from),
-        lte: queueBusinessDateFromKey(to),
-      },
-    },
-    select: {
-      status: true,
-      awaitingPhotoKey: true,
-      items: {
-        select: {
-          itemName: true,
-          quantity: true,
-          giftQuantity: true,
-          unitPrice: true,
-          optionsPrice: true,
-          branchMenuItemId: true,
-        },
-      },
-    },
-    take: 8000,
-  });
-
-  const byKey = new Map<
-    string,
-    { name: string; quantity: number; revenueBaht: number }
-  >();
-
-  for (const order of orders) {
-    if (!isOrderCountableRevenue(order)) continue;
-    for (const it of order.items) {
-      const sold = Math.max(0, it.quantity - (it.giftQuantity ?? 0));
-      if (sold <= 0) continue;
-      const unit = Number(it.unitPrice) + Number(it.optionsPrice);
-      const revenue = sold * unit;
-      const key = it.branchMenuItemId ?? `name:${it.itemName}`;
-      const cur = byKey.get(key) ?? {
-        name: it.itemName,
-        quantity: 0,
-        revenueBaht: 0,
-      };
-      cur.quantity += sold;
-      cur.revenueBaht += revenue;
-      if (!cur.name && it.itemName) cur.name = it.itemName;
-      byKey.set(key, cur);
-    }
-  }
-
-  return [...byKey.values()]
-    .map((row) => ({
-      name: row.name,
-      quantity: row.quantity,
-      revenueBaht: Math.round(row.revenueBaht * 100) / 100,
-    }))
-    .sort((a, b) => b.quantity - a.quantity || b.revenueBaht - a.revenueBaht)
-    .slice(0, TOP_SELLERS_N);
-}
-
-async function loadDailySeries(
-  branchIds: string[],
-  from: string,
-  to: string,
-): Promise<OwnerDailyPoint[]> {
-  const days = buildEmptyDays(from, to);
-  if (branchIds.length === 0) return days;
-
-  const byDate = new Map(days.map((d) => [d.date, d]));
-
-  const orders = await prisma.order.findMany({
-    where: {
-      branchId: { in: branchIds },
-      queueBusinessDate: {
-        gte: queueBusinessDateFromKey(from),
-        lte: queueBusinessDateFromKey(to),
-      },
-    },
-    select: {
-      status: true,
-      awaitingPhotoKey: true,
-      queueBusinessDate: true,
-      deliveryFee: true,
-      discountAmount: true,
-      items: {
-        select: { quantity: true, unitPrice: true, optionsPrice: true },
-      },
-    },
-    take: 8000,
-  });
-
-  for (const order of orders) {
-    if (!isOrderCountableRevenue(order)) continue;
-    const key = bangkokDateKey(order.queueBusinessDate);
-    const bucket = byDate.get(key);
-    if (!bucket) continue;
-    bucket.orderCount += 1;
-    bucket.revenueBaht += orderGrandTotal(
-      order.items.map((it) => ({
-        quantity: it.quantity,
-        unitPrice: Number(it.unitPrice),
-        optionsPrice: Number(it.optionsPrice),
-      })),
-      Number(order.deliveryFee),
-      Number(order.discountAmount),
-    );
-  }
-
-  for (const d of days) {
-    d.revenueBaht = Math.round(d.revenueBaht * 100) / 100;
-  }
-  return days;
 }
 
 export async function GET(request: Request) {
@@ -301,6 +152,7 @@ export async function GET(request: Request) {
             byChannel: [],
             byPayment: [],
             byBranch: [],
+            wasteItems: [],
           }
         : await buildSalesReport({
             branchIds,
@@ -313,8 +165,8 @@ export async function GET(request: Request) {
       stockEnabled
         ? loadBrandSaleStockSnapshot(branchIds)
         : Promise.resolve({ saleStockQty: 0, saleStockValue: 0 }),
-      loadTopSellers(branchIds, rangeFrom, rangeTo),
-      loadDailySeries(branchIds, rangeFrom, rangeTo),
+      loadShopTopSellers(branchIds, rangeFrom, rangeTo),
+      loadShopDailySeries(branchIds, rangeFrom, rangeTo),
     ]);
 
     let todayOrders: OwnerTodayOrder[] = [];
@@ -405,6 +257,7 @@ export async function GET(request: Request) {
       saleStockValue: stock.saleStockValue,
       topSellers,
       days,
+      wasteItems: report.wasteItems,
     });
   } catch (error) {
     return handleApiError(error);

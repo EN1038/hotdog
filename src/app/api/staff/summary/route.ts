@@ -4,6 +4,10 @@ import { isBangkokDateKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { getCalendarDayState } from "@/lib/operating-day";
 import { buildSalesReport } from "@/lib/sales-report";
+import {
+  loadShopDailySeries,
+  loadShopTopSellers,
+} from "@/lib/shop-overview-metrics";
 
 async function loadSaleStockSnapshot(branchId: string) {
   // Count from BranchMenuItemStock even when brandProductId is not linked yet
@@ -72,47 +76,52 @@ export async function GET(request: Request) {
       to = dateParam;
     }
 
-    const [report, stock, branch, lastStockCount, lastSale] = await Promise.all([
-      buildSalesReport({
-        branchIds: [session.branchId],
-        from,
-        to,
-      }),
-      loadSaleStockSnapshot(session.branchId),
-      prisma.branch.findUnique({
-        where: { id: session.branchId },
-        select: {
-          stockEnabled: true,
-          brand: { select: { stockEnabled: true } },
-        },
-      }),
-      prisma.stockCount.findFirst({
-        where: {
-          branchId: session.branchId,
-          status: { in: ["IN_PROGRESS", "COMPLETED"] },
-        },
-        orderBy: [{ createdAt: "desc" }],
-        select: { createdAt: true, completedAt: true },
-      }),
-      prisma.order.findFirst({
-        where: {
-          branchId: session.branchId,
-          awaitingPhotoKey: false,
-          status: {
-            in: [
-              "WAITING_FOR_STORE_ACCEPTANCE",
-              "PREPARING",
-              "READY_FOR_PICKUP",
-              "READY_FOR_DELIVERY",
-              "DELIVERING",
-              "COMPLETED",
-            ],
+    const branchIds = [session.branchId];
+
+    const [report, stock, branch, lastStockCount, lastSale, topSellers, days] =
+      await Promise.all([
+        buildSalesReport({
+          branchIds,
+          from,
+          to,
+        }),
+        loadSaleStockSnapshot(session.branchId),
+        prisma.branch.findUnique({
+          where: { id: session.branchId },
+          select: {
+            stockEnabled: true,
+            brand: { select: { stockEnabled: true } },
           },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
-      }),
-    ]);
+        }),
+        prisma.stockCount.findFirst({
+          where: {
+            branchId: session.branchId,
+            status: { in: ["IN_PROGRESS", "COMPLETED"] },
+          },
+          orderBy: [{ createdAt: "desc" }],
+          select: { createdAt: true, completedAt: true },
+        }),
+        prisma.order.findFirst({
+          where: {
+            branchId: session.branchId,
+            awaitingPhotoKey: false,
+            status: {
+              in: [
+                "WAITING_FOR_STORE_ACCEPTANCE",
+                "PREPARING",
+                "READY_FOR_PICKUP",
+                "READY_FOR_DELIVERY",
+                "DELIVERING",
+                "COMPLETED",
+              ],
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        }),
+        loadShopTopSellers(branchIds, from, to),
+        loadShopDailySeries(branchIds, from, to),
+      ]);
 
     const stockEnabled = Boolean(
       branch?.stockEnabled && branch?.brand?.stockEnabled,
@@ -138,6 +147,8 @@ export async function GET(request: Request) {
       byChannel: report.byChannel,
       byPayment: report.byPayment,
       wasteItems: report.wasteItems,
+      topSellers,
+      days,
     });
   } catch (error) {
     return handleApiError(error);

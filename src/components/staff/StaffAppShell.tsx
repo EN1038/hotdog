@@ -299,7 +299,7 @@ function StaffAppShellInner({
     {
       id: "summary",
       href: "/staff/summary",
-      label: "สรุปยอด",
+      label: "ภาพรวม",
       icon: <IconReceipt size={24} />,
     },
     {

@@ -770,8 +770,8 @@ export default function StaffHomePage() {
             )}
             <SoftTile
               href="/staff/summary"
-              title="สรุปยอดขาย"
-              subtitle="ดูยอดประจำรอบ"
+              title="ภาพรวมร้าน"
+              subtitle="ยอดขาย · สต๊อก · Top 10"
               icon={<IconChart size={26} />}
               tone="emerald"
               size="half"

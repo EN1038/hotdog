@@ -12,8 +12,14 @@ import { StaffSalesHistoryPanel } from "@/components/staff/StaffSalesHistoryPane
 import { StaffWasteDetailSheet } from "@/components/staff/StaffWasteDetailSheet";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
 import {
+  ShopDailyRevenueBars,
+  ShopTopSellersList,
+  ShopWasteSummaryList,
+} from "@/components/merchant/ShopOverviewExtras";
+import {
   SalesDateRangeBar,
   SalesReportMetrics,
+  SalesShareSection,
 } from "@/components/merchant/SalesSummaryView";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
@@ -23,6 +29,10 @@ import {
   type SalesReportWasteItem,
 } from "@/lib/sales-report-shared";
 import type { SalesShareSlice } from "@/lib/sales-share";
+import type {
+  ShopDailyPoint,
+  ShopTopSeller,
+} from "@/lib/shop-overview-metrics";
 import {
   captureElementToPng,
   downloadPngDataUrl,
@@ -43,6 +53,8 @@ type SummaryPayload = {
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
   wasteItems?: SalesReportWasteItem[];
+  topSellers?: ShopTopSeller[];
+  days?: ShopDailyPoint[];
 };
 
 type BrandingMeta = {
@@ -398,6 +410,22 @@ export default function StaffSummaryPage() {
     lines.push(
       `ของเสีย: ${formatPrice(stats.wasteQty)} ชิ้น · ${formatPrice(stats.wasteValue)} บาท`,
     );
+    const wasteItems = payload?.wasteItems ?? [];
+    if (wasteItems.length > 0) {
+      lines.push("รายการของเสีย:");
+      for (const item of wasteItems) {
+        const reasons = (item.entries ?? [])
+          .map((e) => e.note?.trim())
+          .filter(Boolean);
+        const reasonText =
+          reasons.length > 0
+            ? reasons.join(" · ")
+            : "ไม่ระบุเหตุผล";
+        lines.push(
+          `- ${item.name}: ${formatPrice(item.quantity)} ชิ้น · ${formatPrice(item.value)} บาท · ${reasonText}`,
+        );
+      }
+    }
     lines.push(`เหลือสุทธิ: ${formatPrice(netAfterWaste)} บาท`);
     if (stockOn) {
       lines.push(
@@ -504,13 +532,13 @@ export default function StaffSummaryPage() {
       <div className="px-4 pb-8 pt-3">
         <header className="mb-2.5 flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            <h1 className="text-[20px] font-black text-slate-900">สรุปยอด</h1>
+            <h1 className="text-[20px] font-black text-slate-900">ภาพรวมร้าน</h1>
             <p className="mt-0.5 truncate text-[13px] font-medium text-slate-500">
               {tab === "history"
                 ? "ดูบิลย้อนหลัง"
                 : tab === "shifts"
                   ? "สรุปรายรอบตามช่วงวันที่"
-                  : "ยอดตามวันเปิดรอบ · รวมข้ามคืน"}
+                  : "ยอดขาย · สต๊อก · ของเสีย · สินค้าขายดี"}
             </p>
             {tab === "overview" && exportMsg ? (
               <p className="mt-1 text-[12px] font-semibold text-emerald-700">
@@ -924,6 +952,33 @@ export default function StaffSummaryPage() {
                 />
               </div>
             ) : null}
+
+            <ShopDailyRevenueBars
+              days={payload?.days ?? []}
+              loading={loading}
+            />
+            <ShopTopSellersList
+              items={payload?.topSellers ?? []}
+              loading={loading}
+            />
+            <ShopWasteSummaryList
+              items={payload?.wasteItems ?? []}
+              wasteQty={stats.wasteQty}
+              wasteValue={stats.wasteValue}
+              loading={loading}
+            />
+            <SalesShareSection
+              title="สัดส่วนการขาย"
+              slices={payload?.byPayment ?? []}
+              totalRevenue={stats.completedRevenue}
+              chartStyle="donut"
+            />
+            <SalesShareSection
+              title="ช่องทางการขาย"
+              slices={payload?.byChannel ?? []}
+              totalRevenue={stats.completedRevenue}
+              chartStyle="donut"
+            />
           </div>
         ) : tab === "shifts" ? (
           <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

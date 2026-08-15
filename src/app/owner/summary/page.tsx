@@ -5,11 +5,13 @@ import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShe
 import {
   OwnerDailyRevenueBars,
   OwnerTopSellersList,
+  OwnerWasteSummaryList,
 } from "@/components/owner/OwnerOverviewExtras";
 import {
   SalesDateRangeBar,
   SalesOverviewCards,
   SalesReportMetrics,
+  SalesShareSection,
 } from "@/components/merchant/SalesSummaryView";
 import { bangkokDateKey } from "@/lib/constants";
 import { EMPTY_SALES_REPORT_STATS } from "@/lib/sales-report-shared";
@@ -124,6 +126,26 @@ function OwnerSummaryInner() {
         <OwnerTopSellersList
           items={payload?.topSellers ?? []}
           loading={loading}
+        />
+
+        <OwnerWasteSummaryList
+          items={payload?.wasteItems ?? []}
+          wasteQty={stats.wasteQty ?? 0}
+          wasteValue={stats.wasteValue ?? 0}
+          loading={loading}
+        />
+
+        <SalesShareSection
+          title="สัดส่วนการขาย"
+          slices={payload?.byPayment ?? []}
+          totalRevenue={stats.completedRevenue ?? 0}
+          chartStyle="donut"
+        />
+        <SalesShareSection
+          title="ช่องทางการขาย"
+          slices={payload?.byChannel ?? []}
+          totalRevenue={stats.completedRevenue ?? 0}
+          chartStyle="donut"
         />
 
         {detailOpen ? (

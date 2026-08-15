@@ -1,5 +1,8 @@
 import type { SalesShareSlice } from "@/lib/sales-share";
-import type { SalesReportStats } from "@/lib/sales-report-shared";
+import type {
+  SalesReportStats,
+  SalesReportWasteItem,
+} from "@/lib/sales-report-shared";
 
 export type OwnerPeriod = "day" | "month";
 
@@ -79,4 +82,5 @@ export type OwnerDashboardPayload = {
   saleStockValue: number;
   topSellers: OwnerTopSeller[];
   days: OwnerDailyPoint[];
+  wasteItems: SalesReportWasteItem[];
 };

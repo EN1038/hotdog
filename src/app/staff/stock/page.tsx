@@ -15,6 +15,12 @@ import {
 } from "@/lib/staff-menu-order";
 import { formatPrice, bangkokDateKey } from "@/lib/constants";
 import { IconCamera, IconSkewerPlaceholder } from "@/components/icons";
+import {
+  DEFAULT_STOCK_COUNT_TIMING,
+  STOCK_COUNT_TIMING_LABEL,
+  STOCK_COUNT_TIMING_OPTIONS,
+  type StockCountTiming,
+} from "@/lib/stock-count-timing";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -181,11 +187,19 @@ function StaffStockContent() {
   const [data, setData] = useState<Payload | null>(null);
 
   const [mode, setMode] = useState<
-    "menu" | "select_type" | "items" | "summary" | "pending"
+    | "menu"
+    | "select_timing"
+    | "select_type"
+    | "items"
+    | "summary"
+    | "pending"
   >("menu");
   const [actionType, setActionType] = useState<
     "stock_in" | "issue" | "pending" | "view" | "summary" | null
   >(null);
+  const [summaryTiming, setSummaryTiming] = useState<StockCountTiming>(
+    DEFAULT_STOCK_COUNT_TIMING,
+  );
 
   const [typeFilter, setTypeFilter] = useState<"ALL" | StockType>("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -321,7 +335,8 @@ function StaffStockContent() {
   useEffect(() => {
     if (!openAsDailySummary || loading || !data?.stockActive) return;
     setActionType("summary");
-    setMode("select_type");
+    setMode("select_timing");
+    setSummaryTiming(DEFAULT_STOCK_COUNT_TIMING);
     setTypeFilter("ALL");
     setQtyByItemId({});
     setCashVal("");
@@ -480,6 +495,7 @@ function StaffStockContent() {
   const summaryStockType: StockType =
     typeFilter !== "ALL" ? typeFilter : "SALE_ITEM";
   const summaryTypeLabel = STOCK_TYPE_LABEL[summaryStockType];
+  const summaryTimingLabel = STOCK_COUNT_TIMING_LABEL[summaryTiming];
   const summaryIncludesSales = summaryStockType === "SALE_ITEM";
 
   const summaryItems = useMemo(() => {
@@ -648,7 +664,8 @@ function StaffStockContent() {
     }
     if (action === "summary") {
       setActionType("summary");
-      setMode("select_type");
+      setMode("select_timing");
+      setSummaryTiming(DEFAULT_STOCK_COUNT_TIMING);
       setTypeFilter("ALL");
       setQtyByItemId({});
       setCategoryFilter("ALL");
@@ -889,13 +906,26 @@ function StaffStockContent() {
       setAttemptedSummary(false);
       setShowSummaryModal(false);
       setShowReviewModal(false);
-    } else if (mode === "select_type" && actionType === "summary" && openAsDailySummary) {
+    } else if (mode === "select_type" && actionType === "summary") {
+      setMode("select_timing");
+      setTypeFilter("ALL");
+      setQtyByItemId({});
+    } else if (
+      mode === "select_timing" &&
+      actionType === "summary" &&
+      openAsDailySummary
+    ) {
       router.replace("/staff");
+    } else if (mode === "select_timing" && actionType === "summary") {
+      setMode("menu");
+      setActionType(null);
+      setSummaryTiming(DEFAULT_STOCK_COUNT_TIMING);
     } else if (mode === "select_type" && actionType === "view" && openAsView) {
       router.replace("/staff/summary");
     } else {
       setMode("menu");
       setActionType(null);
+      setSummaryTiming(DEFAULT_STOCK_COUNT_TIMING);
       setQtyByItemId({});
       clearIssueFields();
       closeIssueCamera();
@@ -1134,6 +1164,7 @@ function StaffStockContent() {
         body: JSON.stringify({
           action: "summary",
           stockType: summaryStockType,
+          timing: summaryTiming,
           lines,
           cash: summaryIncludesSales ? Number(cashVal) || 0 : 0,
           transfer: summaryIncludesSales ? Number(transferVal) || 0 : 0,
@@ -1150,7 +1181,7 @@ function StaffStockContent() {
           ? "ส่งสรุปยอดเมนูขายแล้ว — รอแอดมินกดปรับสต๊อก"
           : summaryIncludesSales
             ? "บันทึกสรุปยอดสต๊อกและขายรายเรียบร้อย"
-            : `บันทึกสรุปยอดสต๊อก · ${summaryTypeLabel} เรียบร้อย`,
+            : `บันทึกสรุปยอดสต๊อก · ${summaryTimingLabel} · ${summaryTypeLabel} เรียบร้อย`,
       );
       setShowSummaryModal(false);
       setCashVal("");
@@ -1159,6 +1190,7 @@ function StaffStockContent() {
       setCustomersVal("");
       setQtyByItemId({});
       setAttemptedSummary(false);
+      setSummaryTiming(DEFAULT_STOCK_COUNT_TIMING);
       if (openAsDailySummary) {
         router.replace("/staff");
         return;
@@ -1415,7 +1447,8 @@ function StaffStockContent() {
                         : "สรุปยอดสต๊อก"}
                     </h2>
                     <p className="text-xs font-semibold text-slate-700">
-                      {summaryTypeLabel} · วันที่ {summaryTodayLabel}
+                      {summaryTimingLabel} · {summaryTypeLabel} · วันที่{" "}
+                      {summaryTodayLabel}
                       <span className="ml-1 font-medium text-slate-500">
                         (วันนี้เสมอ)
                       </span>
@@ -1945,6 +1978,61 @@ function StaffStockContent() {
                   </div>
                 )}
               </>
+            ) : mode === "select_timing" ? (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={handleBack}
+                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                  >
+                    ← กลับ
+                  </button>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    เลือกจังหวะนับสต๊อก
+                  </h2>
+                </div>
+
+                <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600">
+                  ขั้นที่ 1 จาก 2 · เลือกก่อนว่านับตอนไหน แล้วค่อยเลือกประเภทสต๊อก
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  {STOCK_COUNT_TIMING_OPTIONS.map((opt) => {
+                    const selected = summaryTiming === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setSummaryTiming(opt.value);
+                          setMode("select_type");
+                          setTypeFilter("ALL");
+                          setQtyByItemId({});
+                        }}
+                        className={`w-full rounded-2xl border-2 bg-white px-5 py-5 text-left shadow-sm transition-all active:scale-[0.98] ${
+                          selected
+                            ? "border-site-primary text-slate-900"
+                            : "border-slate-200 text-slate-800 hover:border-site-primary"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xl font-bold text-slate-900">
+                            {opt.label}
+                          </p>
+                          {opt.value === DEFAULT_STOCK_COUNT_TIMING ? (
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                              ค่าเริ่มต้น
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-[13px] font-medium text-slate-500">
+                          {opt.hint}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             ) : mode === "select_type" ? (
               <>
                 <div className="flex items-center gap-2 mb-4">
@@ -1962,7 +2050,7 @@ function StaffStockContent() {
                         : actionType === "issue"
                           ? "เลือกประเภทจ่ายออก"
                           : actionType === "summary"
-                            ? "เลือกประเภทสรุปยอดสต๊อก"
+                            ? "เลือกประเภทสต๊อก"
                             : ""}
                   </h2>
                 </div>
@@ -1975,7 +2063,7 @@ function StaffStockContent() {
                       ? "ของสิ้นเปลือง (น้ำแข็ง/แก้ว/ถุง/แก๊ส/น้ำจิ้ม): รับเข้าเมื่อของมาส่ง"
                       : actionType === "issue"
                         ? "จ่ายออกเมื่อเบิกใช้ชัดเจน เช่น เปลี่ยนแก๊ส 1 ถัง — รายวันทั่วไปใช้สรุปยอดก็ได้"
-                        : "นับคงเหลือจริง ระบบจะคำนวณว่าใช้ไปเท่าไรให้หลังบ้าน"}
+                        : `ขั้นที่ 2 จาก 2 · จังหวะ: ${summaryTimingLabel} · เลือกประเภทที่จะนับ`}
                   </div>
                 )}
 

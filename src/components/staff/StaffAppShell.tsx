@@ -299,8 +299,8 @@ function StaffAppShellInner({
     {
       id: "summary",
       href: "/staff/summary",
-      label: "ภาพรวม",
-      icon: <IconReceipt size={24} />,
+      label: "สรุปยอด",
+      icon: <IconReceipt size={26} />,
     },
     {
       id: "settings",
@@ -520,9 +520,39 @@ function StaffAppShellInner({
         className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
         aria-label="เมนูหลักพนักงาน"
       >
-        <div className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-1">
+        <div className="mx-auto flex max-w-lg items-end justify-between px-1 pt-2">
           {tabs.map((tab) => {
             const isActive = navActive === tab.id;
+            const isFeatured = tab.id === "summary" && !warehouseMode;
+
+            if (isFeatured) {
+              return (
+                <Link
+                  key={tab.id}
+                  href={tab.href}
+                  className="relative flex min-w-0 flex-1 flex-col items-center justify-end pb-1.5"
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <span
+                    className={`-mt-6 flex h-[3.6rem] w-[3.6rem] items-center justify-center rounded-full text-white shadow-[0_8px_20px_rgba(15,23,42,0.22)] ring-[3px] ring-white transition active:scale-95 ${
+                      isActive
+                        ? "bg-site-primary"
+                        : "bg-site-primary/90"
+                    }`}
+                  >
+                    {tab.icon}
+                  </span>
+                  <span
+                    className={`mt-1 truncate text-[12px] font-extrabold ${
+                      isActive ? "text-site-primary" : "text-slate-700"
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                </Link>
+              );
+            }
+
             return (
               <Link
                 key={tab.id}

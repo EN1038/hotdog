@@ -7,6 +7,10 @@ import { bangkokDateKey, formatPrice, isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 import { DateInput } from "@/components/DateInput";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
+import {
+  STOCK_COUNT_TIMING_LABEL,
+  type StockCountTiming,
+} from "@/lib/stock-count-timing";
 
 type StockLine = {
   name: string;
@@ -46,6 +50,7 @@ type DailySummary = {
   } | null;
   createdByStaff: { id: string; name: string } | null;
   stockType?: StockType;
+  timing?: StockCountTiming;
   cash: number;
   transfer: number;
   change: number;
@@ -310,6 +315,8 @@ export function StaffDailySalesSummarySheet({
   const selectedStockType: StockType = selected?.stockType ?? "SALE_ITEM";
   const selectedIncludesSales = selectedStockType === "SALE_ITEM";
   const selectedTypeLabel = STOCK_TYPE_LABEL[selectedStockType];
+  const selectedTimingLabel =
+    STOCK_COUNT_TIMING_LABEL[selected?.timing ?? "AFTER_CLOSE"];
   const stockTotals =
     selected?.stockTotals ??
     (selected ? computeStockTotals(selected.lines) : null);
@@ -407,6 +414,7 @@ export function StaffDailySalesSummarySheet({
     );
     lines.push(selected.name);
     lines.push(`ประเภท: ${selectedTypeLabel}`);
+    lines.push(`จังหวะนับ: ${selectedTimingLabel}`);
     lines.push(`บันทึกเมื่อ: ${formatShiftDateTime(selected.completedAt)}`);
     if (selected.shift) {
       lines.push(`รอบขาย: รอบที่ ${selected.shift.roundNumber}`);
@@ -554,6 +562,8 @@ export function StaffDailySalesSummarySheet({
                   const active = s.id === selectedId;
                   const typeLabel =
                     STOCK_TYPE_LABEL[s.stockType ?? "SALE_ITEM"];
+                  const timingLabel =
+                    STOCK_COUNT_TIMING_LABEL[s.timing ?? "AFTER_CLOSE"];
                   const pending =
                     s.pendingAdminApply || s.status === "IN_PROGRESS";
                   const cancelled = s.status === "CANCELLED";
@@ -572,7 +582,9 @@ export function StaffDailySalesSummarySheet({
                               : "border-gray-200 bg-white text-gray-700"
                       }`}
                     >
-                      <span className="block">{typeLabel}</span>
+                      <span className="block">
+                        {timingLabel} · {typeLabel}
+                      </span>
                       <span className="mt-0.5 block opacity-80">
                         {pending
                           ? "รอแอดมินปรับสต๊อก · "
@@ -622,6 +634,10 @@ export function StaffDailySalesSummarySheet({
                     <div className="rounded-xl border border-gray-200 bg-white px-3 py-1">
                       <SummaryRow label="ชื่อสรุป" value={selected.name} />
                       <SummaryRow label="ประเภท" value={selectedTypeLabel} />
+                      <SummaryRow
+                        label="จังหวะนับ"
+                        value={selectedTimingLabel}
+                      />
                       <SummaryRow
                         label="สถานะ"
                         value={

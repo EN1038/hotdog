@@ -12,6 +12,10 @@ import {
   sortStaffMenuItems,
   withMenuOrderFields,
 } from "@/lib/staff-menu-order";
+import {
+  STOCK_COUNT_TIMING_LABEL,
+  type StockCountTiming,
+} from "@/lib/stock-count-timing";
 
 const WASTE_HISTORY_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
 
@@ -101,6 +105,9 @@ const postSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("summary"),
     stockType: z.enum(["SALE_ITEM", "CONSUMABLE", "EQUIPMENT"]).default("SALE_ITEM"),
+    timing: z
+      .enum(["BEFORE_OPEN", "AFTER_CLOSE", "RECHECK"])
+      .default("AFTER_CLOSE"),
     lines: z.array(summaryLineSchema).min(1),
     cash: z.number().min(0).default(0),
     transfer: z.number().min(0).default(0),
@@ -624,6 +631,8 @@ export async function POST(request: Request) {
     // End-of-day stock (+ cash when SALE_ITEM) summary by stock type
     if (body.action === "summary") {
       const stockType = body.stockType;
+      const timing = body.timing as StockCountTiming;
+      const timingLabel = STOCK_COUNT_TIMING_LABEL[timing];
       const lineIds = body.lines.map((l) => l.brandProductId);
       const typeLabel =
         stockType === "SALE_ITEM"
@@ -748,7 +757,7 @@ export async function POST(request: Request) {
                     branchNonMenuItemId: item.id,
                     quantity: actualDiff,
                     type: "ADJUST",
-                    note: `สรุปยอดสต๊อกสิ้นวัน · ${typeLabel} (นับได้ ${newQty})`,
+                    note: `สรุปยอดสต๊อก · ${timingLabel} · ${typeLabel} (นับได้ ${newQty})`,
                     createdByStaffId: session.staffId,
                   },
                 });
@@ -812,12 +821,13 @@ export async function POST(request: Request) {
           branchId: branch.id,
           shiftId: activeShift?.id ?? null,
           stockLocationId: location.id,
-          name: `${titlePrefix} · ${typeLabel} · รอบที่ ${roundLabel} (${dateLabel})`,
+          name: `${titlePrefix} · ${timingLabel} · ${typeLabel} · รอบที่ ${roundLabel} (${dateLabel})`,
           status: pendingAdmin ? "IN_PROGRESS" : "COMPLETED",
           completedAt: pendingAdmin ? null : new Date(),
           createdByStaffId: session.staffId,
           note: JSON.stringify({
             stockType,
+            timing,
             pendingAdminApply: pendingAdmin,
             cash: stockType === "SALE_ITEM" ? body.cash : 0,
             transfer: stockType === "SALE_ITEM" ? body.transfer : 0,

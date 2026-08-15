@@ -8,6 +8,10 @@ import {
   sortStaffMenuItems,
   withMenuOrderFields,
 } from "@/lib/staff-menu-order";
+import {
+  resolveStockCountTiming,
+  type StockCountTiming,
+} from "@/lib/stock-count-timing";
 
 type NoteLine = {
   name: string;
@@ -19,6 +23,7 @@ type NoteLine = {
 
 type NotePayload = {
   stockType?: "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+  timing?: StockCountTiming;
   cash?: number;
   transfer?: number;
   change?: number;
@@ -26,6 +31,13 @@ type NotePayload = {
   pendingAdminApply?: boolean;
   lines?: NoteLine[];
 };
+
+function inferTiming(
+  name: string,
+  note: NotePayload,
+): StockCountTiming {
+  return resolveStockCountTiming({ timing: note.timing, name });
+}
 
 function inferStockType(
   name: string,
@@ -194,6 +206,7 @@ export async function GET(request: Request) {
         );
 
         const stockType = inferStockType(c.name, note);
+        const timing = inferTiming(c.name, note);
 
         return {
           id: c.id,
@@ -214,6 +227,7 @@ export async function GET(request: Request) {
             : null,
           createdByStaff: c.createdByStaff,
           stockType,
+          timing,
           cash: Number(note.cash) || 0,
           transfer: Number(note.transfer) || 0,
           change: Number(note.change) || 0,

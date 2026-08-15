@@ -22,7 +22,7 @@ export function isWarehouseBranch(branch: {
 }
 
 export function storeBranchWhere() {
-  return { kind: BranchKind.STORE as const };
+  return { kind: "STORE" as const };
 }
 
 /** Staff logged into the brand's สต๊อกกลาง branch */
@@ -42,11 +42,11 @@ export async function requireWarehouseStaff() {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!/kind|Unknown field|column/i.test(msg)) throw e;
-    branch = await prisma.branch.findUnique({
+    const fallback = await prisma.branch.findUnique({
       where: { id: session.branchId },
       select: { id: true, brandId: true, name: true },
     });
-    if (branch) branch = { ...branch, kind: "STORE" };
+    branch = fallback ? { ...fallback, kind: "STORE" } : null;
   }
   if (!branch?.brandId || branch.kind !== "WAREHOUSE") {
     throw new ForbiddenError("หน้านี้สำหรับพนักงานสต๊อกกลาง");

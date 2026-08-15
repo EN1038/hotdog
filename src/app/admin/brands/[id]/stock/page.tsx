@@ -19,6 +19,7 @@ import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { ImageField } from "@/components/admin/ImageField";
+import { DateInput } from "@/components/DateInput";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 type CountType = "WEEKLY" | "MONTHLY" | "CUSTOM";
@@ -129,7 +130,7 @@ const TAB_CATEGORIES: {
     tabs: [
       { id: "dashboard", label: "Dashboard" },
       { id: "products", label: "รายการสต๊อก" },
-      { id: "warehouses", label: "คลังบ้านกลาง" },
+      { id: "warehouses", label: "คลังสต๊อกกลาง" },
       { id: "receive", label: "รับเข้า" },
       { id: "transfer", label: "ส่งสาขา/รายงานรับโอน" },
       { id: "copy_menu", label: "คัดลอกเมนู" },
@@ -253,6 +254,8 @@ type StockPayload = {
     code: string;
     stockEnabled: boolean;
     allowNegativeStock: boolean;
+    stockAgingWarnDays?: number;
+    stockAgingCriticalDays?: number;
   };
   warehouse: {
     id: string;
@@ -315,7 +318,7 @@ type CountDetail = {
 const TABS: { id: TabId; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "products", label: "รายการสต๊อก" },
-  { id: "warehouses", label: "คลังบ้านกลาง" },
+  { id: "warehouses", label: "คลังสต๊อกกลาง" },
   { id: "receive", label: "รับเข้า" },
   { id: "transfer", label: "ส่งสาขา/รายงานรับโอน" },
   { id: "copy_menu", label: "คัดลอกเมนู" },
@@ -653,6 +656,8 @@ export default function BrandStockPage() {
   async function patchSettings(payload: {
     stockEnabled?: boolean;
     allowNegativeStock?: boolean;
+    stockAgingWarnDays?: number;
+    stockAgingCriticalDays?: number;
   }) {
     setBusy(true);
     try {
@@ -1089,7 +1094,7 @@ export default function BrandStockPage() {
 
   async function submitCreateWarehouse() {
     if (!newWarehouseName.trim()) {
-      toast.error("กรุณาระบุชื่อคลังสินค้าบ้านกลาง");
+      toast.error("กรุณาระบุชื่อคลังสต๊อกกลาง");
       return;
     }
     setBusy(true);
@@ -1104,7 +1109,7 @@ export default function BrandStockPage() {
         toast.error("สร้างคลังไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
         return;
       }
-      toast.success(`สร้างคลังสินค้าบ้านกลาง "${newWarehouseName}" เรียบร้อยแล้ว`);
+      toast.success(`สร้างคลังสต๊อกกลาง "${newWarehouseName}" เรียบร้อยแล้ว`);
       setNewWarehouseName("");
       await load();
     } finally {
@@ -1115,7 +1120,7 @@ export default function BrandStockPage() {
   async function submitDeleteWarehouse(locationId: string, name: string) {
     const ok = await confirm({
       title: `ลบคลังสินค้า "${name}"?`,
-      message: "การลบคลังสินค้าบ้านกลางจะไม่สามารถย้อนกลับได้",
+      message: "การลบคลังสต๊อกกลางจะไม่สามารถย้อนกลับได้",
       confirmLabel: "ลบคลัง",
       cancelLabel: "ยกเลิก",
       tone: "danger",
@@ -1134,7 +1139,7 @@ export default function BrandStockPage() {
         toast.error("ลบคลังไม่สำเร็จ", body.error ?? "กรุณาลองใหม่");
         return;
       }
-      toast.success("ลบคลังสินค้าบ้านกลางแล้ว");
+      toast.success("ลบคลังสต๊อกกลางแล้ว");
       await load();
     } finally {
       setBusy(false);
@@ -1294,7 +1299,7 @@ export default function BrandStockPage() {
     <div>
       <AdminPageHeader
         title={`สต๊อก · ${brand.name}`}
-        description="บ้านกลางของแบรนด์ — รับของเข้า ส่งสาขา ตรวจนับ และติดตามยอด"
+        description="สต๊อกกลางของแบรนด์ — รับของเข้า ส่งสาขา ตรวจนับ และติดตามยอด"
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href={`/admin/brands/${id}/kitchen`} className={btnOutline}>
@@ -1314,7 +1319,7 @@ export default function BrandStockPage() {
               ยังไม่ได้เปิดระบบสต๊อก
             </p>
             <p className="mt-0.5 text-xs text-amber-800">
-              กดเปิดใช้งานเพื่อนับจำนวนที่บ้านกลางและสาขา — ระบบเดิม (หมด/ยังมี)
+              กดเปิดใช้งานเพื่อนับจำนวนที่สต๊อกกลางและสาขา — ระบบเดิม (หมด/ยังมี)
               ยังใช้ได้ตามปกติ
             </p>
           </div>
@@ -1403,6 +1408,12 @@ export default function BrandStockPage() {
             onPatchAllowNegative={(v) =>
               void patchSettings({ allowNegativeStock: v })
             }
+            onPatchAging={(warn, critical) =>
+              void patchSettings({
+                stockAgingWarnDays: warn,
+                stockAgingCriticalDays: critical,
+              })
+            }
           />
         ) : (
           <AdminEmptyState
@@ -1415,7 +1426,7 @@ export default function BrandStockPage() {
           {tab === "dashboard" && (
             <DashboardPanel
               dashboard={dashboard}
-              warehouseName={warehouse?.name ?? "บ้านกลาง"}
+              warehouseName={warehouse?.name ?? "สต๊อกกลาง"}
               onGoTransfers={() => setTab("transfer")}
             />
           )}
@@ -1729,7 +1740,7 @@ export default function BrandStockPage() {
             <section className={cardClass}>
               <h3 className="text-sm font-semibold text-slate-900">รับเข้า</h3>
               <p className="mt-0.5 text-xs text-slate-500">
-                รับสินค้าเข้าบ้านกลางหรือตำแหน่งอื่น
+                รับสินค้าเข้าสต๊อกกลางหรือตำแหน่งอื่น
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div>
@@ -1754,11 +1765,11 @@ export default function BrandStockPage() {
                     value={receiveLocationId}
                     onChange={(e) => setReceiveLocationId(e.target.value)}
                   >
-                    <option value="">บ้านกลาง (receive)</option>
+                    <option value="">สต๊อกกลาง (receive)</option>
                     {locations.map((loc) => (
                       <option key={loc.id} value={loc.id}>
                         {loc.name}
-                        {loc.type === "WAREHOUSE" ? " · บ้านกลาง" : ""}
+                        {loc.type === "WAREHOUSE" ? " · สต๊อกกลาง" : ""}
                       </option>
                     ))}
                   </select>
@@ -1811,11 +1822,10 @@ export default function BrandStockPage() {
                 </div>
                 <div>
                   <label className={adminLabelClass}>วันหมดอายุ</label>
-                  <input
+                  <DateInput
                     className={adminInputClass}
-                    type="date"
                     value={receiveExpiresAt}
-                    onChange={(e) => setReceiveExpiresAt(e.target.value)}
+                    onChange={(v) => setReceiveExpiresAt(v)}
                   />
                 </div>
               </div>
@@ -1833,7 +1843,7 @@ export default function BrandStockPage() {
               {(warehouse?.balances?.length ?? 0) > 0 && (
                 <div className="mt-5 border-t border-slate-100 pt-4">
                   <p className="text-xs font-semibold text-slate-700">
-                    ยอดบ้านกลาง
+                    ยอดสต๊อกกลาง
                   </p>
                   <ul className="mt-2 divide-y divide-slate-100">
                     {warehouse!.balances.map((b) => (
@@ -1858,10 +1868,10 @@ export default function BrandStockPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">
-                    จัดการคลังสินค้าบ้านกลาง (Central Warehouses)
+                    จัดการคลังสต๊อกกลาง (Central Warehouses)
                   </h3>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    รองรับคลังสินค้าบ้านกลางหลายแห่งในแบรนด์เดียวกัน เช่น คลังกลาง กทม., คลังกลาง เชียงใหม่
+                    รองรับคลังสต๊อกกลางหลายแห่งในแบรนด์เดียวกัน เช่น คลังกลาง กทม., คลังกลาง เชียงใหม่
                   </p>
                 </div>
               </div>
@@ -1869,7 +1879,7 @@ export default function BrandStockPage() {
               {/* Form Create Warehouse */}
               <div className="mt-5 rounded-2xl bg-slate-50 p-4 border border-slate-200/80 max-w-xl">
                 <h4 className="text-xs font-bold text-slate-800 mb-2">
-                  + เพิ่มคลังสินค้าบ้านกลางแห่งใหม่
+                  + เพิ่มคลังสต๊อกกลางแห่งใหม่
                 </h4>
                 <div className="flex flex-col sm:flex-row gap-2.5">
                   <input
@@ -1892,7 +1902,7 @@ export default function BrandStockPage() {
               {/* Warehouses List */}
               <div className="mt-6 space-y-4">
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  รายการคลังสินค้าบ้านกลางทั้งหมด ({data.warehouses?.length ?? 1} แห่ง)
+                  รายการคลังสต๊อกกลางทั้งหมด ({data.warehouses?.length ?? 1} แห่ง)
                 </h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1957,7 +1967,7 @@ export default function BrandStockPage() {
             <section className={cardClass}>
               <h3 className="text-sm font-semibold text-slate-900">ส่งสาขา</h3>
               <p className="mt-0.5 text-xs text-slate-500">
-                ตัดจากบ้านกลางทันที — สาขาต้องกดยืนยันรับในหน้า Staff
+                ตัดจากสต๊อกกลางทันที — สาขาต้องกดยืนยันรับในหน้า Staff
               </p>
               {enabledBranches.length === 0 ? (
                 <p className="mt-3 text-sm text-amber-800">
@@ -1967,13 +1977,13 @@ export default function BrandStockPage() {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {data.warehouses && data.warehouses.length > 1 && (
                     <div>
-                      <label className={adminLabelClass}>ส่งจากคลังบ้านกลาง</label>
+                      <label className={adminLabelClass}>ส่งจากคลังสต๊อกกลาง</label>
                       <select
                         className={adminSelectClass}
                         value={transferSourceLocationId}
                         onChange={(e) => setTransferSourceLocationId(e.target.value)}
                       >
-                        <option value="">-- เลือกคลังบ้านกลางต้นทาง --</option>
+                        <option value="">-- เลือกคลังสต๊อกกลางต้นทาง --</option>
                         {data.warehouses.map((w) => (
                           <option key={w.id} value={w.id}>
                             🏢 {w.name}
@@ -2101,10 +2111,10 @@ export default function BrandStockPage() {
               {/* Transfer Audit Report: Sent vs Received Qty */}
               <div className="mt-6 border-t border-slate-200 pt-5">
                 <h4 className="text-sm font-bold text-slate-900 mb-1">
-                  รายงานการส่งโอนบ้านกลาง vs หน้าร้านรับยืนยันจริง
+                  รายงานการส่งโอนสต๊อกกลาง vs หน้าร้านรับยืนยันจริง
                 </h4>
                 <p className="text-xs text-slate-500 mb-3">
-                  เปรียบเทียบยอดที่บ้านกลางส่ง กับยอดที่หน้าร้านรับจริงเพื่อตรวจสอบผลต่างสินค้าขาด/เกิน
+                  เปรียบเทียบยอดที่สต๊อกกลางส่ง กับยอดที่หน้าร้านรับจริงเพื่อตรวจสอบผลต่างสินค้าขาด/เกิน
                 </p>
 
                 {!data.completedTransfers?.length ? (
@@ -2117,7 +2127,7 @@ export default function BrandStockPage() {
                           <th className="p-2.5">วันที่รับ</th>
                           <th className="p-2.5">สาขา</th>
                           <th className="p-2.5">สินค้า</th>
-                          <th className="p-2.5 text-center">บ้านกลางส่ง</th>
+                          <th className="p-2.5 text-center">สต๊อกกลางส่ง</th>
                           <th className="p-2.5 text-center">หน้าร้านรับจริง</th>
                           <th className="p-2.5 text-center">ผลต่าง</th>
                           <th className="p-2.5">หมายเหตุ</th>
@@ -2180,10 +2190,10 @@ export default function BrandStockPage() {
           {tab === "copy_menu" && (
             <section className={cardClass}>
               <h3 className="text-base font-extrabold text-slate-900">
-                คัดลอกและซิงค์เมนูระหว่างบ้านกลางกับสาขา
+                คัดลอกและซิงค์เมนูระหว่างสต๊อกกลางกับสาขา
               </h3>
               <p className="mt-1 text-xs text-slate-500">
-                คัดลอกรายการเมนูเพื่อสร้าง SKU สต๊อกบ้านกลาง หรือส่งเมนูแม่แบบบ้านกลางไปสร้างเปิดขายในสาขาพร้อมผูกสต๊อกให้อัตโนมัติ
+                คัดลอกรายการเมนูเพื่อสร้าง SKU สต๊อกกลาง หรือส่งเมนูแม่แบบสต๊อกกลางไปสร้างเปิดขายในสาขาพร้อมผูกสต๊อกให้อัตโนมัติ
               </p>
 
               <div className="mt-5 space-y-4 max-w-xl">
@@ -2200,10 +2210,10 @@ export default function BrandStockPage() {
                       }`}
                     >
                       <span className="block text-xs font-extrabold text-slate-900">
-                        🏢 บ้านกลาง ➔ 🏪 สาขา
+                        🏢 สต๊อกกลาง ➔ 🏪 สาขา
                       </span>
                       <span className="block text-[11px] text-slate-500 mt-0.5">
-                        คัดลอก SKU บ้านกลาง ไปเปิดเป็นเมนูขายประจำสาขา
+                        คัดลอก SKU สต๊อกกลาง ไปเปิดเป็นเมนูขายประจำสาขา
                       </span>
                     </button>
 
@@ -2217,10 +2227,10 @@ export default function BrandStockPage() {
                       }`}
                     >
                       <span className="block text-xs font-extrabold text-slate-900">
-                        🏪 สาขา ➔ 🏢 บ้านกลาง
+                        🏪 สาขา ➔ 🏢 สต๊อกกลาง
                       </span>
                       <span className="block text-[11px] text-slate-500 mt-0.5">
-                        ดึงรายการเมนูขายจากสาขา มาสร้างเป็น SKU ในบ้านกลาง
+                        ดึงรายการเมนูขายจากสาขา มาสร้างเป็น SKU ในสต๊อกกลาง
                       </span>
                     </button>
                   </div>
@@ -3091,20 +3101,18 @@ export default function BrandStockPage() {
               <div className="mt-3 grid max-w-md gap-3 sm:grid-cols-2">
                 <div>
                   <label className={adminLabelClass}>จากวันที่</label>
-                  <input
+                  <DateInput
                     className={adminInputClass}
-                    type="date"
                     value={acctFrom}
-                    onChange={(e) => setAcctFrom(e.target.value)}
+                    onChange={(v) => setAcctFrom(v)}
                   />
                 </div>
                 <div>
                   <label className={adminLabelClass}>ถึงวันที่</label>
-                  <input
+                  <DateInput
                     className={adminInputClass}
-                    type="date"
                     value={acctTo}
-                    onChange={(e) => setAcctTo(e.target.value)}
+                    onChange={(v) => setAcctTo(v)}
                   />
                 </div>
               </div>
@@ -3125,6 +3133,12 @@ export default function BrandStockPage() {
               onToggleStock={toggleStock}
               onPatchAllowNegative={(v) =>
                 void patchSettings({ allowNegativeStock: v })
+              }
+              onPatchAging={(warn, critical) =>
+                void patchSettings({
+                  stockAgingWarnDays: warn,
+                  stockAgingCriticalDays: critical,
+                })
               }
             />
           )}
@@ -3240,17 +3254,44 @@ function SettingsPanel({
   busy,
   onToggleStock,
   onPatchAllowNegative,
+  onPatchAging,
 }: {
   brand: StockPayload["brand"];
   busy: boolean;
   onToggleStock: (enabled: boolean) => void | Promise<void>;
   onPatchAllowNegative: (value: boolean) => void;
+  onPatchAging: (warnDays: number, criticalDays: number) => void;
 }) {
+  const [warnDays, setWarnDays] = useState(
+    String(brand.stockAgingWarnDays ?? 3),
+  );
+  const [criticalDays, setCriticalDays] = useState(
+    String(brand.stockAgingCriticalDays ?? 5),
+  );
+
+  useEffect(() => {
+    setWarnDays(String(brand.stockAgingWarnDays ?? 3));
+    setCriticalDays(String(brand.stockAgingCriticalDays ?? 5));
+  }, [brand.stockAgingWarnDays, brand.stockAgingCriticalDays]);
+
+  function saveAging() {
+    const warn = Number(warnDays);
+    const critical = Number(criticalDays);
+    if (!Number.isFinite(warn) || warn < 0 || warn > 30) {
+      return;
+    }
+    if (!Number.isFinite(critical) || critical < 0 || critical > 30) {
+      return;
+    }
+    if (critical < warn) return;
+    onPatchAging(Math.floor(warn), Math.floor(critical));
+  }
+
   return (
     <section className={cardClass}>
       <h3 className="text-sm font-semibold text-slate-900">ตั้งค่าสต๊อก</h3>
       <p className="mt-0.5 text-xs text-slate-500">
-        ควบคุมการเปิดใช้ระบบและความยืดหยุ่นของยอดติดลบ
+        ควบคุมการเปิดใช้ระบบ ความยืดหยุ่นของยอดติดลบ และเกณฑ์แจ้งเตือนของใกล้เสีย
       </p>
 
       <div className="mt-4 space-y-3">
@@ -3301,6 +3342,60 @@ function SettingsPanel({
             </span>
           </span>
         </label>
+
+        <div className="rounded-xl border border-orange-100 bg-orange-50/50 px-4 py-3">
+          <p className="text-sm font-medium text-slate-900">
+            แจ้งเตือนของใกล้เสีย (ทุกสาขา)
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            ค่าเริ่มต้น: ค้าง 3–4 วัน = ส้ม · ≥ 5 วัน (หรือใกล้/หมดอายุ) = แดง
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold text-orange-800">
+                ส้ม — ค้างตั้งแต่ (วัน)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                disabled={busy || !brand.stockEnabled}
+                value={warnDays}
+                onChange={(e) => setWarnDays(e.target.value)}
+                className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold tabular-nums text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold text-rose-800">
+                แดง — ค้างตั้งแต่ (วัน)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                disabled={busy || !brand.stockEnabled}
+                value={criticalDays}
+                onChange={(e) => setCriticalDays(e.target.value)}
+                className="w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold tabular-nums text-slate-900"
+              />
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] font-medium text-slate-500">
+            ใกล้หมดอายุ ≤ 1 วัน หรือหมดอายุแล้ว → แดงเสมอ · อายุเก็บต่อเมนูตั้งที่หน้าแก้ไขเมนูสาขา
+          </p>
+          <button
+            type="button"
+            disabled={
+              busy ||
+              !brand.stockEnabled ||
+              Number(criticalDays) < Number(warnDays)
+            }
+            onClick={saveAging}
+            className={`${btnPrimary} mt-3`}
+          >
+            บันทึกเกณฑ์แจ้งเตือน
+          </button>
+        </div>
       </div>
     </section>
   );

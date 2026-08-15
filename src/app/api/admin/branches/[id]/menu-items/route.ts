@@ -101,6 +101,7 @@ export async function POST(request: Request, { params }: Params) {
         hideFromStaff: body.hideFromStaff ?? false,
         isOutOfStock: body.isOutOfStock ?? false,
         sortOrder: body.sortOrder ?? 0,
+        defaultShelfLifeDays: body.defaultShelfLifeDays ?? null,
         ...(optionGroupIds.length
           ? {
               optionGroupLinks: {

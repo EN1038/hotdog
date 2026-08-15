@@ -151,7 +151,9 @@ function OwnerHomeInner() {
 
   const brand = data?.brand;
   const branches = data?.branches ?? [];
-  const liveBranches = branches.filter((b) => !b.isTest);
+  const liveBranches = branches.filter(
+    (b) => !b.isTest && b.kind !== "WAREHOUSE",
+  );
 
   async function toggleOpen(branch: OwnerBranchRow) {
     setTogglingId(branch.id);
@@ -195,6 +197,12 @@ function OwnerHomeInner() {
           label="คีย์ออเดอร์"
           hint="ให้พนักงานขายหน้าร้าน"
           href="/staff/login"
+        />
+        <Tile
+          color="#7c3aed"
+          label="สต๊อกกลาง"
+          hint="นำเข้า · เสียบไม้ · จ่ายออก"
+          href="/owner/stock"
         />
         <Tile
           color="#0f9d8e"

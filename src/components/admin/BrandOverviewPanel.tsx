@@ -187,6 +187,7 @@ export function BrandOverviewPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
+  const [expandFocus, setExpandFocus] = useState<"all" | "waste">("all");
   const [copyMsgByBranch, setCopyMsgByBranch] = useState<
     Record<string, string>
   >({});
@@ -571,13 +572,37 @@ export function BrandOverviewPanel({
   }
 
   function expandLabel(open: boolean) {
+    if (open && expandFocus === "waste") return "ปิดของเสีย";
     if (isRestock) return open ? "ปิดรายการเติม" : "ดูรายการเติม";
     if (isIssue) return open ? "ปิดรายการจ่าย" : "ดูรายการจ่าย";
     if (isSales) return open ? "ปิดรายการขาย" : "ดูรายการขาย";
     return open ? "ปิดสต๊อกเมนู" : "ดูสต๊อกเมนู";
   }
 
+  function openBranchExpand(branchId: string, focus: "all" | "waste" = "all") {
+    if (expandedBranchId === branchId && expandFocus === focus) {
+      setExpandedBranchId(null);
+      return;
+    }
+    setExpandFocus(focus);
+    setExpandedBranchId(branchId);
+  }
+
+  function branchWasteHref(branchId: string) {
+    const rangeFrom = from <= to ? from : to;
+    const rangeTo = from <= to ? to : from;
+    const qs = new URLSearchParams({
+      tab: "stock",
+      view: "movements",
+      type: "WASTE",
+      from: rangeFrom,
+      to: rangeTo,
+    });
+    return `/admin/branches/${branchId}?${qs.toString()}`;
+  }
+
   function itemQty(item: StockItem) {
+    if (expandFocus === "waste") return item.wasteQty ?? 0;
     if (isRestock) return item.restockQty ?? 0;
     if (isIssue) return item.issueQty ?? 0;
     if (isSales) return item.soldQty ?? 0;
@@ -585,6 +610,15 @@ export function BrandOverviewPanel({
   }
 
   function itemSecondary(item: StockItem) {
+    if (expandFocus === "waste") {
+      const unit =
+        typeof item.unitPrice === "number"
+          ? item.unitPrice
+          : item.quantity > 0
+            ? item.value / item.quantity
+            : 0;
+      return Math.round((item.wasteQty ?? 0) * unit * 100) / 100;
+    }
     if (isRestock || isSales) return null;
     if (isIssue) return item.soldQty ?? 0;
     return item.wasteQty ?? 0;
@@ -592,6 +626,7 @@ export function BrandOverviewPanel({
 
   function detailItemsForBranch(b: BranchRow) {
     return (b.stockItems ?? []).filter((item) => {
+      if (expandFocus === "waste") return (item.wasteQty ?? 0) > 0;
       if (isRestock) return (item.restockQty ?? 0) > 0;
       if (isSales) return (item.soldQty ?? 0) > 0;
       if (isIssue)
@@ -621,7 +656,9 @@ export function BrandOverviewPanel({
     }
     lines.push("");
 
-    if (isHome) {
+    if (expandFocus === "waste") {
+      lines.push(`ของเสีย ${money(b.wasteQty)} ชิ้น`);
+    } else if (isHome) {
       lines.push(
         `ขายได้ ${money(b.completedRevenue)} ฿ (เงินสด ${money(b.cashRevenue ?? 0)} · โอน ${money(b.transferRevenue ?? 0)}) · ค่าใช้จ่าย ${money(b.expenseTotal)} ฿ (เงินสด ${money(b.cashExpense ?? 0)} · โอน ${money(b.transferExpense ?? 0)}) · ขายไป ${money(b.soldQty)} · สต๊อก ${money(b.saleStockQty)} · ของเสีย ${money(b.wasteQty)}`,
       );
@@ -650,7 +687,11 @@ export function BrandOverviewPanel({
     } else {
       for (const item of items) {
         const seq = item.sequence || "—";
-        if (isRestock) {
+        if (expandFocus === "waste") {
+          lines.push(
+            `${seq}. ${item.name}: ของเสีย ${money(item.wasteQty ?? 0)}`,
+          );
+        } else if (isRestock) {
           lines.push(
             `${seq}. ${item.name}: เติม ${money(item.restockQty ?? 0)}`,
           );
@@ -708,7 +749,7 @@ export function BrandOverviewPanel({
   const tableCols =
     1 +
     (showBrandCol ? 1 : 0) +
-    (isHome ? 5 : 0) +
+    (isHome ? 9 : 0) +
     (isSales ? 2 : 0) +
     (isStockNow ? 2 : 0) +
     (isRestock ? 2 : 0) +
@@ -1380,7 +1421,16 @@ export function BrandOverviewPanel({
                             {money(b.saleStockQty)}
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums">
-                            {money(b.wasteQty)}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openBranchExpand(b.branchId, "waste")
+                              }
+                              className="font-semibold text-orange-700 hover:underline"
+                              title="ดูเมนูที่ตัดของเสีย"
+                            >
+                              {money(b.wasteQty)}
+                            </button>
                           </td>
                         </>
                       ) : null}
@@ -1429,7 +1479,16 @@ export function BrandOverviewPanel({
                             {money(b.soldQty)}
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums">
-                            {money(b.wasteQty)}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openBranchExpand(b.branchId, "waste")
+                              }
+                              className="font-semibold text-orange-700 hover:underline"
+                              title="ดูเมนูที่ตัดของเสีย"
+                            >
+                              {money(b.wasteQty)}
+                            </button>
                           </td>
                         </>
                       ) : null}
@@ -1439,7 +1498,10 @@ export function BrandOverviewPanel({
                             type="button"
                             className="text-xs font-semibold text-violet-700 hover:underline"
                             onClick={() =>
-                              setExpandedBranchId(open ? null : b.branchId)
+                              openBranchExpand(
+                                b.branchId,
+                                open ? expandFocus : "all",
+                              )
                             }
                           >
                             {expandLabel(open)}
@@ -1451,6 +1513,20 @@ export function BrandOverviewPanel({
                       <tr className="bg-violet-50/40">
                         <td colSpan={tableCols} className="px-3 py-3">
                           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-700">
+                              {expandFocus === "waste"
+                                ? `ของเสีย ${money(b.wasteQty)} ชิ้น — เมนูที่ตัดในช่วงนี้`
+                                : null}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                            {expandFocus === "waste" ? (
+                              <Link
+                                href={branchWasteHref(b.branchId)}
+                                className="rounded-lg border border-orange-300 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-800 hover:bg-orange-100"
+                              >
+                                ดูรายการที่หน้าร้านบันทึก
+                              </Link>
+                            ) : null}
                             <button
                               type="button"
                               disabled={copyBusyBranchId === b.branchId}
@@ -1470,6 +1546,7 @@ export function BrandOverviewPanel({
                                 คัดลอกแล้วไปวางในไลน์ได้
                               </p>
                             )}
+                            </div>
                           </div>
                           {detailItems.length === 0 ? (
                             <p className="text-xs text-slate-500">
@@ -1487,28 +1564,33 @@ export function BrandOverviewPanel({
                                       เมนู
                                     </th>
                                     <th className="px-2.5 py-2 text-right">
-                                      {isRestock
-                                        ? "เติม"
-                                        : isIssue
-                                          ? "จ่ายออก"
-                                          : isSales
-                                            ? "ขาย"
-                                            : "คงเหลือ"}
+                                      {expandFocus === "waste"
+                                        ? "ของเสีย"
+                                        : isRestock
+                                          ? "เติม"
+                                          : isIssue
+                                            ? "จ่ายออก"
+                                            : isSales
+                                              ? "ขาย"
+                                              : "คงเหลือ"}
                                     </th>
-                                    {isIssue ? (
-                                      <th className="px-2.5 py-2 text-right">
-                                        ขายตัด
-                                      </th>
-                                    ) : isSales ? (
+                                    {expandFocus === "waste" || isSales ? (
                                       <th className="px-2.5 py-2 text-right">
                                         มูลค่า ~
+                                      </th>
+                                    ) : isIssue ? (
+                                      <th className="px-2.5 py-2 text-right">
+                                        ขายตัด
                                       </th>
                                     ) : (
                                       <th className="px-2.5 py-2 text-right">
                                         {isRestock ? "—" : "ของเสีย"}
                                       </th>
                                     )}
-                                    {!isRestock && !isIssue && !isSales ? (
+                                    {!isRestock &&
+                                    !isIssue &&
+                                    !isSales &&
+                                    expandFocus !== "waste" ? (
                                       <th className="px-2.5 py-2 text-right">
                                         มูลค่า
                                       </th>
@@ -1540,18 +1622,23 @@ export function BrandOverviewPanel({
                                       </td>
                                       <td
                                         className={`px-2.5 py-1.5 text-right tabular-nums ${
-                                          isSales
+                                          expandFocus === "waste" || isSales
                                             ? "text-slate-700"
                                             : "text-rose-700"
                                         }`}
                                       >
-                                        {isRestock
-                                          ? "—"
-                                          : isSales
-                                            ? `${money(soldValue)} ฿`
-                                            : money(itemSecondary(item) ?? 0)}
+                                        {expandFocus === "waste"
+                                          ? `${money(itemSecondary(item) ?? 0)} ฿`
+                                          : isRestock
+                                            ? "—"
+                                            : isSales
+                                              ? `${money(soldValue)} ฿`
+                                              : money(itemSecondary(item) ?? 0)}
                                       </td>
-                                      {!isRestock && !isIssue && !isSales ? (
+                                      {!isRestock &&
+                                      !isIssue &&
+                                      !isSales &&
+                                      expandFocus !== "waste" ? (
                                         <td className="px-2.5 py-1.5 text-right tabular-nums">
                                           {money(item.value)} ฿
                                         </td>

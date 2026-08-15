@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 import {
@@ -36,12 +36,15 @@ type BrandingPayload = {
   canSell?: boolean;
   todayRevenueBaht?: number;
   todayOrderCount?: number;
+  branchKind?: string;
+  brandId?: string | null;
 };
 
 type BranchChoice = {
   branchId: string;
   branchName: string;
   brandName: string | null;
+  branchKind?: "STORE" | "WAREHOUSE";
 };
 
 function formatBranchLabel(name: string) {
@@ -127,6 +130,7 @@ function StaffAppShellInner({
   showHeader?: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const branding = useSiteBranding();
   const branchPickerId = useId();
   const [meta, setMeta] = useState<BrandingPayload | null>(null);
@@ -167,6 +171,19 @@ function StaffAppShellInner({
     reloadMeta();
     reloadBranches();
   }, [pathname]);
+
+  useEffect(() => {
+    if (!meta) return;
+    const warehouse = meta.branchKind === "WAREHOUSE";
+    const path = pathname || "";
+    const warehouseOk =
+      path.startsWith("/staff/warehouse") ||
+      path.startsWith("/staff/settings") ||
+      path.startsWith("/staff/login");
+    if (warehouse && !warehouseOk) {
+      router.replace("/staff/warehouse");
+    }
+  }, [meta, pathname, router]);
 
   useEffect(() => {
     const onReload = () => {
@@ -229,12 +246,18 @@ function StaffAppShellInner({
   const coverUrl = meta?.brand?.coverImageUrl || null;
   const pendingOrders = meta?.pendingOrderCount ?? 0;
   const canSwitchBranch = branchChoices.length > 1;
+  const warehouseMode = meta?.branchKind === "WAREHOUSE";
   const branchLabel = branchName
-    ? `สาขา ${formatBranchLabel(branchName)}`
+    ? warehouseMode
+      ? formatBranchLabel(branchName)
+      : `สาขา ${formatBranchLabel(branchName)}`
     : "—";
 
-  const navActive: StaffShellTab =
-    active === "key" || active === "stock" || active === "shift-stock"
+  const navActive: StaffShellTab = warehouseMode
+    ? active === "settings"
+      ? "settings"
+      : "stock"
+    : active === "key" || active === "stock" || active === "shift-stock"
       ? "home"
       : active;
 
@@ -244,7 +267,22 @@ function StaffAppShellInner({
     label: string;
     icon: ReactNode;
     badge?: number;
-  }[] = [
+  }[] = warehouseMode
+    ? [
+        {
+          id: "stock",
+          href: "/staff/warehouse",
+          label: "สต๊อกกลาง",
+          icon: <IconStore size={24} />,
+        },
+        {
+          id: "settings",
+          href: "/staff/settings",
+          label: "ตั้งค่า",
+          icon: <IconGear size={24} />,
+        },
+      ]
+    : [
     {
       id: "home",
       href: "/staff",
@@ -344,7 +382,7 @@ function StaffAppShellInner({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {active !== "home" ? (
+                {active !== "home" && !warehouseMode ? (
                   <div
                     className="flex min-w-[7.25rem] flex-col items-start justify-center rounded-2xl bg-white px-3.5 py-2.5 text-left shadow-sm"
                     title="ยอดขายวันนี้ (ออเดอร์ที่สำเร็จแล้ว)"
@@ -443,6 +481,11 @@ function StaffAppShellInner({
                         <span className="block truncate text-[15px] font-bold">
                           {formatBranchLabel(b.branchName)}
                         </span>
+                        {b.branchKind === "WAREHOUSE" ? (
+                          <span className="mt-0.5 block text-xs font-semibold text-teal-700">
+                            สต๊อกกลาง
+                          </span>
+                        ) : null}
                         {b.brandName ? (
                           <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
                             {b.brandName}

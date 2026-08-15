@@ -51,6 +51,7 @@ enum BrandStatus {
   ACTIVE
   PAUSED
   EXPIRED
+  DELETED
 }
 
 enum BrandPlan {
@@ -58,6 +59,13 @@ enum BrandPlan {
   WEIGH_TABLE
   MALA
   MULTI
+}
+
+enum BrandInvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
 }
 
 enum PriceRange {
@@ -98,6 +106,19 @@ enum BranchOperatingMode {
   NORMAL
   SKEWER
   BBQ_WEIGH
+}
+
+/// STORE = หน้าร้านขาย; WAREHOUSE = สต๊อกกลาง (ไม่มีเมนูขาย)
+enum BranchKind {
+  STORE
+  WAREHOUSE
+}
+
+/// How สต๊อกกลาง sends goods to store branches
+enum WarehouseIssueMode {
+  TRANSFER
+  ISSUE
+  BOTH
 }
 
 enum TableSessionStatus {
@@ -199,6 +220,8 @@ model Admin {
   passwordHash           String
   /// AES-GCM encrypted plaintext for platform recovery/view only (never sent to brand admins)
   passwordEnc            String?
+  /// Brand owner login phone (normalized digits). Platform admins usually leave null.
+  phone                  String?            @unique
   isPlatformAdmin        Boolean            @default(false)
   /// LINE user id after admin adds the Official Account and links by one-time code
   lineUserId             String?            @unique
@@ -230,6 +253,8 @@ model Admin {
   confirmedSkewerOrders  SkewerOrder[]      @relation("SkewerOrderConfirmedByAdmin")
   closedTableSessions    TableSession[]     @relation("TableSessionClosedByAdmin")
   tableSessionLines      TableSessionLine[] @relation("TableSessionLineCreatedByAdmin")
+  primaryOfBrands        Brand[]            @relation("BrandPrimaryAdmin")
+  brandInvoicesCreated   BrandInvoice[]     @relation("BrandInvoiceCreatedBy")
 
   @@index([lineLinkCode])
 }
@@ -258,6 +283,10 @@ model Brand {
   stockEnabled       Boolean            @default(false)
   /// When true, managers may push balances below zero
   allowNegativeStock Boolean            @default(false)
+  /// Fresh stock aging: orange alert when on-hand age ≥ this many days (default 3 → orange for 3–4)
+  stockAgingWarnDays     Int            @default(3)
+  /// Fresh stock aging: red alert when age ≥ this many days, or near/expired (default 5)
+  stockAgingCriticalDays Int            @default(5)
   /// Lifecycle for selling / pausing a tenant
   status             BrandStatus        @default(ACTIVE)
   /// Commercial plan (limits + default modules)
@@ -268,9 +297,18 @@ model Brand {
   bbqEnabled         Boolean            @default(true)
   skewerEnabled      Boolean            @default(true)
   trialEndsAt        DateTime?
+  /// When the brand may start using the system (trial/paid period start)
+  serviceStartsAt    DateTime?
+  /// Undeletable main owner account for this brand (must remain a BrandMember OWNER)
+  primaryAdminId     String?
+  /// Free-text billing notes for platform ops (โอนแล้ว / รอใบเสร็จ ฯลฯ)
+  billingNote        String?
+  lastPaidAt         DateTime?
+  nextDueAt          DateTime?
   createdAt          DateTime           @default(now())
   branches           Branch[]
   members            BrandMember[]
+  primaryAdmin       Admin?             @relation("BrandPrimaryAdmin", fields: [primaryAdminId], references: [id], onDelete: SetNull)
   activityLogs       AdminActivityLog[]
   products           BrandProduct[]
   stockLocations     StockLocation[]
@@ -282,6 +320,9 @@ model Brand {
   stockLots            StockLot[]
   kitchenProductions   KitchenProduction[]
   branchStockRequests  BranchStockRequest[]
+  invoices             BrandInvoice[]
+
+  @@index([primaryAdminId])
 }
 
 /**
@@ -323,6 +364,28 @@ model BrandMember {
   brand     Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
   @@unique([adminId, brandId])
+}
+
+/// Manual SaaS invoice / receipt ledger (platform records payment offline)
+model BrandInvoice {
+  id               String             @id @default(cuid())
+  brandId          String
+  number           String
+  title            String
+  amountBaht       Decimal            @db.Decimal(10, 2)
+  status           BrandInvoiceStatus @default(DRAFT)
+  periodLabel      String?
+  issuedAt         DateTime?
+  paidAt           DateTime?
+  note             String?
+  createdAt        DateTime           @default(now())
+  createdByAdminId String?
+  brand            Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  createdByAdmin   Admin?             @relation("BrandInvoiceCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([brandId, number])
+  @@index([brandId, createdAt])
+  @@index([brandId, status])
 }
 
 /// Idempotency log: one LINE daily summary push per branch operating day
@@ -430,6 +493,12 @@ model Branch {
   isHidden                     Boolean                      @default(false)
   /// Sandbox / QA branch for the brand — show “ทดลอง” badge; not production ops
   isTest                       Boolean                      @default(false)
+  /// STORE = ขายหน้าร้าน; WAREHOUSE = สต๊อกกลาง (ตั้งชื่อ + สิทธิ์พนักงาน ได้เหมือนสาขา)
+  kind                         BranchKind                   @default(STORE)
+  /// WAREHOUSE only: โอนรอรับ / จ่ายออกทันที / ทั้งสอง
+  warehouseIssueMode           WarehouseIssueMode           @default(TRANSFER)
+  /// WAREHOUSE only: empty = ทุกสาขาขาย; otherwise only these store branch ids
+  warehouseAllowedBranchIds    String[]                     @default([])
   /**
    * @deprecated Prefer storefrontHours / deliveryHours
    */
@@ -478,6 +547,7 @@ model Branch {
 
   @@unique([brandId, code])
   @@index([alertSoundId])
+  @@index([brandId, kind])
 }
 
 /// Staff open/close round for a branch (multiple per calendar day).
@@ -493,6 +563,8 @@ model BranchShift {
   closedByStaffId String?
   /// Float / change money at open (ตังทอน)
   openingCash     Decimal      @db.Decimal(10, 2)
+  /// Cash counted in drawer when closing the round (นับเงินสดตอนปิด)
+  closingCash     Decimal?     @db.Decimal(10, 2)
   /// Optional note when opening the round (e.g. เงินทอนสำหรับเปิดร้าน)
   note            String?
   /// Admin cancelled this shift (void/mistake) — still shown in history, not active
@@ -590,6 +662,8 @@ model BranchMenuItem {
   promoContinuous              Boolean                      @default(false)
   promoStartsAt                DateTime?
   promoEndsAt                  DateTime?
+  /// Default shelf life in days for fresh receive (e.g. mushrooms = 2)
+  defaultShelfLifeDays         Int?
   description                  String?
   categoryId                   String?
   imageUrl                     String?
@@ -656,6 +730,10 @@ model BranchMenuItemStockHistory {
   /// When set, this line was cancelled (stock effect reversed)
   cancelledAt      DateTime?
   cancelNote       String?
+  /// Business receive day (defaults to createdAt if null)
+  receivedAt       DateTime?
+  /// Expiry / best-before for fresh items
+  expiresAt        DateTime?
   createdAt        DateTime @default(now())
   createdByStaffId String?
 

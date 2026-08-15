@@ -29,11 +29,6 @@ import {
   toAppStaffRoles,
 } from "@/lib/staff-login";
 
-const adminSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-});
-
 const customerSchema = z.object({
   phone: z.string().min(9),
   name: z.string().trim().min(1, "กรุณากรอกชื่อ").optional(),
@@ -46,11 +41,80 @@ export async function POST(request: Request) {
     const type = searchParams.get("type");
 
     if (type === "admin") {
-      const { username, password } = adminSchema.parse(body);
-      const admin = await prisma.admin.findUnique({
-        where: { username },
+      const adminBody = z
+        .object({
+          username: z.string().min(1).optional(),
+          password: z.string().min(1).optional(),
+          phone: z.string().min(9).optional(),
+          challengeId: z.string().min(1).optional(),
+          otpCode: z.string().trim().min(4).max(8).optional(),
+        })
+        .parse(body);
+
+      // Owner OTP login
+      if (adminBody.challengeId && adminBody.otpCode && adminBody.phone) {
+        await ensureProdSchemaCompat();
+        if (!isTaximailConfigured()) {
+          return jsonError("ยังไม่ได้ตั้งค่า Taximail OTP", 503);
+        }
+        const phone = normalizePhone(adminBody.phone);
+        const otp = await consumeOtpChallenge({
+          phone,
+          challengeId: adminBody.challengeId,
+          otpCode: adminBody.otpCode,
+          purpose: "owner",
+        });
+        if (!otp.ok) return jsonError(otp.message, otp.status);
+
+        const admin = await prisma.admin.findFirst({
+          where: {
+            isPlatformAdmin: false,
+            OR: [{ phone }, { username: phone }],
+          },
+          select: {
+            id: true,
+            username: true,
+            isPlatformAdmin: true,
+            brandMembers: { select: { brandId: true } },
+          },
+        });
+        if (!admin || admin.brandMembers.length === 0) {
+          return jsonError("ไม่พบบัญชีเจ้าของร้าน", 404);
+        }
+        const brandIds = admin.brandMembers.map((m) => m.brandId);
+        const res = NextResponse.json({
+          ok: true,
+          isPlatformAdmin: false,
+          brandIds,
+        });
+        await attachSessionCookie(res, {
+          type: "admin",
+          adminId: admin.id,
+          username: admin.username,
+          isPlatformAdmin: false,
+          brandIds,
+        });
+        return res;
+      }
+
+      const loginId = (adminBody.username ?? adminBody.phone ?? "").trim();
+      const password = adminBody.password ?? "";
+      if (!loginId || !password) {
+        return jsonError("กรุณากรอกเบอร์/ไอดีและรหัสผ่าน");
+      }
+      const phoneGuess = normalizePhone(loginId);
+      const admin = await prisma.admin.findFirst({
+        where: {
+          OR: [
+            { username: loginId.toLowerCase() },
+            ...(phoneGuess.length >= 9
+              ? [{ phone: phoneGuess }, { username: phoneGuess }]
+              : []),
+          ],
+        },
         select: {
           id: true,
+          username: true,
           passwordHash: true,
           isPlatformAdmin: true,
           brandMembers: { select: { brandId: true } },
@@ -78,7 +142,7 @@ export async function POST(request: Request) {
       await attachSessionCookie(res, {
         type: "admin",
         adminId: admin.id,
-        username,
+        username: admin.username,
         isPlatformAdmin,
         brandIds,
       });

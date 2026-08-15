@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { isBangkokDateKey } from "@/lib/constants";
 
 /** YYYY-MM-DD → DD/MM/YYYY */
@@ -57,11 +57,13 @@ export type DateInputProps = {
   disabled?: boolean;
   required?: boolean;
   placeholder?: string;
-  /** Show native calendar button (default true) */
+  /** Show calendar icon (default true) */
   showCalendar?: boolean;
   /**
-   * Open the native calendar when tapping/clicking anywhere on the field
-   * (not only the icon). Makes the field picker-only (not free-typed).
+   * Prefer native picker when tapping the field (default true).
+   * Uses a full-size transparent `type="date"` overlay — works on iOS/Android
+   * where `showPicker()` on a 0×0 hidden input does nothing.
+   * Set false to allow free typing DD/MM/YYYY instead.
    */
   openPickerOnClick?: boolean;
   "aria-label"?: string;
@@ -83,14 +85,13 @@ export function DateInput({
   required,
   placeholder = "วว/ดด/ปปปป",
   showCalendar = true,
-  openPickerOnClick,
+  openPickerOnClick = true,
   "aria-label": ariaLabel,
 }: DateInputProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
-  const nativeRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(() => (value ? isoToDmy(value) : ""));
-  const openOnClick = openPickerOnClick === true;
+  const pickerMode = openPickerOnClick !== false;
 
   useEffect(() => {
     setText(value ? isoToDmy(value) : "");
@@ -132,104 +133,74 @@ export function DateInput({
     setText(value ? isoToDmy(value) : "");
   }
 
-  function openNativePicker() {
-    const el = nativeRef.current;
-    if (!el || disabled) return;
-    try {
-      el.showPicker();
-    } catch {
-      el.click();
-    }
-  }
+  const displayClass = [
+    className,
+    showCalendar ? "pr-9" : "",
+    pickerMode ? "cursor-pointer" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div
-      className={`relative w-full${openOnClick && !disabled ? " cursor-pointer" : ""}`}
-      onClick={
-        openOnClick && !disabled
-          ? (e) => {
-              // Don't steal clicks from the calendar button (it opens itself)
-              if ((e.target as HTMLElement).closest("button")) return;
-              openNativePicker();
-            }
-          : undefined
-      }
-    >
+    <div className={`relative w-full ${pickerMode && !disabled ? "cursor-pointer" : ""}`}>
       <input
         id={inputId}
         name={name}
         type="text"
-        inputMode="numeric"
+        inputMode={pickerMode ? undefined : "numeric"}
         autoComplete="off"
         placeholder={placeholder}
         disabled={disabled}
         required={required}
-        readOnly={openOnClick}
+        readOnly={pickerMode}
         aria-label={ariaLabel}
         value={text}
         onChange={(e) => handleTextChange(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={
-          openOnClick
-            ? (e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openNativePicker();
-                }
-              }
-            : undefined
-        }
-        className={
-          showCalendar
-            ? className
-              ? `${className} pr-8${openOnClick ? " cursor-pointer" : ""}`
-              : `pr-8${openOnClick ? " cursor-pointer" : ""}`
-            : className
-        }
+        onBlur={pickerMode ? undefined : handleBlur}
+        tabIndex={pickerMode ? -1 : undefined}
+        className={displayClass}
       />
+
+      {/* Full-field native picker — reliable on mobile (iOS/Android) */}
+      <input
+        type="date"
+        tabIndex={pickerMode ? 0 : -1}
+        aria-label={ariaLabel ? `${ariaLabel} — เลือกจากปฏิทิน` : "เลือกวันที่จากปฏิทิน"}
+        disabled={disabled}
+        min={min || undefined}
+        max={max || undefined}
+        value={isBangkokDateKey(value) ? value : ""}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next) commit(next);
+        }}
+        className={
+          pickerMode
+            ? "absolute inset-0 z-20 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+            : "pointer-events-none absolute h-0 w-0 opacity-0"
+        }
+        style={pickerMode ? { fontSize: 16 } : undefined}
+      />
+
       {showCalendar ? (
-        <>
-          <input
-            ref={nativeRef}
-            type="date"
-            tabIndex={-1}
-            aria-hidden
-            disabled={disabled}
-            min={min || undefined}
-            max={max || undefined}
-            value={isBangkokDateKey(value) ? value : ""}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (next) commit(next);
-            }}
-            className="pointer-events-none absolute h-0 w-0 opacity-0"
-          />
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label="เปิดปฏิทิน"
-            onClick={(e) => {
-              e.stopPropagation();
-              openNativePicker();
-            }}
-            className="absolute top-1/2 right-1 z-10 -translate-y-1/2 cursor-pointer rounded p-0.5 text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+        <span
+          className="pointer-events-none absolute top-1/2 right-2 z-10 -translate-y-1/2 text-slate-400"
+          aria-hidden
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <path d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-          </button>
-        </>
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+          </svg>
+        </span>
       ) : null}
     </div>
   );

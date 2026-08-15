@@ -13,6 +13,10 @@ import {
 import { formatThaiPhone } from "@/lib/constants";
 import { getStaffDeviceId } from "@/lib/staff-device";
 import {
+  OTP_TTL_SECONDS,
+  formatOtpCountdown,
+} from "@/lib/otp-ttl";
+import {
   STAFF_LOGIN_DEVICE_LIMIT,
   STAFF_LOGIN_UNREGISTERED,
 } from "@/lib/staff-session-limits";
@@ -24,6 +28,7 @@ type BranchChoice = {
   branchId: string;
   branchName: string;
   brandName: string | null;
+  branchKind?: "STORE" | "WAREHOUSE";
   roles: string[];
 };
 
@@ -46,6 +51,7 @@ export function StaffLoginScreen() {
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [otpRefNo, setOtpRefNo] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
+  const [expiresIn, setExpiresIn] = useState(0);
   const [notice, setNotice] = useState<StaffLoginNoticeKind | null>(null);
 
   useEffect(() => {
@@ -54,12 +60,19 @@ export function StaffLoginScreen() {
     return () => window.clearTimeout(t);
   }, [resendIn]);
 
+  useEffect(() => {
+    if (expiresIn <= 0) return;
+    const t = window.setTimeout(() => setExpiresIn((s) => s - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [expiresIn]);
+
   function resetOtp() {
     setOtpStep(false);
     setOtpCode("");
     setChallengeId(null);
     setOtpRefNo(null);
     setResendIn(0);
+    setExpiresIn(0);
   }
 
   async function sendStaffOtp() {
@@ -74,6 +87,7 @@ export function StaffLoginScreen() {
       challengeId?: string;
       otpRefNo?: string | null;
       resendIn?: number;
+      expiresIn?: number;
     };
     if (!res.ok) {
       if (data.reason === STAFF_LOGIN_UNREGISTERED) {
@@ -93,6 +107,11 @@ export function StaffLoginScreen() {
       typeof data.resendIn === "number" && data.resendIn > 0
         ? data.resendIn
         : 60,
+    );
+    setExpiresIn(
+      typeof data.expiresIn === "number" && data.expiresIn > 0
+        ? data.expiresIn
+        : OTP_TTL_SECONDS,
     );
     return null;
   }
@@ -175,6 +194,10 @@ export function StaffLoginScreen() {
         setError("กรุณากรอกรหัส OTP");
         return;
       }
+      if (expiresIn <= 0) {
+        setError("รหัสหมดอายุ กรุณาขอรหัสใหม่");
+        return;
+      }
       await completeLogin({
         otp: { challengeId, otpCode: otpCode.trim() },
       });
@@ -233,6 +256,11 @@ export function StaffLoginScreen() {
                     <span className="text-base font-semibold text-gray-900">
                       {b.branchName.replace(/^สาขา\s*/, "")}
                     </span>
+                    {b.branchKind === "WAREHOUSE" ? (
+                      <span className="mt-0.5 text-xs font-semibold text-teal-700">
+                        สต๊อกกลาง
+                      </span>
+                    ) : null}
                     {b.brandName ? (
                       <span className="mt-0.5 text-xs text-gray-500">
                         {b.brandName}
@@ -295,6 +323,15 @@ export function StaffLoginScreen() {
                     required
                     autoFocus
                   />
+                  <p
+                    className={`mt-2 text-center text-sm font-medium ${
+                      expiresIn <= 0 ? "text-red-600" : "text-gray-500"
+                    }`}
+                  >
+                    {expiresIn > 0
+                      ? `รหัสใช้ได้ 5 นาที — หมดอายุใน ${formatOtpCountdown(expiresIn)}`
+                      : "รหัสหมดอายุแล้ว — กดขอรหัสใหม่"}
+                  </p>
                   <div className="mt-3 flex items-center justify-between gap-2 text-sm">
                     <button
                       type="button"
@@ -364,7 +401,7 @@ export function StaffLoginScreen() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (otpStep && expiresIn <= 0)}
               className={merchantButtonClass}
             >
               {loading
@@ -372,7 +409,9 @@ export function StaffLoginScreen() {
                   ? "กำลังยืนยัน..."
                   : "กำลังเข้าสู่ระบบ..."
                 : otpStep
-                  ? "ยืนยันรหัส"
+                  ? expiresIn <= 0
+                    ? "รหัสหมดอายุ"
+                    : "ยืนยันรหัส"
                   : "ถัดไป"}
             </button>
           </form>

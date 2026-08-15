@@ -133,6 +133,9 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.sellGrill !== undefined && { sellGrill: body.sellGrill }),
         ...(body.sellFry !== undefined && { sellFry: body.sellFry }),
         ...(body.sellShabu !== undefined && { sellShabu: body.sellShabu }),
+        ...(body.defaultShelfLifeDays !== undefined && {
+          defaultShelfLifeDays: body.defaultShelfLifeDays,
+        }),
       },
       include: itemInclude,
     });

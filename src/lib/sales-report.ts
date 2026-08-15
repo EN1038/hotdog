@@ -17,6 +17,8 @@ import {
   type SalesReportBranchShare,
   type SalesReportResult,
   type SalesReportStats,
+  type SalesReportWasteEntry,
+  type SalesReportWasteItem,
 } from "@/lib/sales-report-shared";
 
 const WASTE_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
@@ -68,6 +70,7 @@ export async function buildSalesReport(params: {
     byChannel: [],
     byPayment: [],
     byBranch: [],
+    wasteItems: [],
   };
   if (branchIds.length === 0) return empty;
 
@@ -121,7 +124,17 @@ export async function buildSalesReport(params: {
           cancelledAt: null,
           createdAt: createdAtRange,
         },
-        select: { menuItemId: true, quantity: true },
+        select: {
+          id: true,
+          menuItemId: true,
+          quantity: true,
+          type: true,
+          note: true,
+          imageUrl: true,
+          createdAt: true,
+          menuItem: { select: { name: true, price: true } },
+          createdByStaff: { select: { name: true } },
+        },
       }),
       prisma.branchMenuItem.findMany({
         where: { branchId: { in: branchIds } },
@@ -209,12 +222,53 @@ export async function buildSalesReport(params: {
   const priceByMenuId = new Map(
     menuPrices.map((item) => [item.id, Number(item.price ?? 0)]),
   );
+  const wasteByMenu = new Map<
+    string,
+    SalesReportWasteItem & { entries: SalesReportWasteEntry[] }
+  >();
   for (const row of wasteHistory) {
     const qty = Math.abs(row.quantity);
     if (qty <= 0) continue;
+    const unitPrice =
+      priceByMenuId.get(row.menuItemId) ?? Number(row.menuItem.price ?? 0);
+    const lineValue = qty * unitPrice;
     stats.wasteQty += qty;
-    stats.wasteValue += qty * (priceByMenuId.get(row.menuItemId) ?? 0);
+    stats.wasteValue += lineValue;
+    const entry: SalesReportWasteEntry = {
+      id: row.id,
+      quantity: qty,
+      value: money(lineValue),
+      note: row.note?.trim() || null,
+      imageUrl: row.imageUrl?.trim() || null,
+      createdAt: row.createdAt.toISOString(),
+      createdByName: row.createdByStaff?.name?.trim() || null,
+      type: row.type,
+    };
+    const prev = wasteByMenu.get(row.menuItemId);
+    if (prev) {
+      prev.quantity += qty;
+      prev.value += lineValue;
+      prev.entries.push(entry);
+    } else {
+      wasteByMenu.set(row.menuItemId, {
+        menuItemId: row.menuItemId,
+        name: row.menuItem.name?.trim() || "ไม่ระบุชื่อ",
+        quantity: qty,
+        value: lineValue,
+        entries: [entry],
+      });
+    }
   }
+  const wasteItems = [...wasteByMenu.values()]
+    .map((row) => ({
+      ...row,
+      value: money(row.value),
+      entries: [...row.entries].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    }))
+    .sort((a, b) => b.quantity - a.quantity || b.value - a.value);
 
   stats.openingCash = shifts.reduce(
     (sum, shift) => sum + Number(shift.openingCash),
@@ -228,6 +282,8 @@ export async function buildSalesReport(params: {
   stats.expectedCash =
     stats.openingCash + stats.cashRevenue - stats.cashExpense;
   stats.netAfterExpenses = stats.completedRevenue - stats.expenseTotal;
+  stats.netAfterWaste =
+    stats.completedRevenue - stats.expenseTotal - stats.wasteValue;
 
   return {
     stats: {
@@ -243,6 +299,7 @@ export async function buildSalesReport(params: {
       openingCash: money(stats.openingCash),
       expectedCash: money(stats.expectedCash),
       netAfterExpenses: money(stats.netAfterExpenses),
+      netAfterWaste: money(stats.netAfterWaste),
     },
     byChannel: roundShares([...byChannel.values()]),
     byPayment: roundShares([...byPayment.values()]),
@@ -252,5 +309,6 @@ export async function buildSalesReport(params: {
         completedRevenue: money(row.completedRevenue),
       }))
       .sort((a, b) => b.completedRevenue - a.completedRevenue),
+    wasteItems,
   };
 }

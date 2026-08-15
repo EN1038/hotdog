@@ -21,6 +21,8 @@ export type SalesReportStats = {
   openingCash: number;
   expectedCash: number;
   netAfterExpenses: number;
+  /** ขาย − ค่าใช้จ่าย − มูลค่าของเสีย */
+  netAfterWaste: number;
 };
 
 export type SalesReportBranchShare = {
@@ -30,11 +32,31 @@ export type SalesReportBranchShare = {
   completedCount: number;
 };
 
+export type SalesReportWasteEntry = {
+  id: string;
+  quantity: number;
+  value: number;
+  note: string | null;
+  imageUrl: string | null;
+  createdAt: string;
+  createdByName: string | null;
+  type: string;
+};
+
+export type SalesReportWasteItem = {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  value: number;
+  entries: SalesReportWasteEntry[];
+};
+
 export type SalesReportResult = {
   stats: SalesReportStats;
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
   byBranch: SalesReportBranchShare[];
+  wasteItems: SalesReportWasteItem[];
 };
 
 export const EMPTY_SALES_REPORT_STATS: SalesReportStats = {
@@ -58,4 +80,5 @@ export const EMPTY_SALES_REPORT_STATS: SalesReportStats = {
   openingCash: 0,
   expectedCash: 0,
   netAfterExpenses: 0,
+  netAfterWaste: 0,
 };

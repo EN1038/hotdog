@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from "react";
 import { IconClose, IconImage, IconUpload } from "@/components/icons";
 import { adminInputClass, adminLabelClass } from "@/components/admin/AdminShell";
+import { ImageCropDialog } from "@/components/admin/ImageCropDialog";
 
 type ImageFieldProps = {
   value: string;
@@ -11,6 +12,9 @@ type ImageFieldProps = {
   /** คำแนะนำขนาดรูป ฯลฯ แสดงใต้ป้ายชื่อ */
   hint?: string;
   aspectClassName?: string;
+  /** When set, open crop dialog before upload (e.g. 1 or 3/2) */
+  cropAspect?: number;
+  cropTitle?: string;
   /** compact: denser form; thumb: small square (~120px) */
   size?: "default" | "compact" | "thumb";
   /** cover crops to fill; contain keeps full logo/wordmark visible */
@@ -28,6 +32,8 @@ export function ImageField({
   label = "รูปภาพ",
   hint,
   aspectClassName = "aspect-[4/3]",
+  cropAspect,
+  cropTitle,
   size = "default",
   objectFit = "cover",
   className = "",
@@ -40,6 +46,7 @@ export function ImageField({
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showUrl, setShowUrl] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   async function uploadFile(file: File) {
     setError(null);
@@ -70,7 +77,13 @@ export function ImageField({
 
   function onPick(files: FileList | null) {
     const file = files?.[0];
-    if (file) void uploadFile(file);
+    if (!file) return;
+    if (cropAspect && cropAspect > 0) {
+      const url = URL.createObjectURL(file);
+      setCropSrc(url);
+      return;
+    }
+    void uploadFile(file);
   }
 
   const emptyPad =
@@ -148,7 +161,7 @@ export function ImageField({
                 onClick={() => inputRef.current?.click()}
                 className="rounded-md bg-white/95 px-2 py-1 text-[11px] font-semibold text-gray-900 shadow-sm hover:bg-white disabled:opacity-60"
               >
-                {uploading ? "..." : "เปลี่ยน"}
+                {uploading ? "..." : cropAspect ? "เปลี่ยน/ครอป" : "เปลี่ยน"}
               </button>
               <button
                 type="button"
@@ -188,7 +201,9 @@ export function ImageField({
                 ? "กำลังอัปโหลด..."
                 : size === "thumb"
                   ? "เลือกรูป"
-                  : "ลากรูปมาวาง หรือคลิกเพื่อเลือก"}
+                  : cropAspect
+                    ? "เลือกรูปแล้วครอปตามขนาด"
+                    : "ลากรูปมาวาง หรือคลิกเพื่อเลือก"}
             </span>
             {size !== "thumb" && (
               <span className="flex items-center gap-1 text-xs text-gray-600">
@@ -225,6 +240,25 @@ export function ImageField({
       )}
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      {cropSrc && cropAspect ? (
+        <ImageCropDialog
+          open
+          imageSrc={cropSrc}
+          aspect={cropAspect}
+          title={cropTitle ?? `ครอป${label}`}
+          onCancel={() => {
+            URL.revokeObjectURL(cropSrc);
+            setCropSrc(null);
+            if (inputRef.current) inputRef.current.value = "";
+          }}
+          onConfirm={(file) => {
+            URL.revokeObjectURL(cropSrc);
+            setCropSrc(null);
+            void uploadFile(file);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRef } from "react";
 import { isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 
@@ -24,20 +23,8 @@ export function StaffRoundSelector({
   onGoToCurrent,
   compact = false,
 }: StaffRoundSelectorProps) {
-  const dateRef = useRef<HTMLInputElement>(null);
-
   const roundKey = viewRound ?? currentRound;
   const dayLabel = formatOperatingDayLabel(roundKey || currentRound || "");
-
-  function openRoundPicker() {
-    const el = dateRef.current;
-    if (!el) return;
-    try {
-      el.showPicker();
-    } catch {
-      el.click();
-    }
-  }
 
   return (
     <div
@@ -51,65 +38,59 @@ export function StaffRoundSelector({
         </p>
       ) : null}
 
-      <button
-        type="button"
-        onClick={openRoundPicker}
-        className={`inline-flex max-w-full cursor-pointer items-center justify-end gap-1.5 rounded-lg border border-site-primary/30 bg-site-primary-soft/60 text-right shadow-sm transition hover:border-site-primary hover:bg-site-primary-soft active:scale-[0.98] ${
-          compact ? "px-2.5 py-2" : "mt-1 px-2 py-1.5"
-        }`}
-        aria-label={`เลือกรอบ — รอบ ${dayLabel || "…"}`}
+      <div
+        className={`relative inline-flex max-w-full ${compact ? "" : "mt-1"}`}
       >
-        <span
-          className={`min-w-0 truncate font-bold leading-snug text-site-primary ${
-            compact ? "text-[12px]" : "text-[11px]"
+        <div
+          className={`inline-flex max-w-full items-center justify-end gap-1.5 rounded-lg border border-site-primary/30 bg-site-primary-soft/60 text-right shadow-sm ${
+            compact ? "px-2.5 py-2" : "px-2 py-1.5"
           }`}
-        >
-          {compact ? dayLabel || "…" : `เลือกรอบ ${dayLabel || "…"}`}
-        </span>
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="shrink-0 text-site-primary"
           aria-hidden
         >
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" />
-        </svg>
-      </button>
-
-      <input
-        ref={dateRef}
-        type="date"
-        value={isBangkokDateKey(roundKey) ? roundKey : ""}
-        max={currentRound || undefined}
-        onChange={(e) => {
-          const next = e.target.value;
-          if (next) onChangeRound(next);
-        }}
-        className="pointer-events-none absolute h-0 w-0 opacity-0"
-        tabIndex={-1}
-        aria-hidden
-      />
+          <span
+            className={`min-w-0 truncate font-bold leading-snug text-site-primary ${
+              compact ? "text-[12px]" : "text-[11px]"
+            }`}
+          >
+            {compact ? dayLabel || "…" : `เลือกรอบ ${dayLabel || "…"}`}
+          </span>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="shrink-0 text-site-primary"
+          >
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+          </svg>
+        </div>
+        <input
+          type="date"
+          value={isBangkokDateKey(roundKey) ? roundKey : ""}
+          max={currentRound || undefined}
+          aria-label={`เลือกรอบ — รอบ ${dayLabel || "…"}`}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next) onChangeRound(next);
+          }}
+          className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+          style={{ fontSize: 16 }}
+        />
+      </div>
 
       {!isViewingCurrent ? (
-        <div className={compact ? "mt-1" : "mt-2.5 space-y-0.5"}>
-          {!compact ? (
-            <p className="text-[10px] leading-snug text-gray-600">ดูย้อนหลัง</p>
-          ) : null}
-          <button
-            type="button"
-            onClick={onGoToCurrent}
-            className="cursor-pointer text-[11px] font-semibold text-site-primary underline"
-          >
-            กลับรอบปัจจุบัน
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onGoToCurrent}
+          className="mt-1 text-[10px] font-semibold text-site-primary underline-offset-2 hover:underline"
+        >
+          กลับรอบปัจจุบัน
+        </button>
       ) : null}
     </div>
   );

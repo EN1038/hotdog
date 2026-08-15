@@ -98,7 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: "/admin/stock",
-        label: "สต๊อกบ้านกลาง",
+        label: "สต๊อกกลาง",
         brandAdminOnly: true,
         match: (pathname) =>
           pathname === "/admin/stock" ||
@@ -107,7 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: "/admin/team",
-        label: "ผู้ดูแลแบรนด์",
+        label: "บัญชีเจ้าของ",
         brandAdminOnly: true,
         match: (pathname) =>
           pathname === "/admin/team" ||

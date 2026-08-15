@@ -79,6 +79,11 @@ export async function POST(request: Request) {
         },
       });
 
+      await tx.brand.update({
+        where: { id: brand.id },
+        data: { primaryAdminId: admin.id },
+      });
+
       await tx.branch.create({
         data: {
           brandId: brand.id,

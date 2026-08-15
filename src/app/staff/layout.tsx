@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { ToastProvider } from "@/components/admin/Toast";
 import { StaffBrandingShell } from "@/components/staff/StaffBrandingShell";
 
 export default function StaffLayout({
@@ -8,7 +9,9 @@ export default function StaffLayout({
 }) {
   return (
     <Suspense fallback={null}>
-      <StaffBrandingShell>{children}</StaffBrandingShell>
+      <ToastProvider>
+        <StaffBrandingShell>{children}</StaffBrandingShell>
+      </ToastProvider>
     </Suspense>
   );
 }

@@ -30,6 +30,7 @@ type CloseSummary = {
   revenueBaht: number;
   cashRevenueBaht: number;
   transferRevenueBaht: number;
+  expectedCash: number;
   totalWithOpeningCash: number;
   giftQuantity: number;
   menus: Array<{ name: string; quantity: number; revenueBaht: number }>;
@@ -171,6 +172,8 @@ export function StaffShiftControls({
   const [closeModal, setCloseModal] = useState(false);
   const [detailModal, setDetailModal] = useState(false);
   const [openingCashInput, setOpeningCashInput] = useState("0");
+  const [openingCashHint, setOpeningCashHint] = useState("");
+  const [closingCashInput, setClosingCashInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const openSubmittingRef = useRef(false);
@@ -182,10 +185,29 @@ export function StaffShiftControls({
   function startOpen() {
     window.dispatchEvent(new Event("staff-shift-before-open"));
     onBeforeOpen?.();
+    setOpeningCashHint("");
+    setOpeningCashInput("0");
     setOpenModal(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/staff/shifts/suggested-opening-cash");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const amount = Number(data.amount);
+        if (Number.isFinite(amount) && amount >= 0) {
+          setOpeningCashInput(String(Math.round(amount)));
+        }
+        if (typeof data.label === "string" && data.label.trim()) {
+          setOpeningCashHint(data.label.trim());
+        }
+      } catch {
+        /* keep 0 */
+      }
+    })();
   }
 
   function startClose() {
+    setClosingCashInput("");
     setCloseModal(true);
   }
 
@@ -216,7 +238,14 @@ export function StaffShiftControls({
           setCloseSummary(null);
           return;
         }
-        setCloseSummary((data.summary as CloseSummary) ?? null);
+        const summary = (data.summary as CloseSummary) ?? null;
+        setCloseSummary(summary);
+        if (closeModal && summary && closingCashInput === "") {
+          const expected = Number(summary.expectedCash);
+          if (Number.isFinite(expected) && expected >= 0) {
+            setClosingCashInput(String(Math.round(expected)));
+          }
+        }
       } catch {
         if (!cancelled) {
           setCloseSummaryError("โหลดสรุปไม่สำเร็จ");
@@ -229,7 +258,8 @@ export function StaffShiftControls({
     return () => {
       cancelled = true;
     };
-  }, [summaryModalOpen, activeShift?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reload when modal/shift changes
+  }, [summaryModalOpen, activeShift?.id, closeModal]);
 
   function apiErrorDetail(data: unknown, fallback: string, status?: number) {
     if (data && typeof data === "object") {
@@ -291,11 +321,18 @@ export function StaffShiftControls({
 
   async function submitClose() {
     if (closeSubmittingRef.current) return;
+    const closingCash = Number(closingCashInput.replace(/,/g, ""));
+    if (!Number.isFinite(closingCash) || closingCash < 0) {
+      onError("นับเงินสดไม่ถูกต้อง", "กรุณานับเงินในลิ้นชักแล้วกรอกจำนวน ≥ 0");
+      return;
+    }
     closeSubmittingRef.current = true;
     setSubmitting(true);
     try {
       const res = await fetch("/api/staff/shifts/current/close", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ closingCash }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -575,10 +612,10 @@ export function StaffShiftControls({
               เปิดรอบขาย
             </p>
             <p className="mt-1 text-center text-xs text-gray-500">
-              กรอกตังทอนเริ่มรอบ เพื่อใช้คำนวณเงินสดตอนปิดรอบ
+              ใส่ว่ามีเงินสดในลิ้นชักเท่าไรตอนเปิดรอบ (รวมที่ยกมา)
             </p>
             <label className="mt-4 block text-xs font-medium text-gray-600">
-              ตังทอน (บาท)
+              ตังทอน / เงินสดในลิ้นชัก (บาท)
               <input
                 type="number"
                 inputMode="decimal"
@@ -590,6 +627,11 @@ export function StaffShiftControls({
                 autoFocus
               />
             </label>
+            {openingCashHint ? (
+              <p className="mt-1.5 text-[11px] font-medium leading-snug text-emerald-700">
+                {openingCashHint}
+              </p>
+            ) : null}
             <label className="mt-3 block text-xs font-medium text-gray-600">
               หมายเหตุ
               <span className="ml-1 font-normal text-gray-400">(ไม่บังคับ)</span>
@@ -918,6 +960,56 @@ export function StaffShiftControls({
                 </p>
               ) : null}
 
+              {closeSummary ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                  <p className="text-xs font-bold text-amber-900">
+                    นับเงินสดในลิ้นชัก (บังคับ)
+                  </p>
+                  <p className="mt-1 text-[11px] font-medium text-amber-800">
+                    ระบบคาดว่าควรมี{" "}
+                    {formatPrice(closeSummary.expectedCash)} บาท
+                    (ตั้งต้น + ขายสด) — นับจริงแล้วกรอก
+                  </p>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="1"
+                    value={closingCashInput}
+                    onChange={(e) => setClosingCashInput(e.target.value)}
+                    placeholder="ยอดที่นับได้"
+                    className="mt-2 w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-base font-bold tabular-nums text-gray-900 outline-none focus:border-amber-500"
+                  />
+                  {closingCashInput !== "" &&
+                  Number.isFinite(Number(closingCashInput)) ? (
+                    <p
+                      className={`mt-1.5 text-[11px] font-bold ${
+                        Number(closingCashInput) -
+                          Number(closeSummary.expectedCash) ===
+                        0
+                          ? "text-emerald-700"
+                          : "text-rose-700"
+                      }`}
+                    >
+                      {Number(closingCashInput) -
+                        Number(closeSummary.expectedCash) ===
+                      0
+                        ? "ตรงกับยอดที่ระบบคาดไว้"
+                        : `ต่างจากระบบ ${
+                            Number(closingCashInput) -
+                              Number(closeSummary.expectedCash) >
+                            0
+                              ? "+"
+                              : ""
+                          }${formatPrice(
+                            Number(closingCashInput) -
+                              Number(closeSummary.expectedCash),
+                          )} บาท`}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <p className="text-center text-sm font-semibold text-gray-800">
                 ปิดรอบจริงใช่ไหม?
               </p>
@@ -934,7 +1026,11 @@ export function StaffShiftControls({
               </button>
               <button
                 type="button"
-                disabled={submitting || closeSummaryLoading}
+                disabled={
+                  submitting ||
+                  closeSummaryLoading ||
+                  closingCashInput.trim() === ""
+                }
                 onClick={() => void submitClose()}
                 className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60"
               >

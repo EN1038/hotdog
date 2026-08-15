@@ -35,6 +35,8 @@ export const menuItemCreateSchema = z
     sellGrill: z.boolean().optional(),
     sellFry: z.boolean().optional(),
     sellShabu: z.boolean().optional(),
+    /** Default shelf life days when receiving fresh sale stock */
+    defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
   })
   .merge(menuChannelPriceSchema);
 
@@ -63,6 +65,7 @@ export const menuItemPatchSchema = z
     sellGrill: z.boolean().optional(),
     sellFry: z.boolean().optional(),
     sellShabu: z.boolean().optional(),
+    defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
   })
   .merge(menuChannelPriceSchema.partial());
 

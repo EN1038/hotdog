@@ -56,6 +56,19 @@ const postSchema = z.discriminatedUnion("action", [
     supplier: z.string().trim().max(120).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
     batchId: batchIdSchema,
+    /** YYYY-MM-DD receive day (menu/sale items) */
+    receivedAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    /** YYYY-MM-DD expiry (menu/sale items) */
+    expiresAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .optional(),
+    /** Shelf life days from receive → compute expiresAt if expiresAt omitted */
+    shelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
   }),
   z.object({
     action: z.literal("damage"),
@@ -113,28 +126,63 @@ export async function GET() {
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
-    const menuItems = await prisma.branchMenuItem.findMany({
-      where: { branchId: branch.id, isHidden: false },
-      select: {
-        id: true,
-        name: true,
-        price: true,
-        sortOrder: true,
-        imageUrl: true,
-        category: {
-          select: {
-            name: true,
-            sortOrder: true,
-            stockExempt: true,
-          },
-        },
-        stock: { select: { quantity: true } },
-        optionGroupLinks: {
-          select: { group: { select: { mode: true } } },
+    const menuItemSelectBase = {
+      id: true,
+      name: true,
+      price: true,
+      sortOrder: true,
+      imageUrl: true,
+      category: {
+        select: {
+          name: true,
+          sortOrder: true,
+          stockExempt: true,
         },
       },
-      orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
-    });
+      stock: { select: { quantity: true } },
+      optionGroupLinks: {
+        select: { group: { select: { mode: true } } },
+      },
+    } as const;
+
+    let menuItems: Array<{
+      id: string;
+      name: string;
+      price: unknown;
+      sortOrder: number;
+      imageUrl: string | null;
+      defaultShelfLifeDays?: number | null;
+      category: {
+        name: string;
+        sortOrder: number;
+        stockExempt: boolean;
+      } | null;
+      stock: { quantity: number } | null;
+      optionGroupLinks: Array<{ group: { mode: string } }>;
+    }>;
+    try {
+      menuItems = await prisma.branchMenuItem.findMany({
+        where: { branchId: branch.id, isHidden: false },
+        select: {
+          ...menuItemSelectBase,
+          defaultShelfLifeDays: true,
+        },
+        orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/defaultShelfLifeDays|Unknown (arg|field)|column/i.test(msg)) {
+        throw e;
+      }
+      console.warn(
+        "[staff/stock] defaultShelfLifeDays select skipped — regenerate Prisma client",
+      );
+      menuItems = await prisma.branchMenuItem.findMany({
+        where: { branchId: branch.id, isHidden: false },
+        select: menuItemSelectBase,
+        orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
+      });
+    }
 
     const nonMenuItems = await prisma.branchNonMenuItem.findMany({
       where: { branchId: branch.id },
@@ -178,6 +226,7 @@ export async function GET() {
         imageUrl: item.imageUrl,
         isMenu: true,
         price,
+        defaultShelfLifeDays: item.defaultShelfLifeDays ?? null,
       });
       balances.push({
         id: item.id, // Frontend uses product.id anyway
@@ -387,17 +436,159 @@ export async function GET() {
       );
     }
 
+    let pending: Array<{
+      id: string;
+      quantity: number;
+      note: string | null;
+      createdAt: string;
+      kind: string;
+      product: {
+        id: string;
+        name: string;
+        unit: string;
+        stockType: string;
+      };
+      sourceBranch: { id: string; name: string } | null;
+    }> = [];
+    try {
+      const pendingRows = await prisma.stockTransfer.findMany({
+        where: {
+          branchId: branch.id,
+          status: "PENDING",
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          quantity: true,
+          note: true,
+          createdAt: true,
+          kind: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              unit: true,
+              stockType: true,
+            },
+          },
+          sourceBranch: { select: { id: true, name: true } },
+        },
+      });
+      pending = pendingRows.map((row) => ({
+        id: row.id,
+        quantity: row.quantity,
+        note: row.note,
+        createdAt: row.createdAt.toISOString(),
+        kind: row.kind,
+        product: {
+          id: row.product.id,
+          name: row.product.name,
+          unit: row.product.unit,
+          stockType: row.product.stockType,
+        },
+        sourceBranch: row.sourceBranch,
+      }));
+    } catch (e) {
+      console.error(
+        "[staff/stock] pending transfers skipped",
+        e instanceof Error ? e.message : e,
+      );
+    }
+
+    let lastStockCountAt: string | null = null;
+    let lastSaleAt: string | null = null;
+    const lastStockCountAtByType: Record<
+      "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT",
+      string | null
+    > = {
+      SALE_ITEM: null,
+      CONSUMABLE: null,
+      EQUIPMENT: null,
+    };
+    try {
+      const [recentCounts, lastSale] = await Promise.all([
+        prisma.stockCount.findMany({
+          where: {
+            branchId: branch.id,
+            status: { in: ["IN_PROGRESS", "COMPLETED"] },
+          },
+          orderBy: [{ createdAt: "desc" }],
+          take: 40,
+          select: { createdAt: true, completedAt: true, note: true, name: true },
+        }),
+        prisma.order.findFirst({
+          where: {
+            branchId: branch.id,
+            awaitingPhotoKey: false,
+            status: {
+              in: [
+                "WAITING_FOR_STORE_ACCEPTANCE",
+                "PREPARING",
+                "READY_FOR_PICKUP",
+                "READY_FOR_DELIVERY",
+                "DELIVERING",
+                "COMPLETED",
+              ],
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        }),
+      ]);
+
+      for (const row of recentCounts) {
+        let stockType: "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT" = "SALE_ITEM";
+        try {
+          const note = row.note ? (JSON.parse(row.note) as { stockType?: string }) : null;
+          if (
+            note?.stockType === "SALE_ITEM" ||
+            note?.stockType === "CONSUMABLE" ||
+            note?.stockType === "EQUIPMENT"
+          ) {
+            stockType = note.stockType;
+          } else if (row.name.includes("ของสิ้นเปลือง")) {
+            stockType = "CONSUMABLE";
+          } else if (row.name.includes("อุปกรณ์")) {
+            stockType = "EQUIPMENT";
+          }
+        } catch {
+          if (row.name.includes("ของสิ้นเปลือง")) stockType = "CONSUMABLE";
+          else if (row.name.includes("อุปกรณ์")) stockType = "EQUIPMENT";
+        }
+        if (lastStockCountAtByType[stockType]) continue;
+        lastStockCountAtByType[stockType] = (
+          row.completedAt ?? row.createdAt
+        ).toISOString();
+      }
+
+      if (recentCounts[0]) {
+        lastStockCountAt = (
+          recentCounts[0].completedAt ?? recentCounts[0].createdAt
+        ).toISOString();
+      }
+      lastSaleAt = lastSale?.createdAt.toISOString() ?? null;
+    } catch (e) {
+      console.error(
+        "[staff/stock] last activity skipped",
+        e instanceof Error ? e.message : e,
+      );
+    }
+
     return jsonOk({
       stockActive: true,
       brandId: branch.brandId,
       locationId: branch.id,
       allowNegativeStock: true,
-      pending: [],
+      pending,
       balances,
       products,
       lowItems: balances.filter((b) => Number(b.quantity) <= 0),
       counts: [],
       recentMovements: mappedMovements,
+      lastStockCountAt,
+      lastStockCountAtByType,
+      lastSaleAt,
       summary: {
         monthLabel: month.label,
         currentByType,
@@ -703,8 +894,51 @@ export async function POST(request: Request) {
       if (!menuItem) return jsonError("ไม่พบรายการสินค้า", 404);
 
       oldQty = menuItem.stock?.quantity ?? 0;
-      
+
+      let receiveDayKey = bangkokDateKey();
+      let receiveAt: Date | null = null;
+      let expiresAt: Date | null = null;
+
       if (body.action === "stock_in") {
+        // Soft defaults for aging: receive day = today (or provided).
+        // Expiry only when staff/admin already set shelf life — never block receive.
+        receiveDayKey = body.receivedAt ?? bangkokDateKey();
+        if (receiveDayKey > bangkokDateKey()) {
+          return jsonError("วันที่รับเข้าต้องไม่เกินวันนี้");
+        }
+        receiveAt = startOfBangkokDayFromKey(receiveDayKey);
+
+        const shelfDays =
+          body.shelfLifeDays != null
+            ? body.shelfLifeDays
+            : menuItem.defaultShelfLifeDays;
+
+        if (body.expiresAt) {
+          if (body.expiresAt < receiveDayKey) {
+            return jsonError("วันหมดอายุต้องไม่ก่อนวันรับเข้า");
+          }
+          expiresAt = startOfBangkokDayFromKey(body.expiresAt);
+        } else if (shelfDays != null && shelfDays >= 0) {
+          const receiveNoon = new Date(`${receiveDayKey}T12:00:00+07:00`);
+          receiveNoon.setDate(receiveNoon.getDate() + shelfDays);
+          const expKey = bangkokDateKey(receiveNoon);
+          expiresAt = startOfBangkokDayFromKey(expKey);
+        }
+
+        if (
+          body.shelfLifeDays != null &&
+          body.shelfLifeDays !== menuItem.defaultShelfLifeDays
+        ) {
+          try {
+            await prisma.branchMenuItem.update({
+              where: { id: menuItem.id },
+              data: { defaultShelfLifeDays: body.shelfLifeDays },
+            });
+          } catch {
+            /* column may lag */
+          }
+        }
+
         newQty = oldQty + body.quantity;
       } else if (body.action === "adjust") {
         newQty = body.quantity;
@@ -737,18 +971,41 @@ export async function POST(request: Request) {
               body.action === "stock_in" || body.action === "issue"
                 ? (body.batchId ?? null)
                 : null;
-            await tx.branchMenuItemStockHistory.create({
-              data: {
-                branchId: session.branchId,
-                menuItemId: targetId,
-                quantity: actualDiff,
-                type: body.action.toUpperCase(),
-                note: body.note ?? null,
-                imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
-                batchId,
-                createdByStaffId: session.staffId,
-              },
-            });
+            const historyData: {
+              branchId: string;
+              menuItemId: string;
+              quantity: number;
+              type: string;
+              note: string | null;
+              imageUrl: string | null;
+              batchId: string | null;
+              createdByStaffId: string;
+              receivedAt?: Date | null;
+              expiresAt?: Date | null;
+            } = {
+              branchId: session.branchId,
+              menuItemId: targetId,
+              quantity: actualDiff,
+              type: body.action.toUpperCase(),
+              note: body.note ?? null,
+              imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
+              batchId,
+              createdByStaffId: session.staffId,
+            };
+            if (body.action === "stock_in") {
+              historyData.receivedAt = receiveAt;
+              historyData.expiresAt = expiresAt;
+            }
+            try {
+              await tx.branchMenuItemStockHistory.create({
+                data: historyData,
+              });
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              if (!/receivedAt|expiresAt|Unknown arg|column/i.test(msg)) throw e;
+              const { receivedAt: _r, expiresAt: _e, ...fallback } = historyData;
+              await tx.branchMenuItemStockHistory.create({ data: fallback });
+            }
           }
         });
       }

@@ -328,6 +328,7 @@ export async function transferBranchToBranch(input: {
   note?: string | null;
   lotNumber?: string | null;
   adminId?: string | null;
+  staffId?: string | null;
 }) {
   if (input.sourceBranchId === input.destinationBranchId) {
     throw new StockError("สาขาต้นทางและปลายทางต้องต่างกัน");

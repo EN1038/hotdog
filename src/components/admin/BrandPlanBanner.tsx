@@ -6,7 +6,12 @@ import {
   BRAND_PLAN_PRICES,
 } from "@/lib/brand-plan-shared";
 
-export type BrandStatusId = "TRIAL" | "ACTIVE" | "PAUSED" | "EXPIRED";
+export type BrandStatusId =
+  | "TRIAL"
+  | "ACTIVE"
+  | "PAUSED"
+  | "EXPIRED"
+  | "DELETED";
 export type BrandPlanId = BrandPlan;
 
 export const BRAND_STATUS_LABELS: Record<BrandStatusId, string> = {
@@ -14,6 +19,7 @@ export const BRAND_STATUS_LABELS: Record<BrandStatusId, string> = {
   ACTIVE: "ใช้งาน",
   PAUSED: "หยุดใช้",
   EXPIRED: "หมดอายุ",
+  DELETED: "ลบแล้ว",
 };
 
 export { BRAND_PLAN_LABELS };
@@ -23,7 +29,16 @@ export const BRAND_STATUS_BADGE: Record<BrandStatusId, string> = {
   ACTIVE: "bg-emerald-100 text-emerald-800",
   PAUSED: "bg-slate-200 text-slate-700",
   EXPIRED: "bg-red-100 text-red-800",
+  DELETED: "bg-slate-800 text-white",
 };
+
+/** Statuses editable in plan forms (ไม่รวม DELETED — ใช้ soft-delete / กู้คืน) */
+export const BRAND_STATUS_EDITABLE: BrandStatusId[] = [
+  "TRIAL",
+  "ACTIVE",
+  "PAUSED",
+  "EXPIRED",
+];
 
 export type BrandPlanSummary = {
   status?: BrandStatusId;
@@ -35,6 +50,8 @@ export type BrandPlanSummary = {
   bbqEnabled?: boolean;
   skewerEnabled?: boolean;
   trialEndsAt?: string | Date | null;
+  serviceStartsAt?: string | Date | null;
+  nextDueAt?: string | Date | null;
   hasTestBranch?: boolean;
   _count?: { branches: number; members?: number };
 };
@@ -43,6 +60,7 @@ export function effectiveStatus(
   brand: Pick<BrandPlanSummary, "status" | "trialEndsAt">,
 ): BrandStatusId {
   const status = brand.status ?? "ACTIVE";
+  if (status === "DELETED") return "DELETED";
   if (status === "TRIAL" && brand.trialEndsAt) {
     const ends = new Date(brand.trialEndsAt);
     if (!Number.isNaN(ends.getTime()) && ends < new Date()) return "EXPIRED";
@@ -60,6 +78,63 @@ export function formatTrialEndsAt(value: string | Date | null | undefined) {
     month: "short",
     year: "numeric",
   });
+}
+
+/** Calendar-day difference in Asia/Bangkok (positive = future). */
+export function daysUntilDate(value: string | Date | null | undefined): number | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const endKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+  const todayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [ey, em, ed] = endKey.split("-").map(Number);
+  const [ty, tm, td] = todayKey.split("-").map(Number);
+  return Math.round(
+    (Date.UTC(ey, em - 1, ed) - Date.UTC(ty, tm - 1, td)) / 86_400_000,
+  );
+}
+
+export function formatDaysRemaining(days: number | null): string | null {
+  if (days == null) return null;
+  if (days > 1) return `เหลือ ${days} วัน`;
+  if (days === 1) return "เหลือ 1 วัน";
+  if (days === 0) return "วันนี้";
+  if (days === -1) return "เลยมา 1 วัน";
+  return `เลยมา ${Math.abs(days)} วัน`;
+}
+
+/** วันครบกำหนดที่ใช้มอนิเตอร์: ทดลองใช้ trialEndsAt, อื่นๆ ใช้ nextDueAt */
+export function brandMonitorDeadline(
+  brand: Pick<BrandPlanSummary, "status" | "trialEndsAt" | "nextDueAt">,
+): Date | null {
+  const status = effectiveStatus(brand);
+  if (status === "DELETED") return null;
+  if (status === "TRIAL" || status === "EXPIRED") {
+    if (!brand.trialEndsAt) return null;
+    const d = new Date(brand.trialEndsAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (brand.nextDueAt) {
+    const d = new Date(brand.nextDueAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+export function brandMonitorDaysRemaining(
+  brand: Pick<BrandPlanSummary, "status" | "trialEndsAt" | "nextDueAt">,
+): number | null {
+  return daysUntilDate(brandMonitorDeadline(brand));
 }
 
 export function moduleLabels(brand: BrandPlanSummary): string[] {
@@ -83,6 +158,9 @@ export function BrandPlanBanner({
   const status = effectiveStatus(brand);
   const plan = brand.plan ?? "RETAIL";
   const trial = formatTrialEndsAt(brand.trialEndsAt);
+  const starts = formatTrialEndsAt(brand.serviceStartsAt);
+  const trialDays = daysUntilDate(brand.trialEndsAt);
+  const trialRemain = formatDaysRemaining(trialDays);
   const modules = moduleLabels(brand);
   const branchUsed = brand._count?.branches;
   const maxBranches = brand.maxBranches;
@@ -102,12 +180,23 @@ export function BrandPlanBanner({
             {BRAND_PLAN_LABELS[plan]}
           </span>
           <span className="text-[11px] text-slate-500">฿{price}/เดือน</span>
+          {starts ? (
+            <span className="text-[11px] text-slate-600">เริ่ม {starts}</span>
+          ) : null}
           {status === "TRIAL" && trial ? (
-            <span className="text-[11px] text-amber-800">ทดลองถึง {trial}</span>
+            <span className="text-[11px] text-amber-800">
+              ทดลองถึง {trial}
+              {trialRemain ? ` · ${trialRemain}` : ""}
+            </span>
           ) : null}
           {status === "EXPIRED" ? (
             <span className="text-[11px] text-red-700">
               หมดช่วงทดลองแล้ว — ร้านและพนักงานเข้าใช้ไม่ได้
+            </span>
+          ) : null}
+          {status === "DELETED" ? (
+            <span className="text-[11px] text-slate-700">
+              ลบแล้ว (soft) — ไม่แสดงในรายการปกติ · เข้าใช้ไม่ได้
             </span>
           ) : null}
           {status === "PAUSED" ? (

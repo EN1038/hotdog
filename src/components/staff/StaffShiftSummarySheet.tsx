@@ -11,6 +11,8 @@ import {
 } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDetail";
+import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
+import { DateInput } from "@/components/DateInput";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 
 type ShiftListItem = {
@@ -68,9 +70,14 @@ type ShiftSummary = {
 };
 
 type Props = {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
+  /** sheet = bottom modal (default); inline = embed on page */
+  variant?: "sheet" | "inline";
   initialDate?: string | null;
+  /** When both set, load shifts across the range (overrides single initialDate for listing) */
+  dateFrom?: string | null;
+  dateTo?: string | null;
   brandName?: string | null;
   branchName?: string | null;
 };
@@ -159,13 +166,19 @@ function downloadDataUrl(dataUrl: string, filename: string) {
 }
 
 export function StaffShiftSummarySheet({
-  open,
+  open = true,
   onClose,
+  variant = "sheet",
   initialDate,
+  dateFrom,
+  dateTo,
   brandName: brandNameProp,
   branchName: branchNameProp,
 }: Props) {
   const captureRef = useRef<HTMLDivElement>(null);
+  const rangeMode =
+    Boolean(dateFrom && isBangkokDateKey(dateFrom)) &&
+    Boolean(dateTo && isBangkokDateKey(dateTo));
   const [date, setDate] = useState(
     () =>
       (initialDate && isBangkokDateKey(initialDate)
@@ -202,6 +215,14 @@ export function StaffShiftSummarySheet({
 
   useEffect(() => {
     if (!open) return;
+    if (rangeMode) {
+      setSelectedId(null);
+      setSummary(null);
+      setExportMsg("");
+      setDetailOrderId(null);
+      setShiftOrders([]);
+      return;
+    }
     const next =
       initialDate && isBangkokDateKey(initialDate)
         ? initialDate
@@ -212,7 +233,7 @@ export function StaffShiftSummarySheet({
     setExportMsg("");
     setDetailOrderId(null);
     setShiftOrders([]);
-  }, [open, initialDate]);
+  }, [open, initialDate, rangeMode, dateFrom, dateTo]);
 
   useEffect(() => {
     if (brandNameProp?.trim()) setBrandName(brandNameProp.trim());
@@ -252,9 +273,11 @@ export function StaffShiftSummarySheet({
       setLoadingList(true);
       setError("");
       try {
-        const res = await fetch(
-          `/api/staff/shifts?date=${encodeURIComponent(date)}`,
-        );
+        const qs =
+          rangeMode && dateFrom && dateTo
+            ? `from=${encodeURIComponent(dateFrom)}&to=${encodeURIComponent(dateTo)}`
+            : `date=${encodeURIComponent(date)}`;
+        const res = await fetch(`/api/staff/shifts?${qs}`);
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok) {
@@ -279,7 +302,7 @@ export function StaffShiftSummarySheet({
     return () => {
       cancelled = true;
     };
-  }, [open, date]);
+  }, [open, date, rangeMode, dateFrom, dateTo]);
 
   useEffect(() => {
     if (!open || !selectedId) {
@@ -528,57 +551,71 @@ export function StaffShiftSummarySheet({
     }
   }
 
-  if (!open) return null;
+  if (variant === "sheet" && !open) return null;
 
   const branchLabel = formatBranchLabel(branchName);
 
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="สรุปยอดขายตามรอบ"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <div>
-            <p className="text-base font-bold text-gray-900">สรุปยอดขายตามรอบ</p>
-            <p className="text-xs text-gray-500">
-              เลือกวันและรอบเพื่อดูยอดขาย
-            </p>
+  const panel = (
+    <>
+        {variant === "sheet" ? (
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <div>
+              <p className="text-base font-bold text-gray-900">
+                สรุปยอดขายตามรอบ
+              </p>
+              <p className="text-xs text-gray-500">
+                เลือกวันและรอบเพื่อดูยอดขาย
+              </p>
+            </div>
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-50"
+              >
+                ปิด
+              </button>
+            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-50"
-          >
-            ปิด
-          </button>
-        </div>
+        ) : null}
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-          <label className="block text-xs font-medium text-gray-600">
-            วันที่
-            <input
-              type="date"
-              value={date}
-              max={bangkokDateKey()}
-              onChange={(e) => {
-                if (e.target.value) setDate(e.target.value);
-              }}
-              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900"
-            />
-          </label>
+        <div
+          className={`min-h-0 flex-1 space-y-3 overflow-y-auto ${
+            variant === "inline" ? "px-0 py-0" : "px-4 py-3"
+          }`}
+        >
+          {variant === "sheet" && !rangeMode ? (
+            <label className="block text-xs font-medium text-gray-600">
+              วันที่
+              <DateInput
+                value={date}
+                max={bangkokDateKey()}
+                aria-label="วันที่"
+                onChange={(v) => {
+                  if (v) setDate(v);
+                }}
+                className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900"
+              />
+            </label>
+          ) : null}
+
+          {variant === "inline" ? (
+            <p className="text-[13px] font-semibold text-slate-600">
+              {rangeMode && dateFrom && dateTo
+                ? dateFrom === dateTo
+                  ? `เลือกรอบ · ${formatOperatingDayLabel(dateTo)}`
+                  : `เลือกรอบในช่วงที่เลือก (${shifts.length} รอบ)`
+                : `เลือกรอบขาย · ${formatOperatingDayLabel(date)}`}
+            </p>
+          ) : null}
 
           {loadingList ? (
             <p className="text-sm text-gray-500">กำลังโหลดรอบ…</p>
           ) : shifts.length === 0 ? (
             <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center text-sm text-gray-500">
-              ไม่มีรอบในวันที่ {formatOperatingDayLabel(date)}
+              {rangeMode
+                ? "ไม่มีรอบขายในช่วงวันที่เลือก"
+                : `ไม่มีรอบในวันที่ ${formatOperatingDayLabel(date)}`}
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -601,6 +638,9 @@ export function StaffShiftSummarySheet({
                     }`}
                   >
                     <span className="block">
+                      {rangeMode && s.calendarDate
+                        ? `${formatOperatingDayLabel(s.calendarDate)} · `
+                        : ""}
                       รอบที่ {s.roundNumber}
                       {cancelled ? " · ยกเลิก" : ""}
                     </span>
@@ -910,45 +950,31 @@ export function StaffShiftSummarySheet({
                 )}
               </div>
 
-              <div className="space-y-2">
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    disabled={!!exportBusy}
-                    onClick={() => void handleSaveImage()}
-                    className="rounded-xl border border-gray-300 bg-white px-2 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!exportBusy}
-                    onClick={() => void handleShareImage()}
-                    className="rounded-xl border border-green-600 bg-green-50 px-2 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
-                  >
-                    {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!exportBusy}
-                    onClick={() => void handleCopyText()}
-                    className="rounded-xl border border-blue-600 bg-blue-50 px-2 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
-                  >
-                    {exportBusy === "copy" ? "กำลังคัดลอก…" : "Copy"}
-                  </button>
-                </div>
-                {exportMsg ? (
-                  <p className="text-center text-xs text-gray-600">{exportMsg}</p>
-                ) : (
-                  <p className="text-center text-xs text-gray-400">
-                    แชร์รูป หรือกด Copy แล้ววางข้อความในไลน์อีกช่องทาง
-                  </p>
-                )}
-              </div>
             </div>
           ) : null}
         </div>
-      </div>
+
+        {summary ? (
+          <div
+            className={
+              variant === "inline"
+                ? "sticky bottom-[4.75rem] z-30 -mx-1 flex items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-1 py-2.5 backdrop-blur"
+                : "flex shrink-0 items-center justify-between gap-2 border-t border-gray-100 bg-white px-4 py-2.5"
+            }
+          >
+            <p className="min-w-0 flex-1 text-[12px] font-medium text-slate-500">
+              {exportMsg || "กดแชร์เพื่อส่งสรุปรอบนี้"}
+            </p>
+            <ShareExportMenu
+              busy={exportBusy}
+              message={exportMsg}
+              onShareImage={handleShareImage}
+              onSaveImage={handleSaveImage}
+              onCopyText={handleCopyText}
+            />
+          </div>
+        ) : null}
+
       <StaffOrderHistoryDetail
         open={Boolean(detailOrderId)}
         orderId={detailOrderId}
@@ -956,6 +982,31 @@ export function StaffShiftSummarySheet({
         brandName={brandName}
         branchName={branchName}
       />
+    </>
+  );
+
+  if (variant === "inline") {
+    return (
+      <div className="space-y-3" aria-label="สรุปยอดขายตามรอบ">
+        {panel}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="สรุปยอดขายตามรอบ"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {panel}
+      </div>
     </div>
   );
 }

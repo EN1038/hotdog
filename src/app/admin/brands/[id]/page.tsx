@@ -90,13 +90,13 @@ export default function BrandBranchesPage() {
             href={`/admin/brands/${brand.id}/stock`}
             className={btnOutline}
           >
-            สต๊อก / บ้านกลาง
+            สต๊อก / สต๊อกกลาง
           </Link>
           <Link
             href={`/admin/brands/${brand.id}/admins`}
             className={btnOutline}
           >
-            ผู้ดูแล
+            บัญชีเจ้าของ
           </Link>
         </div>
       }

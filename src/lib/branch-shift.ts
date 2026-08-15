@@ -448,9 +448,43 @@ export async function openShift(params: {
 export async function closeActiveShift(params: {
   branchId: string;
   closedByStaffId?: string | null;
+  /**
+   * Cash counted in drawer at close.
+   * If omitted (cron / legacy), uses calculated expected drawer cash.
+   */
+  closingCash?: number;
   at?: Date;
 }): Promise<{ shift: ActiveShift; summary: ShiftSummary }> {
   const at = params.at ?? new Date();
+
+  const activePreview = await prisma.branchShift.findFirst({
+    where: { branchId: params.branchId, closedAt: null },
+    select: baseShiftSelect,
+  });
+  if (!activePreview) {
+    throw new ShiftGateError("ไม่มีรอบที่เปิดอยู่", 409);
+  }
+
+  let closingCash =
+    params.closingCash != null ? Number(params.closingCash) : NaN;
+  if (!Number.isFinite(closingCash) || closingCash < 0) {
+    try {
+      const preview = await buildShiftSummary(activePreview.id);
+      const cashExp = await prisma.branchExpense.aggregate({
+        where: { shiftId: activePreview.id, payChannel: "CASH" },
+        _sum: { amount: true },
+      });
+      closingCash = Math.max(
+        0,
+        Math.round(
+          (Number(preview.expectedCash) - Number(cashExp._sum.amount ?? 0)) *
+            100,
+        ) / 100,
+      );
+    } catch {
+      closingCash = Math.max(0, Number(activePreview.openingCash) || 0);
+    }
+  }
 
   const closed = await prisma.$transaction(async (tx) => {
     const active = await tx.branchShift.findFirst({
@@ -469,6 +503,20 @@ export async function closeActiveShift(params: {
       },
       select: baseShiftSelect,
     });
+
+    // closingCash may lag Prisma generate — write via SQL
+    try {
+      await tx.$executeRaw`
+        UPDATE ${branchShiftTableSql()}
+        SET "closingCash" = ${closingCash}
+        WHERE id = ${shift.id}
+      `;
+    } catch (e) {
+      console.error(
+        "[closeActiveShift] closingCash update skipped",
+        e instanceof Error ? e.message : e,
+      );
+    }
 
     // select only id — avoid RETURNING every Branch column (isTest etc.)
     await tx.branch.update({
@@ -512,6 +560,94 @@ export async function closeActiveShift(params: {
     });
 
   return { shift: closed, summary };
+}
+
+/**
+ * Suggested float when opening a new round:
+ * prefer last counted closingCash, else calculated drawer (opening + cash sales − cash expenses).
+ */
+export async function getSuggestedOpeningCash(branchId: string): Promise<{
+  amount: number;
+  source: "counted" | "expected" | "none";
+  label: string;
+  lastClosedAt: string | null;
+  expectedCash: number | null;
+  closingCash: number | null;
+}> {
+  const recent = await prisma.branchShift.findMany({
+    where: { branchId, closedAt: { not: null } },
+    orderBy: { closedAt: "desc" },
+    take: 12,
+    select: baseShiftSelect,
+  });
+  const withMeta = await attachCancelMeta(recent);
+  const last = withMeta.find((s) => !s.cancelledAt) ?? null;
+  if (!last?.closedAt) {
+    return {
+      amount: 0,
+      source: "none",
+      label: "ยังไม่มีรอบก่อนหน้า — กรอกเงินสดในลิ้นชักตอนนี้",
+      lastClosedAt: null,
+      expectedCash: null,
+      closingCash: null,
+    };
+  }
+
+  let closingCash: number | null = null;
+  try {
+    const rows = await prisma.$queryRaw<Array<{ closingCash: unknown }>>`
+      SELECT "closingCash"
+      FROM ${branchShiftTableSql()}
+      WHERE id = ${last.id}
+      LIMIT 1
+    `;
+    const raw = rows[0]?.closingCash;
+    if (raw != null && Number.isFinite(Number(raw))) {
+      closingCash = Math.round(Number(raw) * 100) / 100;
+    }
+  } catch {
+    closingCash = null;
+  }
+
+  let expectedCash = Number(last.openingCash);
+  try {
+    const summary = await buildShiftSummary(last.id);
+    expectedCash = Number(summary.expectedCash);
+    const cashExp = await prisma.branchExpense.aggregate({
+      where: {
+        shiftId: last.id,
+        payChannel: "CASH",
+      },
+      _sum: { amount: true },
+    });
+    expectedCash =
+      Math.round(
+        (expectedCash - Number(cashExp._sum.amount ?? 0)) * 100,
+      ) / 100;
+    if (expectedCash < 0) expectedCash = 0;
+  } catch {
+    /* keep openingCash fallback */
+  }
+
+  if (closingCash != null) {
+    return {
+      amount: closingCash,
+      source: "counted",
+      label: "ยกมาจากยอดนับเงินสดตอนปิดรอบล่าสุด (แก้ได้)",
+      lastClosedAt: last.closedAt.toISOString(),
+      expectedCash,
+      closingCash,
+    };
+  }
+
+  return {
+    amount: expectedCash,
+    source: "expected",
+    label: "ประมาณจากรอบก่อน (ตั้งต้น + ขายสด − จ่ายสด) แก้ได้ตามที่นับได้",
+    lastClosedAt: last.closedAt.toISOString(),
+    expectedCash,
+    closingCash: null,
+  };
 }
 
 /** Minimal summary when full build fails after a successful close. */
@@ -800,7 +936,7 @@ export function computeShiftSummaryFromOrders(
     cashRevenueBaht: Math.round(cashRevenueBaht * 100) / 100,
     transferRevenueBaht: Math.round(transferRevenueBaht * 100) / 100,
     cardRevenueBaht: Math.round(cardRevenueBaht * 100) / 100,
-    expectedCash: openingCash + cashRevenueBaht,
+    expectedCash: Math.round((openingCash + cashRevenueBaht) * 100) / 100,
     totalWithOpeningCash: openingCash + revenueBaht,
     giftQuantity,
     cancelledRevenueBaht: Math.round(cancelledRevenueBaht * 100) / 100,

@@ -73,6 +73,7 @@ export async function GET(request: Request) {
           isOpen: true,
           isTest: true,
           isHidden: true,
+          kind: true,
         },
         orderBy: { name: "asc" },
       }),
@@ -81,9 +82,10 @@ export async function GET(request: Request) {
     if (!brand) return jsonError("ไม่พบร้าน", 404);
 
     const hasTestBranch = branches.some((b) => b.isTest);
-    const scopedBranches = includeTest
+    const scopedBranches = (includeTest
       ? branches
-      : branches.filter((b) => !b.isTest);
+      : branches.filter((b) => !b.isTest)
+    ).filter((b) => b.kind !== "WAREHOUSE");
     const branchIds = scopedBranches.map((b) => b.id);
     const branchNames = new Map(scopedBranches.map((b) => [b.id, b.name]));
 

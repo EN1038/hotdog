@@ -62,6 +62,20 @@ export function IconSearch(props: IconProps) {
   );
 }
 
+export function IconFilter(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M4 6h16M7 12h10M10 18h4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function IconCheck(props: IconProps) {
   const p = baseProps(props);
   return (
@@ -541,6 +555,23 @@ export function IconImage(props: IconProps) {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconShare(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="2" />
+      <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="2" />
+      <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M8.3 10.8l7.4-4.6M8.3 13.2l7.4 4.6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
       />
     </svg>
   );

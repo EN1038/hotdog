@@ -142,6 +142,9 @@ type BranchDetail = {
   isOpen: boolean;
   isHidden: boolean;
   isTest?: boolean;
+  kind?: "STORE" | "WAREHOUSE";
+  warehouseIssueMode?: "TRANSFER" | "ISSUE" | "BOTH";
+  warehouseAllowedBranchIds?: string[];
   opensAt: string | null;
   closesAt: string | null;
   storefrontHours: unknown;
@@ -223,7 +226,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "bbq-sessions", label: "บิลเปิด / ชั่ง" },
   { id: "bbq-bills", label: "บิลปิดแล้ว" },
   { id: "shifts", label: "รอบขาย" },
-  { id: "stock", label: "สต๊อกสาขา" },
+  { id: "stock", label: "สต๊อก" },
   { id: "expenses", label: "ค่าใช้จ่าย" },
   { id: "menu", label: "เมนู" },
   { id: "categories", label: "หมวดหมู่" },
@@ -308,10 +311,27 @@ const BBQ_WEIGH_HIDDEN_TABS = new Set<TabId>([
   "options",
 ]);
 
+const WAREHOUSE_HIDDEN_TABS = new Set<TabId>([
+  "overview",
+  "orders",
+  "skewer-orders",
+  "bbq-tables",
+  "bbq-sessions",
+  "bbq-bills",
+  "shifts",
+  "menu",
+  "categories",
+  "options",
+  "locations",
+  "copy",
+]);
+
 function hiddenTabsForMode(
   mode: BranchOperatingModeId,
   weighSalesEnabled = false,
+  kind?: string | null,
 ): Set<TabId> {
+  if (kind === "WAREHOUSE") return WAREHOUSE_HIDDEN_TABS;
   if (mode === "SKEWER") return SKEWER_HIDDEN_TABS;
   if (mode === "BBQ_WEIGH") return BBQ_WEIGH_HIDDEN_TABS;
   // Dual: mala + weigh — show BBQ tabs alongside NORMAL
@@ -321,7 +341,11 @@ function hiddenTabsForMode(
   return NORMAL_HIDDEN_TABS;
 }
 
-function defaultTabForMode(mode: BranchOperatingModeId): TabId {
+function defaultTabForMode(
+  mode: BranchOperatingModeId,
+  kind?: string | null,
+): TabId {
+  if (kind === "WAREHOUSE") return "staff";
   if (mode === "SKEWER") return "skewer-orders";
   if (mode === "BBQ_WEIGH") return "bbq-tables";
   return "orders";
@@ -797,11 +821,12 @@ function BranchDetailContent() {
     const hidden = hiddenTabsForMode(
       mode,
       Boolean(branch.weighSalesEnabled),
+      branch.kind,
     );
     if (hidden.has(activeTab)) {
-      setTab(defaultTabForMode(mode));
+      setTab(defaultTabForMode(mode, branch.kind));
     }
-  }, [branch?.operatingMode, branch?.weighSalesEnabled, activeTab, branch]);
+  }, [branch?.operatingMode, branch?.weighSalesEnabled, branch?.kind, activeTab, branch]);
 
   useEffect(() => {
     if (!staffModalOpen) {
@@ -988,8 +1013,8 @@ function BranchDetailContent() {
   async function addStaff(e: React.FormEvent) {
     e.preventDefault();
     const roles: StaffRole[] = [];
-    if (staffSeller) roles.push("SELLER");
-    if (staffDelivery) roles.push("DELIVERY");
+    if (staffSeller || branch?.kind === "WAREHOUSE") roles.push("SELLER");
+    if (staffDelivery && branch?.kind !== "WAREHOUSE") roles.push("DELIVERY");
     if (roles.length === 0) {
       toast.error("บันทึกไม่สำเร็จ", "เลือกอย่างน้อย 1 บทบาท");
       return;
@@ -1068,8 +1093,8 @@ function BranchDetailContent() {
     e.preventDefault();
     if (!editingStaffId) return;
     const roles: StaffRole[] = [];
-    if (staffSeller) roles.push("SELLER");
-    if (staffDelivery) roles.push("DELIVERY");
+    if (staffSeller || branch?.kind === "WAREHOUSE") roles.push("SELLER");
+    if (staffDelivery && branch?.kind !== "WAREHOUSE") roles.push("DELIVERY");
     if (roles.length === 0) {
       toast.error("บันทึกไม่สำเร็จ", "เลือกอย่างน้อย 1 บทบาท");
       return;
@@ -1519,6 +1544,7 @@ function BranchDetailContent() {
   const stats = overviewSummary;
   const money = (n: number) =>
     n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
+  const isWarehouse = branch.kind === "WAREHOUSE";
   const storefrontSchedule = ensureWeeklySchedule(
     branch.storefrontHours,
     branch.opensAt,
@@ -1603,6 +1629,11 @@ function BranchDetailContent() {
             >
               {branchLiveBadge.label}
             </span>
+            {isWarehouse ? (
+              <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-medium text-teal-900">
+                สต๊อกกลาง · ไม่มีเมนูขาย
+              </span>
+            ) : null}
             {branch.isHidden && (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                 ซ่อนจากลูกค้า
@@ -1616,22 +1647,26 @@ function BranchDetailContent() {
                 ⚗ ทดลอง
               </span>
             )}
-            {branch.operatingMode === "SKEWER" && (
+            {!isWarehouse && branch.operatingMode === "SKEWER" && (
               <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-900">
                 โหมดเสียบไม้
               </span>
             )}
-            {branch.operatingMode === "BBQ_WEIGH" && (
+            {!isWarehouse && branch.operatingMode === "BBQ_WEIGH" && (
               <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900">
                 โหมดหมูกระทะ
               </span>
             )}
-            {branch.operatingMode === "NORMAL" && branch.weighSalesEnabled && (
+            {!isWarehouse &&
+              branch.operatingMode === "NORMAL" &&
+              branch.weighSalesEnabled && (
               <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900">
                 {HOTPOT_COUNTER_GROUP.withWeighLabel}
               </span>
             )}
-            {branch.operatingMode === "NORMAL" && !branch.weighSalesEnabled && (
+            {!isWarehouse &&
+              branch.operatingMode === "NORMAL" &&
+              !branch.weighSalesEnabled && (
               <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
                 {HOTPOT_COUNTER_GROUP.shortLabel}
               </span>
@@ -1671,6 +1706,7 @@ function BranchDetailContent() {
             const hidden = hiddenTabsForMode(
               mode,
               Boolean(branch.weighSalesEnabled),
+              branch.kind,
             );
             const visibleTabIds = group.tabIds.filter(
               (tabId) => !hidden.has(tabId),
@@ -1889,7 +1925,21 @@ function BranchDetailContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("stock")}
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("tab", "stock");
+                    params.set("view", "movements");
+                    params.set("type", "WASTE");
+                    const from =
+                      overviewFrom <= overviewTo ? overviewFrom : overviewTo;
+                    const to =
+                      overviewFrom <= overviewTo ? overviewTo : overviewFrom;
+                    params.set("from", from);
+                    params.set("to", to);
+                    router.replace(`${pathname}?${params.toString()}`, {
+                      scroll: false,
+                    });
+                  }}
                   className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 text-left shadow-sm transition hover:border-orange-300"
                 >
                   <p className="text-sm text-orange-700">จำนวนของเสียขาย</p>
@@ -1897,12 +1947,26 @@ function BranchDetailContent() {
                     {money(stats?.wasteQty ?? 0)}
                   </p>
                   <p className="mt-1 text-xs text-orange-600/80">
-                    ชิ้นเมนูขายที่ตัดของเสียในช่วงนี้
+                    ชิ้นเมนูขายที่ตัดของเสีย · ดูรายการที่ร้านบันทึก
                   </p>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("stock")}
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("tab", "stock");
+                    params.set("view", "movements");
+                    params.set("type", "WASTE");
+                    const from =
+                      overviewFrom <= overviewTo ? overviewFrom : overviewTo;
+                    const to =
+                      overviewFrom <= overviewTo ? overviewTo : overviewFrom;
+                    params.set("from", from);
+                    params.set("to", to);
+                    router.replace(`${pathname}?${params.toString()}`, {
+                      scroll: false,
+                    });
+                  }}
                   className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 text-left shadow-sm transition hover:border-orange-300"
                 >
                   <p className="text-sm text-orange-700">มูลค่าของเสียขาย</p>
@@ -1910,7 +1974,7 @@ function BranchDetailContent() {
                     {money(stats?.wasteValue ?? 0)} ฿
                   </p>
                   <p className="mt-1 text-xs text-orange-600/80">
-                    คิดจากราคาเมนู × จำนวนของเสีย
+                    คิดจากราคาเมนู × จำนวนของเสีย · ดูรายการที่ร้านบันทึก
                   </p>
                 </button>
                 <button
@@ -2507,7 +2571,28 @@ function BranchDetailContent() {
 
         {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
 
-        {activeTab === "stock" && <BranchStockPanel branchId={id} />}
+        {activeTab === "stock" &&
+          (isWarehouse ? (
+            <div className={panelClass}>
+              <h3 className="text-base font-semibold text-gray-900">
+                สต๊อกกลาง
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                บันทึกนำเข้า เสียบไม้ และจ่ายออกที่หน้าสต๊อกแบรนด์
+                ไม่มีเมนูขายที่นี่
+              </p>
+              {branch.brandId ? (
+                <Link
+                  href={`/admin/brands/${branch.brandId}/stock`}
+                  className={`mt-4 inline-flex ${btnPrimary}`}
+                >
+                  เปิดหน้าสต๊อกกลาง
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <BranchStockPanel branchId={id} />
+          ))}
 
         {activeTab === "expenses" && <BranchExpensesPanel branchId={id} />}
 
@@ -2516,10 +2601,12 @@ function BranchDetailContent() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">
-                  พนักงานประจำสาขา
+                  {isWarehouse ? "พนักงานสต๊อกกลาง" : "พนักงานประจำสาขา"}
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-600">
-                  {branch.staff.length} คน · รูปไม่บังคับ · เข้าใช้งานได้สูงสุด 3 เครื่องต่อเบอร์
+                  {isWarehouse
+                    ? `${branch.staff.length} คน · เข้าแอปสต๊อกกลางได้ (ไม่มีเมนูขาย) · สูงสุด 3 เครื่องต่อเบอร์`
+                    : `${branch.staff.length} คน · รูปไม่บังคับ · เข้าใช้งานได้สูงสุด 3 เครื่องต่อเบอร์`}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   เชื่อม LINE: เพิ่มเพื่อน Official Account แล้วส่งเบอร์โทรในระบบมาในแชท
@@ -2583,7 +2670,9 @@ function BranchDetailContent() {
                               key={r.id}
                               className="rounded-full bg-gray-900/90 px-2 py-0.5 font-medium text-white"
                             >
-                              {ROLE_LABELS[r.role] ?? r.role}
+                              {isWarehouse && r.role === "SELLER"
+                                ? "พนักงานคลัง"
+                                : ROLE_LABELS[r.role] ?? r.role}
                             </span>
                           ))}
                           {s.lineUserId ? (
@@ -2802,8 +2891,9 @@ function BranchDetailContent() {
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
-                          คนขาย
+                          {isWarehouse ? "พนักงานคลัง" : "คนขาย"}
                         </button>
+                        {isWarehouse ? null : (
                         <button
                           type="button"
                           onClick={() => setStaffDelivery((v) => !v)}
@@ -2815,6 +2905,7 @@ function BranchDetailContent() {
                         >
                           คนส่ง
                         </button>
+                        )}
                       </div>
                       {!staffSeller && !staffDelivery && (
                         <p className="mt-1.5 text-xs text-red-600">

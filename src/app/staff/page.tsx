@@ -15,7 +15,6 @@ import {
   type ActiveShiftInfo,
   StaffShiftControls,
 } from "@/components/staff/StaffShiftControls";
-import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 import { StaffExpensesSheet } from "@/components/staff/StaffExpensesSheet";
 import { AddToHomeScreenBanner } from "@/components/staff/AddToHomeScreenBanner";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
@@ -321,8 +320,14 @@ export default function StaffHomePage() {
     null,
   );
   const [expensesOpen, setExpensesOpen] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState(false);
   const [sellMode, setSellMode] = useState<StaffSellMode>("mala");
+  const [aging, setAging] = useState<{
+    critical: number;
+    warn: number;
+    criticalQty: number;
+    warnQty: number;
+    attentionCount: number;
+  } | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -451,6 +456,44 @@ export default function StaffHomePage() {
     };
   }, []);
 
+  const stockOn = Boolean(meta?.stockEnabled && meta?.brandStockEnabled);
+
+  useEffect(() => {
+    if (!stockOn) {
+      setAging(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/staff/stock/aging", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          attentionCount?: number;
+          summary?: {
+            critical?: number;
+            warn?: number;
+            criticalQty?: number;
+            warnQty?: number;
+          };
+        };
+        if (cancelled) return;
+        setAging({
+          critical: data.summary?.critical ?? 0,
+          warn: data.summary?.warn ?? 0,
+          criticalQty: data.summary?.criticalQty ?? 0,
+          warnQty: data.summary?.warnQty ?? 0,
+          attentionCount: data.attentionCount ?? 0,
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stockOn, meta?.activeShift?.id]);
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
@@ -488,7 +531,6 @@ export default function StaffHomePage() {
     );
   }
 
-  const stockOn = Boolean(meta?.stockEnabled && meta?.brandStockEnabled);
   const hasOpenShift = Boolean(meta?.activeShift);
   const pendingOrders = meta?.pendingOrderCount ?? 0;
   const todayOrders = meta?.todayOrderCount ?? 0;
@@ -497,6 +539,8 @@ export default function StaffHomePage() {
     meta?.operatingMode === "BBQ_WEIGH" && Boolean(meta?.weighSalesAvailable);
   const showWeigh = weighOnly || (dual && sellMode === "weigh");
   const showMala = !weighOnly && (!dual || sellMode === "mala");
+  const agingAttention = aging?.attentionCount ?? 0;
+  const hasAgingAlert = agingAttention > 0;
 
   const switchSellMode = (mode: StaffSellMode) => {
     setSellMode(mode);
@@ -507,6 +551,39 @@ export default function StaffHomePage() {
     <StaffAppShell active="home">
       <AddToHomeScreenBanner />
       <div className="flex min-h-[calc(100dvh-11.25rem)] flex-col gap-3 px-3 pb-3 pt-3">
+        {stockOn && hasAgingAlert ? (
+          <Link
+            href="/staff/stock/aging"
+            role="alert"
+            className="flex w-full shrink-0 items-center gap-3 rounded-2xl border-2 border-rose-500 bg-rose-50 px-4 py-3.5 text-left shadow-md ring-2 ring-rose-200 transition active:scale-[0.98]"
+          >
+            <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-rose-600 text-lg font-black text-white">
+              {agingAttention > 99 ? "99+" : agingAttention}
+              <span className="absolute inset-0 animate-ping rounded-full bg-rose-400 opacity-35" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[17px] font-extrabold text-rose-950">
+                ต้องตรวจคุณภาพสินค้า
+              </span>
+              <span className="mt-0.5 block text-[13px] font-semibold text-rose-800">
+                {[
+                  aging && aging.critical > 0
+                    ? `แดง ${formatPrice(aging.criticalQty)} ชิ้น (${aging.critical} รายการ)`
+                    : null,
+                  aging && aging.warn > 0
+                    ? `ส้ม ${formatPrice(aging.warnQty)} ชิ้น (${aging.warn} รายการ)`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </span>
+            <span className="shrink-0 text-[15px] font-extrabold text-rose-700">
+              ดู ›
+            </span>
+          </Link>
+        ) : null}
+
         {dual ? (
           <div
             className="grid shrink-0 grid-cols-2 gap-1 rounded-2xl bg-slate-200/80 p-1"
@@ -692,7 +769,7 @@ export default function StaffHomePage() {
               />
             )}
             <SoftTile
-              onClick={() => setSummaryOpen(true)}
+              href="/staff/summary"
               title="สรุปยอดขาย"
               subtitle="ดูยอดประจำรอบ"
               icon={<IconChart size={26} />}
@@ -702,7 +779,11 @@ export default function StaffHomePage() {
             {stockOn ? (
               <>
                 <SoftTile
-                  href="/staff/stock"
+                  href={
+                    (meta?.pendingStockCount ?? 0) > 0
+                      ? "/staff/stock?action=pending"
+                      : "/staff/stock"
+                  }
                   title="สต๊อก"
                   subtitle="รับของ / ตรวจนับ"
                   icon={<IconBox size={26} />}
@@ -737,11 +818,11 @@ export default function StaffHomePage() {
 
         {stockOn && (meta?.pendingStockCount ?? 0) > 0 ? (
           <a
-            href="/staff/stock"
+            href="/staff/stock?action=pending"
             className="flex shrink-0 items-center justify-between rounded-2xl bg-teal-600 px-4 py-3.5 text-white shadow-sm active:brightness-95"
           >
             <div>
-              <p className="text-base font-extrabold">มีของรอรับจากบ้านกลาง</p>
+              <p className="text-base font-extrabold">มีของรอรับจากสต๊อกกลาง</p>
               <p className="mt-0.5 text-sm font-medium text-white/85">
                 {meta?.pendingStockCount} รายการ — กดเพื่อยืนยันรับเข้าสาขา
               </p>
@@ -752,13 +833,6 @@ export default function StaffHomePage() {
           </a>
         ) : null}
 
-        <StaffShiftSummarySheet
-          open={summaryOpen}
-          onClose={() => setSummaryOpen(false)}
-          initialDate={bangkokDateKey()}
-          brandName={meta?.brand?.name ?? ""}
-          branchName={meta?.branchName ?? ""}
-        />
         <StaffExpensesSheet
           open={expensesOpen}
           onClose={() => setExpensesOpen(false)}

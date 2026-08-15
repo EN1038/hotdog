@@ -27,7 +27,7 @@ const patchSchema = z.object({
   contactPhone: z.string().nullable().optional(),
   color: z.string().optional(),
   queueTicketCopies: z.number().int().min(1).max(5).optional(),
-  status: z.enum(["TRIAL", "ACTIVE", "PAUSED", "EXPIRED"]).optional(),
+  status: z.enum(["TRIAL", "ACTIVE", "PAUSED", "EXPIRED", "DELETED"]).optional(),
   plan: z.enum(["RETAIL", "WEIGH_TABLE", "MALA", "MULTI"]).optional(),
   applyPlanPreset: z.boolean().optional(),
   maxBranches: z.number().int().min(1).max(200).optional(),
@@ -37,6 +37,7 @@ const patchSchema = z.object({
   bbqEnabled: z.boolean().optional(),
   skewerEnabled: z.boolean().optional(),
   trialEndsAt: z.string().datetime().nullable().optional(),
+  serviceStartsAt: z.string().datetime().nullable().optional(),
 });
 
 function normalizeColor(input: string) {
@@ -159,6 +160,11 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.trialEndsAt !== undefined && {
           trialEndsAt: body.trialEndsAt ? new Date(body.trialEndsAt) : null,
         }),
+        ...(body.serviceStartsAt !== undefined && {
+          serviceStartsAt: body.serviceStartsAt
+            ? new Date(body.serviceStartsAt)
+            : null,
+        }),
       },
     });
 
@@ -185,25 +191,27 @@ export async function DELETE(_request: Request, { params }: Params) {
     const { id } = await params;
     const existing = await prisma.brand.findUnique({
       where: { id },
-      select: { id: true, name: true, code: true },
+      select: { id: true, name: true, code: true, status: true },
     });
     if (!existing) return jsonError("ไม่พบแบรนด์", 404);
-
-    const count = await prisma.branch.count({ where: { brandId: id } });
-    if (count > 0) {
-      return jsonError("ลบแบรนด์ไม่ได้ ยังมีสาขาผูกอยู่");
+    if (existing.status === "DELETED") {
+      return jsonOk({ ok: true, alreadyDeleted: true });
     }
-    await prisma.brand.delete({ where: { id } });
+
+    await prisma.brand.update({
+      where: { id },
+      data: { status: "DELETED" },
+    });
 
     await logAdminActivity(session, {
-      action: "brand.delete",
-      summary: `ลบแบรนด์ ${existing.name} (/${existing.code})`,
-      brandId: null,
+      action: "brand.soft_delete",
+      summary: `ตั้งสถานะลบแบรนด์ ${existing.name} (/${existing.code})`,
+      brandId: existing.id,
       brandName: existing.name,
       entityType: "brand",
       entityId: existing.id,
       entityName: existing.name,
-      metadata: { code: existing.code },
+      metadata: { code: existing.code, previousStatus: existing.status },
     });
 
     return jsonOk({ ok: true });

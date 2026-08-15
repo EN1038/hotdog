@@ -6,11 +6,12 @@ import { getCalendarDayState } from "@/lib/operating-day";
 import { buildSalesReport } from "@/lib/sales-report";
 
 async function loadSaleStockSnapshot(branchId: string) {
+  // Count from BranchMenuItemStock even when brandProductId is not linked yet
+  // (many live branches track qty on menu rows without SKU link).
   const items = await prisma.branchMenuItem.findMany({
     where: {
       branchId,
       isHidden: false,
-      brandProductId: { not: null },
     },
     select: {
       price: true,
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
       to = dateParam;
     }
 
-    const [report, stock, branch] = await Promise.all([
+    const [report, stock, branch, lastStockCount, lastSale] = await Promise.all([
       buildSalesReport({
         branchIds: [session.branchId],
         from,
@@ -85,11 +86,42 @@ export async function GET(request: Request) {
           brand: { select: { stockEnabled: true } },
         },
       }),
+      prisma.stockCount.findFirst({
+        where: {
+          branchId: session.branchId,
+          status: { in: ["IN_PROGRESS", "COMPLETED"] },
+        },
+        orderBy: [{ createdAt: "desc" }],
+        select: { createdAt: true, completedAt: true },
+      }),
+      prisma.order.findFirst({
+        where: {
+          branchId: session.branchId,
+          awaitingPhotoKey: false,
+          status: {
+            in: [
+              "WAITING_FOR_STORE_ACCEPTANCE",
+              "PREPARING",
+              "READY_FOR_PICKUP",
+              "READY_FOR_DELIVERY",
+              "DELIVERING",
+              "COMPLETED",
+            ],
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
     ]);
 
     const stockEnabled = Boolean(
       branch?.stockEnabled && branch?.brand?.stockEnabled,
     );
+
+    const lastStockCountAt = lastStockCount
+      ? (lastStockCount.completedAt ?? lastStockCount.createdAt).toISOString()
+      : null;
+    const lastSaleAt = lastSale?.createdAt.toISOString() ?? null;
 
     return jsonOk({
       period,
@@ -100,9 +132,12 @@ export async function GET(request: Request) {
       stockEnabled,
       saleStockQty: stockEnabled ? stock.saleStockQty : 0,
       saleStockValue: stockEnabled ? stock.saleStockValue : 0,
+      lastStockCountAt: stockEnabled ? lastStockCountAt : null,
+      lastSaleAt,
       stats: report.stats,
       byChannel: report.byChannel,
       byPayment: report.byPayment,
+      wasteItems: report.wasteItems,
     });
   } catch (error) {
     return handleApiError(error);

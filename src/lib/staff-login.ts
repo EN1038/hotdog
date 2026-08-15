@@ -13,6 +13,7 @@ export type StaffBranchChoice = {
   branchId: string;
   branchName: string;
   brandName: string | null;
+  branchKind?: "STORE" | "WAREHOUSE";
   roles: StaffLoginRole[];
 };
 
@@ -25,6 +26,7 @@ type StaffWithBranchRoles = {
   branch: {
     id: string;
     name: string;
+    kind?: string | null;
     brand: {
       code: string;
       name: string;
@@ -95,6 +97,7 @@ export function staffBranchChoices(
     branchId: s.branchId,
     branchName: s.branch!.name,
     brandName: s.branch!.brand?.name ?? null,
+    branchKind: s.branch!.kind === "WAREHOUSE" ? "WAREHOUSE" : "STORE",
     roles: staffUiRoles(s.roles.map((r) => r.role)),
   }));
 }
@@ -126,6 +129,7 @@ export const staffLoginSelect = {
     select: {
       id: true,
       name: true,
+      kind: true,
       brand: {
         select: {
           code: true,

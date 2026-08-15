@@ -109,6 +109,11 @@ function OwnerSettingsInner() {
       </div>
 
       <Row
+        href="/owner/stock"
+        label="สต๊อกกลาง"
+        hint="ยอดคงเหลือ เสียบไม้ และจ่ายออก"
+      />
+      <Row
         href="/admin"
         label="ตั้งค่าร้านแบบเต็ม"
         hint="สาขา เมนู พนักงาน สต๊อก"

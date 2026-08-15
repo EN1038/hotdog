@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { DateInput } from "@/components/DateInput";
 import { formatPrice } from "@/lib/constants";
-import { formatOperatingDayLabel } from "@/lib/operating-day";
 import {
   SALES_SHARE_COLORS,
   type SalesShareSlice,
@@ -68,18 +68,6 @@ export function SalesReportFilters({
   onDateChange: (next: string) => void;
   onSearch: () => void;
 }) {
-  const dateRef = useRef<HTMLInputElement>(null);
-
-  function openDatePicker() {
-    const el = dateRef.current;
-    if (!el) return;
-    try {
-      el.showPicker();
-    } catch {
-      el.click();
-    }
-  }
-
   return (
     <div className="mb-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -112,29 +100,15 @@ export function SalesReportFilters({
             {period === "day" ? "วันที่ต้องการ" : "ถึงวันที่"}
             <span className="text-rose-500">*</span>
           </span>
-          <button
-            type="button"
-            onClick={openDatePicker}
-            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-left text-[15px] font-bold text-slate-900"
-          >
-            <span className="truncate">
-              {formatOperatingDayLabel(date) || date || "เลือกวันที่"}
-            </span>
-            <span className="text-site-primary" aria-hidden>
-              📅
-            </span>
-          </button>
-          <input
-            ref={dateRef}
-            type="date"
+          <DateInput
             value={date}
             max={maxDate}
-            onChange={(e) => {
-              if (e.target.value) onDateChange(e.target.value);
+            required
+            aria-label={period === "day" ? "วันที่ต้องการ" : "ถึงวันที่"}
+            onChange={(next) => {
+              if (next) onDateChange(next);
             }}
-            className="pointer-events-none absolute h-0 w-0 opacity-0"
-            tabIndex={-1}
-            aria-hidden
+            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[15px] font-bold text-slate-900 outline-none focus:border-site-primary"
           />
         </label>
 
@@ -295,6 +269,7 @@ export function SalesReportMetrics({
   byChannel,
   byPayment,
   byBranch,
+  hideCashDrawer = false,
 }: {
   stats: {
     completedRevenue: number;
@@ -316,6 +291,8 @@ export function SalesReportMetrics({
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
   byBranch?: SalesShareSlice[];
+  /** Hide opening/expected cash when already shown on the page */
+  hideCashDrawer?: boolean;
 }) {
   const baht = (n: number) => `${formatPrice(n)}฿`;
   return (
@@ -355,22 +332,26 @@ export function SalesReportMetrics({
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <MetricTile label="เงินทอนตั้งต้น" value={baht(stats.openingCash)} />
-        <MetricTile
-          label="เงินสดในลิ้นชัก"
-          value={baht(stats.expectedCash)}
-          hint="ตั้งต้น + เงินสด − จ่ายสด"
-          tone="cash"
-        />
-      </div>
-      <div className="mt-3">
-        <MetricTile
-          label="เหลือสุทธิหลังค่าใช้จ่าย"
-          value={baht(stats.netAfterExpenses)}
-          hint="ยอดขาย − ค่าใช้จ่าย"
-        />
-      </div>
+      {hideCashDrawer ? null : (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <MetricTile label="เงินทอนตั้งต้น" value={baht(stats.openingCash)} />
+            <MetricTile
+              label="เงินสดในลิ้นชัก"
+              value={baht(stats.expectedCash)}
+              hint="ตั้งต้น + เงินสด − จ่ายสด"
+              tone="cash"
+            />
+          </div>
+          <div className="mt-3">
+            <MetricTile
+              label="เหลือสุทธิหลังค่าใช้จ่าย"
+              value={baht(stats.netAfterExpenses)}
+              hint="ยอดขาย − ค่าใช้จ่าย"
+            />
+          </div>
+        </>
+      )}
 
       {byBranch && byBranch.length > 0 ? (
         <SalesShareSection
@@ -519,14 +500,17 @@ export function SalesShareSection({
   totalRevenue,
   /** โหมดโดนัท + % นอกวง + การ์ดแถบสี (ช่องทางการขาย) */
   chartStyle = "bars",
+  defaultOpen = false,
 }: {
   title: string;
   slices: SalesShareSlice[];
   totalRevenue: number;
   chartStyle?: "bars" | "donut";
+  /** เปิดกราฟทันทีหรือไม่ — ค่าเริ่มต้นปิด เพื่อประหยัดพื้นที่ */
+  defaultOpen?: boolean;
 }) {
   const visible = slices.filter((s) => s.completedRevenue > 0);
-  const [show, setShow] = useState(true);
+  const [show, setShow] = useState(defaultOpen);
   const useDonut = chartStyle === "donut" || visible.length > 1;
 
   let cursor = 0;
@@ -652,34 +636,34 @@ export function SalesDateRangeBar({
   onToChange: (next: string) => void;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-3">
-      <label className="min-w-[9.5rem] flex-1">
-        <span className="mb-1 block text-[12px] font-semibold text-slate-500">
+    <div className="mb-2.5 flex flex-wrap items-end gap-2.5">
+      <label className="min-w-[9rem] flex-1">
+        <span className="mb-1 block text-[11px] font-semibold text-slate-500">
           วันที่เริ่ม
         </span>
-        <input
-          type="date"
+        <DateInput
           value={from}
           max={to || maxDate}
-          onChange={(e) => {
-            if (e.target.value) onFromChange(e.target.value);
+          aria-label="วันที่เริ่ม"
+          onChange={(next) => {
+            if (next) onFromChange(next);
           }}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] font-semibold text-slate-900"
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[14px] font-semibold text-slate-900"
         />
       </label>
-      <label className="min-w-[9.5rem] flex-1">
-        <span className="mb-1 block text-[12px] font-semibold text-slate-500">
+      <label className="min-w-[9rem] flex-1">
+        <span className="mb-1 block text-[11px] font-semibold text-slate-500">
           วันที่สิ้นสุด
         </span>
-        <input
-          type="date"
+        <DateInput
           value={to}
           min={from}
           max={maxDate}
-          onChange={(e) => {
-            if (e.target.value) onToChange(e.target.value);
+          aria-label="วันที่สิ้นสุด"
+          onChange={(next) => {
+            if (next) onToChange(next);
           }}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] font-semibold text-slate-900"
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[14px] font-semibold text-slate-900"
         />
       </label>
     </div>

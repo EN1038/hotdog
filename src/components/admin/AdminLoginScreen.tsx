@@ -1,13 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PlatformMark } from "@/components/PlatformMark";
+import { PhoneInput } from "@/components/PhoneInput";
 import {
   merchantButtonClass,
   merchantInputClass,
   merchantLabelClass,
 } from "@/components/merchant-login-ui";
+import {
+  OTP_TTL_SECONDS,
+  formatOtpCountdown,
+} from "@/lib/otp-ttl";
 
 export type AdminLoginMode = "owner" | "platform";
 
@@ -17,9 +22,9 @@ const LOGIN_COPY: Record<
 > = {
   owner: {
     title: "เข้าใช้งาน SkillSale",
-    description: "ใช้ไอดีที่ได้ตอนเปิดร้าน",
-    usernameLabel: "ชื่อสำหรับเข้าใช้งาน",
-    hint: "ใช้ไอดีและรหัสผ่านที่ได้รับตอนเปิดร้าน",
+    description: "ใช้เบอร์โทรที่ลงทะเบียนตอนเปิดร้าน",
+    usernameLabel: "เบอร์โทร",
+    hint: "รับ OTP หรือใส่รหัสผ่านก็ได้ — รหัสเริ่มต้นมักเป็นเบอร์โทร",
   },
   platform: {
     title: "เข้าใช้งานแพลตฟอร์ม",
@@ -32,39 +37,121 @@ const LOGIN_COPY: Record<
 export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode }) {
   const copy = LOGIN_COPY[mode];
   const [username, setUsername] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [ownerMethod, setOwnerMethod] = useState<"otp" | "password">("otp");
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [challengeId, setChallengeId] = useState("");
+  const [otpRefNo, setOtpRefNo] = useState("");
+  const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!otpStep || otpSecondsLeft <= 0) return;
+    const id = window.setInterval(() => {
+      setOtpSecondsLeft((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [otpStep, otpSecondsLeft]);
+
+  async function loginWithPassword() {
+    const res = await fetch("/api/auth/login?type=admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        mode === "owner"
+          ? { phone, password }
+          : { username, password },
+      ),
+    });
+    const text = await res.text();
+    let data: { error?: string; isPlatformAdmin?: boolean } = {};
+    try {
+      data = text ? (JSON.parse(text) as typeof data) : {};
+    } catch {
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        setError("ระบบล็อกอินขัดข้องชั่วคราว — ลองใหม่ในอีกสักครู่");
+      } else {
+        setError("เข้าไม่ได้ — ลองใหม่ หรือแจ้งแอดมิน");
+      }
+      return;
+    }
+    if (!res.ok) {
+      setError(data.error ?? "เบอร์หรือรหัสผ่านไม่ถูกต้อง");
+      return;
+    }
+    window.location.assign(
+      mode === "owner" && !data.isPlatformAdmin ? "/owner" : "/admin",
+    );
+  }
+
+  async function sendOwnerOtp() {
+    if (phone.length < 9) {
+      setError("กรุณากรอกเบอร์โทรให้ครบ");
+      return;
+    }
+    const res = await fetch("/api/auth/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, purpose: "owner" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error ?? "ส่ง OTP ไม่สำเร็จ");
+      return;
+    }
+    setChallengeId(data.challengeId ?? "");
+    setOtpRefNo(data.otpRefNo ?? "");
+    setOtpSecondsLeft(
+      typeof data.expiresIn === "number" ? data.expiresIn : OTP_TTL_SECONDS,
+    );
+    setOtpStep(true);
+    setOtpCode("");
+    setError("");
+  }
+
+  async function verifyOwnerOtp() {
+    if (otpSecondsLeft <= 0) {
+      setError("รหัสหมดอายุแล้ว — กดขอรหัสใหม่");
+      return;
+    }
+    const res = await fetch("/api/auth/login?type=admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone,
+        challengeId,
+        otpCode,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error ?? "รหัส OTP ไม่ถูกต้อง");
+      return;
+    }
+    window.location.assign("/owner");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login?type=admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const text = await res.text();
-      let data: { error?: string; isPlatformAdmin?: boolean } = {};
-      try {
-        data = text ? (JSON.parse(text) as typeof data) : {};
-      } catch {
-        if (res.status === 502 || res.status === 503 || res.status === 504) {
-          setError("ระบบล็อกอินขัดข้องชั่วคราว — ลองใหม่ในอีกสักครู่");
-        } else {
-          setError("เข้าไม่ได้ — ลองใหม่ หรือแจ้งแอดมิน");
-        }
+      if (mode === "platform") {
+        await loginWithPassword();
         return;
       }
-      if (!res.ok) {
-        setError(data.error ?? "ไอดีหรือรหัสผ่านไม่ถูกต้อง");
+      if (ownerMethod === "password") {
+        await loginWithPassword();
         return;
       }
-      window.location.assign(
-        mode === "owner" && !data.isPlatformAdmin ? "/owner" : "/admin",
-      );
+      if (!otpStep) {
+        await sendOwnerOtp();
+        return;
+      }
+      await verifyOwnerOtp();
     } catch {
       setError("เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่");
     } finally {
@@ -99,35 +186,124 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
         <PlatformMark placement="login" height={36} priority />
         <p className="mt-3 text-sm text-gray-600">{copy.description}</p>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-6">
-          <div>
-            <label htmlFor="admin-username" className={merchantLabelClass}>
-              {copy.usernameLabel}
-            </label>
-            <input
-              id="admin-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className={merchantInputClass}
-              autoComplete="username"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="admin-password" className={merchantLabelClass}>
+        {mode === "owner" ? (
+          <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
+            <button
+              type="button"
+              onClick={() => {
+                setOwnerMethod("otp");
+                setOtpStep(false);
+                setError("");
+              }}
+              className={`rounded-xl py-2.5 text-sm font-bold ${
+                ownerMethod === "otp"
+                  ? "bg-site-primary text-white"
+                  : "text-slate-600"
+              }`}
+            >
+              รับ OTP
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOwnerMethod("password");
+                setOtpStep(false);
+                setError("");
+              }}
+              className={`rounded-xl py-2.5 text-sm font-bold ${
+                ownerMethod === "password"
+                  ? "bg-site-primary text-white"
+                  : "text-slate-600"
+              }`}
+            >
               รหัสผ่าน
-            </label>
-            <input
-              id="admin-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={merchantInputClass}
-              autoComplete="current-password"
-              required
-            />
+            </button>
           </div>
+        ) : null}
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+          {mode === "platform" ? (
+            <div>
+              <label htmlFor="admin-username" className={merchantLabelClass}>
+                {copy.usernameLabel}
+              </label>
+              <input
+                id="admin-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className={merchantInputClass}
+                autoComplete="username"
+                required
+              />
+            </div>
+          ) : (
+            <div>
+              <label htmlFor="owner-phone" className={merchantLabelClass}>
+                เบอร์โทร
+              </label>
+              <PhoneInput
+                id="owner-phone"
+                value={phone}
+                onChange={setPhone}
+                className={merchantInputClass}
+                required
+                disabled={otpStep && ownerMethod === "otp"}
+              />
+            </div>
+          )}
+
+          {mode === "platform" || ownerMethod === "password" ? (
+            <div>
+              <label htmlFor="admin-password" className={merchantLabelClass}>
+                รหัสผ่าน
+              </label>
+              <input
+                id="admin-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={merchantInputClass}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+          ) : null}
+
+          {mode === "owner" && ownerMethod === "otp" && otpStep ? (
+            <div>
+              <label htmlFor="owner-otp" className={merchantLabelClass}>
+                รหัส OTP
+              </label>
+              <input
+                id="owner-otp"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={8}
+                className={`${merchantInputClass} text-center tracking-[0.35em]`}
+                value={otpCode}
+                onChange={(e) =>
+                  setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 8))
+                }
+                placeholder="••••••"
+                required
+                autoFocus
+              />
+              <p className="mt-2 text-sm text-gray-600">
+                {otpRefNo ? `เลขอ้างอิง ${otpRefNo} · ` : ""}
+                {otpSecondsLeft > 0
+                  ? `หมดอายุใน ${formatOtpCountdown(otpSecondsLeft)}`
+                  : "รหัสหมดอายุแล้ว"}
+              </p>
+              <button
+                type="button"
+                disabled={loading || otpSecondsLeft > 0}
+                onClick={() => void sendOwnerOtp()}
+                className="mt-2 text-sm font-semibold text-site-primary disabled:opacity-40"
+              >
+                ขอรหัสใหม่
+              </button>
+            </div>
+          ) : null}
 
           <div className="flex gap-2 rounded-2xl bg-sky-50 px-4 py-4 text-sm leading-relaxed text-sky-950">
             <span className="mt-0.5 text-lg" aria-hidden>
@@ -144,11 +320,35 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={
+              loading ||
+              (mode === "owner" &&
+                ownerMethod === "otp" &&
+                otpStep &&
+                otpSecondsLeft <= 0)
+            }
             className={merchantButtonClass}
           >
-            {loading ? "กำลังเข้าสู่ระบบ..." : "ถัดไป"}
+            {loading
+              ? "กำลังเข้าสู่ระบบ..."
+              : mode === "owner" && ownerMethod === "otp" && !otpStep
+                ? "รับรหัส OTP"
+                : "เข้าสู่ระบบ"}
           </button>
+
+          {mode === "owner" && ownerMethod === "otp" && otpStep ? (
+            <button
+              type="button"
+              className="w-full text-sm font-medium text-gray-600"
+              onClick={() => {
+                setOtpStep(false);
+                setOtpCode("");
+                setError("");
+              }}
+            >
+              เปลี่ยนเบอร์
+            </button>
+          ) : null}
         </form>
 
         {mode === "owner" ? (

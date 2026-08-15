@@ -46,8 +46,8 @@ export default function AdminStockQuickAccessPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="สต๊อกบ้านกลาง"
-        description="เลือกแบรนด์ที่ต้องการเข้าไปบริหารจัดการและดูรายงานสต๊อกคลังบ้านกลาง"
+        title="สต๊อกกลาง"
+        description="เลือกแบรนด์ที่ต้องการเข้าไปบริหารจัดการและดูรายงานสต๊อกคลังสต๊อกกลาง"
       />
 
       {brands.length === 0 ? (
@@ -102,7 +102,7 @@ export default function AdminStockQuickAccessPage() {
                   href={`/admin/brands/${brand.id}/stock`}
                   className={`${btnPrimary} text-xs py-1.5`}
                 >
-                  จัดการสต๊อกบ้านกลาง 🏢
+                  จัดการสต๊อกกลาง 🏢
                 </Link>
               </div>
             </div>

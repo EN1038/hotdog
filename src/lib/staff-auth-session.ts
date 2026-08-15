@@ -90,6 +90,13 @@ export async function revokeStaffAuthSessionByJti(tokenJti: string) {
   });
 }
 
+export async function revokeStaffAuthSessionById(id: string) {
+  await prisma.staffAuthSession.updateMany({
+    where: { id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}
+
 export async function revokeStaffAuthSessionsForPhone(phone: string) {
   await prisma.staffAuthSession.updateMany({
     where: { phone, revokedAt: null },
@@ -110,16 +117,28 @@ export async function assertStaffAuthSessionLive(opts: {
   phone: string;
 }) {
   try {
+    const now = new Date();
     const row = await prisma.staffAuthSession.findFirst({
       where: {
         tokenJti: opts.jti,
         phone: opts.phone,
         revokedAt: null,
-        expiresAt: { gt: new Date() },
+        expiresAt: { gt: now },
       },
-      select: { id: true },
+      select: { id: true, lastSeenAt: true },
     });
     if (!row) throw new Error("UNAUTHORIZED");
+
+    // Throttle lastSeen writes so Online/Offline stays useful without hammering DB.
+    const STALE_MS = 60_000;
+    if (now.getTime() - row.lastSeenAt.getTime() >= STALE_MS) {
+      await prisma.staffAuthSession
+        .update({
+          where: { id: row.id },
+          data: { lastSeenAt: now },
+        })
+        .catch(() => null);
+    }
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") throw error;
     const msg = error instanceof Error ? error.message : String(error);

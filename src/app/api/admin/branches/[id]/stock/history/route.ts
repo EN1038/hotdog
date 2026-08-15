@@ -73,18 +73,30 @@ export async function GET(request: Request, { params }: Params) {
     await requireBranchAccess(branchId);
 
     const { searchParams } = new URL(request.url);
+    const fromStr = searchParams.get("from")?.trim() ?? "";
+    const toStr = searchParams.get("to")?.trim() ?? "";
     const dateStr = searchParams.get("date")?.trim() ?? "";
     const shiftId = searchParams.get("shiftId")?.trim() || null;
     const typeRaw = searchParams.get("type")?.trim().toUpperCase() || "ALL";
     const q = searchParams.get("q")?.trim().toLowerCase() || "";
 
-    if (!dateStr || !isBangkokDateKey(dateStr)) {
+    const WASTE_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
+
+    let rangeStart: Date;
+    let rangeEnd: Date;
+    let shiftOrderIds: Set<string> | null = null;
+
+    if (isBangkokDateKey(fromStr) && isBangkokDateKey(toStr)) {
+      const startKey = fromStr <= toStr ? fromStr : toStr;
+      const endKey = fromStr <= toStr ? toStr : fromStr;
+      rangeStart = new Date(`${startKey}T00:00:00+07:00`);
+      rangeEnd = new Date(`${endKey}T23:59:59.999+07:00`);
+    } else if (dateStr && isBangkokDateKey(dateStr)) {
+      rangeStart = new Date(`${dateStr}T00:00:00+07:00`);
+      rangeEnd = new Date(`${dateStr}T23:59:59.999+07:00`);
+    } else {
       return jsonError("กรุณาระบุวันที่ (YYYY-MM-DD)");
     }
-
-    let rangeStart = new Date(`${dateStr}T00:00:00+07:00`);
-    let rangeEnd = new Date(`${dateStr}T23:59:59.999+07:00`);
-    let shiftOrderIds: Set<string> | null = null;
 
     if (shiftId) {
       const shift = await prisma.branchShift.findFirst({
@@ -105,18 +117,23 @@ export async function GET(request: Request, { params }: Params) {
       shiftOrderIds = new Set(orders.map((o) => o.id));
     }
 
-    const typeFilter =
-      typeRaw === "ALL" || !isHistoryType(typeRaw) ? undefined : typeRaw;
+    const typeWhere =
+      typeRaw === "WASTE"
+        ? { type: { in: [...WASTE_TYPES] } }
+        : typeRaw === "ALL" || !isHistoryType(typeRaw)
+          ? {}
+          : { type: typeRaw };
+    const take = isBangkokDateKey(fromStr) && isBangkokDateKey(toStr) ? 2000 : 500;
 
     const [menuRows, nonMenuRows] = await Promise.all([
       prisma.branchMenuItemStockHistory.findMany({
         where: {
           branchId,
           createdAt: { gte: rangeStart, lte: rangeEnd },
-          ...(typeFilter ? { type: typeFilter } : {}),
+          ...typeWhere,
         },
         orderBy: { createdAt: "desc" },
-        take: 500,
+        take,
         include: {
           menuItem: { select: { id: true, name: true } },
           createdByStaff: { select: { id: true, name: true } },
@@ -126,10 +143,10 @@ export async function GET(request: Request, { params }: Params) {
         where: {
           createdAt: { gte: rangeStart, lte: rangeEnd },
           item: { branchId },
-          ...(typeFilter ? { type: typeFilter } : {}),
+          ...typeWhere,
         },
         orderBy: { createdAt: "desc" },
-        take: 500,
+        take,
         include: {
           item: {
             select: { id: true, name: true, unit: true, stockType: true },

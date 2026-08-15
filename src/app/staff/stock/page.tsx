@@ -72,6 +72,8 @@ type Product = {
   trackStock?: boolean;
   imageUrl?: string | null;
   price?: number;
+  isMenu?: boolean;
+  defaultShelfLifeDays?: number | null;
 };
 
 function StockItemName({
@@ -119,12 +121,31 @@ type Payload = {
   products: Product[];
   lowItems: Balance[];
   pending: Pending[];
+  lastStockCountAt?: string | null;
+  lastStockCountAtByType?: Partial<Record<StockType, string | null>>;
+  lastSaleAt?: string | null;
   summary?: {
     monthLabel: string;
     currentByType: Record<StockType, StockQtyValue>;
     wasteByType: Record<StockType, StockQtyValue>;
   };
 };
+
+function formatStockActivityAt(iso: string | null | undefined) {
+  if (!iso) return null;
+  try {
+    return new Intl.DateTimeFormat("th-TH", {
+      timeZone: "Asia/Bangkok",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(iso));
+  } catch {
+    return null;
+  }
+}
 
 export default function StaffStockPage() {
   return (
@@ -144,13 +165,24 @@ function StaffStockContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const openAsDailySummary = searchParams.get("action") === "summary";
+  const openAsPending = searchParams.get("action") === "pending";
+  const openAsView = searchParams.get("action") === "view";
+  const openAsIssue = searchParams.get("action") === "issue";
+  const openViewTypeParam = searchParams.get("type");
+  const openViewStockType: StockType =
+    openViewTypeParam === "CONSUMABLE" || openViewTypeParam === "EQUIPMENT"
+      ? openViewTypeParam
+      : "SALE_ITEM";
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [receiveBusyId, setReceiveBusyId] = useState<string | null>(null);
   const [data, setData] = useState<Payload | null>(null);
 
-  const [mode, setMode] = useState<"menu" | "select_type" | "items" | "summary">("menu");
+  const [mode, setMode] = useState<
+    "menu" | "select_type" | "items" | "summary" | "pending"
+  >("menu");
   const [actionType, setActionType] = useState<
     "stock_in" | "issue" | "pending" | "view" | "summary" | null
   >(null);
@@ -299,6 +331,32 @@ function StaffStockContent() {
     setAttemptedSummary(false);
   }, [openAsDailySummary, loading, data?.stockActive]);
 
+  useEffect(() => {
+    if (!openAsPending || loading || !data?.stockActive) return;
+    setActionType("pending");
+    setMode("pending");
+  }, [openAsPending, loading, data?.stockActive]);
+
+  useEffect(() => {
+    if (!openAsView || loading || !data?.stockActive) return;
+    setActionType("view");
+    setMode("items");
+    setTypeFilter(openViewStockType);
+    setQtyByItemId({});
+    setCategoryFilter("ALL");
+  }, [openAsView, openViewStockType, loading, data?.stockActive]);
+
+  useEffect(() => {
+    if (!openAsIssue || loading || !data?.stockActive) return;
+    setHistoryKind(null);
+    setActionType("issue");
+    setMode("items");
+    setTypeFilter(openViewStockType);
+    setQtyByItemId({});
+    setCategoryFilter("ALL");
+    clearIssueFields();
+  }, [openAsIssue, openViewStockType, loading, data?.stockActive]);
+
   const categories = useMemo(() => {
     if (!data) return [];
     const map = new Map<
@@ -347,6 +405,44 @@ function StaffStockContent() {
     }
     return list;
   }, [typedCatalog, categoryFilter]);
+
+  /** กลุ่มเมนูในหน้ารับเข้า / สต็อก / จ่ายออก */
+  const visibleItemSections = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        categorySortOrder: number;
+        items: Product[];
+      }
+    >();
+    for (const item of visibleItems) {
+      const name = item.category || "ไม่มีหมวดหมู่";
+      const existing = map.get(name);
+      if (existing) {
+        existing.items.push(item);
+      } else {
+        map.set(name, {
+          id: name,
+          name,
+          categorySortOrder: item.categorySortOrder ?? 999,
+          items: [item],
+        });
+      }
+    }
+    return [...map.values()].sort(
+      (a, b) =>
+        a.categorySortOrder - b.categorySortOrder ||
+        compareThaiText(a.name, b.name),
+    );
+  }, [visibleItems]);
+
+  const showItemCategoryHeaders =
+    categoryFilter === "ALL" &&
+    (categories.length > 1 ||
+      (visibleItemSections.length === 1 &&
+        visibleItemSections[0]?.name !== "ไม่มีหมวดหมู่"));
 
   const viewSummary = useMemo(() => {
     const empty = { quantity: 0, valueBaht: 0 };
@@ -397,6 +493,43 @@ function StaffStockContent() {
     () => assignStableMenuSequence(summaryItems),
     [summaryItems],
   );
+
+  /** กลุ่มตามหมวดเมนู — ใช้แสดงหัวข้อตอนนับสต๊อก */
+  const summarySections = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        categorySortOrder: number;
+        items: Product[];
+      }
+    >();
+    for (const item of summaryItems) {
+      const name = item.category || "ไม่มีหมวดหมู่";
+      const existing = map.get(name);
+      if (existing) {
+        existing.items.push(item);
+      } else {
+        map.set(name, {
+          id: name,
+          name,
+          categorySortOrder: item.categorySortOrder ?? 999,
+          items: [item],
+        });
+      }
+    }
+    return [...map.values()].sort(
+      (a, b) =>
+        a.categorySortOrder - b.categorySortOrder ||
+        compareThaiText(a.name, b.name),
+    );
+  }, [summaryItems]);
+
+  const visibleSummarySections = useMemo(() => {
+    if (categoryFilter === "ALL") return summarySections;
+    return summarySections.filter((s) => s.id === categoryFilter);
+  }, [summarySections, categoryFilter]);
 
   const summaryTodayLabel = useMemo(() => {
     return new Intl.DateTimeFormat("th-TH", {
@@ -506,6 +639,11 @@ function StaffStockContent() {
   const handleActionClick = (action: "stock_in" | "issue" | "pending" | "summary" | "view") => {
     if (action === "stock_in" || action === "issue") {
       setHistoryKind(action);
+      return;
+    }
+    if (action === "pending") {
+      setActionType("pending");
+      setMode("pending");
       return;
     }
     if (action === "summary") {
@@ -723,7 +861,20 @@ function StaffStockContent() {
   }
 
   const handleBack = () => {
+    if (mode === "pending") {
+      if (openAsPending) {
+        router.replace("/staff");
+        return;
+      }
+      setMode("menu");
+      setActionType(null);
+      return;
+    }
     if (mode === "items") {
+      if (actionType === "view" && openAsView) {
+        router.replace("/staff/summary");
+        return;
+      }
       setMode("select_type");
       setQtyByItemId({});
       clearIssueFields();
@@ -740,6 +891,8 @@ function StaffStockContent() {
       setShowReviewModal(false);
     } else if (mode === "select_type" && actionType === "summary" && openAsDailySummary) {
       router.replace("/staff");
+    } else if (mode === "select_type" && actionType === "view" && openAsView) {
+      router.replace("/staff/summary");
     } else {
       setMode("menu");
       setActionType(null);
@@ -748,6 +901,25 @@ function StaffStockContent() {
       closeIssueCamera();
     }
   };
+
+  async function confirmPendingReceive(transferId: string) {
+    setReceiveBusyId(transferId);
+    try {
+      const res = await fetch(`/api/staff/stock/transfers/${transferId}/receive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "รับของไม่สำเร็จ");
+      toast.success("รับเข้าสาขาแล้ว");
+      await load();
+    } catch (e) {
+      toast.error("รับของไม่สำเร็จ", e instanceof Error ? e.message : "");
+    } finally {
+      setReceiveBusyId(null);
+    }
+  }
 
   function stopCameraStream() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -899,6 +1071,7 @@ function StaffStockContent() {
           : `batch-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
       let hasError = false;
+      let lastError = "";
       for (const item of selectedItems) {
         const payload: Record<string, unknown> = {
           action: actionType,
@@ -918,13 +1091,15 @@ function StaffStockContent() {
         });
         if (!res.ok) {
           hasError = true;
-          const text = await res.text();
-          console.error("API error:", text);
+          const err = await res.json().catch(() => ({}));
+          lastError =
+            typeof err.error === "string" ? err.error : "บันทึกไม่สำเร็จ";
+          console.error("API error:", err);
         }
       }
 
       if (hasError) {
-        toast.error("บันทึกบางรายการไม่สำเร็จ", "กรุณาตรวจสอบยอดอีกครั้ง (ดูรายละเอียดใน Console)");
+        toast.error("บันทึกบางรายการไม่สำเร็จ", lastError || "ลองใหม่");
       } else {
         toast.success(actionType === "stock_in" ? "รับเข้าสำเร็จ" : "จ่ายออกสำเร็จ", `อัปเดต ${selectedItems.length} รายการ`);
         setMode("menu");
@@ -1043,6 +1218,9 @@ function StaffStockContent() {
     );
   }
 
+  const lastStockCountLabel = formatStockActivityAt(data.lastStockCountAt);
+  const lastSaleLabel = formatStockActivityAt(data.lastSaleAt);
+
   return (
     <StaffAppShell active="stock">
       <div className="space-y-4 px-4 py-6 max-w-lg mx-auto pb-32">
@@ -1059,6 +1237,24 @@ function StaffStockContent() {
                   <p className="text-xs text-slate-500">ปรับปรุงจำนวนสต๊อกของเมนูที่หน้าร้าน</p>
                 </div>
                 <div className="space-y-4 mt-6">
+                  {(data.pending?.length ?? 0) > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => handleActionClick("pending")}
+                      className="w-full flex items-center justify-between rounded-2xl bg-teal-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                    >
+                      <div className="text-left">
+                        <h3 className="text-2xl font-black">รอรับจากสต๊อกกลาง</h3>
+                        <p className="mt-1 text-teal-100 text-sm">
+                          {data.pending.length} รายการ — กดเพื่อยืนยันรับเข้าสาขา
+                        </p>
+                      </div>
+                      <div className="rounded-full bg-white px-3 py-1.5 text-sm font-bold text-teal-800">
+                        {data.pending.length}
+                      </div>
+                    </button>
+                  ) : null}
+
                   <button
                     onClick={() => handleActionClick("stock_in")}
                     className="w-full flex items-center justify-between rounded-2xl bg-emerald-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
@@ -1075,10 +1271,58 @@ function StaffStockContent() {
                     className="w-full flex items-center justify-between rounded-2xl bg-slate-800 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
                   >
                     <div className="text-left">
-                      <h3 className="text-2xl font-black">สต็อก</h3>
-                      <p className="mt-1 text-slate-300 text-sm">ดูยอดคงเหลือของแต่ละรายการ</p>
+                      <h3 className="text-2xl font-black">ภาพรวมสต๊อก</h3>
+                      <p className="mt-1 text-slate-300 text-sm">
+                        ดูคงเหลือตอนนี้ · กดดูรายการว่ามีอะไรบ้าง
+                      </p>
                     </div>
                     <div className="text-4xl">📋</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push("/staff/stock/aging")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-orange-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">ของค้าง / ใกล้เสีย</h3>
+                      <p className="mt-1 text-orange-100 text-sm">
+                        ดูจำนวนที่ค้าง · ตัดสินใจเองว่าเช็ค แยก หรือลดราคา
+                      </p>
+                    </div>
+                    <div className="text-4xl">⏳</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleActionClick("summary")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-blue-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="min-w-0 text-left pr-3">
+                      <h3 className="text-2xl font-black">นับสต๊อก</h3>
+                      <p className="mt-1 text-blue-100 text-sm">
+                        นับคงเหลือจริงตามกลุ่มเมนู แล้วบันทึกสรุปยอด
+                      </p>
+                      <div className="mt-2.5 space-y-0.5 text-[12px] font-semibold leading-snug text-blue-50/95">
+                        <p>
+                          นับสต๊อกล่าสุด{" "}
+                          <span className="font-bold text-white">
+                            {lastStockCountLabel
+                              ? `${lastStockCountLabel} น.`
+                              : "ยังไม่เคยนับ"}
+                          </span>
+                        </p>
+                        <p>
+                          ขายล่าสุด{" "}
+                          <span className="font-bold text-white">
+                            {lastSaleLabel
+                              ? `${lastSaleLabel} น.`
+                              : "ยังไม่มียอดขาย"}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-4xl shrink-0">🧮</div>
                   </button>
 
                   <button
@@ -1092,6 +1336,68 @@ function StaffStockContent() {
                     <div className="text-4xl">📤</div>
                   </button>
                 </div>
+              </>
+            ) : mode === "pending" ? (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                  >
+                    ← กลับ
+                  </button>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-extrabold text-slate-900">
+                      รอรับจากสต๊อกกลาง
+                    </h2>
+                    <p className="text-xs font-semibold text-slate-600">
+                      {(data.pending?.length ?? 0).toLocaleString("th-TH")} รายการ
+                    </p>
+                  </div>
+                </div>
+                {(data.pending?.length ?? 0) === 0 ? (
+                  <div className="rounded-2xl bg-white p-5 text-center shadow-sm">
+                    <p className="text-sm font-bold text-slate-800">ไม่มีของรอรับ</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      เมื่อสต๊อกกลางส่งของมา จะโผล่ที่นี่ให้กดรับ
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="space-y-3">
+                    {data.pending.map((row) => (
+                      <li
+                        key={row.id}
+                        className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-base font-extrabold text-slate-900">
+                              {row.product.name}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-teal-700">
+                              {row.quantity.toLocaleString("th-TH")} {row.product.unit}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {row.sourceBranch
+                                ? `จากสาขา ${row.sourceBranch.name}`
+                                : "จากสต๊อกกลาง"}
+                              {row.note ? ` · ${row.note}` : ""}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={receiveBusyId === row.id || busy}
+                            onClick={() => void confirmPendingReceive(row.id)}
+                            className="shrink-0 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                          >
+                            {receiveBusyId === row.id ? "กำลังรับ…" : "รับเข้า"}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </>
             ) : mode === "summary" ? (
               <>
@@ -1164,6 +1470,40 @@ function StaffStockContent() {
                         — ช่องสีแดง
                       </div>
                     ) : null}
+                    {summarySections.length > 1 ? (
+                      <div className="mb-3 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="flex w-max min-w-full gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCategoryFilter("ALL")}
+                            className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                              categoryFilter === "ALL"
+                                ? "bg-site-primary text-white"
+                                : "bg-gray-100 text-gray-700"
+                            }`}
+                          >
+                            ทั้งหมด
+                          </button>
+                          {summarySections.map((cat) => (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => setCategoryFilter(cat.id)}
+                              className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                                categoryFilter === cat.id
+                                  ? "bg-site-primary text-white"
+                                  : "bg-gray-100 text-gray-700"
+                              }`}
+                            >
+                              {cat.name}
+                              <span className="ml-1 tabular-nums opacity-80">
+                                ({cat.items.length})
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="mb-2 grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 px-0.5 text-[11px] font-bold text-slate-500">
                       <span>รายการ</span>
                       <span className="text-center">ปัจจุบัน</span>
@@ -1173,111 +1513,144 @@ function StaffStockContent() {
                       <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-sm font-semibold text-slate-500">
                         ไม่มีรายการ{summaryTypeLabel}ให้นับสต๊อก
                       </p>
+                    ) : visibleSummarySections.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                        ไม่มีเมนูในหมวดนี้
+                      </p>
                     ) : null}
-                    <ul className="divide-y divide-gray-100">
-                      {summaryItems.map((item) => {
-                        const rawQty = qtyByItemId[item.id];
-                        const qty =
-                          rawQty === undefined || (rawQty as unknown) === ""
-                            ? 0
-                            : rawQty;
-                        const dbBalance =
-                          data.balances.find((b) => b.product.id === item.id)
-                            ?.quantity ?? 0;
-                        const counted = summaryCountedQty(item.id);
-                        const isDiff = counted !== dbBalance;
-                        const seq = summarySeqById.get(item.id) ?? 0;
-                        return (
-                          <li
-                            key={item.id}
-                            className={`grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 py-3 ${
-                              isDiff
-                                ? "-mx-2 rounded-xl bg-red-50 px-2 ring-1 ring-red-200"
-                                : ""
-                            }`}
-                          >
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span
-                                className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
-                                  isDiff ? "text-red-600" : "text-slate-500"
-                                }`}
-                              >
-                                {seq}
+                    <div className="space-y-4">
+                      {visibleSummarySections.map((section) => (
+                        <div key={section.id}>
+                          {summarySections.length > 1 ||
+                          section.name !== "ไม่มีหมวดหมู่" ? (
+                            <div className="mb-1 flex items-center gap-2 border-b border-slate-100 pb-1.5">
+                              <h4 className="text-sm font-extrabold text-slate-800">
+                                {section.name}
+                              </h4>
+                              <span className="text-[11px] font-semibold tabular-nums text-slate-500">
+                                {section.items.length} รายการ
                               </span>
-                              <div className="min-w-0 flex-1">
-                                <div
-                                  className={
-                                    isDiff ? "[&_p]:text-red-800" : undefined
-                                  }
+                            </div>
+                          ) : null}
+                          <ul className="divide-y divide-gray-100">
+                            {section.items.map((item) => {
+                              const rawQty = qtyByItemId[item.id];
+                              const qty =
+                                rawQty === undefined ||
+                                (rawQty as unknown) === ""
+                                  ? 0
+                                  : rawQty;
+                              const dbBalance =
+                                data.balances.find(
+                                  (b) => b.product.id === item.id,
+                                )?.quantity ?? 0;
+                              const counted = summaryCountedQty(item.id);
+                              const isDiff = counted !== dbBalance;
+                              const seq = summarySeqById.get(item.id) ?? 0;
+                              return (
+                                <li
+                                  key={item.id}
+                                  className={`grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 py-3 ${
+                                    isDiff
+                                      ? "-mx-2 rounded-xl bg-red-50 px-2 ring-1 ring-red-200"
+                                      : ""
+                                  }`}
                                 >
-                                  <StockItemName
-                                    name={item.name}
-                                    unit={item.unit}
-                                    stockType={item.stockType}
-                                  />
-                                </div>
-                                {isDiff ? (
-                                  <p className="mt-0.5 text-[11px] font-bold text-red-600">
-                                    ต่างจากสต๊อกปัจจุบัน
-                                  </p>
-                                ) : null}
-                              </div>
-                            </div>
-                            <div
-                              className={`rounded-lg px-1 py-2 text-center ${
-                                isDiff ? "bg-red-100/80" : "bg-slate-50"
-                              }`}
-                              title="สต๊อกปัจจุบันในระบบ"
-                            >
-                              <p
-                                className={`text-[10px] font-semibold ${
-                                  isDiff ? "text-red-600" : "text-slate-500"
-                                }`}
-                              >
-                                ปัจจุบัน
-                              </p>
-                              <p
-                                className={`text-sm font-black tabular-nums ${
-                                  isDiff ? "text-red-800" : "text-slate-900"
-                                }`}
-                              >
-                                {dbBalance}
-                              </p>
-                            </div>
-                            <div className="text-center">
-                              <p
-                                className={`mb-0.5 text-[10px] font-semibold ${
-                                  isDiff ? "text-red-600" : "text-slate-500"
-                                }`}
-                              >
-                                นับได้
-                              </p>
-                              <input
-                                type="number"
-                                inputMode="numeric"
-                                placeholder="0"
-                                aria-label={`สต๊อกที่นับได้ ${item.name}`}
-                                value={qty}
-                                onChange={(e) =>
-                                  setQtyByItemId((p) => ({
-                                    ...p,
-                                    [item.id]:
-                                      e.target.value === ""
-                                        ? ("" as unknown as number)
-                                        : parseInt(e.target.value),
-                                  }))
-                                }
-                                className={`w-full rounded-lg border-2 px-2 py-2 text-center text-sm font-bold tabular-nums focus:outline-none focus:ring-1 ${
-                                  isDiff
-                                    ? "border-red-500 bg-red-50 text-red-800 focus:border-red-500 focus:ring-red-500"
-                                    : "border-slate-300 bg-white text-black focus:border-site-primary focus:ring-site-primary"
-                                }`}
-                              />
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
+                                        isDiff
+                                          ? "text-red-600"
+                                          : "text-slate-500"
+                                      }`}
+                                    >
+                                      {seq}
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                      <div
+                                        className={
+                                          isDiff
+                                            ? "[&_p]:text-red-800"
+                                            : undefined
+                                        }
+                                      >
+                                        <StockItemName
+                                          name={item.name}
+                                          unit={item.unit}
+                                          stockType={item.stockType}
+                                        />
+                                      </div>
+                                      {isDiff ? (
+                                        <p className="mt-0.5 text-[11px] font-bold text-red-600">
+                                          ต่างจากสต๊อกปัจจุบัน
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <div
+                                    className={`rounded-lg px-1 py-2 text-center ${
+                                      isDiff ? "bg-red-100/80" : "bg-slate-50"
+                                    }`}
+                                    title="สต๊อกปัจจุบันในระบบ"
+                                  >
+                                    <p
+                                      className={`text-[10px] font-semibold ${
+                                        isDiff
+                                          ? "text-red-600"
+                                          : "text-slate-500"
+                                      }`}
+                                    >
+                                      ปัจจุบัน
+                                    </p>
+                                    <p
+                                      className={`text-sm font-black tabular-nums ${
+                                        isDiff
+                                          ? "text-red-800"
+                                          : "text-slate-900"
+                                      }`}
+                                    >
+                                      {dbBalance}
+                                    </p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p
+                                      className={`mb-0.5 text-[10px] font-semibold ${
+                                        isDiff
+                                          ? "text-red-600"
+                                          : "text-slate-500"
+                                      }`}
+                                    >
+                                      นับได้
+                                    </p>
+                                    <input
+                                      type="number"
+                                      inputMode="numeric"
+                                      placeholder="0"
+                                      aria-label={`สต๊อกที่นับได้ ${item.name}`}
+                                      value={qty}
+                                      onChange={(e) =>
+                                        setQtyByItemId((p) => ({
+                                          ...p,
+                                          [item.id]:
+                                            e.target.value === ""
+                                              ? ("" as unknown as number)
+                                              : parseInt(e.target.value),
+                                        }))
+                                      }
+                                      className={`w-full rounded-lg border-2 px-2 py-2 text-center text-sm font-bold tabular-nums focus:outline-none focus:ring-1 ${
+                                        isDiff
+                                          ? "border-red-500 bg-red-50 text-red-800 focus:border-red-500 focus:ring-red-500"
+                                          : "border-slate-300 bg-white text-black focus:border-site-primary focus:ring-site-primary"
+                                      }`}
+                                    />
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
                   </section>
 
                   {summaryIncludesSales ? (
@@ -1601,38 +1974,67 @@ function StaffStockContent() {
                     {actionType === "stock_in"
                       ? "ของสิ้นเปลือง (น้ำแข็ง/แก้ว/ถุง/แก๊ส/น้ำจิ้ม): รับเข้าเมื่อของมาส่ง"
                       : actionType === "issue"
-                        ? "จ่ายออกเมื่อเบิกใช้ชัดเจน เช่น เปลี่ยนแก๊ส 1 ถัง — รายวันทั่วไปใช้สรุปยอดท้ายวันก็ได้"
-                        : "ท้ายวันสรุปยอดของสิ้นเปลือง: นับคงเหลือจริง ระบบจะคำนวณว่าใช้ไปเท่าไรให้หลังบ้าน"}
+                        ? "จ่ายออกเมื่อเบิกใช้ชัดเจน เช่น เปลี่ยนแก๊ส 1 ถัง — รายวันทั่วไปใช้สรุปยอดก็ได้"
+                        : "นับคงเหลือจริง ระบบจะคำนวณว่าใช้ไปเท่าไรให้หลังบ้าน"}
                   </div>
                 )}
 
                 <div className="grid gap-4 mt-4">
-                  <button
-                    onClick={() => handleTypeSelectClick("SALE_ITEM")}
-                    className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
-                  >
-                    <div className="text-3xl">🍜</div>
-                    <h3 className="text-xl font-bold">เมนูขาย</h3>
-                  </button>
-                  <button
-                    onClick={() => handleTypeSelectClick("CONSUMABLE")}
-                    className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-3xl">📦</div>
-                      <h3 className="text-xl font-bold">ของสิ้นเปลือง</h3>
-                    </div>
-                    <p className="text-xs font-medium text-slate-500">
-                      น้ำแข็ง · แก๊ส · แก้ว · ถุง · น้ำจิ้ม
-                    </p>
-                  </button>
-                  <button
-                    onClick={() => handleTypeSelectClick("EQUIPMENT")}
-                    className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
-                  >
-                    <div className="text-3xl">🛠️</div>
-                    <h3 className="text-xl font-bold">อุปกรณ์</h3>
-                  </button>
+                  {(
+                    [
+                      {
+                        type: "SALE_ITEM" as const,
+                        label: "เมนูขาย",
+                        icon: "🍜",
+                        hint: null as string | null,
+                      },
+                      {
+                        type: "CONSUMABLE" as const,
+                        label: "ของสิ้นเปลือง",
+                        icon: "📦",
+                        hint: "น้ำแข็ง · แก๊ส · แก้ว · ถุง · น้ำจิ้ม",
+                      },
+                      {
+                        type: "EQUIPMENT" as const,
+                        label: "อุปกรณ์",
+                        icon: "🛠️",
+                        hint: null as string | null,
+                      },
+                    ] as const
+                  ).map((opt) => {
+                    const lastAt =
+                      actionType === "summary"
+                        ? formatStockActivityAt(
+                            data.lastStockCountAtByType?.[opt.type],
+                          )
+                        : null;
+                    return (
+                      <button
+                        key={opt.type}
+                        type="button"
+                        onClick={() => handleTypeSelectClick(opt.type)}
+                        className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-3xl">{opt.icon}</div>
+                          <h3 className="text-xl font-bold">{opt.label}</h3>
+                        </div>
+                        {opt.hint ? (
+                          <p className="text-xs font-medium text-slate-500">
+                            {opt.hint}
+                          </p>
+                        ) : null}
+                        {actionType === "summary" ? (
+                          <p className="mt-1 text-[12px] font-semibold text-slate-500">
+                            นับล่าสุด{" "}
+                            <span className="font-bold text-slate-700">
+                              {lastAt ? `${lastAt} น.` : "ยังไม่เคยนับ"}
+                            </span>
+                          </p>
+                        ) : null}
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             ) : (
@@ -1646,7 +2048,7 @@ function StaffStockContent() {
                   </button>
                   <h2 className="text-lg font-extrabold text-slate-900">
                     {actionType === "view"
-                      ? "ยอดคงเหลือ"
+                      ? "ภาพรวมสต๊อก"
                       : actionType === "stock_in"
                         ? "รับเข้า"
                         : actionType === "issue"
@@ -1654,6 +2056,21 @@ function StaffStockContent() {
                           : ""}
                   </h2>
                 </div>
+
+                {actionType === "view" && typeFilter === "SALE_ITEM" ? (
+                  <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2.5">
+                    <p className="min-w-0 text-[12px] font-medium text-orange-800">
+                      ดูของค้างตามอายุ · ตัดสินใจเช็ค/แยก/ลดราคาเอง
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/staff/stock/aging")}
+                      className="shrink-0 rounded-full bg-orange-600 px-2.5 py-1 text-[11px] font-bold text-white"
+                    >
+                      เปิด
+                    </button>
+                  </div>
+                ) : null}
 
                 {categories.length > 1 ? (
                   <div className="mb-3 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1788,81 +2205,98 @@ function StaffStockContent() {
                               : "ไม่มีเมนูในหมวดนี้"}
                           </p>
                         ) : (
-                          <ul className="divide-y divide-gray-100">
-                            {visibleItems.map((item) => {
-                              const dbBalance =
-                                data.balances.find((b) => b.product.id === item.id)
-                                  ?.quantity ?? 0;
-                              const isLow =
-                                item.lowStockAlert != null &&
-                                dbBalance <= item.lowStockAlert;
-                              const isEmpty = dbBalance <= 0;
-                              const seq = seqById.get(item.id) ?? 0;
-                              return (
-                                <li
-                                  key={item.id}
-                                  className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
-                                >
-                                  <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                                    {seq}
-                                  </span>
-                                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
-                                    {item.imageUrl ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        src={item.imageUrl}
-                                        alt=""
-                                        className="h-full w-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="flex h-full w-full items-center justify-center">
-                                        <IconSkewerPlaceholder size={28} />
-                                      </div>
-                                    )}
+                          <div className="space-y-4">
+                            {visibleItemSections.map((section) => (
+                              <div key={section.id}>
+                                {showItemCategoryHeaders ? (
+                                  <div className="mb-1 flex items-center gap-2 border-b border-gray-100 pb-1.5">
+                                    <h4 className="text-sm font-extrabold text-slate-800">
+                                      {section.name}
+                                    </h4>
+                                    <span className="text-[11px] font-semibold tabular-nums text-slate-500">
+                                      {section.items.length} รายการ
+                                    </span>
                                   </div>
-                                  <div className="min-w-0">
-                                    <StockItemName
-                                      name={item.name}
-                                      unit={item.unit}
-                                      stockType={item.stockType}
-                                    />
-                                    <p className="mt-0.5 text-xs text-gray-400">
-                                      {item.stockType === "CONSUMABLE" ||
-                                      item.stockType === "EQUIPMENT"
-                                        ? isEmpty
-                                          ? "หมดสต๊อก"
-                                          : isLow
-                                            ? "สต๊อกใกล้หมด"
-                                            : null
-                                        : `${item.unit}${
+                                ) : null}
+                                <ul className="divide-y divide-gray-100">
+                                  {section.items.map((item) => {
+                                    const dbBalance =
+                                      data.balances.find(
+                                        (b) => b.product.id === item.id,
+                                      )?.quantity ?? 0;
+                                    const isLow =
+                                      item.lowStockAlert != null &&
+                                      dbBalance <= item.lowStockAlert;
+                                    const isEmpty = dbBalance <= 0;
+                                    const seq = seqById.get(item.id) ?? 0;
+                                    return (
+                                      <li
+                                        key={item.id}
+                                        className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                                      >
+                                        <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                                          {seq}
+                                        </span>
+                                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                                          {item.imageUrl ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              src={item.imageUrl}
+                                              alt=""
+                                              className="h-full w-full object-cover"
+                                            />
+                                          ) : (
+                                            <div className="flex h-full w-full items-center justify-center">
+                                              <IconSkewerPlaceholder size={28} />
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <StockItemName
+                                            name={item.name}
+                                            unit={item.unit}
+                                            stockType={item.stockType}
+                                          />
+                                          <p className="mt-0.5 text-xs text-gray-400">
+                                            {item.stockType === "CONSUMABLE" ||
+                                            item.stockType === "EQUIPMENT"
+                                              ? isEmpty
+                                                ? "หมดสต๊อก"
+                                                : isLow
+                                                  ? "สต๊อกใกล้หมด"
+                                                  : null
+                                              : `${item.unit}${
+                                                  isEmpty
+                                                    ? " · หมดสต๊อก"
+                                                    : isLow
+                                                      ? " · สต๊อกใกล้หมด"
+                                                      : ""
+                                                }`}
+                                          </p>
+                                        </div>
+                                        <div
+                                          className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
                                             isEmpty
-                                              ? " · หมดสต๊อก"
+                                              ? "bg-red-50 text-red-700"
                                               : isLow
-                                                ? " · สต๊อกใกล้หมด"
-                                                : ""
+                                                ? "bg-amber-50 text-amber-700"
+                                                : "bg-slate-100 text-slate-900"
                                           }`}
-                                    </p>
-                                  </div>
-                                  <div
-                                    className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
-                                      isEmpty
-                                        ? "bg-red-50 text-red-700"
-                                        : isLow
-                                          ? "bg-amber-50 text-amber-700"
-                                          : "bg-slate-100 text-slate-900"
-                                    }`}
-                                  >
-                                    <p className="text-lg font-black tabular-nums leading-none">
-                                      {dbBalance}
-                                    </p>
-                                    <p className="mt-0.5 text-[10px] font-semibold opacity-70">
-                                      คงเหลือ
-                                    </p>
-                                  </div>
-                                </li>
-                              );
-                            })}
-                          </ul>
+                                        >
+                                          <p className="text-lg font-black tabular-nums leading-none">
+                                            {dbBalance}
+                                          </p>
+                                          <p className="mt-0.5 text-[10px] font-semibold opacity-70">
+                                            คงเหลือ
+                                          </p>
+                                        </div>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1916,85 +2350,108 @@ function StaffStockContent() {
                         ไม่มีเมนูในหมวดนี้
                       </p>
                     ) : (
-                      <ul className="divide-y divide-gray-100">
-                        {visibleItems.map((item) => {
-                          const qty = qtyByItemId[item.id] ?? 0;
-                          const dbBalance =
-                            data.balances.find((b) => b.product.id === item.id)
-                              ?.quantity ?? 0;
-                          const seq = seqById.get(item.id) ?? 0;
+                      <div className="space-y-4">
+                        {visibleItemSections.map((section) => (
+                          <div key={section.id}>
+                            {showItemCategoryHeaders ? (
+                              <div className="mb-1 flex items-center gap-2 border-b border-gray-100 pb-1.5">
+                                <h4 className="text-sm font-extrabold text-slate-800">
+                                  {section.name}
+                                </h4>
+                                <span className="text-[11px] font-semibold tabular-nums text-slate-500">
+                                  {section.items.length} รายการ
+                                </span>
+                              </div>
+                            ) : null}
+                            <ul className="divide-y divide-gray-100">
+                              {section.items.map((item) => {
+                                const qty = qtyByItemId[item.id] ?? 0;
+                                const dbBalance =
+                                  data.balances.find(
+                                    (b) => b.product.id === item.id,
+                                  )?.quantity ?? 0;
+                                const seq = seqById.get(item.id) ?? 0;
 
-                          return (
-                            <li
-                              key={item.id}
-                              className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
-                            >
-                              <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                                {seq}
-                              </span>
-                              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
-                                {item.imageUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={item.imageUrl}
-                                    alt=""
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center">
-                                    <IconSkewerPlaceholder size={28} />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <StockItemName
-                                  name={item.name}
-                                  unit={item.unit}
-                                  stockType={item.stockType}
-                                />
-                                <p className="mt-0.5 text-xs text-gray-400">
-                                  สต๊อกเดิม: {dbBalance}
-                                </p>
-                              </div>
-                              <div className="flex flex-col items-end gap-1">
-                                <div
-                                  className={`flex h-9 shrink-0 items-center overflow-hidden rounded-full border border-gray-200 bg-white ${
-                                    qty > 0
-                                      ? "border-site-primary ring-1 ring-site-primary"
-                                      : ""
-                                  }`}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => setQty(item.id, qty - 1)}
-                                    className="flex h-full w-9 shrink-0 items-center justify-center bg-gray-50 text-gray-600 transition hover:bg-gray-100 active:bg-gray-200"
+                                return (
+                                  <li
+                                    key={item.id}
+                                    className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
                                   >
-                                    -
-                                  </button>
-                                  <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    value={qty || ""}
-                                    placeholder="0"
-                                    onChange={(e) => {
-                                      const val = parseInt(e.target.value, 10);
-                                      setQty(item.id, isNaN(val) ? 0 : val);
-                                    }}
-                                    className="w-12 text-center text-sm font-bold tabular-nums text-gray-900 focus:outline-none focus:bg-site-primary-soft/20 h-full bg-transparent p-0 border-none ring-0"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setQty(item.id, qty + 1)}
-                                    className="flex h-full w-9 shrink-0 items-center justify-center bg-site-primary-soft text-site-primary-focus transition hover:bg-site-primary-soft/80 active:bg-site-primary-soft/60"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                                    <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                                      {seq}
+                                    </span>
+                                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                                      {item.imageUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src={item.imageUrl}
+                                          alt=""
+                                          className="h-full w-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="flex h-full w-full items-center justify-center">
+                                          <IconSkewerPlaceholder size={28} />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <StockItemName
+                                        name={item.name}
+                                        unit={item.unit}
+                                        stockType={item.stockType}
+                                      />
+                                      <p className="mt-0.5 text-xs text-gray-400">
+                                        สต๊อกเดิม: {dbBalance}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                      <div
+                                        className={`flex h-9 shrink-0 items-center overflow-hidden rounded-full border border-gray-200 bg-white ${
+                                          qty > 0
+                                            ? "border-site-primary ring-1 ring-site-primary"
+                                            : ""
+                                        }`}
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => setQty(item.id, qty - 1)}
+                                          className="flex h-full w-9 shrink-0 items-center justify-center bg-gray-50 text-gray-600 transition hover:bg-gray-100 active:bg-gray-200"
+                                        >
+                                          -
+                                        </button>
+                                        <input
+                                          type="number"
+                                          inputMode="numeric"
+                                          value={qty || ""}
+                                          placeholder="0"
+                                          onChange={(e) => {
+                                            const val = parseInt(
+                                              e.target.value,
+                                              10,
+                                            );
+                                            setQty(
+                                              item.id,
+                                              isNaN(val) ? 0 : val,
+                                            );
+                                          }}
+                                          className="w-12 text-center text-sm font-bold tabular-nums text-gray-900 focus:outline-none focus:bg-site-primary-soft/20 h-full bg-transparent p-0 border-none ring-0"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => setQty(item.id, qty + 1)}
+                                          className="flex h-full w-9 shrink-0 items-center justify-center bg-site-primary-soft text-site-primary-focus transition hover:bg-site-primary-soft/80 active:bg-site-primary-soft/60"
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </section>
                 )}

@@ -26,6 +26,7 @@ export const BRAND_STATUS_LABELS: Record<BrandStatus, string> = {
   ACTIVE: "ใช้งาน",
   PAUSED: "หยุดใช้",
   EXPIRED: "หมดอายุ",
+  DELETED: "ลบแล้ว",
 };
 
 export const BRAND_PLAN_LABELS: Record<BrandPlan, string> = {
@@ -163,6 +164,9 @@ export function effectiveBrandStatus(
 }
 
 export function brandInactiveMessage(status: BrandStatus): string {
+  if (status === "DELETED") {
+    return "แบรนด์นี้ถูกลบออกจากระบบแล้ว — ติดต่อผู้ดูแลแพลตฟอร์ม";
+  }
   if (status === "PAUSED") {
     return "แบรนด์นี้ถูกหยุดใช้งานชั่วคราว — ติดต่อผู้ดูแลแพลตฟอร์ม";
   }
@@ -259,6 +263,7 @@ export function publicCustomerBranchWhere(opts?: {
   return {
     isHidden: false,
     isTest: false,
+    kind: "STORE",
     brand: { is: brandFilter },
     ...(opts?.branchCode ? { code: opts.branchCode } : {}),
     ...(opts?.query

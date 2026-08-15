@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AdminEmptyState,
   AdminLoadingState,
@@ -57,6 +57,12 @@ type StockPayload = {
 
 export function BranchStockPanel({ branchId }: { branchId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const viewParam = searchParams.get("view");
+  const typeParam = searchParams.get("type");
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
+  const dateParam = searchParams.get("date");
   const toast = useToast();
   const { confirm } = useConfirm();
 
@@ -78,8 +84,12 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
 
   const [activeTab, setActiveTab] = useState<
     "manage" | "counts" | "movements" | "usage"
-  >("manage");
+  >(viewParam === "movements" ? "movements" : "manage");
   const [pendingCountBadge, setPendingCountBadge] = useState(0);
+
+  useEffect(() => {
+    if (viewParam === "movements") setActiveTab("movements");
+  }, [viewParam]);
 
   // Dropdown for "สร้างรายการใหม่"
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
@@ -601,7 +611,13 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           onPendingChange={setPendingCountBadge}
         />
       ) : activeTab === "movements" ? (
-        <BranchStockMovementsView branchId={branchId} />
+        <BranchStockMovementsView
+          branchId={branchId}
+          initialType={typeParam ?? undefined}
+          initialDate={dateParam}
+          initialFrom={fromParam}
+          initialTo={toParam}
+        />
       ) : activeTab === "usage" ? (
         <BranchStockUsageView branchId={branchId} />
       ) : (

@@ -11,7 +11,7 @@ export * from "@/lib/brand-plan-shared";
 /** สาขาจริงที่นับโควต้าแพ็กเกจ (ไม่รวมสาขาทดลอง) */
 export async function countLiveBranches(brandId: string): Promise<number> {
   return prisma.branch.count({
-    where: { brandId, isTest: false },
+    where: { brandId, isTest: false, kind: { not: "WAREHOUSE" } },
   });
 }
 

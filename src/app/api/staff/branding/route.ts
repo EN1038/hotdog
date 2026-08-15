@@ -51,6 +51,7 @@ export async function GET() {
             brandId: true,
             operatingMode: true,
             weighSalesEnabled: true,
+            kind: true,
             brand: {
               select: {
                 stockEnabled: true,
@@ -63,7 +64,7 @@ export async function GET() {
       } catch (e) {
         // Stale Prisma client / migrate lag — degrade without weigh fields
         const msg = e instanceof Error ? e.message : String(e);
-        if (!/weighSalesEnabled|Unknown field|column/i.test(msg)) throw e;
+        if (!/weighSalesEnabled|Unknown field|column|kind/i.test(msg)) throw e;
         console.error("[staff/branding] weighSalesEnabled fallback", msg);
         return prisma.branch.findUnique({
           where: { id: session.branchId },
@@ -220,6 +221,8 @@ export async function GET() {
       pendingStockCount,
       todayOrderCount,
       todayRevenueBaht,
+      branchKind: branch && "kind" in branch ? branch.kind : "STORE",
+      brandId: branch?.brandId ?? null,
     });
   } catch (error) {
     return handleApiError(error);

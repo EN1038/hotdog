@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { toPng } from "html-to-image";
 import { bangkokDateKey, formatPrice, isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
+import { DateInput } from "@/components/DateInput";
+import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
 
 type StockLine = {
   name: string;
@@ -525,12 +527,12 @@ export function StaffDailySalesSummarySheet({
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
           <label className="block text-xs font-medium text-gray-600">
             วันที่
-            <input
-              type="date"
+            <DateInput
               value={date}
               max={bangkokDateKey()}
-              onChange={(e) => {
-                if (e.target.value) setDate(e.target.value);
+              aria-label="วันที่"
+              onChange={(v) => {
+                if (v) setDate(v);
               }}
               className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900"
             />
@@ -773,41 +775,21 @@ export function StaffDailySalesSummarySheet({
           )}
         </div>
 
-        <div className="space-y-2 border-t border-gray-100 px-4 py-3">
+        <div className="shrink-0 space-y-2 border-t border-gray-100 bg-white px-4 py-3">
           {selected ? (
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                disabled={!!exportBusy || selected.lines.length === 0}
-                onClick={() => void handleSaveImage()}
-                className="rounded-xl border border-gray-300 bg-white px-2 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
-              >
-                {exportBusy === "save" ? "กำลังบันทึก…" : "Save รูป"}
-              </button>
-              <button
-                type="button"
-                disabled={!!exportBusy || selected.lines.length === 0}
-                onClick={() => void handleShareImage()}
-                className="rounded-xl border border-green-600 bg-green-50 px-2 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:opacity-60"
-              >
-                {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
-              </button>
-              <button
-                type="button"
-                disabled={!!exportBusy}
-                onClick={() => void handleCopyText()}
-                className="rounded-xl border border-blue-600 bg-blue-50 px-2 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
-              >
-                {exportBusy === "copy" ? "กำลังคัดลอก…" : "Copy"}
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              <p className="min-w-0 flex-1 text-[12px] font-medium text-slate-500">
+                {exportMsg || "กดแชร์เพื่อส่งสรุปนับสต๊อก"}
+              </p>
+              <ShareExportMenu
+                busy={exportBusy}
+                message={exportMsg}
+                disabled={selected.lines.length === 0}
+                onShareImage={handleShareImage}
+                onSaveImage={handleSaveImage}
+                onCopyText={handleCopyText}
+              />
             </div>
-          ) : null}
-          {exportMsg ? (
-            <p className="text-center text-xs text-gray-600">{exportMsg}</p>
-          ) : selected ? (
-            <p className="text-center text-xs text-gray-400">
-              แชร์รูป หรือกด Copy แล้ววางข้อความในไลน์อีกช่องทาง
-            </p>
           ) : null}
           <button
             type="button"

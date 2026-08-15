@@ -10,7 +10,12 @@ import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { hashAndSealPassword } from "@/lib/admin-password";
-import { NEW_BRAND_DEFAULTS, trialEndsAtFromNow } from "@/lib/brand-plan";
+import {
+  applyPlanPreset,
+  NEW_BRAND_DEFAULTS,
+  trialEndsAtFromNow,
+} from "@/lib/brand-plan";
+import { normalizePhone } from "@/lib/constants";
 
 const brandSchema = z.object({
   code: z
@@ -30,12 +35,25 @@ const brandSchema = z.object({
   coverImageUrl: z.string().nullable().optional(),
   contactPhone: z.string().nullable().optional(),
   color: z.string().optional(),
+  /** Preferred: owner phone (normalized). Becomes login id. */
+  adminPhone: z.string().trim().min(9).optional(),
   adminUsername: z
     .string()
     .trim()
     .min(3, "ต้องมีอย่างน้อย 3 ตัวอักษร")
     .optional(),
   adminPassword: z.string().min(6, "ต้องมีอย่างน้อย 6 ตัวอักษร").optional(),
+  status: z.enum(["TRIAL", "ACTIVE", "PAUSED", "EXPIRED"]).optional(),
+  plan: z.enum(["RETAIL", "WEIGH_TABLE", "MALA", "MULTI"]).optional(),
+  applyPlanPreset: z.boolean().optional(),
+  maxBranches: z.number().int().min(1).max(200).optional(),
+  maxStaff: z.number().int().min(1).max(500).optional(),
+  stockEnabled: z.boolean().optional(),
+  kitchenEnabled: z.boolean().optional(),
+  bbqEnabled: z.boolean().optional(),
+  skewerEnabled: z.boolean().optional(),
+  serviceStartsAt: z.string().datetime().nullable().optional(),
+  trialEndsAt: z.string().datetime().nullable().optional(),
 });
 
 function normalizeColor(input: string | undefined) {
@@ -52,7 +70,7 @@ export async function GET() {
       include: {
         _count: {
           select: {
-            branches: { where: { isTest: false } },
+            branches: { where: { isTest: false, kind: { not: "WAREHOUSE" } } },
             members: true,
           },
         },
@@ -98,17 +116,56 @@ export async function POST(request: Request) {
     });
     if (existing) return jsonError("รหัสแบรนด์ซ้ำ");
 
-    if (!body.adminUsername || !body.adminPassword) {
-      return jsonError("กรุณากำหนดไอดีและรหัสผ่านสำหรับผู้ดูแลแบรนด์");
+    const phoneRaw = body.adminPhone?.trim() || body.contactPhone?.trim() || "";
+    const phone = phoneRaw ? normalizePhone(phoneRaw) : "";
+    const username = phone
+      ? phone
+      : body.adminUsername?.trim().toLowerCase() || "";
+    if (!username || username.length < 3) {
+      return jsonError("กรุณาระบุเบอร์โทรเจ้าของร้าน");
+    }
+    if (phone && phone.length < 9) {
+      return jsonError("เบอร์โทรไม่ถูกต้อง");
     }
 
-    const username = body.adminUsername.trim().toLowerCase();
-    const dupAdmin = await prisma.admin.findUnique({ where: { username } });
-    if (dupAdmin) return jsonError("ไอดีผู้ใช้ซ้ำ กรุณาใช้ชื่ออื่น");
+    const password =
+      body.adminPassword?.trim() ||
+      (phone.length >= 6 ? phone : "") ||
+      "";
+    if (password.length < 6) {
+      return jsonError("กรุณากำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร");
+    }
 
-    const { passwordHash, passwordEnc } = await hashAndSealPassword(
-      body.adminPassword,
-    );
+    const dupUsername = await prisma.admin.findUnique({ where: { username } });
+    if (dupUsername) {
+      return jsonError(
+        phone
+          ? "เบอร์นี้มีบัญชีเจ้าของอยู่แล้ว"
+          : "ไอดีผู้ใช้ซ้ำ กรุณาใช้ชื่ออื่น",
+      );
+    }
+    if (phone) {
+      const dupPhone = await prisma.admin.findFirst({ where: { phone } });
+      if (dupPhone) return jsonError("เบอร์นี้มีบัญชีเจ้าของอยู่แล้ว");
+    }
+
+    const { passwordHash, passwordEnc } = await hashAndSealPassword(password);
+
+    const plan = body.plan ?? NEW_BRAND_DEFAULTS.plan;
+    const usePreset = body.applyPlanPreset !== false;
+    const preset = usePreset ? applyPlanPreset(plan) : null;
+    const status = body.status ?? NEW_BRAND_DEFAULTS.status;
+    const serviceStartsAt = body.serviceStartsAt
+      ? new Date(body.serviceStartsAt)
+      : new Date();
+    const trialEndsAt =
+      body.trialEndsAt !== undefined
+        ? body.trialEndsAt
+          ? new Date(body.trialEndsAt)
+          : null
+        : status === "TRIAL"
+          ? trialEndsAtFromNow()
+          : null;
 
     const brand = await prisma.$transaction(async (tx) => {
       const created = await tx.brand.create({
@@ -121,23 +178,41 @@ export async function POST(request: Request) {
           siteDescription: body.siteDescription?.trim() || null,
           logoUrl: body.logoUrl ?? null,
           coverImageUrl: body.coverImageUrl ?? null,
-          contactPhone: body.contactPhone?.replace(/\D/g, "").trim() || null,
+          contactPhone: phone || body.contactPhone?.replace(/\D/g, "").trim() || null,
           color: normalizeColor(body.color),
-          status: NEW_BRAND_DEFAULTS.status,
-          plan: NEW_BRAND_DEFAULTS.plan,
-          maxBranches: NEW_BRAND_DEFAULTS.maxBranches,
-          maxStaff: NEW_BRAND_DEFAULTS.maxStaff,
-          stockEnabled: NEW_BRAND_DEFAULTS.stockEnabled,
-          kitchenEnabled: NEW_BRAND_DEFAULTS.kitchenEnabled,
-          bbqEnabled: NEW_BRAND_DEFAULTS.bbqEnabled,
-          skewerEnabled: NEW_BRAND_DEFAULTS.skewerEnabled,
-          trialEndsAt: trialEndsAtFromNow(),
+          status,
+          plan,
+          maxBranches:
+            body.maxBranches ??
+            preset?.maxBranches ??
+            NEW_BRAND_DEFAULTS.maxBranches,
+          maxStaff:
+            body.maxStaff ?? preset?.maxStaff ?? NEW_BRAND_DEFAULTS.maxStaff,
+          stockEnabled:
+            body.stockEnabled ??
+            preset?.stockEnabled ??
+            NEW_BRAND_DEFAULTS.stockEnabled,
+          kitchenEnabled:
+            body.kitchenEnabled ??
+            preset?.kitchenEnabled ??
+            NEW_BRAND_DEFAULTS.kitchenEnabled,
+          bbqEnabled:
+            body.bbqEnabled ??
+            preset?.bbqEnabled ??
+            NEW_BRAND_DEFAULTS.bbqEnabled,
+          skewerEnabled:
+            body.skewerEnabled ??
+            preset?.skewerEnabled ??
+            NEW_BRAND_DEFAULTS.skewerEnabled,
+          serviceStartsAt,
+          trialEndsAt,
         },
       });
 
       const admin = await tx.admin.create({
         data: {
           username,
+          phone: phone || null,
           passwordHash,
           passwordEnc,
           isPlatformAdmin: false,
@@ -152,24 +227,29 @@ export async function POST(request: Request) {
         },
       });
 
-      return created;
+      return tx.brand.update({
+        where: { id: created.id },
+        data: { primaryAdminId: admin.id },
+      });
     });
 
     await logAdminActivity(session, {
       action: "brand.create",
-      summary: `สร้างแบรนด์ ${brand.name} (/ ${brand.code}) · ผู้ดูแล ${username}`,
+      summary: `สร้างแบรนด์ ${brand.name} (/ ${brand.code}) · เจ้าของ ${username}`,
       brandId: brand.id,
       brandName: brand.name,
       entityType: "brand",
       entityId: brand.id,
       entityName: brand.name,
-      metadata: { code: brand.code, adminUsername: username },
+      metadata: { code: brand.code, adminUsername: username, phone: phone || null },
     });
 
     return jsonOk(
       {
         ...brand,
         createdAdminUsername: username,
+        createdAdminPhone: phone || null,
+        createdAdminPassword: password,
       },
       201,
     );

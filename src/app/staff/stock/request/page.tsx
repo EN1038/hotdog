@@ -105,7 +105,7 @@ export default function StaffStockRequestPage() {
               ขอของจากครัว
             </h1>
             <p className="text-xs text-gray-500">
-              แจ้งยอดที่ต้องการให้บ้านกลางผลิต/จัดส่ง
+              แจ้งยอดที่ต้องการให้สต๊อกกลางผลิต/จัดส่ง
             </p>
           </div>
           <Link

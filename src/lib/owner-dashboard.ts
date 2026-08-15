@@ -10,6 +10,7 @@ export type OwnerBranchRow = {
   isOpen: boolean;
   isTest: boolean;
   isHidden: boolean;
+  kind?: "STORE" | "WAREHOUSE";
 };
 
 export type OwnerBrandRow = {

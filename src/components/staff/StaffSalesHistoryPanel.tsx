@@ -423,11 +423,11 @@ export function StaffSalesHistoryPanel({
 
   return (
     <section className="mt-1">
-      <div className="flex items-center gap-2">
+      <div className="mb-1 flex items-center gap-2">
         <p className="min-w-0 flex-1 text-[13px] font-medium text-slate-500">
           {hasOrderFilters
             ? "ผลค้นหาตามตัวกรอง — กดไอคอนเพื่อแก้"
-            : "กดรอบเพื่อดูออเดอร์ หรือกดค้นหาเพื่อกรองบิล"}
+            : "เลือกช่วงวันที่แล้วกดรอบเพื่อดูบิล"}
         </p>
         <button
           type="button"

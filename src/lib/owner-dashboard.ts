@@ -46,6 +46,19 @@ export type OwnerTodayOrder = {
   branchName: string;
 };
 
+export type OwnerTopSeller = {
+  name: string;
+  quantity: number;
+  revenueBaht: number;
+};
+
+export type OwnerDailyPoint = {
+  date: string;
+  label: string;
+  revenueBaht: number;
+  orderCount: number;
+};
+
 export type OwnerDashboardPayload = {
   brand: OwnerBrandRow | null;
   branches: OwnerBranchRow[];
@@ -60,4 +73,10 @@ export type OwnerDashboardPayload = {
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
   orders: OwnerTodayOrder[];
+  /** Brand + any scoped branch has stock enabled */
+  stockEnabled: boolean;
+  saleStockQty: number;
+  saleStockValue: number;
+  topSellers: OwnerTopSeller[];
+  days: OwnerDailyPoint[];
 };

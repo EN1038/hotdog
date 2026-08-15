@@ -152,7 +152,7 @@ export function OwnerAppShell({
     {
       id: "summary",
       href: "/owner/summary",
-      label: "สรุปยอด",
+      label: "ภาพรวม",
       icon: <IconChart size={24} />,
     },
     {

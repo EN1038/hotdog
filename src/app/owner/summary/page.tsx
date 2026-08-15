@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShell";
 import {
+  OwnerDailyRevenueBars,
+  OwnerTopSellersList,
+} from "@/components/owner/OwnerOverviewExtras";
+import {
   SalesDateRangeBar,
   SalesOverviewCards,
   SalesReportMetrics,
@@ -22,10 +26,13 @@ function OwnerSummaryInner() {
   const [includeTest, setIncludeTest] = useState(false);
 
   const load = useCallback(
-    async (period: "day" | "month") => {
+    async (rangeFrom: string, rangeTo: string) => {
       setLoading(true);
       try {
-        const params = new URLSearchParams({ period });
+        const params = new URLSearchParams({
+          from: rangeFrom,
+          to: rangeTo,
+        });
         if (includeTest) params.set("includeTest", "1");
         const res = await fetch(`/api/owner/dashboard?${params}`);
         if (!res.ok) return;
@@ -39,9 +46,8 @@ function OwnerSummaryInner() {
   );
 
   useEffect(() => {
-    const sameDay = from === to && to === today;
-    void load(sameDay ? "day" : "month");
-  }, [load, from, to, today]);
+    void load(from, to);
+  }, [load, from, to]);
 
   const stats = payload?.stats ?? data?.stats ?? EMPTY_SALES_REPORT_STATS;
   const hasTestBranch =
@@ -54,15 +60,14 @@ function OwnerSummaryInner() {
     completedRevenue: row.completedRevenue,
     completedCount: row.completedCount,
   }));
+  const stockEnabled = Boolean(payload?.stockEnabled);
 
   return (
     <div className="px-4 pb-6 pt-4">
       <header className="mb-4">
-        <h1 className="text-[20px] font-black text-slate-900">
-          สรุปภาพรวมแบรนด์
-        </h1>
+        <h1 className="text-[20px] font-black text-slate-900">ภาพรวมร้าน</h1>
         <p className="mt-1 text-[14px] font-medium text-slate-500">
-          ยอดขาย ค่าใช้จ่าย รวมทุกสาขาของแบรนด์นี้
+          ยอดขาย สต๊อก ของเสีย ค่าใช้จ่าย และสินค้าขายดี
           {hasTestBranch && !includeTest ? " (ไม่รวมสาขาทดลอง)" : ""}
         </p>
       </header>
@@ -89,35 +94,49 @@ function OwnerSummaryInner() {
         onToChange={setTo}
       />
 
-      <SalesOverviewCards
-        loading={loading}
-        onOpenSalesDetail={() => setDetailOpen((v) => !v)}
-        data={{
-          stockEnabled: false,
-          completedRevenue: stats.completedRevenue ?? 0,
-          cashRevenue: stats.cashRevenue ?? 0,
-          transferRevenue: stats.transferRevenue ?? 0,
-          soldQty: stats.soldQty ?? 0,
-          expenseTotal: stats.expenseTotal ?? 0,
-          expenseCount: stats.expenseCount ?? 0,
-          cashExpense: stats.cashExpense ?? 0,
-          transferExpense: stats.transferExpense ?? 0,
-          wasteQty: stats.wasteQty ?? 0,
-          wasteValue: stats.wasteValue ?? 0,
-          netAfterExpenses: stats.netAfterExpenses ?? 0,
-        }}
-      />
+      <div className="space-y-3">
+        <SalesOverviewCards
+          loading={loading}
+          onOpenSalesDetail={() => setDetailOpen((v) => !v)}
+          data={{
+            stockEnabled,
+            saleStockQty: payload?.saleStockQty ?? 0,
+            saleStockValue: payload?.saleStockValue ?? 0,
+            completedRevenue: stats.completedRevenue ?? 0,
+            cashRevenue: stats.cashRevenue ?? 0,
+            transferRevenue: stats.transferRevenue ?? 0,
+            soldQty: stats.soldQty ?? 0,
+            expenseTotal: stats.expenseTotal ?? 0,
+            expenseCount: stats.expenseCount ?? 0,
+            cashExpense: stats.cashExpense ?? 0,
+            transferExpense: stats.transferExpense ?? 0,
+            wasteQty: stats.wasteQty ?? 0,
+            wasteValue: stats.wasteValue ?? 0,
+            netAfterExpenses: stats.netAfterExpenses ?? 0,
+          }}
+        />
 
-      {detailOpen ? (
-        <div className="mt-4">
-          <SalesReportMetrics
-            stats={{ ...EMPTY_SALES_REPORT_STATS, ...stats }}
-            byChannel={payload?.byChannel ?? []}
-            byPayment={payload?.byPayment ?? []}
-            byBranch={byBranch}
-          />
-        </div>
-      ) : null}
+        <OwnerDailyRevenueBars
+          days={payload?.days ?? []}
+          loading={loading}
+        />
+
+        <OwnerTopSellersList
+          items={payload?.topSellers ?? []}
+          loading={loading}
+        />
+
+        {detailOpen ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <SalesReportMetrics
+              stats={{ ...EMPTY_SALES_REPORT_STATS, ...stats }}
+              byChannel={payload?.byChannel ?? []}
+              byPayment={payload?.byPayment ?? []}
+              byBranch={byBranch}
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

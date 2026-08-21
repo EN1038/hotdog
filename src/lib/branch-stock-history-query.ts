@@ -429,7 +429,7 @@ export async function loadBranchStockHistoryBatches(opts: {
       groups.set(key, {
         key,
         branchId: row.branchId,
-        branchName: row.branchName,
+        branchName: row.branchName ?? null,
         historyType: row.type,
         createdAt: row.createdAt,
         note: row.type === "SALE" ? null : row.note,

@@ -68,50 +68,47 @@ export async function listWarehouseMovements(input: {
       ? { gte: dateFilter.start, lte: dateFilter.end }
       : null;
 
+  const andFilters: Prisma.StockMovementWhereInput[] = [
+    {
+      OR: [
+        { stockLocation: { type: "WAREHOUSE" } },
+        { fromLocation: { type: "WAREHOUSE" } },
+        { toLocation: { type: "WAREHOUSE" } },
+      ],
+    },
+  ];
+
+  if (dateRange) {
+    andFilters.push({
+      OR: [{ createdAt: dateRange }, { lot: { receivedAt: dateRange } }],
+    });
+  }
+
+  if (q) {
+    andFilters.push({
+      OR: [
+        { documentNo: { contains: q, mode: "insensitive" } },
+        { note: { contains: q, mode: "insensitive" } },
+        { lotNumber: { contains: q, mode: "insensitive" } },
+        { product: { name: { contains: q, mode: "insensitive" } } },
+        {
+          createdByStaff: {
+            name: { contains: q, mode: "insensitive" },
+          },
+        },
+        {
+          createdByAdmin: {
+            username: { contains: q, mode: "insensitive" },
+          },
+        },
+      ],
+    });
+  }
+
   const rows = await prisma.stockMovement.findMany({
     where: {
       brandId: input.brandId,
-      AND: [
-        {
-          OR: [
-            { stockLocation: { type: "WAREHOUSE" } },
-            { fromLocation: { type: "WAREHOUSE" } },
-            { toLocation: { type: "WAREHOUSE" } },
-          ],
-        },
-        ...(dateRange
-          ? [
-              {
-                OR: [
-                  { createdAt: dateRange },
-                  { lot: { receivedAt: dateRange } },
-                ],
-              },
-            ]
-          : []),
-        ...(q
-          ? [
-              {
-                OR: [
-                  { documentNo: { contains: q, mode: "insensitive" } },
-                  { note: { contains: q, mode: "insensitive" } },
-                  { lotNumber: { contains: q, mode: "insensitive" } },
-                  { product: { name: { contains: q, mode: "insensitive" } } },
-                  {
-                    createdByStaff: {
-                      name: { contains: q, mode: "insensitive" },
-                    },
-                  },
-                  {
-                    createdByAdmin: {
-                      username: { contains: q, mode: "insensitive" },
-                    },
-                  },
-                ],
-              },
-            ]
-          : []),
-      ],
+      AND: andFilters,
     },
     include: warehouseMovementInclude,
     orderBy: { createdAt: "desc" },
@@ -128,7 +125,8 @@ export async function listWarehouseMovements(input: {
     documentNo: row.documentNo,
     supplier: row.supplier,
     lotNumber: row.lotNumber ?? row.lot?.lotNumber ?? null,
-    expiresAt: row.expiresAt?.toISOString() ?? row.lot?.expiresAt?.toISOString() ?? null,
+    expiresAt:
+      row.expiresAt?.toISOString() ?? row.lot?.expiresAt?.toISOString() ?? null,
     receivedAt: row.lot?.receivedAt?.toISOString() ?? null,
     imageUrl: row.imageUrl,
     createdAt: movementRecordedAt(row).toISOString(),

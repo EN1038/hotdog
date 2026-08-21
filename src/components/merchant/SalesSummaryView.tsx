@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { DateInput } from "@/components/DateInput";
 import { formatPrice } from "@/lib/constants";
 import {
@@ -274,6 +275,7 @@ export function SalesReportMetrics({
   stats: {
     completedRevenue: number;
     cancelledCount: number;
+    cancelledRevenue?: number;
     openCount: number;
     cashRevenue: number;
     transferRevenue: number;
@@ -287,6 +289,7 @@ export function SalesReportMetrics({
     openingCash: number;
     expectedCash: number;
     netAfterExpenses: number;
+    netAfterWaste?: number;
   };
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
@@ -328,7 +331,19 @@ export function SalesReportMetrics({
         <MetricTile
           label="ยกเลิก"
           value={`${stats.cancelledCount} บิล`}
+          hint={
+            (stats.cancelledRevenue ?? 0) > 0
+              ? baht(stats.cancelledRevenue ?? 0)
+              : undefined
+          }
           tone={stats.cancelledCount > 0 ? "warn" : "default"}
+        />
+        <MetricTile
+          label="เหลือหลังของเสีย"
+          value={baht(
+            stats.netAfterWaste ??
+              stats.netAfterExpenses - stats.wasteValue,
+          )}
         />
       </div>
 
@@ -619,6 +634,9 @@ export type SalesOverviewData = {
   wasteQty: number;
   wasteValue: number;
   netAfterExpenses: number;
+  netAfterWaste?: number;
+  cancelledCount?: number;
+  cancelledRevenue?: number;
   stockEnabled?: boolean;
 };
 
@@ -674,16 +692,145 @@ export function SalesOverviewCards({
   data,
   loading,
   onOpenSalesDetail,
+  wasteHref,
+  expenseHref,
+  salesHref,
+  stockHref,
+  netHref,
+  cancelHref,
 }: {
   data: SalesOverviewData;
   loading?: boolean;
   onOpenSalesDetail?: () => void;
+  wasteHref?: string;
+  expenseHref?: string;
+  salesHref?: string;
+  stockHref?: string;
+  netHref?: string;
+  cancelHref?: string;
 }) {
   const cash = data.cashRevenue ?? 0;
   const transfer = data.transferRevenue ?? 0;
   const cashExpense = data.cashExpense ?? 0;
   const transferExpense = data.transferExpense ?? 0;
   const showStock = data.stockEnabled !== false;
+  const netAfterWaste =
+    data.netAfterWaste ?? data.netAfterExpenses - (data.wasteValue ?? 0);
+  const cancelledCount = data.cancelledCount ?? 0;
+  const cancelledRevenue = data.cancelledRevenue ?? 0;
+
+  const wasteCard = (
+    <>
+      <p className="text-sm font-semibold text-orange-700">ของเสีย</p>
+      <p className="mt-1 text-2xl font-black tabular-nums text-orange-800">
+        {formatPrice(data.wasteQty)}
+      </p>
+      <p className="mt-1 text-xs font-medium text-orange-600/80">
+        มูลค่า {formatPrice(data.wasteValue)} ฿ · ช่วงที่เลือก
+        {wasteHref ? " · กดดูรายการ" : ""}
+      </p>
+    </>
+  );
+
+  const expenseCard = (
+    <>
+      <p className="text-sm font-semibold text-rose-700">ค่าใช้จ่าย</p>
+      <p className="mt-1 text-2xl font-black tabular-nums text-rose-800">
+        {formatPrice(data.expenseTotal)} ฿
+      </p>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-rose-800/90">
+        <span>
+          เงินสด{" "}
+          <span className="font-semibold tabular-nums">
+            {formatPrice(cashExpense)} ฿
+          </span>
+        </span>
+        <span className="text-rose-300">·</span>
+        <span>
+          เงินโอน{" "}
+          <span className="font-semibold tabular-nums">
+            {formatPrice(transferExpense)} ฿
+          </span>
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs font-medium text-rose-600/80">
+        {data.expenseCount} รายการ · ช่วงที่เลือก
+        {expenseHref ? " · กดดูรายการ" : ""}
+      </p>
+    </>
+  );
+
+  const stockCard = (
+    <>
+      <p className="text-sm font-semibold text-violet-700">สต๊อกขายปัจจุบัน</p>
+      <p className="mt-1 text-2xl font-black tabular-nums text-violet-800">
+        {formatPrice(data.saleStockQty ?? 0)}
+      </p>
+      <p className="mt-1 text-xs font-medium text-violet-600/80">
+        มูลค่า {formatPrice(data.saleStockValue ?? 0)} ฿
+        {stockHref ? " · กดดูสต๊อก" : ""}
+      </p>
+    </>
+  );
+
+  const salesCard = (
+    <>
+      <p className="text-sm font-semibold text-emerald-700">ขายได้ (รายได้)</p>
+      <p className="mt-1 text-2xl font-black tabular-nums text-emerald-800">
+        {formatPrice(data.completedRevenue)} ฿
+      </p>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-emerald-800/90">
+        <span>
+          เงินสด{" "}
+          <span className="font-semibold tabular-nums">
+            {formatPrice(cash)} ฿
+          </span>
+        </span>
+        <span className="text-emerald-400">·</span>
+        <span>
+          เงินโอน{" "}
+          <span className="font-semibold tabular-nums">
+            {formatPrice(transfer)} ฿
+          </span>
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs font-medium text-emerald-600/80">
+        {formatPrice(data.soldQty)} ชิ้น · ช่วงที่เลือก
+        {salesHref || onOpenSalesDetail ? " · กดดูรายละเอียด" : ""}
+      </p>
+    </>
+  );
+
+  const netCard = (
+    <>
+      <p className="text-sm font-semibold text-sky-800">เหลือสุทธิหลังของเสีย</p>
+      <p className="mt-1 text-2xl font-black tabular-nums text-sky-900">
+        {formatPrice(netAfterWaste)} ฿
+      </p>
+      <p className="mt-1.5 text-xs font-medium text-sky-700/85">ขาย − จ่าย − เสีย</p>
+      <p className="mt-1 text-[11px] font-medium text-sky-600/70">
+        หลังค่าใช้จ่าย {formatPrice(data.netAfterExpenses)} ฿ · ของเสีย{" "}
+        {formatPrice(data.wasteValue)} ฿
+        {netHref ? " · กดดู" : ""}
+      </p>
+    </>
+  );
+
+  const cancelCard = (
+    <>
+      <p className="text-sm font-semibold text-slate-700">ยกเลิกบิล</p>
+      <p className="mt-1 text-2xl font-black tabular-nums text-slate-900">
+        {formatPrice(cancelledCount)}
+      </p>
+      <p className="mt-1 text-xs font-medium text-slate-600/80">
+        มูลค่า {formatPrice(cancelledRevenue)} ฿ · ไม่นับเป็นยอดขาย
+        {cancelHref ? " · กดดูเหตุผล" : ""}
+      </p>
+    </>
+  );
+
+  const cardClass =
+    "rounded-2xl border p-4 shadow-sm transition active:scale-[0.99]";
 
   return (
     <div
@@ -692,115 +839,106 @@ export function SalesOverviewCards({
       }`}
     >
       {showStock ? (
-        <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 shadow-sm">
-          <p className="text-sm font-semibold text-violet-700">
-            สต๊อกขายปัจจุบัน
-          </p>
-          <p className="mt-1 text-2xl font-black tabular-nums text-violet-800">
-            {formatPrice(data.saleStockQty ?? 0)}
-          </p>
-          <p className="mt-1 text-xs font-medium text-violet-600/80">
-            มูลค่า {formatPrice(data.saleStockValue ?? 0)} ฿
-          </p>
-        </div>
+        stockHref ? (
+          <Link
+            href={stockHref}
+            className={`${cardClass} border-violet-200 bg-gradient-to-br from-violet-50 to-white`}
+          >
+            {stockCard}
+          </Link>
+        ) : (
+          <div
+            className={`${cardClass} border-violet-200 bg-gradient-to-br from-violet-50 to-white`}
+          >
+            {stockCard}
+          </div>
+        )
       ) : null}
 
-      <button
-        type="button"
-        onClick={onOpenSalesDetail}
-        className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 text-left shadow-sm transition active:scale-[0.99]"
-      >
-        <p className="text-sm font-semibold text-emerald-700">ขายได้ (รายได้)</p>
-        <p className="mt-1 text-2xl font-black tabular-nums text-emerald-800">
-          {formatPrice(data.completedRevenue)} ฿
-        </p>
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-emerald-800/90">
-          <span>
-            เงินสด{" "}
-            <span className="font-semibold tabular-nums">
-              {formatPrice(cash)} ฿
-            </span>
-          </span>
-          <span className="text-emerald-400">·</span>
-          <span>
-            เงินโอน{" "}
-            <span className="font-semibold tabular-nums">
-              {formatPrice(transfer)} ฿
-            </span>
-          </span>
-        </div>
-        <p className="mt-1.5 text-xs font-medium text-emerald-600/80">
-          {formatPrice(data.soldQty)} ชิ้น · ช่วงที่เลือก
-          {onOpenSalesDetail ? " · กดดูรายละเอียด" : ""}
-        </p>
-      </button>
+      {salesHref ? (
+        <Link
+          href={salesHref}
+          className={`${cardClass} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-left`}
+        >
+          {salesCard}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={onOpenSalesDetail}
+          className={`${cardClass} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-left`}
+        >
+          {salesCard}
+        </button>
+      )}
 
-      <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 shadow-sm">
-        <p className="text-sm font-semibold text-rose-700">ค่าใช้จ่าย</p>
-        <p className="mt-1 text-2xl font-black tabular-nums text-rose-800">
-          {formatPrice(data.expenseTotal)} ฿
-        </p>
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-rose-800/90">
-          <span>
-            เงินสด{" "}
-            <span className="font-semibold tabular-nums">
-              {formatPrice(cashExpense)} ฿
-            </span>
-          </span>
-          <span className="text-rose-300">·</span>
-          <span>
-            เงินโอน{" "}
-            <span className="font-semibold tabular-nums">
-              {formatPrice(transferExpense)} ฿
-            </span>
-          </span>
+      {expenseHref ? (
+        <Link
+          href={expenseHref}
+          className={`${cardClass} border-rose-200 bg-gradient-to-br from-rose-50 to-white`}
+        >
+          {expenseCard}
+        </Link>
+      ) : (
+        <div
+          className={`${cardClass} border-rose-200 bg-gradient-to-br from-rose-50 to-white`}
+        >
+          {expenseCard}
         </div>
-        <p className="mt-1.5 text-xs font-medium text-rose-600/80">
-          {data.expenseCount} รายการ · ช่วงที่เลือก
-        </p>
-      </div>
+      )}
 
-      <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
-        <p className="text-sm font-semibold text-indigo-700">
-          รายได้ − ค่าใช้จ่าย
-        </p>
-        <p className="mt-1 text-2xl font-black tabular-nums text-indigo-800">
-          {formatPrice(data.netAfterExpenses)} ฿
-        </p>
-        <div className="mt-2 space-y-0.5 text-xs font-medium text-indigo-800/85">
-          <p>
-            เงินสด{" "}
-            <span className="font-semibold tabular-nums">
-              {formatPrice(cash - cashExpense)} ฿
-            </span>
-            <span className="text-indigo-400">
-              {" "}
-              (รับ {formatPrice(cash)} − จ่าย {formatPrice(cashExpense)})
-            </span>
-          </p>
-          <p>
-            เงินโอน{" "}
-            <span className="font-semibold tabular-nums">
-              {formatPrice(transfer - transferExpense)} ฿
-            </span>
-            <span className="text-indigo-400">
-              {" "}
-              (รับ {formatPrice(transfer)} − จ่าย{" "}
-              {formatPrice(transferExpense)})
-            </span>
-          </p>
+      {netHref ? (
+        <Link
+          href={netHref}
+          className={`${cardClass} border-sky-200 bg-gradient-to-br from-sky-50 to-white`}
+        >
+          {netCard}
+        </Link>
+      ) : (
+        <div
+          className={`${cardClass} border-sky-200 bg-gradient-to-br from-sky-50 to-white`}
+        >
+          {netCard}
         </div>
-      </div>
+      )}
 
-      <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 shadow-sm sm:col-span-2">
-        <p className="text-sm font-semibold text-orange-700">ของเสีย</p>
-        <p className="mt-1 text-2xl font-black tabular-nums text-orange-800">
-          {formatPrice(data.wasteQty)}
-        </p>
-        <p className="mt-1 text-xs font-medium text-orange-600/80">
-          มูลค่า {formatPrice(data.wasteValue)} ฿ · ช่วงที่เลือก
-        </p>
-      </div>
+      {wasteHref ? (
+        <Link
+          href={wasteHref}
+          className={`${cardClass} border-orange-200 bg-gradient-to-br from-orange-50 to-white`}
+        >
+          {wasteCard}
+        </Link>
+      ) : (
+        <div
+          className={`${cardClass} border-orange-200 bg-gradient-to-br from-orange-50 to-white`}
+        >
+          {wasteCard}
+        </div>
+      )}
+
+      {cancelHref ? (
+        <Link
+          href={cancelHref}
+          className={`${cardClass} ${
+            cancelledCount > 0
+              ? "border-slate-300 bg-gradient-to-br from-slate-100 to-white"
+              : "border-slate-200 bg-gradient-to-br from-slate-50 to-white"
+          }`}
+        >
+          {cancelCard}
+        </Link>
+      ) : (
+        <div
+          className={`${cardClass} ${
+            cancelledCount > 0
+              ? "border-slate-300 bg-gradient-to-br from-slate-100 to-white"
+              : "border-slate-200 bg-gradient-to-br from-slate-50 to-white"
+          }`}
+        >
+          {cancelCard}
+        </div>
+      )}
     </div>
   );
 }

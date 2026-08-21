@@ -20,6 +20,7 @@ import { AddToHomeScreenBanner } from "@/components/staff/AddToHomeScreenBanner"
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   autoPrintQueueTickets,
   clampTicketCopies,
@@ -50,6 +51,10 @@ type HomeMeta = {
   operatingMode?: string;
   weighSalesAvailable?: boolean;
   dualSellModes?: boolean;
+  subscription?: {
+    writeAllowed?: boolean;
+    writeBlockedReason?: string | null;
+  } | null;
 };
 
 function IconCart({ size = 28 }: { size?: number }) {
@@ -541,6 +546,10 @@ export default function StaffHomePage() {
   const showMala = !weighOnly && (!dual || sellMode === "mala");
   const agingAttention = aging?.attentionCount ?? 0;
   const hasAgingAlert = agingAttention > 0;
+  const writeBlocked = meta?.subscription?.writeAllowed === false;
+  const writeBlockedHint =
+    meta?.subscription?.writeBlockedReason ??
+    "แพ็กเกจหมดอายุ — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้";
 
   const switchSellMode = (mode: StaffSellMode) => {
     setSellMode(mode);
@@ -700,8 +709,8 @@ export default function StaffHomePage() {
           {showWeigh ? (
             <SoftTile
               href={hasOpenShift ? "/staff/weigh" : undefined}
-              disabled={!hasOpenShift}
-              disabledHint="เปิดรอบขายก่อน"
+              disabled={!hasOpenShift || writeBlocked}
+              disabledHint={writeBlocked ? writeBlockedHint : "เปิดรอบขายก่อน"}
               title="ขายชั่งกิโล"
               subtitle={
                 hasOpenShift ? "ชั่งน้ำหนัก · ปิดบิล" : "เปิดรอบขายก่อน"
@@ -716,8 +725,8 @@ export default function StaffHomePage() {
           {showMala ? (
             <SoftTile
               href={hasOpenShift ? "/staff/key-order/regular" : undefined}
-              disabled={!hasOpenShift}
-              disabledHint="เปิดรอบขายก่อน"
+              disabled={!hasOpenShift || writeBlocked}
+              disabledHint={writeBlocked ? writeBlockedHint : "เปิดรอบขายก่อน"}
               title="คีย์ออเดอร์"
               subtitle={
                 hasOpenShift ? "รับออเดอร์และคิดเงิน" : "เปิดรอบขายก่อน"
@@ -732,7 +741,8 @@ export default function StaffHomePage() {
           {showMala && promoButton ? (
             <SoftTile
               href={promoButton.href}
-              disabled={!hasOpenShift}
+              disabled={!hasOpenShift || writeBlocked}
+              disabledHint={writeBlocked ? writeBlockedHint : "เปิดรอบขายก่อน"}
               title={promoButton.label}
               subtitle={promoButton.description || "เลือกเมนูเซ็ตโปร"}
               icon={<IconStar size={28} />}
@@ -816,13 +826,15 @@ export default function StaffHomePage() {
           </div>
         </section>
 
-        {stockOn && (meta?.pendingStockCount ?? 0) > 0 ? (
+        {WAREHOUSE_UI_ENABLED &&
+        stockOn &&
+        (meta?.pendingStockCount ?? 0) > 0 ? (
           <a
             href="/staff/stock?action=pending"
             className="flex shrink-0 items-center justify-between rounded-2xl bg-teal-600 px-4 py-3.5 text-white shadow-sm active:brightness-95"
           >
             <div>
-              <p className="text-base font-extrabold">มีของรอรับจากสต๊อกกลาง</p>
+              <p className="text-base font-extrabold">มีของรอรับ</p>
               <p className="mt-0.5 text-sm font-medium text-white/85">
                 {meta?.pendingStockCount} รายการ — กดเพื่อยืนยันรับเข้าสาขา
               </p>

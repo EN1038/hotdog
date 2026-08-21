@@ -3,6 +3,7 @@ import { requireStaff } from "@/lib/auth";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { isBangkokDateKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { BRANCH_OUTBOUND_HISTORY_TYPES } from "@/lib/stock-outbound";
 
 type Kind = "stock_in" | "issue";
 
@@ -12,6 +13,7 @@ type HistoryLine = {
   quantity: number;
   unit: string;
   stockType: "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+  historyType: string;
   createdAt: Date;
   note: string | null;
   imageUrl: string | null;
@@ -125,19 +127,24 @@ export async function GET(request: Request) {
       return jsonError("กรุณาระบุ kind=stock_in หรือ kind=issue");
     }
     const kind = kindRaw as Kind;
-    const type = kind === "stock_in" ? "STOCK_IN" : "ISSUE";
+    const types =
+      kind === "stock_in"
+        ? (["STOCK_IN"] as const)
+        : BRANCH_OUTBOUND_HISTORY_TYPES;
+    const typeKey = kind === "stock_in" ? "STOCK_IN" : "ISSUE";
     const { start, end } = bangkokDayRange(dateStr);
 
     const [menuRows, nonMenuRows] = await Promise.all([
       prisma.branchMenuItemStockHistory.findMany({
         where: {
           branchId: session.branchId,
-          type,
+          type: { in: [...types] },
           createdAt: { gte: start, lte: end },
         },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
+          type: true,
           quantity: true,
           createdAt: true,
           note: true,
@@ -149,13 +156,14 @@ export async function GET(request: Request) {
       }),
       prisma.branchNonMenuItemHistory.findMany({
         where: {
-          type,
+          type: { in: [...types] },
           createdAt: { gte: start, lte: end },
           item: { branchId: session.branchId },
         },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
+          type: true,
           quantity: true,
           createdAt: true,
           note: true,
@@ -181,6 +189,7 @@ export async function GET(request: Request) {
           quantity: m.quantity,
           unit: "รายการ",
           stockType: "SALE_ITEM" as const,
+          historyType: m.type,
           createdAt: m.createdAt,
           note: m.note,
           imageUrl: m.imageUrl,
@@ -198,6 +207,7 @@ export async function GET(request: Request) {
           quantity: m.quantity,
           unit: m.item.unit,
           stockType: m.item.stockType as HistoryLine["stockType"],
+          historyType: m.type,
           createdAt: m.createdAt,
           note: m.note,
           imageUrl: m.imageUrl,
@@ -211,6 +221,7 @@ export async function GET(request: Request) {
 
     type Acc = {
       id: string;
+      historyType: string;
       createdAt: Date;
       note: string | null;
       imageUrl: string | null;
@@ -233,7 +244,7 @@ export async function GET(request: Request) {
     for (const row of flat) {
       const key = row.batchId?.trim()
         ? `batch:${row.batchId.trim()}`
-        : fallbackGroupKey(row, type);
+        : fallbackGroupKey(row, row.historyType || typeKey);
       const existing = groups.get(key);
       const displayQty = Math.abs(row.quantity);
       const line = {
@@ -250,6 +261,7 @@ export async function GET(request: Request) {
       if (!existing) {
         groups.set(key, {
           id: row.batchId?.trim() || key,
+          historyType: row.historyType,
           createdAt: row.createdAt,
           note: row.note,
           imageUrl: row.imageUrl,
@@ -290,6 +302,7 @@ export async function GET(request: Request) {
         return {
           id: g.id,
           kind,
+          historyType: g.historyType,
           createdAt: g.createdAt.toISOString(),
           note: g.note,
           imageUrl: g.imageUrl,

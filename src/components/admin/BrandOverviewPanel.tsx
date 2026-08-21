@@ -764,6 +764,14 @@ export function BrandOverviewPanel({
             {copy.title}
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">{copy.description}</p>
+          {brandId ? (
+            <Link
+              href={`/admin/brands/${brandId}/stock-flow?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`}
+              className="mt-2 inline-flex text-xs font-bold text-violet-700 hover:text-violet-900"
+            >
+              เปิดหน้าวิเคราะห์สต๊อกเต็ม · เทียบสาขา →
+            </Link>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-end gap-3">
           {showDateFilter ? (

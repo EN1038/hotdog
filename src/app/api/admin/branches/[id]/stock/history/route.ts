@@ -2,7 +2,7 @@ import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { isBangkokDateKey } from "@/lib/constants";
-import { parseBranchMenuOrderNote } from "@/lib/stock";
+import { parseBranchMenuOrderNote } from "@/lib/branch-menu-order-note";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -80,7 +80,7 @@ export async function GET(request: Request, { params }: Params) {
     const typeRaw = searchParams.get("type")?.trim().toUpperCase() || "ALL";
     const q = searchParams.get("q")?.trim().toLowerCase() || "";
 
-    const WASTE_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
+    const WASTE_TYPES = ["DAMAGE", "LOST"] as const;
 
     let rangeStart: Date;
     let rangeEnd: Date;

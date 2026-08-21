@@ -1,8 +1,14 @@
 import type { SalesShareSlice } from "@/lib/sales-share";
 import type {
+  SalesReportCancelReason,
   SalesReportStats,
   SalesReportWasteItem,
 } from "@/lib/sales-report-shared";
+import type { ShopAgingAttention } from "@/lib/shop-aging-summary";
+import type {
+  ShopHourlyPoint,
+  ShopWeekdayPoint,
+} from "@/lib/shop-overview-metrics";
 
 export type OwnerPeriod = "day" | "month";
 
@@ -26,6 +32,33 @@ export type OwnerBrandRow = {
   color: string;
 };
 
+export type OwnerSubscriptionInfo = {
+  status: string;
+  effectiveStatus?: string;
+  statusLabel: string;
+  effectiveStatusLabel?: string;
+  plan: string;
+  planLabel: string;
+  planPrice?: number | null;
+  planHint?: string | null;
+  maxBranches: number;
+  maxStaff: number;
+  branchCount: number;
+  staffCount: number;
+  stockEnabled: boolean;
+  kitchenEnabled: boolean;
+  bbqEnabled: boolean;
+  skewerEnabled: boolean;
+  trialEndsAt: string | null;
+  nextDueAt: string | null;
+  expiresAt?: string | null;
+  nearExpiry?: boolean;
+  warningDays?: number;
+  daysLeft?: number | null;
+  writeAllowed?: boolean;
+  writeBlockedReason?: string | null;
+};
+
 export type OwnerDayStats = SalesReportStats;
 
 export type OwnerBranchShare = {
@@ -33,6 +66,19 @@ export type OwnerBranchShare = {
   branchName: string;
   completedRevenue: number;
   completedCount: number;
+  openCount: number;
+  cancelledCount: number;
+  cancelledRevenue: number;
+  cashRevenue: number;
+  transferRevenue: number;
+  soldQty?: number;
+  expenseTotal?: number;
+  expenseCount?: number;
+  wasteQty?: number;
+  wasteValue?: number;
+  netAfterWaste?: number;
+  saleStockQty?: number;
+  saleStockValue?: number;
 };
 
 export type OwnerTodayOrder = {
@@ -64,9 +110,12 @@ export type OwnerDailyPoint = {
 
 export type OwnerDashboardPayload = {
   brand: OwnerBrandRow | null;
+  subscription: OwnerSubscriptionInfo | null;
   branches: OwnerBranchRow[];
   hasTestBranch?: boolean;
   includeTest?: boolean;
+  /** null = รวมทุกสาขา */
+  filterBranchId?: string | null;
   operatingDay: string;
   period: OwnerPeriod;
   from: string;
@@ -75,6 +124,7 @@ export type OwnerDashboardPayload = {
   byBranch: OwnerBranchShare[];
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
+  byFulfillment: SalesShareSlice[];
   orders: OwnerTodayOrder[];
   /** Brand + any scoped branch has stock enabled */
   stockEnabled: boolean;
@@ -82,5 +132,12 @@ export type OwnerDashboardPayload = {
   saleStockValue: number;
   topSellers: OwnerTopSeller[];
   days: OwnerDailyPoint[];
+  hours: ShopHourlyPoint[];
+  weekdays: ShopWeekdayPoint[];
+  cancelReasons: SalesReportCancelReason[];
+  aging: ShopAgingAttention | null;
   wasteItems: SalesReportWasteItem[];
+  /** แม่ค้าคนเดียว · สาขาเดียว — แนะนำเริ่มที่หน้าร้าน */
+  soleOperator?: boolean;
+  soleBranchId?: string | null;
 };

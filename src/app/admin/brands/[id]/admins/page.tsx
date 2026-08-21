@@ -39,6 +39,7 @@ import {
   BRAND_PLAN_PRICES,
   BRAND_PLANS_ORDERED,
 } from "@/lib/brand-plan-shared";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type MemberRow = {
   membershipId: string;
@@ -1352,7 +1353,9 @@ export default function BrandAdminsPage() {
                 <p className="text-sm font-bold text-amber-950">คนขาย (SELLER)</p>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
                   <li>รับออเดอร์ · อัปเดตครัว · เปิด/ปิดร้าน</li>
-                  <li>สต๊อกกลาง: เป็นพนักงานคลัง</li>
+                  {WAREHOUSE_UI_ENABLED ? (
+                    <li>สต๊อกกลาง: เป็นพนักงานคลัง</li>
+                  ) : null}
                 </ul>
               </div>
               <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3">
@@ -1466,7 +1469,13 @@ export default function BrandAdminsPage() {
                               สิทธิ์ตามสาขา
                             </p>
                             <ul className="mt-2 space-y-1.5">
-                              {person.branches.map((b) => (
+                              {person.branches
+                                .filter(
+                                  (b) =>
+                                    WAREHOUSE_UI_ENABLED ||
+                                    b.kind !== "WAREHOUSE",
+                                )
+                                .map((b) => (
                                 <li
                                   key={b.staffId}
                                   className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm"
@@ -1474,7 +1483,8 @@ export default function BrandAdminsPage() {
                                   <div>
                                     <p className="font-medium text-slate-900">
                                       {b.branchName}
-                                      {b.kind === "WAREHOUSE"
+                                      {WAREHOUSE_UI_ENABLED &&
+                                      b.kind === "WAREHOUSE"
                                         ? " · สต๊อกกลาง"
                                         : ""}
                                       {b.isTest ? " · ทดลอง" : ""}
@@ -1603,13 +1613,20 @@ export default function BrandAdminsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {staffOverview.branches.map((b) => (
+                    {staffOverview.branches
+                      .filter(
+                        (b) =>
+                          WAREHOUSE_UI_ENABLED || b.kind !== "WAREHOUSE",
+                      )
+                      .map((b) => (
                       <tr key={b.id} className={adminTrHoverClass}>
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-900">{b.name}</p>
                           <p className="font-mono text-[11px] text-slate-500">
                             /{b.code}
-                            {b.kind === "WAREHOUSE" ? " · สต๊อกกลาง" : ""}
+                            {WAREHOUSE_UI_ENABLED && b.kind === "WAREHOUSE"
+                              ? " · สต๊อกกลาง"
+                              : ""}
                             {b.isTest ? " · ทดลอง" : ""}
                           </p>
                         </td>

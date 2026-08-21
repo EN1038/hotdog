@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
@@ -23,6 +24,10 @@ import {
   STAFF_SOUND_PREF_KEY,
   unlockOrderAlertSound,
 } from "@/lib/staff-order-alert";
+import {
+  canReturnToOwnerFromStaff,
+  returnToOwnerFromStaff,
+} from "@/lib/owner-enter-staff";
 import {
   formatPrinterLabel,
   getPrintBridgeStatus,
@@ -49,6 +54,8 @@ export default function StaffSettingsPage() {
   const [printerConfigured, setPrinterConfigured] = useState(false);
   const [printerLabel, setPrinterLabel] = useState("ยังไม่เชื่อมเครื่องพิมพ์");
   const [branchChoices, setBranchChoices] = useState<BranchChoice[]>([]);
+  const [canReturnOwner, setCanReturnOwner] = useState(false);
+  const [returningOwner, setReturningOwner] = useState(false);
   const [currentBranchId, setCurrentBranchId] = useState("");
   const [switchingBranch, setSwitchingBranch] = useState(false);
   const [profileName, setProfileName] = useState("");
@@ -106,6 +113,10 @@ export default function StaffSettingsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void canReturnToOwnerFromStaff().then(setCanReturnOwner);
+  }, []);
 
   useEffect(() => {
     try {
@@ -402,6 +413,24 @@ export default function StaffSettingsPage() {
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="text-[17px] font-extrabold text-slate-900">
+            โปรโมชั่น
+          </h2>
+          <p className="mt-1 text-[13px] font-medium text-slate-500">
+            กำหนดวันหมดอายุโปรเลือกไม้ · หมดแล้วโชว์ที่หน้าร้านอีก 3 วัน
+          </p>
+          <Link
+            href="/staff/settings/promos"
+            className="mt-3 flex min-h-12 w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 text-[15px] font-bold text-slate-900 active:bg-slate-100"
+          >
+            <span>จัดการโปร / วันหมดอายุ</span>
+            <span className="text-slate-400" aria-hidden>
+              ›
+            </span>
+          </Link>
+        </section>
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-[17px] font-extrabold text-slate-900">
             เสียงแจ้งเตือน
           </h2>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -490,6 +519,28 @@ export default function StaffSettingsPage() {
         ) : null}
 
         <PlatformSupportCard />
+
+        {canReturnOwner ? (
+          <button
+            type="button"
+            disabled={returningOwner}
+            onClick={() => {
+              void (async () => {
+                setReturningOwner(true);
+                const result = await returnToOwnerFromStaff();
+                if (!result.ok) {
+                  toast.error("ไปบัญชีร้านไม่สำเร็จ", result.error);
+                  setReturningOwner(false);
+                  return;
+                }
+                window.location.assign("/owner");
+              })();
+            }}
+            className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 py-4 text-[15px] font-extrabold text-white shadow-sm disabled:opacity-60"
+          >
+            {returningOwner ? "กำลังไป…" : "บัญชีร้าน / แพ็กเกจ"}
+          </button>
+        ) : null}
 
         <button
           type="button"

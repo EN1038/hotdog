@@ -21,12 +21,17 @@ import {
   IconUser,
 } from "@/components/icons";
 import { getBrandProfileGaps } from "@/lib/brand-profile";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   brandHqHref,
   parseBrandHqSection,
   resolveBrandHqBasePath,
   type BrandHqSection,
 } from "@/lib/brand-hq-nav";
+import {
+  OwnerViewSwitchButton,
+  useOwnerViewHomeSoftRedirect,
+} from "@/components/owner/OwnerViewSwitch";
 
 export {
   adminInputClass,
@@ -58,6 +63,8 @@ type NavItem = {
   platformOnly?: boolean;
   /** Hide from platform admins (brand operator pages) */
   brandAdminOnly?: boolean;
+  /** สต๊อกกลาง — ซ่อนเมื่อ WAREHOUSE_UI_ENABLED = false */
+  requiresWarehouseUi?: boolean;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   badge?: string;
   badgeTone?: "warn" | "info";
@@ -100,6 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/stock",
         label: "สต๊อกกลาง",
         brandAdminOnly: true,
+        requiresWarehouseUi: true,
         match: (pathname) =>
           pathname === "/admin/stock" ||
           /^\/admin\/brands\/[^/]+\/stock(\/.*)?$/.test(pathname),
@@ -383,6 +391,7 @@ function filterNavGroups(
       items: group.items.filter((item) => {
         if (item.platformOnly && !isPlatformAdmin) return false;
         if (item.brandAdminOnly && isPlatformAdmin) return false;
+        if (item.requiresWarehouseUi && !WAREHOUSE_UI_ENABLED) return false;
         return true;
       }),
     };
@@ -517,6 +526,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  useOwnerViewHomeSoftRedirect(
+    session && !session.isPlatformAdmin && pathname === "/admin"
+      ? "desktop"
+      : null,
+  );
 
   useEffect(() => {
     if (!onBranchPage) setBranchMeta(null);
@@ -697,14 +712,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             ) : null}
           </div>
 
-          {session?.username && (
-            <div className="hidden shrink-0 items-center gap-2 sm:flex">
-              <RoleBadge isPlatformAdmin={isPlatformAdmin} />
-              <span className="max-w-[8rem] truncate text-sm text-slate-600 lg:max-w-[12rem]">
-                {session.username}
-              </span>
-            </div>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {!isPlatformAdmin ? (
+              <OwnerViewSwitchButton variant="admin" />
+            ) : null}
+            {session?.username ? (
+              <div className="hidden items-center gap-2 sm:flex">
+                <RoleBadge isPlatformAdmin={isPlatformAdmin} />
+                <span className="max-w-[8rem] truncate text-sm text-slate-600 lg:max-w-[12rem]">
+                  {session.username}
+                </span>
+              </div>
+            ) : null}
+          </div>
         </header>
 
         <main className="flex-1 p-4 lg:p-6">{children}</main>

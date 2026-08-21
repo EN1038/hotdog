@@ -14,6 +14,7 @@ import {
   stockIn,
   isBranchStockActive,
 } from "@/lib/stock";
+import { assertBrandWriteAllowedByBrandId } from "@/lib/brand-plan";
 
 type Tx = Prisma.TransactionClient;
 type Actor = { adminId?: string | null; staffId?: string | null };
@@ -34,6 +35,7 @@ export async function addToLot(
     quantity: number;
     expiresAt?: Date | null;
     unitCost?: number | null;
+    receivedAt?: Date | null;
   },
 ) {
   const lotNumber = input.lotNumber.trim();
@@ -54,6 +56,7 @@ export async function addToLot(
         quantity: { increment: input.quantity },
         ...(input.expiresAt !== undefined && { expiresAt: input.expiresAt }),
         ...(input.unitCost != null && { unitCost: dec(input.unitCost) }),
+        ...(input.receivedAt != null && { receivedAt: input.receivedAt }),
       },
     });
   }
@@ -66,6 +69,7 @@ export async function addToLot(
       quantity: input.quantity,
       expiresAt: input.expiresAt ?? null,
       unitCost: dec(input.unitCost),
+      ...(input.receivedAt != null && { receivedAt: input.receivedAt }),
     },
   });
 }
@@ -128,7 +132,11 @@ export async function stockInWithLot(input: {
   note?: string | null;
   lotNumber?: string | null;
   expiresAt?: Date | null;
+  /** วันผลิต / วันรับเข้าของล็อต */
+  receivedAt?: Date | null;
+  documentNo?: string | null;
 } & Actor) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   const product = await prisma.brandProduct.findFirst({
     where: { id: input.brandProductId, brandId: input.brandId, isActive: true },
   });
@@ -148,6 +156,7 @@ export async function createSupplier(input: {
   address?: string | null;
   note?: string | null;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   const name = input.name.trim();
   if (!name) throw new StockError("ต้องระบุชื่อผู้ขาย");
   const dup = await prisma.supplier.findFirst({
@@ -176,6 +185,7 @@ export async function createPurchaseOrder(input: {
   lines: { brandProductId: string; quantityOrdered: number; unitCost?: number | null }[];
   adminId?: string | null;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   if (!input.lines.length) throw new StockError("ต้องมีอย่างน้อย 1 รายการ");
   const supplier = await prisma.supplier.findFirst({
     where: { id: input.supplierId, brandId: input.brandId, isActive: true },
@@ -214,6 +224,7 @@ export async function markPurchaseOrderOrdered(input: {
   brandId: string;
   purchaseOrderId: string;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   const po = await prisma.purchaseOrder.findFirst({
     where: {
       id: input.purchaseOrderId,
@@ -240,6 +251,7 @@ export async function receivePurchaseOrder(input: {
   }[];
   adminId?: string | null;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   const po = await prisma.purchaseOrder.findFirst({
     where: {
       id: input.purchaseOrderId,
@@ -330,6 +342,7 @@ export async function transferBranchToBranch(input: {
   adminId?: string | null;
   staffId?: string | null;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   if (input.sourceBranchId === input.destinationBranchId) {
     throw new StockError("สาขาต้นทางและปลายทางต้องต่างกัน");
   }
@@ -634,6 +647,8 @@ async function stockInLotTx(input: {
   note?: string | null;
   lotNumber?: string | null;
   expiresAt?: Date | null;
+  receivedAt?: Date | null;
+  documentNo?: string | null;
 } & Actor) {
   const movement = await stockIn({
     brandId: input.brandId,
@@ -643,20 +658,31 @@ async function stockInLotTx(input: {
     unitCost: input.unitCost,
     supplier: input.supplier,
     note: input.note,
+    receivedAt: input.receivedAt,
+    documentNo: input.documentNo,
     adminId: input.adminId,
     staffId: input.staffId,
   });
 
-  if (input.lotNumber?.trim()) {
+  const wantLot =
+    Boolean(input.lotNumber?.trim()) ||
+    input.expiresAt != null ||
+    input.receivedAt != null;
+
+  if (wantLot) {
+    const lotNumber =
+      input.lotNumber?.trim() ||
+      `IN-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`;
     const lot = await prisma.$transaction((tx) =>
       addToLot(tx, {
         brandId: input.brandId,
         brandProductId: input.brandProductId,
         stockLocationId: input.stockLocationId,
-        lotNumber: input.lotNumber!,
+        lotNumber,
         quantity: input.quantity,
         expiresAt: input.expiresAt,
         unitCost: input.unitCost,
+        receivedAt: input.receivedAt,
       }),
     );
     await prisma.stockMovement.update({
@@ -664,8 +690,13 @@ async function stockInLotTx(input: {
       data: {
         lotId: lot.id,
         lotNumber: lot.lotNumber,
-        expiresAt: lot.expiresAt,
+        expiresAt: input.expiresAt ?? lot.expiresAt,
       },
+    });
+  } else if (input.expiresAt != null) {
+    await prisma.stockMovement.update({
+      where: { id: movement.id },
+      data: { expiresAt: input.expiresAt },
     });
   }
 

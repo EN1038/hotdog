@@ -12,6 +12,7 @@ import {
   BranchListDashboard,
   type DashboardBrand,
 } from "@/components/admin/BranchListDashboard";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type BrandDetail = DashboardBrand & {
   logoUrl?: string | null;
@@ -78,7 +79,7 @@ export default function BrandBranchesPage() {
       backLabel="กลับไปเลือกแบรนด์"
       headerActions={
         <div className="flex flex-wrap gap-2">
-          {brand.kitchenEnabled ? (
+          {WAREHOUSE_UI_ENABLED && brand.kitchenEnabled ? (
             <Link
               href={`/admin/brands/${brand.id}/kitchen`}
               className={btnOutline}
@@ -86,12 +87,14 @@ export default function BrandBranchesPage() {
               ครัว / ผลิต
             </Link>
           ) : null}
-          <Link
-            href={`/admin/brands/${brand.id}/stock`}
-            className={btnOutline}
-          >
-            สต๊อก / สต๊อกกลาง
-          </Link>
+          {WAREHOUSE_UI_ENABLED ? (
+            <Link
+              href={`/admin/brands/${brand.id}/stock`}
+              className={btnOutline}
+            >
+              สต๊อก / สต๊อกกลาง
+            </Link>
+          ) : null}
           <Link
             href={`/admin/brands/${brand.id}/admins`}
             className={btnOutline}

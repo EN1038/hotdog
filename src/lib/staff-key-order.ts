@@ -1,6 +1,12 @@
 import type { MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { parsePromoWoodGiftName } from "@/lib/order-item-display";
 import { computeSelectedOptions } from "@/lib/option-selection";
+import {
+  getPromoScheduleStatus,
+  isPromoScheduleSellable,
+  isPromoScheduleVisibleOnShop,
+  type PromoScheduleStatus,
+} from "@/lib/promo-schedule";
 import { sortMenuItemData } from "@/lib/staff-menu-order";
 
 /** Minimal shape for promo / sold-out checks (API may only select `mode`). */
@@ -9,6 +15,9 @@ type StockCheckItem = {
   stockQuantity?: number | null;
   optionGroups?: Array<{ mode?: MenuOptionGroupData["mode"] }> | null;
   category?: { stockExempt?: boolean | null } | null;
+  promoContinuous?: boolean | null;
+  promoStartsAt?: string | Date | null;
+  promoEndsAt?: string | Date | null;
 };
 
 export function isPromoMenuItem(item: StockCheckItem): boolean {
@@ -42,14 +51,43 @@ export function isRegularMenuItem(item: StockCheckItem): boolean {
   return !isPromoMenuItem(item);
 }
 
-/** Promo packs configured in admin (FROM_MENU option group on a menu item). */
-export function listActivePromoMenuItems(
+export function promoScheduleStatusOf(
+  item: StockCheckItem,
+  now = new Date(),
+): PromoScheduleStatus {
+  return getPromoScheduleStatus(item, now);
+}
+
+export function isPromoSellableOnShop(
+  item: StockCheckItem,
+  now = new Date(),
+): boolean {
+  return isPromoScheduleSellable(promoScheduleStatusOf(item, now));
+}
+
+/** โปรที่โชว์บนหน้าร้าน (รวมหมดอายุในระยะ 3 วัน) */
+export function listVisiblePromoMenuItems(
   menuItems: MenuItemData[],
+  now = new Date(),
 ): MenuItemData[] {
   return sortMenuItemData(
-    menuItems.filter(
-      (item) => isPromoMenuItem(item) && !isMenuItemSoldOut(item),
-    ),
+    menuItems.filter((item) => {
+      if (!isPromoMenuItem(item)) return false;
+      const status = promoScheduleStatusOf(item, now);
+      if (!isPromoScheduleVisibleOnShop(status)) return false;
+      if (status === "expired_grace") return true;
+      return !isMenuItemSoldOut(item);
+    }),
+  );
+}
+
+/** Promo packs ที่ขายได้จริง (ไม่รวมหมดอายุ) */
+export function listActivePromoMenuItems(
+  menuItems: MenuItemData[],
+  now = new Date(),
+): MenuItemData[] {
+  return listVisiblePromoMenuItems(menuItems, now).filter((item) =>
+    isPromoSellableOnShop(item, now),
   );
 }
 

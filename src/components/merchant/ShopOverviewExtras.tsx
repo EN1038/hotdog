@@ -1,22 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconImage } from "@/components/icons";
 import { formatPrice } from "@/lib/constants";
 import type {
   ShopDailyPoint,
+  ShopHourlyPoint,
   ShopTopSeller,
+  ShopWeekdayPoint,
 } from "@/lib/shop-overview-metrics";
 import type {
+  SalesReportCancelReason,
   SalesReportWasteEntry,
   SalesReportWasteItem,
 } from "@/lib/sales-report-shared";
+import type { ShopAgingAttention } from "@/lib/shop-aging-summary";
 
 function wasteTypeLabel(type: string) {
   if (type === "DAMAGE") return "ชำรุด";
   if (type === "LOST") return "สูญหาย";
-  if (type === "ISSUE") return "จ่ายออก / ของเสีย";
+  if (type === "ISSUE") return "จ่ายออกจากสต๊อก";
   return type;
 }
 
@@ -263,10 +268,16 @@ export function ShopTopSellersList({
   items,
   loading,
   defaultOpen = false,
+  href,
+  title = "สินค้าขายดี Top 10",
+  linkLabel = "เปิดหน้าวิเคราะห์เต็ม →",
 }: {
   items: ShopTopSeller[];
   loading?: boolean;
   defaultOpen?: boolean;
+  href?: string;
+  title?: string;
+  linkLabel?: string;
 }) {
   const [show, setShow] = useState(defaultOpen);
 
@@ -277,13 +288,23 @@ export function ShopTopSellersList({
       }`}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-[15px] font-extrabold text-slate-900">
-          สินค้าขายดี Top 10
-        </h2>
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-extrabold text-slate-900">
+            {title}
+          </h2>
+          {href ? (
+            <Link
+              href={href}
+              className="mt-0.5 inline-block text-[12px] font-bold text-emerald-700"
+            >
+              {linkLabel}
+            </Link>
+          ) : null}
+        </div>
         <OverviewShowSwitch
           checked={show}
           onChange={setShow}
-          label="แสดงสินค้าขายดี"
+          label={`แสดง${title}`}
         />
       </div>
       {!show ? null : items.length === 0 ? (
@@ -452,4 +473,310 @@ export function ShopWasteSummaryList({
       )}
     </section>
   );
+}
+
+export function ShopHourlyRevenueBars({
+  hours,
+  loading,
+  defaultOpen = false,
+}: {
+  hours: ShopHourlyPoint[];
+  loading?: boolean;
+  defaultOpen?: boolean;
+}) {
+  const [show, setShow] = useState(defaultOpen);
+  const active = hours.filter((h) => h.orderCount > 0 || h.revenueBaht > 0);
+  const display = active.length > 0 ? active : hours;
+  const maxRevenue = Math.max(1, ...display.map((h) => h.revenueBaht));
+  const total = hours.reduce((a, h) => a + h.revenueBaht, 0);
+  const peak = [...hours].sort(
+    (a, b) => b.revenueBaht - a.revenueBaht || b.orderCount - a.orderCount,
+  )[0];
+
+  return (
+    <section
+      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+        loading ? "opacity-60" : ""
+      }`}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-extrabold text-slate-900">
+            ยอดขายรายชั่วโมง
+          </h2>
+          {!show ? (
+            <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
+              รวม {formatPrice(total)} ฿
+              {peak && peak.revenueBaht > 0
+                ? ` · พีก ${peak.label}:00`
+                : ""}
+            </p>
+          ) : null}
+        </div>
+        <OverviewShowSwitch
+          checked={show}
+          onChange={setShow}
+          label="แสดงยอดขายรายชั่วโมง"
+        />
+      </div>
+      {!show ? null : display.every((h) => h.revenueBaht <= 0) ? (
+        <p className="py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
+      ) : (
+        <>
+          <p className="mb-2 text-right text-[12px] font-semibold tabular-nums text-slate-500">
+            รวม {formatPrice(total)} ฿
+            {peak && peak.revenueBaht > 0
+              ? ` · พีก ${peak.label}:00 · ${formatPrice(peak.revenueBaht)} ฿`
+              : ""}
+          </p>
+          <div className="flex h-40 items-end gap-0.5 overflow-x-auto pb-1">
+            {display.map((h) => (
+              <div
+                key={h.hour}
+                className="flex min-w-[1.35rem] flex-1 flex-col items-center justify-end gap-1"
+                title={`${h.label}:00 · ${formatPrice(h.revenueBaht)} ฿ · ${h.orderCount} บิล`}
+              >
+                <span className="max-w-full truncate text-center text-[8px] font-bold tabular-nums leading-none text-slate-700">
+                  {h.revenueBaht > 0
+                    ? formatBarAmount(h.revenueBaht, true)
+                    : ""}
+                </span>
+                <div className="flex h-24 w-full items-end justify-center">
+                  <div
+                    className="w-[75%] max-w-[0.85rem] rounded-t-md bg-teal-500"
+                    style={{
+                      height: `${Math.max(
+                        h.revenueBaht > 0 ? 6 : 2,
+                        (h.revenueBaht / maxRevenue) * 100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <span className="max-w-full truncate text-[8px] font-medium text-slate-500">
+                  {h.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+export function ShopWeekdayRevenueBars({
+  weekdays,
+  loading,
+  defaultOpen = true,
+}: {
+  weekdays: ShopWeekdayPoint[];
+  loading?: boolean;
+  defaultOpen?: boolean;
+}) {
+  const [show, setShow] = useState(defaultOpen);
+  const maxRevenue = Math.max(1, ...weekdays.map((d) => d.revenueBaht));
+  const total = weekdays.reduce((a, d) => a + d.revenueBaht, 0);
+  const peak = [...weekdays].sort(
+    (a, b) => b.revenueBaht - a.revenueBaht || b.orderCount - a.orderCount,
+  )[0];
+
+  return (
+    <section
+      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+        loading ? "opacity-60" : ""
+      }`}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-extrabold text-slate-900">
+            ยอดขายแยกวันในสัปดาห์
+          </h2>
+          {!show ? (
+            <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
+              รวม {formatPrice(total)} ฿
+              {peak && peak.revenueBaht > 0 ? ` · พีกวัน${peak.label}` : ""}
+            </p>
+          ) : null}
+        </div>
+        <OverviewShowSwitch
+          checked={show}
+          onChange={setShow}
+          label="แสดงยอดขายแยกวันในสัปดาห์"
+        />
+      </div>
+      {!show ? null : weekdays.every((d) => d.revenueBaht <= 0) ? (
+        <p className="py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
+      ) : (
+        <>
+          <p className="mb-2 text-right text-[12px] font-semibold tabular-nums text-slate-500">
+            รวม {formatPrice(total)} ฿
+            {peak && peak.revenueBaht > 0
+              ? ` · พีกวัน${peak.label} · ${formatPrice(peak.revenueBaht)} ฿`
+              : ""}
+          </p>
+          <div className="flex h-44 items-end gap-1.5 pb-1">
+            {weekdays.map((d) => (
+              <div
+                key={d.weekday}
+                className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+                title={`วัน${d.label}: ${formatPrice(d.revenueBaht)} ฿ · ${d.orderCount} บิล`}
+              >
+                <span className="max-w-full truncate text-center text-[9px] font-bold tabular-nums leading-none text-slate-700">
+                  {d.revenueBaht > 0 ? formatBarAmount(d.revenueBaht, true) : ""}
+                </span>
+                <div className="flex h-28 w-full items-end justify-center">
+                  <div
+                    className="w-[70%] max-w-[1.5rem] rounded-t-md bg-emerald-500"
+                    style={{
+                      height: `${Math.max(
+                        d.revenueBaht > 0 ? 6 : 2,
+                        (d.revenueBaht / maxRevenue) * 100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <span className="text-[11px] font-bold text-slate-600">
+                  {d.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+export function ShopCancelSummary({
+  cancelledCount,
+  cancelledRevenue,
+  reasons,
+  loading,
+  defaultOpen = true,
+}: {
+  cancelledCount: number;
+  cancelledRevenue: number;
+  reasons: SalesReportCancelReason[];
+  loading?: boolean;
+  defaultOpen?: boolean;
+}) {
+  const [show, setShow] = useState(defaultOpen);
+
+  return (
+    <section
+      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+        loading ? "opacity-60" : ""
+      }`}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-extrabold text-slate-900">
+            บิลที่ยกเลิก
+          </h2>
+          <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
+            {formatPrice(cancelledCount)} บิล · ฿
+            {formatPrice(cancelledRevenue)}
+          </p>
+        </div>
+        <OverviewShowSwitch
+          checked={show}
+          onChange={setShow}
+          label="แสดงเหตุผลยกเลิก"
+        />
+      </div>
+      {!show ? null : cancelledCount <= 0 ? (
+        <p className="py-4 text-center text-sm text-slate-400">
+          ไม่มีบิลยกเลิกในช่วงนี้
+        </p>
+      ) : reasons.length === 0 ? (
+        <p className="py-4 text-center text-sm text-slate-400">
+          มีการยกเลิก แต่ยังไม่ระบุเหตุผล
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {reasons.map((row) => (
+            <li
+              key={row.reason}
+              className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5"
+            >
+              <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-800">
+                {row.reason}
+              </p>
+              <p className="shrink-0 text-[13px] font-extrabold tabular-nums text-slate-700">
+                {formatPrice(row.count)} บิล
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function ShopAgingAttentionCard({
+  aging,
+  loading,
+  href,
+}: {
+  aging: ShopAgingAttention | null | undefined;
+  loading?: boolean;
+  href?: string;
+}) {
+  if (!aging?.stockActive) return null;
+
+  const body = (
+    <div
+      className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
+        loading ? "opacity-60" : ""
+      }`}
+    >
+      <div className="border-b border-slate-100 px-4 py-3">
+        <h2 className="text-[15px] font-extrabold text-slate-900">
+          สต๊อกค้างอายุ
+        </h2>
+        <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+          แดง ≥{aging.criticalDays} วัน · ส้ม ≥{aging.warnDays} วัน
+          {aging.attentionCount > 0
+            ? ` · ต้องดู ${aging.attentionCount} รายการ`
+            : " · ปกติ"}
+        </p>
+      </div>
+      <div className="grid grid-cols-2">
+        <div className="border-r border-slate-100 bg-rose-50 px-4 py-3">
+          <p className="text-[12px] font-bold text-rose-800">แดง</p>
+          <p className="mt-1 text-[20px] font-black tabular-nums text-rose-900">
+            {formatPrice(aging.criticalQty)}
+            <span className="ml-1 text-[12px] font-bold">ชิ้น</span>
+          </p>
+          <p className="mt-1 text-[11px] font-semibold text-rose-700">
+            {aging.critical} รายการ · ฿{formatPrice(aging.criticalValueBaht)}
+          </p>
+        </div>
+        <div className="bg-amber-50/90 px-4 py-3">
+          <p className="text-[12px] font-bold text-amber-900/85">ส้ม</p>
+          <p className="mt-1 text-[20px] font-black tabular-nums text-amber-950/80">
+            {formatPrice(aging.warnQty)}
+            <span className="ml-1 text-[12px] font-bold">ชิ้น</span>
+          </p>
+          <p className="mt-1 text-[11px] font-semibold text-amber-800/75">
+            {aging.warn} รายการ · ฿{formatPrice(aging.warnValueBaht)}
+          </p>
+        </div>
+      </div>
+      {href ? (
+        <div className="border-t border-slate-100 bg-slate-50/80 px-4 py-2.5 text-right text-[13px] font-extrabold text-slate-500">
+          ดูรายการ →
+        </div>
+      ) : null}
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className="block active:scale-[0.99]">
+        {body}
+      </Link>
+    );
+  }
+  return body;
 }

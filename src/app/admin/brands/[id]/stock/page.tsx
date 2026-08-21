@@ -20,6 +20,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { ImageField } from "@/components/admin/ImageField";
 import { DateInput } from "@/components/DateInput";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 type CountType = "WEEKLY" | "MONTHLY" | "CUSTOM";
@@ -1282,6 +1283,27 @@ export default function BrandStockPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!WAREHOUSE_UI_ENABLED) {
+    return (
+      <div className="mx-auto max-w-lg py-12">
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center shadow-sm">
+          <p className="text-lg font-extrabold text-slate-900">
+            ฟีเจอร์นี้ยังไม่เปิดใช้
+          </p>
+          <p className="mt-2 text-sm font-medium text-slate-600">
+            ใช้รับเข้า–จ่ายออกที่สต๊อกสาขาได้เลย
+          </p>
+          <Link
+            href={`/admin/brands/${id}`}
+            className={`${btnPrimary} mt-6 inline-flex min-h-11 items-center justify-center px-5`}
+          >
+            กลับแบรนด์
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   if (!loaded || loading || !data) {

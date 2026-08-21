@@ -7,6 +7,8 @@ import { formatOperatingDayLabel } from "@/lib/operating-day";
 import { ZoomableImage } from "@/components/ZoomableImage";
 import { DateInput } from "@/components/DateInput";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
+import { outboundHistoryLabel } from "@/lib/stock-outbound";
+import { parseMovementImages } from "@/lib/stock-movement-images";
 
 type MovementKind = "stock_in" | "issue";
 
@@ -23,6 +25,7 @@ type BatchLine = {
 type Batch = {
   id: string;
   kind: MovementKind;
+  historyType?: string;
   createdAt: string;
   note: string | null;
   imageUrl: string | null;
@@ -166,6 +169,11 @@ function batchTypeLabel(batch: Batch) {
   if (types.length === 0) return "—";
   if (types.length === 1) return STOCK_TYPE_LABEL[types[0]!];
   return types.map((t) => STOCK_TYPE_LABEL[t]).join(" · ");
+}
+
+function batchPurposeLabel(batch: Batch) {
+  if (batch.kind !== "issue" || !batch.historyType) return null;
+  return outboundHistoryLabel(batch.historyType);
 }
 
 export function StaffStockMovementHistorySheet({
@@ -354,7 +362,9 @@ export function StaffStockMovementHistorySheet({
     }
     lines.push(`บันทึกเมื่อ: ${formatDateTime(selected.createdAt)}`);
     lines.push(`ผู้บันทึก: ${selected.createdByStaff?.name ?? "—"}`);
-    lines.push(`ประเภท: ${batchTypeLabel(selected)}`);
+    const purpose = batchPurposeLabel(selected);
+    if (purpose) lines.push(`ประเภทจ่ายออก: ${purpose}`);
+    lines.push(`ประเภทสินค้า: ${batchTypeLabel(selected)}`);
     if (selected.note) lines.push(`รายละเอียด: ${selected.note}`);
     lines.push(
       `จำนวนรายการ: ${selected.itemCount.toLocaleString("th-TH")} · รวม ${selected.totalQty.toLocaleString("th-TH")}`,
@@ -452,6 +462,7 @@ export function StaffStockMovementHistorySheet({
                 {batches.map((b) => {
                   const active = b.id === selectedId;
                   const typeLabel = batchTypeLabel(b);
+                  const purposeLabel = batchPurposeLabel(b);
                   const cancelled = Boolean(b.isCancelled);
                   return (
                     <button
@@ -471,10 +482,11 @@ export function StaffStockMovementHistorySheet({
                       }`}
                     >
                       <span className="block font-semibold">
-                        {typeLabel}
+                        {purposeLabel ?? typeLabel}
                         {cancelled ? " · ยกเลิก" : ""}
                       </span>
                       <span className="mt-0.5 block">
+                        {purposeLabel ? `${typeLabel} · ` : ""}
                         {b.itemCount.toLocaleString("th-TH")} รายการ · รวม{" "}
                         {b.totalQty.toLocaleString("th-TH")}
                       </span>
@@ -564,8 +576,14 @@ export function StaffStockMovementHistorySheet({
                         label="ผู้บันทึก"
                         value={selected.createdByStaff?.name ?? "—"}
                       />
+                      {batchPurposeLabel(selected) ? (
+                        <SummaryRow
+                          label="ประเภทจ่ายออก"
+                          value={batchPurposeLabel(selected)!}
+                        />
+                      ) : null}
                       <SummaryRow
-                        label="ประเภท"
+                        label="ประเภทสินค้า"
                         value={batchTypeLabel(selected)}
                       />
                       {selected.note ? (
@@ -590,11 +608,18 @@ export function StaffStockMovementHistorySheet({
                           <p className="mb-1.5 text-sm text-gray-600">
                             รูปประกอบ — กดเพื่อดูเต็ม
                           </p>
-                          <ZoomableImage
-                            src={selected.imageUrl}
-                            alt="รูปประกอบ"
-                            className="mx-auto max-h-48 rounded-xl object-contain ring-1 ring-gray-200"
-                          />
+                          <div className="flex flex-wrap justify-center gap-2">
+                            {parseMovementImages(selected.imageUrl).map(
+                              (src) => (
+                                <ZoomableImage
+                                  key={src}
+                                  src={src}
+                                  alt="รูปประกอบ"
+                                  className="max-h-48 rounded-xl object-contain ring-1 ring-gray-200"
+                                />
+                              ),
+                            )}
+                          </div>
                         </div>
                       ) : null}
                     </div>

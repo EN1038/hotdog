@@ -12,12 +12,34 @@ import {
   sortStaffMenuItems,
   withMenuOrderFields,
 } from "@/lib/staff-menu-order";
+import { assertBrandWriteAllowedByBranchId } from "@/lib/brand-plan";
 import {
   STOCK_COUNT_TIMING_LABEL,
   type StockCountTiming,
 } from "@/lib/stock-count-timing";
+import { BRANCH_WASTE_HISTORY_TYPES } from "@/lib/stock-outbound";
+import {
+  encodeMovementImages,
+  MAX_STOCK_MOVEMENT_IMAGES,
+} from "@/lib/stock-movement-images";
 
-const WASTE_HISTORY_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
+const WASTE_HISTORY_TYPES = BRANCH_WASTE_HISTORY_TYPES;
+
+const movementImageUrlsSchema = z
+  .array(z.string().trim().min(1).max(2000))
+  .max(MAX_STOCK_MOVEMENT_IMAGES)
+  .optional();
+
+function resolveMovementImageUrl(body: {
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
+}): string | null {
+  if (body.imageUrls?.length) {
+    return encodeMovementImages(body.imageUrls);
+  }
+  const single = body.imageUrl?.trim();
+  return single ? single : null;
+}
 
 function bangkokMonthBounds(now = new Date()) {
   const todayKey = bangkokDateKey(now);
@@ -43,6 +65,11 @@ const summaryLineSchema = z.object({
   countedQty: z.number().int().min(0),
 });
 
+import {
+  stockDocumentNoSchema,
+  validateStockDocumentNo,
+} from "@/lib/stock-document-no";
+
 const batchIdSchema = z
   .string()
   .trim()
@@ -56,10 +83,12 @@ const postSchema = z.discriminatedUnion("action", [
     action: z.literal("stock_in"),
     brandProductId: z.string(), // This is either menuItemId or nonMenuItemId
     quantity: z.number().int().positive(),
+    documentNo: stockDocumentNoSchema,
     unitCost: z.number().min(0).nullable().optional(),
     supplier: z.string().trim().max(120).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
     batchId: batchIdSchema,
+    skipDocumentCheck: z.boolean().optional(),
     /** YYYY-MM-DD receive day (menu/sale items) */
     receivedAt: z
       .string()
@@ -73,28 +102,54 @@ const postSchema = z.discriminatedUnion("action", [
       .optional(),
     /** Shelf life days from receive → compute expiresAt if expiresAt omitted */
     shelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
+    /** รูปประกอบรับเข้า (ถ้ามี) — URL เดียวหรือหลายรูป */
+    imageUrl: z.string().trim().min(1).max(2000).optional(),
+    imageUrls: movementImageUrlsSchema,
   }),
   z.object({
     action: z.literal("damage"),
     brandProductId: z.string(),
     quantity: z.number().int().positive(),
+    documentNo: stockDocumentNoSchema,
     reason: z.string().trim().max(200).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
+    imageUrl: z.string().trim().min(1).max(2000).optional(),
+    imageUrls: movementImageUrlsSchema,
+    batchId: batchIdSchema,
+    skipDocumentCheck: z.boolean().optional(),
+  }).superRefine((data, ctx) => {
+    const urls = data.imageUrls?.filter(Boolean) ?? [];
+    const single = data.imageUrl?.trim();
+    if (urls.length === 0 && !single) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "กรุณาแนบรูปอย่างน้อย 1 รูป",
+        path: ["imageUrls"],
+      });
+    }
   }),
   z.object({
     action: z.literal("lost"),
     brandProductId: z.string(),
     quantity: z.number().int().positive(),
+    documentNo: stockDocumentNoSchema.optional(),
     reason: z.string().trim().max(200).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
+    imageUrl: z.string().trim().min(1).max(2000).optional(),
+    imageUrls: movementImageUrlsSchema,
+    batchId: batchIdSchema,
+    skipDocumentCheck: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("issue"),
     brandProductId: z.string(),
     quantity: z.number().int().positive(),
+    documentNo: stockDocumentNoSchema,
     note: z.string().trim().min(1, "กรุณากรอกรายละเอียด").max(300),
-    imageUrl: z.string().trim().min(1, "กรุณาแนบรูปถ่าย"),
+    imageUrl: z.string().trim().min(1).max(2000).optional(),
+    imageUrls: movementImageUrlsSchema,
     batchId: batchIdSchema,
+    skipDocumentCheck: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("adjust"),
@@ -582,11 +637,34 @@ export async function GET() {
       );
     }
 
+    let brandBranches: Array<{ id: string; name: string }> = [];
+    if (branch.brandId) {
+      try {
+        brandBranches = await prisma.branch.findMany({
+          where: {
+            brandId: branch.brandId,
+            id: { not: branch.id },
+            kind: "STORE",
+            isHidden: false,
+            isTest: false,
+          },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        });
+      } catch (e) {
+        console.error(
+          "[staff/stock] brandBranches skipped",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+
     return jsonOk({
       stockActive: true,
       brandId: branch.brandId,
       locationId: branch.id,
       allowNegativeStock: true,
+      brandBranches,
       pending,
       balances,
       products,
@@ -615,6 +693,7 @@ export async function POST(request: Request) {
   try {
     const session = await requireStaff();
     if (!session.staffId) return jsonError("ไม่พบข้อมูลพนักงาน", 401);
+    await assertBrandWriteAllowedByBranchId(session.branchId);
     const body = postSchema.parse(await request.json());
 
     const branch = await prisma.branch.findUnique({
@@ -849,6 +928,42 @@ export async function POST(request: Request) {
       );
     }
 
+    let documentNo: string | null = null;
+    if (
+      body.action === "stock_in" ||
+      body.action === "issue" ||
+      body.action === "damage" ||
+      (body.action === "lost" && body.documentNo)
+    ) {
+      const rawDoc =
+        body.action === "lost"
+          ? body.documentNo
+          : "documentNo" in body
+            ? body.documentNo
+            : undefined;
+      if (rawDoc) {
+        documentNo = await validateStockDocumentNo({
+          documentNo: rawDoc,
+          action: body.action,
+          skipAvailabilityCheck: body.skipDocumentCheck,
+        });
+      }
+    }
+
+    const storesMovementImage =
+      body.action === "stock_in" ||
+      body.action === "issue" ||
+      body.action === "damage" ||
+      body.action === "lost";
+    const storesBatchId =
+      body.action === "stock_in" ||
+      body.action === "issue" ||
+      body.action === "damage" ||
+      body.action === "lost";
+    const movementImageUrl = storesMovementImage
+      ? resolveMovementImageUrl(body)
+      : null;
+
     const targetId = body.brandProductId;
     
     // Check if non-menu item
@@ -878,18 +993,16 @@ export async function POST(request: Request) {
         });
 
         if (actualDiff !== 0) {
-          const batchId =
-            body.action === "stock_in" || body.action === "issue"
-              ? (body.batchId ?? null)
-              : null;
+          const batchId = storesBatchId ? (body.batchId ?? null) : null;
           await prisma.branchNonMenuItemHistory.create({
             data: {
               branchNonMenuItemId: targetId,
               quantity: actualDiff,
               type: body.action.toUpperCase(),
               note: body.note ?? null,
-              imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
+              imageUrl: movementImageUrl,
               batchId,
+              documentNo,
               createdByStaffId: session.staffId,
             },
           });
@@ -977,15 +1090,13 @@ export async function POST(request: Request) {
           });
 
           if (actualDiff !== 0) {
-            const batchId =
-              body.action === "stock_in" || body.action === "issue"
-                ? (body.batchId ?? null)
-                : null;
+            const batchId = storesBatchId ? (body.batchId ?? null) : null;
             const historyData: {
               branchId: string;
               menuItemId: string;
               quantity: number;
               type: string;
+              documentNo?: string | null;
               note: string | null;
               imageUrl: string | null;
               batchId: string | null;
@@ -998,10 +1109,13 @@ export async function POST(request: Request) {
               quantity: actualDiff,
               type: body.action.toUpperCase(),
               note: body.note ?? null,
-              imageUrl: body.action === "issue" ? (body.imageUrl ?? null) : null,
+              imageUrl: movementImageUrl,
               batchId,
               createdByStaffId: session.staffId,
             };
+            if (documentNo) {
+              historyData.documentNo = documentNo;
+            }
             if (body.action === "stock_in") {
               historyData.receivedAt = receiveAt;
               historyData.expiresAt = expiresAt;

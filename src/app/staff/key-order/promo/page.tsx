@@ -13,9 +13,12 @@ import type { MenuItemData } from "@/lib/customer-types";
 import { resolveSellPrice } from "@/lib/menu-pricing";
 import {
   describePromoMenuItem,
+  isPromoSellableOnShop,
   isStockExemptMenuItem,
-  listActivePromoMenuItems,
+  listVisiblePromoMenuItems,
+  promoScheduleStatusOf,
 } from "@/lib/staff-key-order";
+import { PROMO_SCHEDULE_STATUS_LABEL } from "@/lib/promo-schedule";
 import { assignStableMenuSequence } from "@/lib/staff-menu-order";
 
 export default function StaffPromoKeyOrderIndexPage() {
@@ -47,7 +50,9 @@ export default function StaffPromoKeyOrderIndexPage() {
       setMenuItems(items);
       setLoading(false);
 
-      const promos = listActivePromoMenuItems(items);
+      const promos = listVisiblePromoMenuItems(items).filter((item) =>
+        isPromoSellableOnShop(item),
+      );
       if (promos.length === 1) {
         router.replace(`/staff/key-order/promo/${promos[0]!.id}`);
       }
@@ -58,7 +63,7 @@ export default function StaffPromoKeyOrderIndexPage() {
   }, [router, blocked, roundLoading, roundState]);
 
   const promoItems = useMemo(
-    () => listActivePromoMenuItems(menuItems),
+    () => listVisiblePromoMenuItems(menuItems),
     [menuItems],
   );
 
@@ -97,13 +102,21 @@ export default function StaffPromoKeyOrderIndexPage() {
         </div>
       ) : (
         <section className="space-y-3">
-          <header>
-            <h2 className="text-[18px] font-extrabold text-slate-900">
-              เลือกโปรโมชั่น
-            </h2>
-            <p className="mt-1 text-[13px] font-medium text-slate-500">
-              แตะการ์ดเพื่อคีย์ · มี {promoItems.length} รายการ
-            </p>
+          <header className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-[18px] font-extrabold text-slate-900">
+                เลือกโปรโมชั่น
+              </h2>
+              <p className="mt-1 text-[13px] font-medium text-slate-500">
+                แตะการ์ดเพื่อคีย์ · มี {promoItems.length} รายการ
+              </p>
+            </div>
+            <Link
+              href="/staff/settings/promos"
+              className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12px] font-bold text-slate-600 ring-1 ring-slate-200"
+            >
+              จัดการวันหมด
+            </Link>
           </header>
 
           <div className="grid grid-cols-1 gap-3">
@@ -114,19 +127,22 @@ export default function StaffPromoKeyOrderIndexPage() {
                 !isStockExemptMenuItem(item) && item.stockQuantity != null
                   ? item.stockQuantity
                   : null;
-              const tone =
-                index % 3 === 0
+              const status = promoScheduleStatusOf(item);
+              const sellable = isPromoSellableOnShop(item);
+              const tone = !sellable
+                ? "from-slate-400 to-slate-500"
+                : index % 3 === 0
                   ? "from-amber-500 to-orange-500"
                   : index % 3 === 1
                     ? "from-sky-500 to-blue-600"
                     : "from-emerald-500 to-teal-600";
 
-              return (
-                <Link
-                  key={item.id}
-                  href={`/staff/key-order/promo/${item.id}`}
-                  className={`relative flex min-h-[6.5rem] items-center gap-3.5 overflow-hidden rounded-2xl bg-gradient-to-br ${tone} px-4 py-4 text-white shadow-sm transition active:scale-[0.98]`}
-                >
+              const cardClass = `relative flex min-h-[6.5rem] items-center gap-3.5 overflow-hidden rounded-2xl bg-gradient-to-br ${tone} px-4 py-4 text-white shadow-sm transition ${
+                sellable ? "active:scale-[0.98]" : "opacity-90"
+              }`;
+
+              const body = (
+                <>
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20 text-[18px] font-black tabular-nums">
                     {seq}
                   </span>
@@ -144,12 +160,31 @@ export default function StaffPromoKeyOrderIndexPage() {
                       {stockLeft != null ? (
                         <span>เหลือ {stockLeft}</span>
                       ) : null}
+                      {!sellable ? (
+                        <span className="rounded-full bg-black/25 px-2.5 py-0.5 text-[12px] font-bold">
+                          {PROMO_SCHEDULE_STATUS_LABEL[status]}
+                        </span>
+                      ) : null}
                     </span>
                   </span>
                   <span className="flex h-11 shrink-0 items-center justify-center rounded-full bg-white px-4 text-[14px] font-extrabold text-slate-900">
-                    เลือก
+                    {sellable ? "เลือก" : "หมดแล้ว"}
                   </span>
+                </>
+              );
+
+              return sellable ? (
+                <Link
+                  key={item.id}
+                  href={`/staff/key-order/promo/${item.id}`}
+                  className={cardClass}
+                >
+                  {body}
                 </Link>
+              ) : (
+                <div key={item.id} className={cardClass} aria-disabled>
+                  {body}
+                </div>
               );
             })}
           </div>

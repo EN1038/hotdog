@@ -12,16 +12,18 @@ import {
   type ReactNode,
 } from "react";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
-import { logout } from "@/components/LoginForm";
 import {
   IconHome,
-  IconLogout,
   IconReceipt,
   IconStore,
 } from "@/components/icons";
 import { formatPrice } from "@/lib/constants";
 import type { OwnerDashboardPayload } from "@/lib/owner-dashboard";
 import { DEFAULT_BRAND_COLOR, normalizePrimaryColor } from "@/lib/color";
+import {
+  OwnerProfileMenuButton,
+  useOwnerViewHomeSoftRedirect,
+} from "@/components/owner/OwnerViewSwitch";
 
 export type OwnerShellTab = "home" | "today" | "summary" | "settings";
 
@@ -115,6 +117,12 @@ export function OwnerAppShell({
     reload();
   }, [loaded, session, router, reload, pathname]);
 
+  useOwnerViewHomeSoftRedirect(
+    loaded && session && !session.isPlatformAdmin && pathname === "/owner"
+      ? "mobile"
+      : null,
+  );
+
   const brandName = data?.brand?.nameTh || data?.brand?.name || "ร้านค้า";
   const logoUrl = data?.brand?.logoUrl;
   const coverUrl = data?.brand?.coverImageUrl;
@@ -123,7 +131,27 @@ export function OwnerAppShell({
     DEFAULT_BRAND_COLOR,
   );
   const todayRevenue = data?.stats.completedRevenue ?? 0;
+  const completedCount = data?.stats.completedCount ?? 0;
   const openCount = data?.stats.openCount ?? 0;
+  const subscription = data?.subscription ?? null;
+  const packageBanner = subscription?.writeAllowed === false
+    ? {
+        tone: "border-rose-200 bg-rose-50 text-rose-950",
+        text:
+          subscription.writeBlockedReason ??
+          "แพ็กเกจหมดอายุ — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้",
+      }
+    : subscription?.nearExpiry
+      ? {
+          tone: "border-amber-200 bg-amber-50 text-amber-950",
+          text:
+            subscription.daysLeft != null
+              ? subscription.daysLeft > 0
+                ? `แพ็กเกจใกล้หมดอายุ · เหลือ ${subscription.daysLeft} วัน`
+                : "แพ็กเกจจะหมดอายุวันนี้"
+              : "แพ็กเกจใกล้หมดอายุ",
+        }
+      : null;
 
   useEffect(() => {
     document.documentElement.style.setProperty("--site-primary", accent);
@@ -139,7 +167,7 @@ export function OwnerAppShell({
     {
       id: "home",
       href: "/owner",
-      label: "งานวันนี้",
+      label: "หน้าแรก",
       icon: <IconHome size={24} />,
     },
     {
@@ -191,39 +219,33 @@ export function OwnerAppShell({
           <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/40" />
           <div className="relative z-10 mx-auto max-w-lg px-4 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))]">
             <div className="flex items-center gap-3">
-              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-white/20 ring-2 ring-white/40">
-                {logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logoUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <IconStore size={22} />
-                  </div>
-                )}
-              </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[17px] font-extrabold leading-tight">
                   {brandName}
                 </p>
                 <p className="mt-0.5 text-xs font-medium text-white/85">
-                  ยอดวันนี้ {formatPrice(todayRevenue)} บาท
+                  ยอดวันนี้ {formatPrice(todayRevenue)} บาท ·{" "}
+                  {formatPrice(completedCount)} บิล
+                  {openCount > 0 ? ` · ค้าง ${formatPrice(openCount)}` : ""}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => logout("/owner/login")}
-                className="flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-white/70 bg-white/15 px-3 text-[13px] font-semibold text-white"
-              >
-                <IconLogout size={16} />
-                ออกจากระบบ
-              </button>
+              <OwnerProfileMenuButton
+                photoUrl={logoUrl}
+                displayName={brandName}
+                username={session.username}
+                fallbackIcon={<IconStore size={22} />}
+              />
             </div>
           </div>
         </header>
+
+        {packageBanner ? (
+          <div className={`border-b px-4 py-2.5 ${packageBanner.tone}`}>
+            <div className="mx-auto max-w-lg">
+              <p className="text-[13px] font-semibold">{packageBanner.text}</p>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mx-auto max-w-lg">{children}</div>
 

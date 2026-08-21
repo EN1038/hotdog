@@ -48,6 +48,7 @@ import { AdminCloseStoreModal } from "@/components/admin/AdminCloseStoreModal";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { MenuBestSellerTag } from "@/components/customer/MenuChannelPrice";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   IconBack,
   IconChevronRight,
@@ -717,6 +718,12 @@ function BranchDetailContent() {
       return;
     }
     const data: BranchDetail = await branchRes.json();
+    if (!WAREHOUSE_UI_ENABLED && data.kind === "WAREHOUSE") {
+      router.replace(
+        data.brandId ? `/admin/brands/${data.brandId}` : "/admin",
+      );
+      return;
+    }
     setBranch({
       ...data,
       menuItems: data.menuItems ?? [],

@@ -130,6 +130,7 @@ export type BrandUsageFields = {
   bbqEnabled: boolean;
   skewerEnabled: boolean;
   trialEndsAt: Date | null;
+  nextDueAt?: Date | null;
 };
 
 export const brandUsageSelect = {
@@ -176,6 +177,89 @@ export function brandInactiveMessage(status: BrandStatus): string {
   return "แบรนด์นี้ยังไม่พร้อมให้บริการ";
 }
 
+export const PACKAGE_EXPIRY_WARNING_DAYS = 7;
+
+export type BrandSubscriptionState = {
+  effectiveStatus: BrandStatus;
+  nearExpiry: boolean;
+  warningDays: number;
+  expiresAt: Date | null;
+  daysLeft: number | null;
+  writeAllowed: boolean;
+  writeBlockedReason: string | null;
+};
+
+export function brandWriteBlockedMessage(status: BrandStatus): string {
+  if (status === "EXPIRED") {
+    return "แพ็กเกจหมดอายุ — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้";
+  }
+  if (status === "PAUSED") {
+    return "บัญชีนี้ถูกหยุดใช้งานชั่วคราว — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้";
+  }
+  if (status === "DELETED") {
+    return "บัญชีนี้ถูกลบออกจากระบบแล้ว";
+  }
+  return "แบรนด์นี้ยังไม่พร้อมให้สร้างรายการใหม่";
+}
+
+function endOfBangkokDay(input: Date): Date {
+  const d = new Date(input);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+export function brandExpiryDate(
+  brand: Pick<BrandUsageFields, "status" | "trialEndsAt" | "nextDueAt">,
+): Date | null {
+  if (brand.status === "TRIAL") return brand.trialEndsAt ?? null;
+  return brand.nextDueAt ?? null;
+}
+
+function daysUntilDate(target: Date, now = new Date()): number {
+  const ms = endOfBangkokDay(target).getTime() - now.getTime();
+  return Math.ceil(ms / 86_400_000);
+}
+
+export function getBrandSubscriptionState(
+  brand: Pick<BrandUsageFields, "status" | "trialEndsAt" | "nextDueAt">,
+  now = new Date(),
+  warningDays = PACKAGE_EXPIRY_WARNING_DAYS,
+): BrandSubscriptionState {
+  const effectiveStatus = effectiveBrandStatus(brand, now);
+  const expiresAt = brandExpiryDate(brand);
+  const daysLeft =
+    expiresAt && Number.isFinite(expiresAt.getTime())
+      ? daysUntilDate(expiresAt, now)
+      : null;
+  const nearExpiry =
+    effectiveStatus !== "EXPIRED" &&
+    effectiveStatus !== "PAUSED" &&
+    effectiveStatus !== "DELETED" &&
+    daysLeft != null &&
+    daysLeft >= 0 &&
+    daysLeft <= warningDays;
+  const writeAllowed = effectiveStatus === "ACTIVE" || effectiveStatus === "TRIAL";
+  return {
+    effectiveStatus,
+    nearExpiry,
+    warningDays,
+    expiresAt,
+    daysLeft,
+    writeAllowed,
+    writeBlockedReason: writeAllowed
+      ? null
+      : brandWriteBlockedMessage(effectiveStatus),
+  };
+}
+
+export function isBrandNearExpiry(
+  brand: Pick<BrandUsageFields, "status" | "trialEndsAt" | "nextDueAt">,
+  now = new Date(),
+  warningDays = PACKAGE_EXPIRY_WARNING_DAYS,
+): boolean {
+  return getBrandSubscriptionState(brand, now, warningDays).nearExpiry;
+}
+
 export function isBrandStorefrontOpen(
   brand: Pick<BrandUsageFields, "status" | "trialEndsAt">,
   now = new Date(),
@@ -193,6 +277,21 @@ export function assertBrandStorefrontOpen(
   if (!isBrandStorefrontOpen(brand)) {
     throw new BrandInactiveError(
       brandInactiveMessage(effectiveBrandStatus(brand)),
+    );
+  }
+}
+
+export function assertBrandWriteAllowed(
+  brand: Pick<BrandUsageFields, "status" | "trialEndsAt" | "nextDueAt"> | null | undefined,
+  now = new Date(),
+): void {
+  if (!brand) {
+    throw new BrandInactiveError("ไม่พบแบรนด์");
+  }
+  const state = getBrandSubscriptionState(brand, now);
+  if (!state.writeAllowed) {
+    throw new BrandInactiveError(
+      state.writeBlockedReason ?? brandWriteBlockedMessage(state.effectiveStatus),
     );
   }
 }

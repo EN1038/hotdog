@@ -4,7 +4,10 @@ import type { NextResponse } from "next/server";
 import type { StaffRole } from "./constants";
 import { prisma } from "./db";
 import { assertStaffAuthSessionLive } from "./staff-auth-session";
-import { STAFF_SESSION_MS } from "./staff-session-limits";
+import {
+  SESSION_JWT_EXP,
+  SESSION_MAX_AGE_SEC,
+} from "./staff-session-limits";
 import {
   BrandInactiveError,
   brandInactiveMessage,
@@ -58,20 +61,14 @@ export type SessionPayload = {
   customerName?: string;
 };
 
-export function sessionCookieOptions(type?: SessionPayload["type"]) {
-  // Customers stay signed in longer so returning to the same site rarely needs OTP again.
-  const maxAge =
-    type === "customer"
-      ? 60 * 60 * 24 * 90 // 90 days
-      : type === "staff"
-        ? Math.floor(STAFF_SESSION_MS / 1000)
-        : 60 * 60 * 24 * 7;
+export function sessionCookieOptions(_type?: SessionPayload["type"]) {
+  // Owner / staff / customer — cookie ค้างแบบแอป (90 วัน) ไม่หายตอนปิดเบราว์เซอร์
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
-    maxAge,
+    maxAge: SESSION_MAX_AGE_SEC,
   };
 }
 
@@ -86,15 +83,11 @@ export async function signSessionToken(
     customerName: payload.customerName?.slice(0, 120),
     username: payload.username?.slice(0, 80),
   };
-  const expiration =
-    payload.type === "customer"
-      ? "90d"
-      : payload.type === "staff"
-        ? "7d"
-        : "7d";
-  const token = new SignJWT({ ...safe }).setProtectedHeader({ alg: "HS256" }).setIssuedAt();
+  const token = new SignJWT({ ...safe })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt();
   if (safe.jti) token.setJti(safe.jti);
-  return token.setExpirationTime(expiration).sign(getJwtSecret());
+  return token.setExpirationTime(SESSION_JWT_EXP).sign(getJwtSecret());
 }
 
 export async function createSession(payload: SessionPayload) {
@@ -121,17 +114,46 @@ export async function attachSessionCookie(
   return response;
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+type VerifiedSession = {
+  session: SessionPayload;
+  /** seconds since epoch */
+  exp: number | null;
+};
+
+async function readVerifiedSession(): Promise<VerifiedSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
   try {
     const { payload } = await jwtVerify(token, getJwtSecret());
-    return payload as unknown as SessionPayload;
+    const session = payload as unknown as SessionPayload;
+    const exp = typeof payload.exp === "number" ? payload.exp : null;
+    return { session, exp };
   } catch {
     return null;
   }
+}
+
+/** Re-issue cookie when remaining life is under half — keeps active users signed in. */
+async function renewSessionCookieIfNeeded(
+  session: SessionPayload,
+  exp: number | null,
+) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const remaining = exp == null ? 0 : exp - nowSec;
+  const halfLife = Math.floor(SESSION_MAX_AGE_SEC / 2);
+  if (remaining > halfLife) return;
+  try {
+    await createSession(session);
+  } catch {
+    /* ignore — may not be in a mutable cookie context */
+  }
+}
+
+export async function getSession(): Promise<SessionPayload | null> {
+  const verified = await readVerifiedSession();
+  return verified?.session ?? null;
 }
 
 export async function clearSession() {
@@ -140,7 +162,8 @@ export async function clearSession() {
 }
 
 export async function requireAdmin() {
-  const session = await getSession();
+  const verified = await readVerifiedSession();
+  const session = verified?.session;
   if (!session || session.type !== "admin" || !session.adminId) {
     throw new Error("UNAUTHORIZED");
   }
@@ -154,22 +177,27 @@ export async function requireAdmin() {
     throw new Error("UNAUTHORIZED");
   }
 
-  return {
+  const next: SessionPayload = {
     ...session,
+    username: admin.username,
     isPlatformAdmin: admin.isPlatformAdmin,
     brandIds: admin.brandMembers.map((m) => m.brandId),
   };
+  await renewSessionCookieIfNeeded(next, verified?.exp ?? null);
+
+  return next;
 }
 
 export async function requireStaff() {
-  const session = await getSession();
+  const verified = await readVerifiedSession();
+  const session = verified?.session;
   if (!session || session.type !== "staff" || !session.branchId) {
     throw new Error("UNAUTHORIZED");
   }
   if (!session.jti || !session.staffPhone) {
     throw new Error("UNAUTHORIZED");
   }
-  await assertStaffAuthSessionLive({
+  const live = await assertStaffAuthSessionLive({
     jti: session.jti,
     phone: session.staffPhone,
   });
@@ -225,6 +253,24 @@ export async function requireStaff() {
     );
   }
 
+  const next: SessionPayload = {
+    ...session,
+    staffPhone: staff.phone,
+    branchId: staff.branchId,
+    staffRoles,
+    branchName: staff.branch.name,
+  };
+  // ต่ออายุ cookie เมื่อใกล้หมด หรือเมื่อเพิ่งอัปเดต lastSeen ในเซสชันเครื่อง
+  if (live.touched) {
+    try {
+      await createSession(next);
+    } catch {
+      await renewSessionCookieIfNeeded(next, verified?.exp ?? null);
+    }
+  } else {
+    await renewSessionCookieIfNeeded(next, verified?.exp ?? null);
+  }
+
   return {
     ...session,
     staffId: staff.id,
@@ -250,9 +296,11 @@ export async function requireStaff() {
 }
 
 export async function requireCustomer() {
-  const session = await getSession();
+  const verified = await readVerifiedSession();
+  const session = verified?.session;
   if (!session || session.type !== "customer" || !session.customerId) {
     throw new Error("UNAUTHORIZED");
   }
+  await renewSessionCookieIfNeeded(session, verified?.exp ?? null);
   return session;
 }

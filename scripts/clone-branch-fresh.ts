@@ -12,7 +12,7 @@ import { importBranchCatalog } from "../src/lib/branch-import";
 import { slugifyCode, withUniqueSuffix } from "../src/lib/slug";
 
 const SOURCE_NAME = "นครชัยมงคลวิลล่า ซอย 2 นวนคร";
-const NEW_NAME = "CJ นวนคร";
+const NEW_NAME = "สต๊อกกลาง - คลอง 2 คลองหลวง";
 
 async function main() {
   const adapter = new PrismaPg(

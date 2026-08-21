@@ -35,7 +35,7 @@ function formatDateTime(iso: string) {
 function wasteTypeLabel(type: string) {
   if (type === "DAMAGE") return "ชำรุด";
   if (type === "LOST") return "สูญหาย";
-  if (type === "ISSUE") return "จ่ายออก / ของเสีย";
+  if (type === "ISSUE") return "จ่ายออกจากสต๊อก";
   return type;
 }
 

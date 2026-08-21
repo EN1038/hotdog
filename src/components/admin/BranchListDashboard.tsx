@@ -26,6 +26,7 @@ import {
 } from "@/components/icons";
 import { slugifyCode } from "@/lib/slug";
 import { DEFAULT_BRAND_COLOR, rgba } from "@/lib/color";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   defaultWeeklyHours,
   type WeeklySchedule,
@@ -367,6 +368,9 @@ function BranchListDashboardInner({
     typeof selectedBrand?.maxBranches === "number" &&
     liveBranchCount >= selectedBrand.maxBranches;
   const atBranchLimit = liveAtLimit && hasTestBranch;
+  const visibleBranches = WAREHOUSE_UI_ENABLED
+    ? branches
+    : branches.filter((b) => b.kind !== "WAREHOUSE");
 
   return (
     <div>
@@ -438,7 +442,7 @@ function BranchListDashboardInner({
 
       {hqSection === "home" ? (
       <section className="mt-6">
-        {branches.length === 0 ? (
+        {visibleBranches.length === 0 ? (
           <AdminEmptyState
             title="ยังไม่มีสาขา"
             description="กด “เพิ่มสาขา” เพื่อสร้างสาขาแรก"
@@ -451,7 +455,7 @@ function BranchListDashboardInner({
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-            {branches.map((branch) => {
+            {visibleBranches.map((branch) => {
               const brandColor = branch.brand?.color || accent;
               const isWarehouse = branch.kind === "WAREHOUSE";
               const chipStyle = {

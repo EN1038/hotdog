@@ -21,6 +21,10 @@ import { ImageField } from "@/components/admin/ImageField";
 import { BranchStockCountsView } from "@/components/admin/BranchStockCountsView";
 import { BranchStockMovementsView } from "@/components/admin/BranchStockMovementsView";
 import { BranchStockUsageView } from "@/components/admin/BranchStockUsageView";
+import {
+  STOCK_OUTBOUND_PURPOSE_LABEL,
+  type StockOutboundPurpose,
+} from "@/lib/stock-outbound";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -71,10 +75,15 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [mode, setMode] = useState<"menu" | "select_type" | "items">("menu");
+  const [mode, setMode] = useState<
+    "menu" | "select_issue_purpose" | "select_type" | "items"
+  >("menu");
   const [actionType, setActionType] = useState<
     "stock_in" | "issue" | "adjust" | null
   >(null);
+  const [issuePurpose, setIssuePurpose] = useState<StockOutboundPurpose | null>(
+    null,
+  );
 
   const [typeFilter, setTypeFilter] = useState<"ALL" | StockType>("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -347,10 +356,15 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
 
   const handleActionClick = (action: "stock_in" | "issue" | "adjust") => {
     setActionType(action);
-    setMode("select_type");
     setQtyByItemId({});
     setCategoryFilter("ALL");
     setMovementNote("");
+    setIssuePurpose(null);
+    if (action === "issue") {
+      setMode("select_issue_purpose");
+      return;
+    }
+    setMode("select_type");
   };
   
   const handleTypeSelectClick = (type: StockType) => {
@@ -374,15 +388,22 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   const handleBack = () => {
     if (mode === "items") {
       setMode("select_type");
+    } else if (mode === "select_type" && actionType === "issue") {
+      setMode("select_issue_purpose");
     } else {
       setMode("menu");
       setActionType(null);
+      setIssuePurpose(null);
       setQtyByItemId({});
     }
   };
 
   async function submitChanges() {
     if (selectedItems.length === 0 || !actionType) return;
+    if (actionType === "issue" && !issuePurpose) {
+      toast.error("กรุณาเลือกประเภทการจ่ายออก");
+      return;
+    }
     if (
       (actionType === "issue" || actionType === "adjust") &&
       !movementNote.trim()
@@ -396,6 +417,10 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
     }
     setBusy(true);
     try {
+      const postAction =
+        actionType === "issue" && issuePurpose
+          ? STOCK_OUTBOUND_PURPOSE_LABEL[issuePurpose].apiAction
+          : actionType;
       const batchId =
         actionType === "stock_in" || actionType === "issue"
           ? `adm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
@@ -404,7 +429,9 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
         actionType === "stock_in"
           ? "รับเข้าผ่านระบบ Admin"
           : actionType === "issue"
-            ? "จ่ายออกผ่านระบบ Admin"
+            ? issuePurpose === "waste"
+              ? "ของเสียผ่านระบบ Admin"
+              : "จ่ายออกจากสต๊อกผ่านระบบ Admin"
             : "ปรับยอดผ่านระบบ Admin";
       const note = movementNote.trim() || defaultNote;
 
@@ -415,7 +442,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: actionType,
+            action: postAction,
             brandProductId: item.id,
             quantity: item.quantity,
             note,
@@ -439,12 +466,15 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           actionType === "stock_in"
             ? "รับเข้าสำเร็จ"
             : actionType === "issue"
-              ? "จ่ายออกสำเร็จ"
+              ? issuePurpose === "waste"
+                ? "บันทึกของเสียสำเร็จ"
+                : "จ่ายออกจากสต๊อกสำเร็จ"
               : "ปรับยอดสำเร็จ",
           `อัปเดต ${selectedItems.length} รายการ`,
         );
         setMode("menu");
         setActionType(null);
+        setIssuePurpose(null);
         setQtyByItemId({});
         setMovementNote("");
       }
@@ -786,7 +816,9 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                 >
                   <div className="text-left">
                     <h3 className="text-xl font-black">จ่ายออก</h3>
-                    <p className="mt-1 text-amber-100 text-xs">เบิกใช้ / ตัดสูญหาย</p>
+                    <p className="mt-1 text-amber-100 text-xs">
+                      ของเสีย หรือ จ่ายออกจากสต๊อก
+                    </p>
                   </div>
                   <div className="text-3xl">📤</div>
                 </button>
@@ -1012,6 +1044,56 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                 </div>
               </div>
             </div>
+          ) : mode === "select_issue_purpose" ? (
+            <div className="space-y-6">
+              <div className="mb-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="flex h-10 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-200"
+                >
+                  ← กลับ
+                </button>
+                <h2 className="text-xl font-black text-slate-900">
+                  ประเภทการจ่ายออก
+                </h2>
+              </div>
+              <p className="text-sm font-medium text-slate-600">
+                ของเสียจะไปกลุ่มของเสีย · จ่ายออกจากสต๊อกจะนับเป็นการจ่ายออก
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {(
+                  [
+                    "waste",
+                    "stock_out",
+                  ] as const satisfies readonly StockOutboundPurpose[]
+                ).map((id) => {
+                  const meta = STOCK_OUTBOUND_PURPOSE_LABEL[id];
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        setIssuePurpose(id);
+                        setMode("select_type");
+                      }}
+                      className={`rounded-2xl border-2 p-6 text-left shadow-sm transition active:scale-[0.98] ${
+                        id === "waste"
+                          ? "border-orange-200 bg-orange-50 hover:border-orange-400"
+                          : "border-amber-200 bg-amber-50 hover:border-amber-400"
+                      }`}
+                    >
+                      <h3 className="text-lg font-black text-slate-900">
+                        {meta.title}
+                      </h3>
+                      <p className="mt-1 text-sm font-medium text-slate-600">
+                        {meta.hint}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ) : mode === "select_type" ? (
             <div className="space-y-6">
               <div className="flex items-center gap-2 mb-6">
@@ -1025,7 +1107,9 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                   {actionType === "stock_in"
                     ? "เลือกประเภทเพื่อรับเข้า"
                     : actionType === "issue"
-                      ? "เลือกประเภทเพื่อจ่ายออก"
+                      ? issuePurpose
+                        ? `เลือกประเภท · ${STOCK_OUTBOUND_PURPOSE_LABEL[issuePurpose].title}`
+                        : "เลือกประเภทเพื่อจ่ายออก"
                       : actionType === "adjust"
                         ? "เลือกประเภทเพื่อปรับยอด"
                         : ""}

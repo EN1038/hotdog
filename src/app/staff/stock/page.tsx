@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toPng } from "html-to-image";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
-import { StaffStockMovementHistorySheet } from "@/components/staff/StaffStockMovementHistorySheet";
+import { StaffBranchStockHistoryPanel } from "@/components/staff/StaffBranchStockHistoryPanel";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { compareThaiText } from "@/lib/thai-sort";
@@ -14,13 +14,30 @@ import {
   sortStaffMenuItems,
 } from "@/lib/staff-menu-order";
 import { formatPrice, bangkokDateKey } from "@/lib/constants";
-import { IconCamera, IconSkewerPlaceholder } from "@/components/icons";
+import { DateInput } from "@/components/DateInput";
+import {
+  IconCamera,
+  IconClose,
+  IconSkewerPlaceholder,
+  IconUpload,
+} from "@/components/icons";
 import {
   DEFAULT_STOCK_COUNT_TIMING,
   STOCK_COUNT_TIMING_LABEL,
   STOCK_COUNT_TIMING_OPTIONS,
   type StockCountTiming,
 } from "@/lib/stock-count-timing";
+import {
+  STOCK_OUTBOUND_PURPOSE_LABEL,
+  type StockOutboundPurpose,
+} from "@/lib/stock-outbound";
+import { StockDocumentNoField } from "@/components/stock/StockDocumentNoField";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
+import {
+  provisionalStockDocumentNo,
+  type StockDocumentKind,
+} from "@/lib/stock-document-no-format";
+import { MAX_STOCK_MOVEMENT_IMAGES } from "@/lib/stock-movement-images";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -127,6 +144,7 @@ type Payload = {
   products: Product[];
   lowItems: Balance[];
   pending: Pending[];
+  brandBranches?: Array<{ id: string; name: string }>;
   lastStockCountAt?: string | null;
   lastStockCountAtByType?: Partial<Record<StockType, string | null>>;
   lastSaleAt?: string | null;
@@ -136,6 +154,12 @@ type Payload = {
     wasteByType: Record<StockType, StockQtyValue>;
   };
 };
+
+function issueNoteForBranch(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("สาขา") ? trimmed : `สาขา ${trimmed}`;
+}
 
 function formatStockActivityAt(iso: string | null | undefined) {
   if (!iso) return null;
@@ -188,7 +212,9 @@ function StaffStockContent() {
 
   const [mode, setMode] = useState<
     | "menu"
+    | "history"
     | "select_timing"
+    | "select_issue_purpose"
     | "select_type"
     | "items"
     | "summary"
@@ -197,6 +223,9 @@ function StaffStockContent() {
   const [actionType, setActionType] = useState<
     "stock_in" | "issue" | "pending" | "view" | "summary" | null
   >(null);
+  const [issuePurpose, setIssuePurpose] = useState<StockOutboundPurpose | null>(
+    null,
+  );
   const [summaryTiming, setSummaryTiming] = useState<StockCountTiming>(
     DEFAULT_STOCK_COUNT_TIMING,
   );
@@ -206,10 +235,21 @@ function StaffStockContent() {
   const [qtyByItemId, setQtyByItemId] = useState<Record<string, number>>({});
 
   const [issueNote, setIssueNote] = useState("");
-  const [issueImage, setIssueImage] = useState<File | null>(null);
-  const [issuePreviewUrl, setIssuePreviewUrl] = useState<string | null>(null);
+  const [issueTargetBranchId, setIssueTargetBranchId] = useState<string | null>(
+    null,
+  );
+  const [documentNo, setDocumentNo] = useState("");
+  const [docGenBusy, setDocGenBusy] = useState(false);
+  const [producedAt, setProducedAt] = useState(() => bangkokDateKey());
+  const [stockInImageUrls, setStockInImageUrls] = useState<string[]>([]);
+  const [stockInImageBusy, setStockInImageBusy] = useState(false);
+  const stockInImageInputRef = useRef<HTMLInputElement>(null);
+  const [issueImageUrls, setIssueImageUrls] = useState<string[]>([]);
+  const [issueImageBusy, setIssueImageBusy] = useState(false);
+  const issueImageInputRef = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraBusy, setCameraBusy] = useState(false);
+  const [cameraFor, setCameraFor] = useState<"issue" | "stock_in">("issue");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -220,9 +260,6 @@ function StaffStockContent() {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [attemptedSummary, setAttemptedSummary] = useState(false);
-  const [historyKind, setHistoryKind] = useState<"stock_in" | "issue" | null>(
-    null,
-  );
 
   const stockCaptureRef = useRef<HTMLDivElement>(null);
   const [exportBusy, setExportBusy] = useState<"save" | "share" | "copy" | null>(
@@ -312,11 +349,9 @@ function StaffStockContent() {
 
   useEffect(() => {
     return () => {
-      setIssuePreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      stopCameraStream();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup on unmount only
   }, []);
 
   useEffect(() => {
@@ -347,6 +382,7 @@ function StaffStockContent() {
   }, [openAsDailySummary, loading, data?.stockActive]);
 
   useEffect(() => {
+    if (!WAREHOUSE_UI_ENABLED) return;
     if (!openAsPending || loading || !data?.stockActive) return;
     setActionType("pending");
     setMode("pending");
@@ -363,9 +399,8 @@ function StaffStockContent() {
 
   useEffect(() => {
     if (!openAsIssue || loading || !data?.stockActive) return;
-    setHistoryKind(null);
     setActionType("issue");
-    setMode("items");
+    setMode("select_issue_purpose");
     setTypeFilter(openViewStockType);
     setQtyByItemId({});
     setCategoryFilter("ALL");
@@ -652,12 +687,18 @@ function StaffStockContent() {
     });
   }
 
-  const handleActionClick = (action: "stock_in" | "issue" | "pending" | "summary" | "view") => {
+  const handleActionClick = (action: "stock_in" | "issue" | "pending" | "summary" | "view" | "history") => {
+    if (action === "history") {
+      setMode("history");
+      setActionType(null);
+      return;
+    }
     if (action === "stock_in" || action === "issue") {
-      setHistoryKind(action);
+      startCreateFromHistory(action);
       return;
     }
     if (action === "pending") {
+      if (!WAREHOUSE_UI_ENABLED) return;
       setActionType("pending");
       setMode("pending");
       return;
@@ -686,12 +727,26 @@ function StaffStockContent() {
   };
 
   function startCreateFromHistory(kind: "stock_in" | "issue") {
-    setHistoryKind(null);
     setActionType(kind);
-    setMode("select_type");
     setQtyByItemId({});
     setCategoryFilter("ALL");
+    setDocumentNo(
+      provisionalStockDocumentNo({
+        kind: kind === "stock_in" ? "IN" : "OUT",
+        branchCode: formatBranchLabel(branchName) || branchName,
+      }),
+    );
+    if (kind === "stock_in") {
+      setProducedAt(bangkokDateKey());
+      setStockInImageUrls([]);
+    }
     clearIssueFields();
+    if (kind === "issue") {
+      setIssuePurpose(null);
+      setMode("select_issue_purpose");
+      return;
+    }
+    setMode("select_type");
   }
 
   const handleTypeSelectClick = (type: StockType) => {
@@ -709,6 +764,44 @@ function StaffStockContent() {
     }
     setMode("items");
   };
+
+  async function genDocumentNo(kind: StockDocumentKind) {
+    setDocGenBusy(true);
+    try {
+      const res = await fetch(`/api/staff/stock/document-no?kind=${kind}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.error ?? "สร้างเลขที่เอกสารไม่สำเร็จ");
+      }
+      const next = String(json.documentNo ?? "").trim();
+      if (next) setDocumentNo(next);
+    } catch {
+      setDocumentNo(
+        provisionalStockDocumentNo({
+          kind,
+          branchCode: formatBranchLabel(branchName) || branchName,
+        }),
+      );
+    } finally {
+      setDocGenBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (mode !== "items") return;
+    if (actionType !== "stock_in" && actionType !== "issue") return;
+    const kind = actionType === "stock_in" ? "IN" : "OUT";
+    setDocumentNo((prev) =>
+      prev.trim()
+        ? prev
+        : provisionalStockDocumentNo({
+            kind,
+            branchCode: formatBranchLabel(branchName) || branchName,
+          }),
+    );
+    void genDocumentNo(kind);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- gen when entering items mode
+  }, [mode, actionType]);
 
   const stockTypeLabel =
     typeFilter !== "ALL" ? STOCK_TYPE_LABEL[typeFilter] : "สต็อก";
@@ -870,14 +963,27 @@ function StaffStockContent() {
 
   function clearIssueFields() {
     setIssueNote("");
-    setIssueImage(null);
-    setIssuePreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
+    setIssueTargetBranchId(null);
+    setIssuePurpose(null);
+    setIssueImageUrls([]);
+  }
+
+  function selectIssueTargetBranch(branch: { id: string; name: string }) {
+    if (issueTargetBranchId === branch.id) {
+      setIssueTargetBranchId(null);
+      const auto = issueNoteForBranch(branch.name);
+      if (issueNote.trim() === auto) setIssueNote("");
+      return;
+    }
+    setIssueTargetBranchId(branch.id);
+    setIssueNote(issueNoteForBranch(branch.name));
   }
 
   const handleBack = () => {
+    if (mode === "history") {
+      setMode("menu");
+      return;
+    }
     if (mode === "pending") {
       if (openAsPending) {
         router.replace("/staff");
@@ -896,6 +1002,13 @@ function StaffStockContent() {
       setQtyByItemId({});
       clearIssueFields();
       closeIssueCamera();
+    } else if (mode === "select_type" && actionType === "issue") {
+      setMode("select_issue_purpose");
+      setTypeFilter("ALL");
+    } else if (mode === "select_issue_purpose") {
+      setMode("menu");
+      setActionType(null);
+      setIssuePurpose(null);
     } else if (mode === "summary") {
       setMode("select_type");
       setQtyByItemId({});
@@ -958,11 +1071,91 @@ function StaffStockContent() {
   }
 
   async function openIssueCamera() {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("อุปกรณ์นี้ไม่รองรับกล้อง", "ต้องถ่ายรูปด้วยกล้องเท่านั้น");
+    if (issueImageUrls.length >= MAX_STOCK_MOVEMENT_IMAGES) {
+      toast.error(`แนบได้ไม่เกิน ${MAX_STOCK_MOVEMENT_IMAGES} รูป`);
       return;
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("อุปกรณ์นี้ไม่รองรับกล้อง", "ลองแนบจากแกลเลอรีแทน");
+      return;
+    }
+    setCameraFor("issue");
     setCameraOpen(true);
+  }
+
+  async function openStockInCamera() {
+    if (stockInImageUrls.length >= MAX_STOCK_MOVEMENT_IMAGES) {
+      toast.error(`แนบได้ไม่เกิน ${MAX_STOCK_MOVEMENT_IMAGES} รูป`);
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("อุปกรณ์นี้ไม่รองรับกล้อง", "ลองแนบจากแกลเลอรีแทน");
+      return;
+    }
+    setCameraFor("stock_in");
+    setCameraOpen(true);
+  }
+
+  async function uploadMovementImages(
+    files: FileList | File[],
+    kind: "stock_in" | "issue",
+  ) {
+    const currentUrls =
+      kind === "stock_in" ? stockInImageUrls : issueImageUrls;
+    const setBusy =
+      kind === "stock_in" ? setStockInImageBusy : setIssueImageBusy;
+    const setUrls =
+      kind === "stock_in" ? setStockInImageUrls : setIssueImageUrls;
+    const inputRef =
+      kind === "stock_in" ? stockInImageInputRef : issueImageInputRef;
+
+    const picked = Array.from(files).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    const room = MAX_STOCK_MOVEMENT_IMAGES - currentUrls.length;
+    if (room <= 0) {
+      toast.error(`แนบได้ไม่เกิน ${MAX_STOCK_MOVEMENT_IMAGES} รูป`);
+      return;
+    }
+    const take = picked.slice(0, room);
+    if (take.length === 0) return;
+    setBusy(true);
+    try {
+      const uploaded: string[] = [];
+      for (const file of take) {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("folder", "Branch");
+        const res = await fetch("/api/staff/uploads", { method: "POST", body });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof json.error === "string" ? json.error : "อัปโหลดรูปไม่สำเร็จ",
+          );
+        }
+        const url = typeof json.url === "string" ? json.url.trim() : "";
+        if (url) uploaded.push(url);
+      }
+      setUrls((prev) =>
+        [...prev, ...uploaded].slice(0, MAX_STOCK_MOVEMENT_IMAGES),
+      );
+    } catch (e) {
+      toast.error(
+        "อัปโหลดรูปไม่สำเร็จ",
+        e instanceof Error ? e.message : "",
+      );
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function uploadStockInImages(files: FileList | File[]) {
+    await uploadMovementImages(files, "stock_in");
+  }
+
+  async function uploadIssueImages(files: FileList | File[]) {
+    await uploadMovementImages(files, "issue");
   }
 
   useEffect(() => {
@@ -1011,14 +1204,9 @@ function StaffStockContent() {
     setCameraBusy(false);
   }
 
-  /** ปิดกล้องโดยไม่บันทึกรูปใหม่ — เคลียร์รูปที่เคยถ่ายไว้ด้วย */
+  /** ปิดกล้องโดยไม่บันทึกรูปใหม่ */
   function dismissIssueCamera() {
     closeIssueCamera();
-    setIssueImage(null);
-    setIssuePreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
   }
 
   function captureIssuePhoto() {
@@ -1039,79 +1227,79 @@ function StaffStockContent() {
           toast.error("บันทึกรูปไม่สำเร็จ");
           return;
         }
-        const file = new File([blob], `issue-${Date.now()}.jpg`, {
-          type: "image/jpeg",
-        });
-        setIssuePreviewUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return URL.createObjectURL(blob);
-        });
-        setIssueImage(file);
+        const file = new File(
+          [blob],
+          `${cameraFor === "stock_in" ? "stock-in" : "issue"}-${Date.now()}.jpg`,
+          { type: "image/jpeg" },
+        );
         closeIssueCamera();
+        if (cameraFor === "stock_in") {
+          void uploadStockInImages([file]);
+          return;
+        }
+        void uploadIssueImages([file]);
       },
       "image/jpeg",
       0.85,
     );
   }
 
-  useEffect(() => {
-    return () => {
-      stopCameraStream();
-      if (issuePreviewUrl) URL.revokeObjectURL(issuePreviewUrl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup on unmount only
-  }, []);
-
   async function submitChanges() {
     if (selectedItems.length === 0 || !actionType) return;
+    if (
+      (actionType === "stock_in" || actionType === "issue") &&
+      !documentNo.trim()
+    ) {
+      toast.error("กรุณาระบุเลขที่เอกสาร");
+      return;
+    }
+    if (actionType === "issue") {
+      if (!issuePurpose) {
+        toast.error("กรุณาเลือกประเภทการจ่ายออก");
+        return;
+      }
+      if (!issueNote.trim()) {
+        toast.error("กรุณากรอกรายละเอียด");
+        return;
+      }
+      if (issuePurpose === "waste" && issueImageUrls.length === 0) {
+        toast.error("กรุณาแนบรูปอย่างน้อย 1 รูป", "ของเสียต้องมีรูปประกอบ");
+        return;
+      }
+    }
+
     setBusy(true);
     try {
-      let uploadedUrl = null;
-      if (actionType === "issue") {
-        if (!issueNote.trim()) {
-          toast.error("กรุณากรอกรายละเอียด");
-          setBusy(false);
-          return;
-        }
-        if (!issueImage) {
-          toast.error("กรุณาถ่ายรูปประกอบ");
-          setBusy(false);
-          return;
-        }
-        const body = new FormData();
-        body.append("file", issueImage);
-        body.append("folder", "Branch");
-        const res = await fetch("/api/staff/uploads", { method: "POST", body });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          toast.error(
-            "อัพโหลดรูปไม่สำเร็จ",
-            typeof err.error === "string" ? err.error : "ลองใหม่",
-          );
-          setBusy(false);
-          return;
-        }
-        const json = await res.json();
-        uploadedUrl = json.url;
-      }
-
       const batchId =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
           : `batch-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+      const postAction =
+        actionType === "issue" && issuePurpose
+          ? STOCK_OUTBOUND_PURPOSE_LABEL[issuePurpose].apiAction
+          : actionType;
+
       let hasError = false;
       let lastError = "";
-      for (const item of selectedItems) {
+      for (const [index, item] of selectedItems.entries()) {
         const payload: Record<string, unknown> = {
-          action: actionType,
+          action: postAction,
           brandProductId: item.id,
           quantity: item.quantity,
           note: actionType === "stock_in" ? "เพิ่มผ่านระบบมือถือ" : issueNote,
           batchId,
+          documentNo: documentNo.trim(),
+          skipDocumentCheck: index > 0,
         };
-        if (actionType === "issue" && uploadedUrl) {
-          payload.imageUrl = uploadedUrl;
+        if (actionType === "issue" && issueImageUrls.length > 0) {
+          payload.imageUrls = issueImageUrls;
+        }
+        if (actionType === "stock_in") {
+          if (producedAt) payload.receivedAt = producedAt;
+          if (stockInImageUrls.length > 0) {
+            payload.imageUrls = stockInImageUrls;
+          }
         }
 
         const res = await fetch("/api/staff/stock", {
@@ -1131,10 +1319,19 @@ function StaffStockContent() {
       if (hasError) {
         toast.error("บันทึกบางรายการไม่สำเร็จ", lastError || "ลองใหม่");
       } else {
-        toast.success(actionType === "stock_in" ? "รับเข้าสำเร็จ" : "จ่ายออกสำเร็จ", `อัปเดต ${selectedItems.length} รายการ`);
+        const okTitle =
+          actionType === "stock_in"
+            ? "รับเข้าสำเร็จ"
+            : issuePurpose === "waste"
+              ? "บันทึกของเสียสำเร็จ"
+              : "จ่ายออกจากสต๊อกสำเร็จ";
+        toast.success(okTitle, `${documentNo.trim()} · ${selectedItems.length} รายการ`);
         setMode("menu");
         setActionType(null);
         setQtyByItemId({});
+        setDocumentNo("");
+        setProducedAt(bangkokDateKey());
+        setStockInImageUrls([]);
         clearIssueFields();
       }
       await load();
@@ -1269,14 +1466,14 @@ function StaffStockContent() {
                   <p className="text-xs text-slate-500">ปรับปรุงจำนวนสต๊อกของเมนูที่หน้าร้าน</p>
                 </div>
                 <div className="space-y-4 mt-6">
-                  {(data.pending?.length ?? 0) > 0 ? (
+                  {WAREHOUSE_UI_ENABLED && (data.pending?.length ?? 0) > 0 ? (
                     <button
                       type="button"
                       onClick={() => handleActionClick("pending")}
                       className="w-full flex items-center justify-between rounded-2xl bg-teal-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
                     >
                       <div className="text-left">
-                        <h3 className="text-2xl font-black">รอรับจากสต๊อกกลาง</h3>
+                        <h3 className="text-2xl font-black">มีของรอรับ</h3>
                         <p className="mt-1 text-teal-100 text-sm">
                           {data.pending.length} รายการ — กดเพื่อยืนยันรับเข้าสาขา
                         </p>
@@ -1363,13 +1560,33 @@ function StaffStockContent() {
                   >
                     <div className="text-left">
                       <h3 className="text-2xl font-black">จ่ายออก</h3>
-                      <p className="mt-1 text-amber-100 text-sm">เบิกใช้ / ตัดสต๊อกสูญหาย</p>
+                      <p className="mt-1 text-amber-100 text-sm">
+                        ของเสีย หรือ จ่ายออกจากสต๊อก
+                      </p>
                     </div>
                     <div className="text-4xl">📤</div>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleActionClick("history")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-indigo-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">ประวัติ</h3>
+                      <p className="mt-1 text-indigo-100 text-sm">
+                        รับ · ขาย · ของเสีย · จ่ายออก — ดูรายละเอียดตามเลขเอกสาร
+                      </p>
+                    </div>
+                    <div className="text-4xl">🧾</div>
+                  </button>
                 </div>
               </>
-            ) : mode === "pending" ? (
+            ) : mode === "history" ? (
+              <StaffBranchStockHistoryPanel
+                onBack={() => setMode("menu")}
+              />
+            ) : mode === "pending" && WAREHOUSE_UI_ENABLED ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
                   <button
@@ -1381,7 +1598,7 @@ function StaffStockContent() {
                   </button>
                   <div className="min-w-0">
                     <h2 className="text-lg font-extrabold text-slate-900">
-                      รอรับจากสต๊อกกลาง
+                      รอรับของ
                     </h2>
                     <p className="text-xs font-semibold text-slate-600">
                       {(data.pending?.length ?? 0).toLocaleString("th-TH")} รายการ
@@ -1392,7 +1609,7 @@ function StaffStockContent() {
                   <div className="rounded-2xl bg-white p-5 text-center shadow-sm">
                     <p className="text-sm font-bold text-slate-800">ไม่มีของรอรับ</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      เมื่อสต๊อกกลางส่งของมา จะโผล่ที่นี่ให้กดรับ
+                      เมื่อมีการส่งของมา จะโผล่ที่นี่ให้กดรับ
                     </p>
                   </div>
                 ) : (
@@ -1413,7 +1630,7 @@ function StaffStockContent() {
                             <p className="mt-1 text-xs text-slate-500">
                               {row.sourceBranch
                                 ? `จากสาขา ${row.sourceBranch.name}`
-                                : "จากสต๊อกกลาง"}
+                                : "จากคลัง"}
                               {row.note ? ` · ${row.note}` : ""}
                             </p>
                           </div>
@@ -2033,6 +2250,62 @@ function StaffStockContent() {
                   })}
                 </div>
               </>
+            ) : mode === "select_issue_purpose" ? (
+              <>
+                <div className="mb-4 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                  >
+                    ← กลับ
+                  </button>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    ประเภทการจ่ายออก
+                  </h2>
+                </div>
+                <p className="mb-3 text-[13px] font-medium text-slate-600">
+                  เลือกให้ตรงกับเหตุผลจริง — ของเสียจะไปกลุ่มของเสีย
+                  ส่วนจ่ายออกจากสต๊อกจะนับเป็นการจ่ายออก
+                </p>
+                <div className="grid gap-3">
+                  {(
+                    [
+                      "waste",
+                      "stock_out",
+                    ] as const satisfies readonly StockOutboundPurpose[]
+                  ).map((id) => {
+                    const meta = STOCK_OUTBOUND_PURPOSE_LABEL[id];
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setIssuePurpose(id);
+                          if (openAsIssue) {
+                            setTypeFilter(openViewStockType);
+                            setMode("items");
+                            return;
+                          }
+                          setMode("select_type");
+                        }}
+                        className={`w-full rounded-2xl border-2 p-5 text-left shadow-sm transition active:scale-[0.98] ${
+                          id === "waste"
+                            ? "border-orange-200 bg-orange-50 hover:border-orange-400"
+                            : "border-amber-200 bg-amber-50 hover:border-amber-400"
+                        }`}
+                      >
+                        <h3 className="text-xl font-black text-slate-900">
+                          {meta.title}
+                        </h3>
+                        <p className="mt-1 text-[13px] font-medium text-slate-600">
+                          {meta.hint}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             ) : mode === "select_type" ? (
               <>
                 <div className="flex items-center gap-2 mb-4">
@@ -2048,7 +2321,9 @@ function StaffStockContent() {
                       : actionType === "stock_in"
                         ? "เลือกประเภทรับเข้า"
                         : actionType === "issue"
-                          ? "เลือกประเภทจ่ายออก"
+                          ? issuePurpose
+                            ? `เลือกประเภท · ${STOCK_OUTBOUND_PURPOSE_LABEL[issuePurpose].title}`
+                            : "เลือกประเภทจ่ายออก"
                           : actionType === "summary"
                             ? "เลือกประเภทสต๊อก"
                             : ""}
@@ -2062,7 +2337,9 @@ function StaffStockContent() {
                     {actionType === "stock_in"
                       ? "ของสิ้นเปลือง (น้ำแข็ง/แก้ว/ถุง/แก๊ส/น้ำจิ้ม): รับเข้าเมื่อของมาส่ง"
                       : actionType === "issue"
-                        ? "จ่ายออกเมื่อเบิกใช้ชัดเจน เช่น เปลี่ยนแก๊ส 1 ถัง — รายวันทั่วไปใช้สรุปยอดก็ได้"
+                        ? issuePurpose === "waste"
+                          ? "บันทึกของเสีย เช่น ทำหล่น ชำรุด ใช้ไม่ได้"
+                          : "จ่ายออกจากสต๊อกเมื่อเบิกใช้ชัดเจน เช่น เปลี่ยนแก๊ส 1 ถัง"
                         : `ขั้นที่ 2 จาก 2 · จังหวะ: ${summaryTimingLabel} · เลือกประเภทที่จะนับ`}
                   </div>
                 )}
@@ -2134,16 +2411,252 @@ function StaffStockContent() {
                   >
                     ← กลับ
                   </button>
-                  <h2 className="text-lg font-extrabold text-slate-900">
-                    {actionType === "view"
-                      ? "ภาพรวมสต๊อก"
-                      : actionType === "stock_in"
-                        ? "รับเข้า"
-                        : actionType === "issue"
-                          ? "จ่ายออก"
-                          : ""}
-                  </h2>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-extrabold text-slate-900">
+                      {actionType === "view"
+                        ? "ภาพรวมสต๊อก"
+                        : actionType === "stock_in"
+                          ? "รับเข้า"
+                          : actionType === "issue"
+                            ? "จ่ายออก"
+                            : ""}
+                    </h2>
+                    {typeFilter !== "ALL" &&
+                    (actionType === "stock_in" ||
+                      actionType === "issue" ||
+                      actionType === "view") ? (
+                      <p className="text-xs font-semibold text-slate-600">
+                        {STOCK_TYPE_LABEL[typeFilter] ?? stockTypeLabel}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
+
+                {(actionType === "stock_in" || actionType === "issue") &&
+                mode === "items" ? (
+                  <section
+                    className={`mb-4 rounded-2xl border p-4 shadow-sm ${
+                      actionType === "stock_in"
+                        ? "border-emerald-100 bg-emerald-50/80"
+                        : "border-amber-100 bg-amber-50/80"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p
+                        className={`min-w-0 text-[13px] font-extrabold leading-tight ${
+                          actionType === "stock_in"
+                            ? "text-emerald-900"
+                            : "text-amber-950"
+                        }`}
+                      >
+                        {actionType === "stock_in"
+                          ? "หัวบิลรับเข้าครั้งนี้"
+                          : "หัวบิลจ่ายออกครั้งนี้"}
+                      </p>
+                      {actionType === "stock_in" ? (
+                        <label className="flex shrink-0 items-center gap-1.5">
+                          <span className="whitespace-nowrap text-[11px] font-semibold text-emerald-800/90">
+                            วันที่ผลิต
+                          </span>
+                          <span className="block w-[7.75rem]">
+                            <DateInput
+                              value={producedAt}
+                              onChange={setProducedAt}
+                              aria-label="วันที่ผลิต"
+                              className="w-full rounded-xl border border-emerald-200 bg-white px-2 py-1.5 text-center text-[12px] font-bold text-slate-900"
+                            />
+                          </span>
+                        </label>
+                      ) : null}
+                    </div>
+                    <div className="mt-3">
+                      <StockDocumentNoField
+                        value={documentNo}
+                        onChange={setDocumentNo}
+                        onGenerate={() =>
+                          void genDocumentNo(
+                            actionType === "stock_in" ? "IN" : "OUT",
+                          )
+                        }
+                        generating={docGenBusy}
+                      />
+                    </div>
+                    {actionType === "stock_in" ? (
+                      <div className="mt-3">
+                        <p className="mb-1 text-[12px] font-semibold text-emerald-900">
+                          แนบรูป{" "}
+                          <span className="font-medium text-emerald-800/70">
+                            (ถ้ามี)
+                          </span>
+                        </p>
+                        <p className="mb-2 text-[11px] font-medium text-emerald-800/70">
+                          ถ่ายรูปหรือเลือกจากแกลเลอรี · ได้หลายรูป สูงสุด{" "}
+                          {MAX_STOCK_MOVEMENT_IMAGES} รูป
+                        </p>
+                        <input
+                          ref={stockInImageInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="sr-only"
+                          onChange={(e) => {
+                            if (e.target.files?.length) {
+                              void uploadStockInImages(e.target.files);
+                            }
+                          }}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          {stockInImageUrls.map((url) => (
+                            <div key={url} className="relative h-16 w-16">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={url}
+                                alt=""
+                                className="h-16 w-16 rounded-xl object-cover ring-1 ring-emerald-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setStockInImageUrls((prev) =>
+                                    prev.filter((item) => item !== url),
+                                  )
+                                }
+                                className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-white"
+                                aria-label="ลบรูป"
+                              >
+                                <IconClose size={12} />
+                              </button>
+                            </div>
+                          ))}
+                          {stockInImageUrls.length < MAX_STOCK_MOVEMENT_IMAGES ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={stockInImageBusy}
+                                onClick={() => void openStockInCamera()}
+                                className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-emerald-300 bg-white text-emerald-800 disabled:opacity-60"
+                                aria-label="ถ่ายรูป"
+                              >
+                                <IconCamera size={20} />
+                                <span className="mt-0.5 text-[10px] font-bold">
+                                  ถ่าย
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={stockInImageBusy}
+                                onClick={() =>
+                                  stockInImageInputRef.current?.click()
+                                }
+                                className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-emerald-300 bg-white text-emerald-800 disabled:opacity-60"
+                                aria-label="แนบจากแกลเลอรี"
+                              >
+                                <IconUpload size={20} />
+                                <span className="mt-0.5 text-[10px] font-bold">
+                                  {stockInImageBusy ? "…" : "แนบ"}
+                                </span>
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    {actionType === "issue" && issuePurpose ? (
+                      <div className="mt-3 space-y-3">
+                        <p className="rounded-xl bg-white/80 px-3 py-2 text-[12px] font-bold text-slate-700 ring-1 ring-slate-200">
+                          ประเภท ·{" "}
+                          {STOCK_OUTBOUND_PURPOSE_LABEL[issuePurpose].title}
+                        </p>
+                        <div>
+                          <p className="mb-1 text-[12px] font-semibold text-amber-950">
+                            แนบรูป{" "}
+                            {issuePurpose === "waste" ? (
+                              <span className="font-bold text-red-600">*</span>
+                            ) : (
+                              <span className="font-medium text-amber-900/70">
+                                (ถ้ามี)
+                              </span>
+                            )}
+                          </p>
+                          <p className="mb-2 text-[11px] font-medium text-amber-900/70">
+                            {issuePurpose === "waste"
+                              ? "ของเสียต้องแนบอย่างน้อย 1 รูป · "
+                              : ""}
+                            ถ่ายรูปหรือเลือกจากแกลเลอรี · สูงสุด{" "}
+                            {MAX_STOCK_MOVEMENT_IMAGES} รูป
+                          </p>
+                          <input
+                            ref={issueImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="sr-only"
+                            onChange={(e) => {
+                              if (e.target.files?.length) {
+                                void uploadIssueImages(e.target.files);
+                              }
+                            }}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            {issueImageUrls.map((url) => (
+                              <div key={url} className="relative h-16 w-16">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={url}
+                                  alt=""
+                                  className="h-16 w-16 rounded-xl object-cover ring-1 ring-amber-200"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setIssueImageUrls((prev) =>
+                                      prev.filter((item) => item !== url),
+                                    )
+                                  }
+                                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-white"
+                                  aria-label="ลบรูป"
+                                >
+                                  <IconClose size={12} />
+                                </button>
+                              </div>
+                            ))}
+                            {issueImageUrls.length <
+                            MAX_STOCK_MOVEMENT_IMAGES ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={issueImageBusy}
+                                  onClick={() => void openIssueCamera()}
+                                  className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-amber-300 bg-white text-amber-800 disabled:opacity-60"
+                                  aria-label="ถ่ายรูป"
+                                >
+                                  <IconCamera size={20} />
+                                  <span className="mt-0.5 text-[10px] font-bold">
+                                    ถ่าย
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={issueImageBusy}
+                                  onClick={() =>
+                                    issueImageInputRef.current?.click()
+                                  }
+                                  className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-amber-300 bg-white text-amber-800 disabled:opacity-60"
+                                  aria-label="แนบจากแกลเลอรี"
+                                >
+                                  <IconUpload size={20} />
+                                  <span className="mt-0.5 text-[10px] font-bold">
+                                    {issueImageBusy ? "…" : "แนบ"}
+                                  </span>
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
 
                 {actionType === "view" && typeFilter === "SALE_ITEM" ? (
                   <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2.5">
@@ -2555,7 +3068,11 @@ function StaffStockContent() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="font-bold text-slate-900">
-                  {actionType === "stock_in" ? "สรุปยอดรับเข้า" : "สรุปยอดจ่ายออก"}
+                  {actionType === "stock_in"
+                    ? "สรุปยอดรับเข้า"
+                    : issuePurpose === "waste"
+                      ? "สรุปยอดของเสีย"
+                      : "สรุปยอดจ่ายออกจากสต๊อก"}
                 </h3>
                 <p className="text-xs text-slate-500">เลือกไว้ {selectedItems.length} รายการ</p>
               </div>
@@ -2566,64 +3083,96 @@ function StaffStockContent() {
                 </p>
               </div>
             </div>
+            {(actionType === "stock_in" || actionType === "issue") && (
+              <div className="mb-4 border-t border-slate-100 pt-3">
+                <p className="mb-1 text-[12px] font-bold text-slate-600">
+                  เลขที่เอกสาร · {documentNo.trim() || "ยังไม่มี"}
+                </p>
+                <p className="text-[11px] font-medium text-slate-500">
+                  แก้เลขที่เอกสารได้ที่หัวบิลด้านบน
+                </p>
+              </div>
+            )}
             {actionType === "issue" && (
               <div className="mb-4 space-y-3 border-t border-slate-100 pt-3">
+                {issuePurpose ? (
+                  <p
+                    className={`rounded-xl px-3 py-2 text-[12px] font-bold ${
+                      issuePurpose === "waste"
+                        ? "bg-orange-50 text-orange-800"
+                        : "bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    ประเภท · {STOCK_OUTBOUND_PURPOSE_LABEL[issuePurpose].title}
+                  </p>
+                ) : null}
                 <div>
                   <label className="mb-1 block text-sm font-bold text-slate-700">รายละเอียด <span className="text-red-500">*</span></label>
+                  {(data?.brandBranches?.length ?? 0) > 0 ? (
+                    <div className="mb-2">
+                      <p className="mb-1.5 text-[11px] font-semibold text-slate-500">
+                        เลือกสาขา (ไม่บังคับ) — กดเพื่อใส่ชื่ออัตโนมัติ
+                      </p>
+                      <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                        {data!.brandBranches!.map((b) => {
+                          const active = issueTargetBranchId === b.id;
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => selectIssueTargetBranch(b)}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+                                active
+                                  ? "bg-amber-500 text-white"
+                                  : "bg-slate-100 text-slate-700 ring-1 ring-slate-200 active:bg-slate-200"
+                              }`}
+                            >
+                              {b.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                   <input
                     type="text"
                     value={issueNote}
-                    onChange={(e) => setIssueNote(e.target.value)}
-                    placeholder="เช่น ทำหล่น, เบิกไปใช้งาน..."
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setIssueNote(next);
+                      if (issueTargetBranchId && data?.brandBranches) {
+                        const selected = data.brandBranches.find(
+                          (b) => b.id === issueTargetBranchId,
+                        );
+                        if (
+                          selected &&
+                          next.trim() !== issueNoteForBranch(selected.name)
+                        ) {
+                          setIssueTargetBranchId(null);
+                        }
+                      }
+                    }}
+                    placeholder={
+                      issuePurpose === "waste"
+                        ? "เช่น ทำหล่น, ชำรุด, ใช้ไม่ได้..."
+                        : "เช่น เบิกไปใช้งาน, เปลี่ยนแก๊ส... หรือเลือกสาขาด้านบน"
+                    }
                     className="w-full rounded-xl border-slate-200 px-3 py-2 text-sm focus:border-site-primary focus:ring-1 focus:ring-site-primary"
                   />
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">
-                    ถ่ายรูปประกอบ <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => void openIssueCamera()}
-                      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-2 border-dashed border-amber-400 bg-amber-50 text-amber-700 transition hover:border-amber-500 hover:bg-amber-100 active:scale-[0.98]"
-                      aria-label="ถ่ายรูปด้วยกล้อง"
-                      title="ถ่ายรูปด้วยกล้องเท่านั้น"
-                    >
-                      <IconCamera size={28} aria-hidden />
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      {issuePreviewUrl ? (
-                        <div className="flex items-center gap-3">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={issuePreviewUrl}
-                            alt="รูปประกอบจ่ายออก"
-                            className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200"
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-800">
-                              ถ่ายแล้ว
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => void openIssueCamera()}
-                              className="mt-0.5 text-xs font-semibold text-amber-700 underline"
-                            >
-                              ถ่ายใหม่
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs leading-relaxed text-slate-500">
-                          กดไอคอนกล้องเพื่อถ่ายรูป
-                          <br />
-                          (ใช้กล้องเท่านั้น เลือกจากแกลเลอรีไม่ได้)
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                {issuePurpose === "waste" && issueImageUrls.length === 0 ? (
+                  <p className="rounded-xl bg-orange-50 px-3 py-2 text-[12px] font-semibold text-orange-800">
+                    แนบรูปประกอบที่หัวบิลด้านบนอย่างน้อย 1 รูป
+                  </p>
+                ) : issueImageUrls.length > 0 ? (
+                  <p className="text-[12px] font-medium text-slate-500">
+                    แนบรูปแล้ว {issueImageUrls.length} รูป · แก้ได้ที่หัวบิลด้านบน
+                  </p>
+                ) : (
+                  <p className="text-[12px] font-medium text-slate-500">
+                    แนบรูปประกอบได้ที่หัวบิลด้านบน (ถ้ามี)
+                  </p>
+                )}
               </div>
             )}
             <button
@@ -2637,17 +3186,6 @@ function StaffStockContent() {
           </div>
         </div>
       )}
-
-      <StaffStockMovementHistorySheet
-        open={historyKind !== null}
-        kind={historyKind ?? "stock_in"}
-        onClose={() => setHistoryKind(null)}
-        onCreateNew={() => {
-          if (historyKind) startCreateFromHistory(historyKind);
-        }}
-        brandName={brandName}
-        branchName={branchName}
-      />
 
       {cameraOpen ? (
         <div

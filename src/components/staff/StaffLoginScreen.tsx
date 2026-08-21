@@ -22,6 +22,7 @@ import {
 } from "@/lib/staff-session-limits";
 import { StaffLoginNotice } from "@/components/staff/StaffLoginNotice";
 import type { StaffLoginNoticeKind } from "@/components/staff/StaffLoginNotice";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type BranchChoice = {
   staffId: string;
@@ -243,7 +244,12 @@ export function StaffLoginScreen() {
               </p>
             </div>
             <ul className="space-y-2">
-              {branches.map((b) => (
+              {branches
+                .filter(
+                  (b) =>
+                    WAREHOUSE_UI_ENABLED || b.branchKind !== "WAREHOUSE",
+                )
+                .map((b) => (
                 <li key={b.branchId}>
                   <button
                     type="button"

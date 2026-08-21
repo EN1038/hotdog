@@ -24,6 +24,7 @@ import {
   assignStableMenuSequence,
   sortMenuItemData,
 } from "@/lib/staff-menu-order";
+import { isRegularMenuItem } from "@/lib/staff-key-order";
 import { compareThaiText } from "@/lib/thai-sort";
 import { hasMapPin } from "@/lib/geo";
 
@@ -34,7 +35,13 @@ type MenuItem = {
   imageUrl: string | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
-  category: { id: string; name: string; sortOrder: number } | null;
+  category: {
+    id: string;
+    name: string;
+    sortOrder: number;
+    stockExempt?: boolean | null;
+  } | null;
+  optionGroups?: Array<{ mode?: "MANUAL" | "FROM_MENU" }> | null;
 };
 
 type PrefillOrder = {
@@ -207,9 +214,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
     );
   }, [menuItems]);
 
-  /** Full branch menu in stock page order (stable seq source). */
+  /** Full branch menu in stock page order (stable seq source). Promo packs are not orderable sticks. */
   const catalogSorted = useMemo(
-    () => sortMenuItemData(menuItems),
+    () => sortMenuItemData(menuItems.filter((m) => isRegularMenuItem(m))),
     [menuItems],
   );
 

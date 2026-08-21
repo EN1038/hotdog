@@ -8,6 +8,7 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
   unit: z.string().trim().min(1).max(20).optional(),
   stockType: z.nativeEnum(StockType).optional(),
+  defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
 });
 
 export async function POST(request: Request) {
@@ -29,6 +30,8 @@ export async function POST(request: Request) {
         stockType,
         trackStock: true,
         isActive: true,
+        defaultShelfLifeDays:
+          body.defaultShelfLifeDays != null ? body.defaultShelfLifeDays : 5,
         equipmentStatus:
           stockType === StockType.EQUIPMENT ? EquipmentStatus.ACTIVE : null,
       },

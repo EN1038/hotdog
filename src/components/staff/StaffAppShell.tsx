@@ -13,6 +13,11 @@ import {
 import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 import { StaffOrderModeProvider } from "@/components/staff/StaffOrderModeContext";
 import { formatPrice } from "@/lib/constants";
+import {
+  canReturnToOwnerFromStaff,
+  returnToOwnerFromStaff,
+} from "@/lib/owner-enter-staff";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 export type StaffShellTab = "home" | "key" | "orders" | "summary" | "stock" | "shift-stock" | "settings";
 
@@ -38,6 +43,13 @@ type BrandingPayload = {
   todayOrderCount?: number;
   branchKind?: string;
   brandId?: string | null;
+  subscription?: {
+    nearExpiry?: boolean;
+    daysLeft?: number | null;
+    writeAllowed?: boolean;
+    writeBlockedReason?: string | null;
+    effectiveStatusLabel?: string | null;
+  } | null;
 };
 
 type BranchChoice = {
@@ -137,6 +149,8 @@ function StaffAppShellInner({
   const [branchChoices, setBranchChoices] = useState<BranchChoice[]>([]);
   const [currentBranchId, setCurrentBranchId] = useState("");
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const [canReturnOwner, setCanReturnOwner] = useState(false);
+  const [returningOwner, setReturningOwner] = useState(false);
   const [switchingBranch, setSwitchingBranch] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
 
@@ -173,9 +187,33 @@ function StaffAppShellInner({
   }, [pathname]);
 
   useEffect(() => {
+    void canReturnToOwnerFromStaff().then(setCanReturnOwner);
+  }, [pathname]);
+
+  async function goBackToOwner() {
+    if (returningOwner) return;
+    setReturningOwner(true);
+    try {
+      const result = await returnToOwnerFromStaff();
+      if (!result.ok) {
+        setSwitchError(result.error);
+        setReturningOwner(false);
+        return;
+      }
+      window.location.assign("/owner");
+    } catch {
+      setReturningOwner(false);
+    }
+  }
+
+  useEffect(() => {
     if (!meta) return;
     const warehouse = meta.branchKind === "WAREHOUSE";
     const path = pathname || "";
+    if (warehouse && !WAREHOUSE_UI_ENABLED) {
+      router.replace("/staff/login");
+      return;
+    }
     const warehouseOk =
       path.startsWith("/staff/warehouse") ||
       path.startsWith("/staff/settings") ||
@@ -252,6 +290,25 @@ function StaffAppShellInner({
       ? formatBranchLabel(branchName)
       : `สาขา ${formatBranchLabel(branchName)}`
     : "—";
+  const subscription = meta?.subscription ?? null;
+  const packageBanner = subscription?.writeAllowed === false
+    ? {
+        tone: "border-rose-200 bg-rose-50 text-rose-950",
+        text:
+          subscription.writeBlockedReason ??
+          `แพ็กเกจ${subscription.effectiveStatusLabel ?? "หมดอายุ"} — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้`,
+      }
+    : subscription?.nearExpiry
+      ? {
+          tone: "border-amber-200 bg-amber-50 text-amber-950",
+          text:
+            subscription.daysLeft != null
+              ? subscription.daysLeft > 0
+                ? `แพ็กเกจใกล้หมดอายุ · เหลือ ${subscription.daysLeft} วัน`
+                : "แพ็กเกจจะหมดอายุวันนี้"
+              : "แพ็กเกจใกล้หมดอายุ",
+        }
+      : null;
 
   const navActive: StaffShellTab = warehouseMode
     ? active === "settings"
@@ -420,6 +477,32 @@ function StaffAppShellInner({
         </header>
       ) : null}
 
+      {canReturnOwner ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
+          <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
+            <p className="min-w-0 text-[13px] font-semibold text-amber-950">
+              แม่ค้าคนเดียว · ขายหน้าร้านอยู่
+            </p>
+            <button
+              type="button"
+              disabled={returningOwner}
+              onClick={() => void goBackToOwner()}
+              className="shrink-0 rounded-full bg-slate-900 px-3.5 py-1.5 text-[12px] font-extrabold text-white disabled:opacity-60"
+            >
+              {returningOwner ? "กำลังไป…" : "บัญชีร้าน"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {packageBanner ? (
+        <div className={`border-b px-4 py-2.5 ${packageBanner.tone}`}>
+          <div className="mx-auto max-w-lg">
+            <p className="text-[13px] font-semibold">{packageBanner.text}</p>
+          </div>
+        </div>
+      ) : null}
+
       {branchPickerOpen && canSwitchBranch ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center">
           <button
@@ -463,7 +546,12 @@ function StaffAppShellInner({
               </p>
             ) : null}
             <ul className="mt-3 max-h-[55vh] space-y-2 overflow-y-auto pb-1">
-              {branchChoices.map((b) => {
+              {branchChoices
+                .filter(
+                  (b) =>
+                    WAREHOUSE_UI_ENABLED || b.branchKind !== "WAREHOUSE",
+                )
+                .map((b) => {
                 const activeBranch = b.branchId === currentBranchId;
                 return (
                   <li key={b.branchId}>

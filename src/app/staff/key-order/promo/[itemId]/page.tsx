@@ -37,10 +37,14 @@ import {
 } from "@/lib/menu-pricing";
 import {
   isMenuItemSoldOut,
+  isPromoSellableOnShop,
   listActivePromoMenuItems,
+  listVisiblePromoMenuItems,
   orderOptionGroupsForStaffPromo,
+  promoScheduleStatusOf,
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
+import { PROMO_SCHEDULE_STATUS_LABEL } from "@/lib/promo-schedule";
 import { readStaffOrderMode } from "@/lib/staff-order-mode";
 import {
   computeSelectedOptions,
@@ -107,10 +111,14 @@ export default function StaffPromoKeyOrderDetailPage() {
       const items = Array.isArray(data.menuItems)
         ? (data.menuItems as MenuItemData[])
         : [];
-      const promos = listActivePromoMenuItems(items);
-      const found = promos.find((m) => m.id === itemId) ?? null;
+      const sellable = listActivePromoMenuItems(items);
+      const visible = listVisiblePromoMenuItems(items);
+      const found =
+        visible.find((m) => m.id === itemId) ??
+        sellable.find((m) => m.id === itemId) ??
+        null;
       setBranchName(data.branchName ?? "");
-      setPromoCount(promos.length);
+      setPromoCount(sellable.length);
       setItem(found);
       setDeliveryLocations(
         Array.isArray(data.deliveryLocations) ? data.deliveryLocations : [],
@@ -139,6 +147,7 @@ export default function StaffPromoKeyOrderDetailPage() {
 
   const canSell = useMemo(() => {
     if (!item) return false;
+    if (!isPromoSellableOnShop(item)) return false;
     return isChannelSellEnabled(item, channel) && !isMenuItemSoldOut(item);
   }, [item, channel]);
 
@@ -221,7 +230,12 @@ export default function StaffPromoKeyOrderDetailPage() {
     clearValidation();
 
     if (!canSell) {
-      fail("เมนูนี้ไม่พร้อมขายในช่องทางที่เลือก", "staff-promo-item");
+      fail(
+        !isPromoSellableOnShop(item)
+          ? "โปรนี้หมดอายุแล้ว ขายไม่ได้"
+          : "เมนูนี้ไม่พร้อมขายในช่องทางที่เลือก",
+        "staff-promo-item",
+      );
       return;
     }
 
@@ -423,16 +437,34 @@ export default function StaffPromoKeyOrderDetailPage() {
       footer={
         <button
           type="button"
-          disabled={submitting}
+          disabled={submitting || !canSell}
           onClick={() => void submit()}
           className="w-full rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white disabled:opacity-50"
         >
           {submitting
             ? "กำลังบันทึก…"
-            : `บันทึกออเดอร์ · ${formatPrice(orderTotal)}฿`}
+            : !canSell
+              ? PROMO_SCHEDULE_STATUS_LABEL[promoScheduleStatusOf(item)]
+              : `บันทึกออเดอร์ · ${formatPrice(orderTotal)}฿`}
         </button>
       }
     >
+      {!isPromoSellableOnShop(item) ? (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-[15px] font-extrabold text-amber-950">
+            {PROMO_SCHEDULE_STATUS_LABEL[promoScheduleStatusOf(item)]}
+          </p>
+          <p className="mt-1 text-[13px] font-medium text-amber-800/90">
+            โปรนี้หมดอายุแล้ว คีย์ขายไม่ได้ · แก้วันหมดอายุได้ที่จัดการโปร
+          </p>
+          <Link
+            href="/staff/settings/promos"
+            className="mt-2 inline-flex text-[13px] font-bold text-amber-900 underline"
+          >
+            ไปจัดการวันหมดอายุ
+          </Link>
+        </div>
+      ) : null}
       {showStickySummary ? (
         <div
           className="fixed inset-x-0 z-20 px-4"

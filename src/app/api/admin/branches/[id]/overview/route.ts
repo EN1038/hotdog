@@ -15,10 +15,11 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import { BRANCH_WASTE_HISTORY_TYPES } from "@/lib/stock-outbound";
 
 type Params = { params: Promise<{ id: string }> };
 
-const WASTE_HISTORY_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
+const WASTE_HISTORY_TYPES = BRANCH_WASTE_HISTORY_TYPES;
 
 function normalizeRange(fromRaw: string, toRaw: string) {
   return fromRaw <= toRaw

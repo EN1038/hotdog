@@ -1,12 +1,45 @@
 import { prisma } from "@/lib/db";
 import {
   assertBrandStorefrontOpen,
+  assertBrandWriteAllowed,
   BRAND_PLAN_LABELS,
   brandUsageSelect,
   BrandLimitError,
 } from "@/lib/brand-plan-shared";
 
 export * from "@/lib/brand-plan-shared";
+
+export async function assertBrandWriteAllowedByBrandId(
+  brandId: string,
+): Promise<void> {
+  const brand = await prisma.brand.findUnique({
+    where: { id: brandId },
+    select: {
+      status: true,
+      trialEndsAt: true,
+      nextDueAt: true,
+    },
+  });
+  assertBrandWriteAllowed(brand);
+}
+
+export async function assertBrandWriteAllowedByBranchId(
+  branchId: string,
+): Promise<void> {
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+    select: {
+      brand: {
+        select: {
+          status: true,
+          trialEndsAt: true,
+          nextDueAt: true,
+        },
+      },
+    },
+  });
+  assertBrandWriteAllowed(branch?.brand);
+}
 
 /** สาขาจริงที่นับโควต้าแพ็กเกจ (ไม่รวมสาขาทดลอง) */
 export async function countLiveBranches(brandId: string): Promise<number> {

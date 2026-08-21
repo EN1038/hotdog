@@ -13,6 +13,7 @@ import {
   OTP_TTL_SECONDS,
   formatOtpCountdown,
 } from "@/lib/otp-ttl";
+import { assignOwnerViewHome } from "@/lib/owner-view-preference";
 
 export type AdminLoginMode = "owner" | "platform";
 
@@ -82,9 +83,11 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
       setError(data.error ?? "เบอร์หรือรหัสผ่านไม่ถูกต้อง");
       return;
     }
-    window.location.assign(
-      mode === "owner" && !data.isPlatformAdmin ? "/owner" : "/admin",
-    );
+    if (mode === "owner" && !data.isPlatformAdmin) {
+      await assignOwnerViewHome();
+      return;
+    }
+    window.location.assign("/admin");
   }
 
   async function sendOwnerOtp() {
@@ -131,7 +134,11 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
       setError(data.error ?? "รหัส OTP ไม่ถูกต้อง");
       return;
     }
-    window.location.assign("/owner");
+    if (data.isPlatformAdmin) {
+      window.location.assign("/admin");
+      return;
+    }
+    await assignOwnerViewHome();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -187,37 +194,43 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
         <p className="mt-3 text-sm text-gray-600">{copy.description}</p>
 
         {mode === "owner" ? (
-          <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
-            <button
-              type="button"
-              onClick={() => {
-                setOwnerMethod("otp");
-                setOtpStep(false);
-                setError("");
-              }}
-              className={`rounded-xl py-2.5 text-sm font-bold ${
-                ownerMethod === "otp"
-                  ? "bg-site-primary text-white"
-                  : "text-slate-600"
-              }`}
-            >
-              รับ OTP
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setOwnerMethod("password");
-                setOtpStep(false);
-                setError("");
-              }}
-              className={`rounded-xl py-2.5 text-sm font-bold ${
-                ownerMethod === "password"
-                  ? "bg-site-primary text-white"
-                  : "text-slate-600"
-              }`}
-            >
-              รหัสผ่าน
-            </button>
+          <div
+            role="tablist"
+            aria-label="วิธีเข้าสู่ระบบ"
+            className="relative z-20 mt-6 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200"
+          >
+            {(
+              [
+                { id: "otp", label: "รับ OTP" },
+                { id: "password", label: "รหัสผ่าน" },
+              ] as const
+            ).map((opt) => {
+              const active = ownerMethod === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOwnerMethod(opt.id);
+                    setOtpStep(false);
+                    setOtpCode("");
+                    setError("");
+                  }}
+                  className={`relative z-10 min-h-11 touch-manipulation rounded-xl py-2.5 text-sm font-bold transition-colors ${
+                    active
+                      ? "bg-site-primary text-white shadow-sm"
+                      : "bg-transparent text-slate-600 hover:bg-slate-50 active:bg-slate-100"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         ) : null}
 

@@ -12,27 +12,37 @@ import { StaffSalesHistoryPanel } from "@/components/staff/StaffSalesHistoryPane
 import { StaffWasteDetailSheet } from "@/components/staff/StaffWasteDetailSheet";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
 import {
+  ShopCancelSummary,
   ShopDailyRevenueBars,
+  ShopHourlyRevenueBars,
   ShopTopSellersList,
   ShopWasteSummaryList,
+  ShopWeekdayRevenueBars,
 } from "@/components/merchant/ShopOverviewExtras";
 import {
-  SalesDateRangeBar,
   SalesReportMetrics,
   SalesShareSection,
 } from "@/components/merchant/SalesSummaryView";
+import {
+  MobileDateRangeControl,
+  type MobileDatePresetId,
+} from "@/components/owner/OwnerDatePresetChips";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
+import type {
+  ShopDailyPoint,
+  ShopHourlyPoint,
+  ShopTopSeller,
+  ShopWeekdayPoint,
+} from "@/lib/shop-overview-metrics";
+import type { ShopAgingAttention } from "@/lib/shop-aging-summary";
 import {
   EMPTY_SALES_REPORT_STATS,
+  type SalesReportCancelReason,
   type SalesReportStats,
   type SalesReportWasteItem,
 } from "@/lib/sales-report-shared";
 import type { SalesShareSlice } from "@/lib/sales-share";
-import type {
-  ShopDailyPoint,
-  ShopTopSeller,
-} from "@/lib/shop-overview-metrics";
 import {
   captureElementToPng,
   downloadPngDataUrl,
@@ -52,9 +62,14 @@ type SummaryPayload = {
   stats: SalesReportStats;
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
+  byFulfillment?: SalesShareSlice[];
   wasteItems?: SalesReportWasteItem[];
+  cancelReasons?: SalesReportCancelReason[];
   topSellers?: ShopTopSeller[];
   days?: ShopDailyPoint[];
+  hours?: ShopHourlyPoint[];
+  weekdays?: ShopWeekdayPoint[];
+  aging?: ShopAgingAttention | null;
 };
 
 type BrandingMeta = {
@@ -78,16 +93,6 @@ function formatActivityAt(iso: string | null | undefined) {
   } catch {
     return null;
   }
-}
-
-function shiftDay(key: string, days: number) {
-  const d = new Date(`${key}T12:00:00+07:00`);
-  d.setDate(d.getDate() + days);
-  return bangkokDateKey(d);
-}
-
-function monthStartKey(key: string) {
-  return `${key.slice(0, 7)}-01`;
 }
 
 function formatShiftHm(iso: string | null | undefined) {
@@ -151,50 +156,14 @@ function formatShiftOpenCloseLabel(
   return `${active.length} รอบ · ${firstOpen}–${lastClose} น.`;
 }
 
-function lastMonthRange(todayKey: string) {
-  const to = shiftDay(monthStartKey(todayKey), -1);
-  return { from: monthStartKey(to), to };
-}
-
-type DatePresetId =
-  | "today"
-  | "yesterday"
-  | "3d"
-  | "7d"
-  | "15d"
-  | "month"
-  | "lastMonth";
-
-const DATE_PRESETS: Array<{ id: DatePresetId; label: string }> = [
-  { id: "today", label: "วันนี้" },
-  { id: "yesterday", label: "เมื่อวาน" },
-  { id: "3d", label: "3" },
-  { id: "7d", label: "7" },
-  { id: "15d", label: "15" },
-  { id: "month", label: "เดือนนี้" },
-  { id: "lastMonth", label: "เดือนที่แล้ว" },
-];
-
-function rangeForPreset(kind: DatePresetId, todayKey: string) {
-  if (kind === "today") return { from: todayKey, to: todayKey };
-  if (kind === "yesterday") {
-    const y = shiftDay(todayKey, -1);
-    return { from: y, to: y };
-  }
-  if (kind === "month") {
-    return { from: monthStartKey(todayKey), to: todayKey };
-  }
-  if (kind === "lastMonth") return lastMonthRange(todayKey);
-  const days = Number(kind.replace("d", ""));
-  return { from: shiftDay(todayKey, -(days - 1)), to: todayKey };
-}
-
 export default function StaffSummaryPage() {
   const router = useRouter();
   const today = bangkokDateKey();
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
-  const [datePreset, setDatePreset] = useState<DatePresetId | null>("today");
+  const [datePreset, setDatePreset] = useState<MobileDatePresetId | null>(
+    "today",
+  );
   const [tab, setTab] = useState<SummaryTab>("overview");
   const [payload, setPayload] = useState<SummaryPayload | null>(null);
   const [meta, setMeta] = useState<BrandingMeta | null>(null);
@@ -303,7 +272,7 @@ export default function StaffSummaryPage() {
   );
 
   useEffect(() => {
-    if (!stockOn) {
+    if (!stockOn || !payload?.aging?.stockActive) {
       setAgingAttention(null);
       setAgingCritical(null);
       setAgingWarn(null);
@@ -311,57 +280,13 @@ export default function StaffSummaryPage() {
       setAgingWarnQty(null);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/staff/stock/aging", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          attentionCount?: number;
-          stockActive?: boolean;
-          summary?: {
-            critical?: number;
-            warn?: number;
-            criticalQty?: number;
-            warnQty?: number;
-          };
-        };
-        if (cancelled) return;
-        if (!data.stockActive) {
-          setAgingAttention(null);
-          setAgingCritical(null);
-          setAgingWarn(null);
-          setAgingCriticalQty(null);
-          setAgingWarnQty(null);
-          return;
-        }
-        setAgingAttention(
-          typeof data.attentionCount === "number" ? data.attentionCount : 0,
-        );
-        setAgingCritical(
-          typeof data.summary?.critical === "number"
-            ? data.summary.critical
-            : 0,
-        );
-        setAgingWarn(
-          typeof data.summary?.warn === "number" ? data.summary.warn : 0,
-        );
-        setAgingCriticalQty(
-          typeof data.summary?.criticalQty === "number"
-            ? data.summary.criticalQty
-            : 0,
-        );
-        setAgingWarnQty(
-          typeof data.summary?.warnQty === "number" ? data.summary.warnQty : 0,
-        );
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [stockOn, from, to]);
+    const a = payload.aging;
+    setAgingAttention(a.attentionCount);
+    setAgingCritical(a.critical);
+    setAgingWarn(a.warn);
+    setAgingCriticalQty(a.criticalQty);
+    setAgingWarnQty(a.warnQty);
+  }, [stockOn, payload?.aging]);
 
   if (loading && !payload) {
     return (
@@ -374,13 +299,6 @@ export default function StaffSummaryPage() {
   const stats = payload?.stats ?? EMPTY_SALES_REPORT_STATS;
   const lastStockCountLabel = formatActivityAt(payload?.lastStockCountAt);
   const lastSaleLabel = formatActivityAt(payload?.lastSaleAt);
-
-  function applyPreset(kind: DatePresetId) {
-    const range = rangeForPreset(kind, today);
-    setFrom(range.from);
-    setTo(range.to);
-    setDatePreset(kind);
-  }
 
   const netAfterWaste =
     stats.netAfterWaste ?? stats.netAfterExpenses - stats.wasteValue;
@@ -581,46 +499,18 @@ export default function StaffSummaryPage() {
           ))}
         </div>
 
-        <SalesDateRangeBar
+        <MobileDateRangeControl
+          todayKey={today}
           from={from}
           to={to}
+          preset={datePreset}
           maxDate={today}
-          onFromChange={(next) => {
-            setDatePreset(null);
-            setFrom(next);
-            if (next > to) setTo(next);
-          }}
-          onToChange={(next) => {
-            setDatePreset(null);
-            setTo(next);
+          onChange={({ from: nextFrom, to: nextTo, preset }) => {
+            setDatePreset(preset);
+            setFrom(nextFrom);
+            setTo(nextTo);
           }}
         />
-
-        {tab === "overview" || tab === "shifts" ? (
-          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {DATE_PRESETS.map((p) => {
-              const range = rangeForPreset(p.id, today);
-              const active =
-                datePreset != null
-                  ? datePreset === p.id
-                  : from === range.from && to === range.to;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => applyPreset(p.id)}
-                  className={`shrink-0 rounded-full px-3 py-2 text-[13px] font-bold ${
-                    active
-                      ? "bg-slate-800 text-white"
-                      : "bg-white text-slate-600 ring-1 ring-slate-200"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
 
         {tab === "overview" ? (
           <div className={`space-y-2.5 ${loading ? "opacity-60" : ""}`}>
@@ -784,7 +674,7 @@ export default function StaffSummaryPage() {
                     className="border-r border-slate-100 bg-rose-50 px-2 py-3 text-left active:bg-rose-100"
                   >
                     <p className="text-[11px] font-bold text-rose-800">
-                      แดง · ≥5วัน
+                      แดง · ≥{payload?.aging?.criticalDays ?? 5}วัน
                     </p>
                     <p className="mt-1 flex items-baseline gap-0.5 leading-none">
                       <span className="text-[20px] font-black tabular-nums text-rose-900">
@@ -812,7 +702,7 @@ export default function StaffSummaryPage() {
                     className="bg-amber-50/90 px-2 py-3 text-left active:bg-amber-100/80"
                   >
                     <p className="text-[11px] font-bold text-amber-900/85">
-                      ส้ม · 3–4วัน
+                      ส้ม · ≥{payload?.aging?.warnDays ?? 3}วัน
                     </p>
                     <p className="mt-1 flex items-baseline gap-0.5 leading-none">
                       <span className="text-[20px] font-black tabular-nums text-amber-950/80">
@@ -957,6 +847,20 @@ export default function StaffSummaryPage() {
               days={payload?.days ?? []}
               loading={loading}
             />
+            <ShopWeekdayRevenueBars
+              weekdays={payload?.weekdays ?? []}
+              loading={loading}
+            />
+            <ShopHourlyRevenueBars
+              hours={payload?.hours ?? []}
+              loading={loading}
+            />
+            <ShopCancelSummary
+              cancelledCount={stats.cancelledCount}
+              cancelledRevenue={stats.cancelledRevenue ?? 0}
+              reasons={payload?.cancelReasons ?? []}
+              loading={loading}
+            />
             <ShopTopSellersList
               items={payload?.topSellers ?? []}
               loading={loading}
@@ -968,8 +872,14 @@ export default function StaffSummaryPage() {
               loading={loading}
             />
             <SalesShareSection
-              title="สัดส่วนการขาย"
+              title="สัดส่วนการชำระ"
               slices={payload?.byPayment ?? []}
+              totalRevenue={stats.completedRevenue}
+              chartStyle="donut"
+            />
+            <SalesShareSection
+              title="ประเภทบิล"
+              slices={payload?.byFulfillment ?? []}
               totalRevenue={stats.completedRevenue}
               chartStyle="donut"
             />

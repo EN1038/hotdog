@@ -115,7 +115,7 @@ export async function revokeStaffSessionsIfPhoneUnused(phone: string) {
 export async function assertStaffAuthSessionLive(opts: {
   jti: string;
   phone: string;
-}) {
+}): Promise<{ touched: boolean }> {
   try {
     const now = new Date();
     const row = await prisma.staffAuthSession.findFirst({
@@ -135,10 +135,16 @@ export async function assertStaffAuthSessionLive(opts: {
       await prisma.staffAuthSession
         .update({
           where: { id: row.id },
-          data: { lastSeenAt: now },
+          data: {
+            lastSeenAt: now,
+            // ใช้งานอยู่ = ต่ออายุเซสชันเครื่องอีก 90 วัน (แบบแอป)
+            expiresAt: staffSessionExpiresAt(now),
+          },
         })
         .catch(() => null);
+      return { touched: true };
     }
+    return { touched: false };
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") throw error;
     const msg = error instanceof Error ? error.message : String(error);

@@ -60,6 +60,10 @@ export type MenuItemData = {
   pricePerKg?: string | number | null;
   sellPiece?: boolean;
   optionGroups: MenuOptionGroupData[];
+  /** ช่วงโปรแพ็ก / ลดราคา — จาก BranchMenuItem */
+  promoContinuous?: boolean;
+  promoStartsAt?: string | null;
+  promoEndsAt?: string | null;
 };
 
 export type BranchData = {

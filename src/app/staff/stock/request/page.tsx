@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type Product = { id: string; name: string; unit: string };
 type RequestRow = {
@@ -24,6 +26,7 @@ const STATUS: Record<string, string> = {
 };
 
 export default function StaffStockRequestPage() {
+  const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -55,6 +58,10 @@ export default function StaffStockRequestPage() {
   }
 
   useEffect(() => {
+    if (!WAREHOUSE_UI_ENABLED) {
+      router.replace("/staff/stock");
+      return;
+    }
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -88,6 +95,16 @@ export default function StaffStockRequestPage() {
     }
   }
 
+  if (!WAREHOUSE_UI_ENABLED) {
+    return (
+      <StaffAppShell active="stock">
+        <div className="px-4 py-10 text-center text-sm text-slate-500">
+          กำลังกลับ…
+        </div>
+      </StaffAppShell>
+    );
+  }
+
   if (loading) {
     return (
       <StaffAppShell active="stock">
@@ -105,7 +122,7 @@ export default function StaffStockRequestPage() {
               ขอของจากครัว
             </h1>
             <p className="text-xs text-gray-500">
-              แจ้งยอดที่ต้องการให้สต๊อกกลางผลิต/จัดส่ง
+              แจ้งยอดที่ต้องการให้ผลิต/จัดส่ง
             </p>
           </div>
           <Link

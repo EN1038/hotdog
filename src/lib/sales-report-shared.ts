@@ -4,6 +4,8 @@ export type SalesReportStats = {
   completedRevenue: number;
   completedCount: number;
   cancelledCount: number;
+  /** มูลค่าบิลที่ยกเลิก (ไม่นับเป็นยอดขาย) */
+  cancelledRevenue: number;
   openCount: number;
   totalOrders: number;
   cashRevenue: number;
@@ -25,11 +27,30 @@ export type SalesReportStats = {
   netAfterWaste: number;
 };
 
+export type SalesReportCancelReason = {
+  reason: string;
+  count: number;
+};
+
 export type SalesReportBranchShare = {
   branchId: string;
   branchName: string;
   completedRevenue: number;
   completedCount: number;
+  openCount: number;
+  cancelledCount: number;
+  cancelledRevenue: number;
+  cashRevenue: number;
+  transferRevenue: number;
+  soldQty: number;
+  expenseTotal: number;
+  expenseCount: number;
+  wasteQty: number;
+  wasteValue: number;
+  netAfterWaste: number;
+  /** คงเหลือขายปัจจุบัน (ไม่ผูกช่วงวัน) — เติมจาก API รวม */
+  saleStockQty?: number;
+  saleStockValue?: number;
 };
 
 export type SalesReportWasteEntry = {
@@ -41,6 +62,15 @@ export type SalesReportWasteEntry = {
   createdAt: string;
   createdByName: string | null;
   type: string;
+  branchId?: string;
+  branchName?: string;
+};
+
+export type SalesReportWasteBranchSlice = {
+  branchId: string;
+  branchName: string;
+  quantity: number;
+  value: number;
 };
 
 export type SalesReportWasteItem = {
@@ -49,20 +79,24 @@ export type SalesReportWasteItem = {
   quantity: number;
   value: number;
   entries: SalesReportWasteEntry[];
+  byBranch?: SalesReportWasteBranchSlice[];
 };
 
 export type SalesReportResult = {
   stats: SalesReportStats;
   byChannel: SalesShareSlice[];
   byPayment: SalesShareSlice[];
+  byFulfillment: SalesShareSlice[];
   byBranch: SalesReportBranchShare[];
   wasteItems: SalesReportWasteItem[];
+  cancelReasons: SalesReportCancelReason[];
 };
 
 export const EMPTY_SALES_REPORT_STATS: SalesReportStats = {
   completedRevenue: 0,
   completedCount: 0,
   cancelledCount: 0,
+  cancelledRevenue: 0,
   openCount: 0,
   totalOrders: 0,
   cashRevenue: 0,
@@ -82,3 +116,5 @@ export const EMPTY_SALES_REPORT_STATS: SalesReportStats = {
   netAfterExpenses: 0,
   netAfterWaste: 0,
 };
+
+export const TOP_CANCEL_REASONS = 5;

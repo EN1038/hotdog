@@ -1532,7 +1532,7 @@ export function PlatformBrandsHome() {
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {(
                 [
-                  ["stockEnabled", "สต๊อกกลาง"],
+                  ["stockEnabled", "สต๊อก"],
                   ["kitchenEnabled", "ครัว / ผลิต"],
                   ["bbqEnabled", "หมูกระทะชั่งกิโล"],
                   ["skewerEnabled", "เสียบไม้"],

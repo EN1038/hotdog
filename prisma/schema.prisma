@@ -734,6 +734,8 @@ model BranchMenuItemStockHistory {
   receivedAt       DateTime?
   /// Expiry / best-before for fresh items
   expiresAt        DateTime?
+  /// User-facing document number (IN-/OUT- prefix); one bill may share across lines
+  documentNo       String?
   createdAt        DateTime @default(now())
   createdByStaffId String?
 
@@ -1081,6 +1083,8 @@ model BrandProduct {
   trackStock         Boolean             @default(true)
   trackLots          Boolean             @default(false)
   lowStockAlert      Int?
+  /** อายุเก็บ (วัน) หลังวันผลิต — ค่าเริ่มต้นตอนนำเข้า; null = ใช้ 5 */
+  defaultShelfLifeDays Int?              @default(5)
   costPrice          Decimal?            @db.Decimal(10, 2)
   sellingPrice       Decimal?            @db.Decimal(10, 2)
   isActive           Boolean             @default(true)
@@ -1186,6 +1190,8 @@ model StockMovement {
   lotId            String?
   lotNumber        String?
   expiresAt        DateTime?
+  /// User-facing document number (IN-/OUT- prefix); one bill may share across lines
+  documentNo       String?
   createdByAdminId String?
   createdByStaffId String?
   createdAt        DateTime          @default(now())
@@ -1485,6 +1491,8 @@ model BranchNonMenuItemHistory {
   batchId             String?
   cancelledAt         DateTime?
   cancelNote          String?
+  /// User-facing document number (IN-/OUT- prefix); unique system-wide
+  documentNo          String?
   createdAt           DateTime @default(now())
   createdByStaffId    String?
 

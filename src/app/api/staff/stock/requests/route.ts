@@ -7,6 +7,7 @@ import {
   createBranchStockRequest,
   listBranchStockRequests,
 } from "@/lib/kitchen";
+import { assertBrandWriteAllowedByBranchId } from "@/lib/brand-plan";
 
 const postSchema = z.object({
   brandProductId: z.string().min(1),
@@ -48,6 +49,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await requireStaff();
+    await assertBrandWriteAllowedByBranchId(session.branchId);
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
       select: { id: true, brandId: true, stockEnabled: true },

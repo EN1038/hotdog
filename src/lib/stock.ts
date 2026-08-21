@@ -8,6 +8,7 @@ import {
   StockType,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { assertBrandWriteAllowedByBrandId } from "@/lib/brand-plan";
 
 export class StockError extends Error {
   status: number;
@@ -52,6 +53,13 @@ export function isBranchStockActive(input: {
 }
 
 import { ensureWarehouseBranch } from "@/lib/warehouse-branch";
+import {
+  BRANCH_MENU_ORDER_NOTE_PREFIX,
+  branchMenuOrderNote,
+  parseBranchMenuOrderNote,
+} from "@/lib/branch-menu-order-note";
+
+export { parseBranchMenuOrderNote };
 
 export async function ensureWarehouseLocation(
   brandId: string,
@@ -112,6 +120,7 @@ export async function setBrandStockEnabled(input: {
   brandId: string;
   enabled: boolean;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   const brand = await prisma.$transaction(async (tx) => {
     const updated = await tx.brand.update({
       where: { id: input.brandId },
@@ -388,11 +397,13 @@ export async function stockIn(input: {
   supplier?: string | null;
   note?: string | null;
   receivedAt?: Date | null;
+  documentNo?: string | null;
 } & Actor) {
   if (input.quantity <= 0) throw new StockError("จำนวนต้องมากกว่า 0");
   if (input.unitCost != null && input.unitCost < 0) {
     throw new StockError("ราคาต้องไม่ติดลบ");
   }
+  await assertBrandWriteAllowedByBrandId(input.brandId);
 
   return prisma.$transaction(async (tx) => {
     const product = await tx.brandProduct.findFirst({
@@ -438,10 +449,10 @@ export async function stockIn(input: {
         stockLocationId: location.id,
         toLocationId: location.id,
         note: input.note?.trim() || null,
+        documentNo: input.documentNo?.trim() || null,
         referenceType: "STOCK_IN",
         createdByAdminId: input.adminId ?? null,
         createdByStaffId: input.staffId ?? null,
-        createdAt: input.receivedAt ?? undefined,
       },
     });
   });
@@ -476,6 +487,8 @@ export async function transferWarehouseToBranch(input: {
   brandProductId: string;
   quantity: number;
   note?: string | null;
+  documentNo?: string | null;
+  imageUrl?: string | null;
   adminId?: string | null;
   staffId?: string | null;
   sourceLocationId?: string | null;
@@ -483,6 +496,7 @@ export async function transferWarehouseToBranch(input: {
   autoReceive?: boolean;
 }) {
   if (input.quantity <= 0) throw new StockError("จำนวนต้องมากกว่า 0");
+  await assertBrandWriteAllowedByBrandId(input.brandId);
 
   return prisma.$transaction(async (tx) => {
     const branch = await tx.branch.findFirst({
@@ -570,6 +584,8 @@ export async function transferWarehouseToBranch(input: {
         note:
           input.note?.trim() ||
           (autoReceive ? "จ่ายเข้าสาขา" : "ส่งให้สาขา (รอรับ)"),
+        documentNo: input.documentNo?.trim() || null,
+        imageUrl: input.imageUrl?.trim() || null,
         referenceType: autoReceive ? "TRANSFER_RECEIVED" : "TRANSFER_PENDING",
         createdByAdminId: input.adminId ?? null,
         createdByStaffId: input.staffId ?? null,
@@ -608,6 +624,8 @@ export async function transferWarehouseToBranch(input: {
           toLocationId: branchLoc.id,
           fromLocationId: warehouse.id,
           note: receiveNote,
+          documentNo: input.documentNo?.trim() || null,
+          imageUrl: input.imageUrl?.trim() || null,
           referenceType: "TRANSFER_RECEIVED",
           createdByAdminId: input.adminId ?? null,
           createdByStaffId: input.staffId ?? null,
@@ -642,6 +660,13 @@ export async function confirmStockTransfer(input: {
   receivedQuantity?: number | null;
   varianceNote?: string | null;
 }) {
+  const transferBrand = await prisma.stockTransfer.findUnique({
+    where: { id: input.transferId },
+    select: { brandId: true },
+  });
+  if (transferBrand?.brandId) {
+    await assertBrandWriteAllowedByBrandId(transferBrand.brandId);
+  }
   return prisma.$transaction(async (tx) => {
     const transfer = await tx.stockTransfer.findFirst({
       where: {
@@ -768,6 +793,7 @@ export async function cancelStockTransfer(input: {
   transferId: string;
   brandId: string;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   return prisma.$transaction(async (tx) => {
     const transfer = await tx.stockTransfer.findFirst({
       where: {
@@ -835,6 +861,7 @@ export async function adjustStock(input: {
   note?: string | null;
 } & Actor) {
   if (input.quantity < 0) throw new StockError("จำนวนต้องไม่ติดลบ");
+  await assertBrandWriteAllowedByBrandId(input.brandId);
 
   return prisma.$transaction(async (tx) => {
     const location = await tx.stockLocation.findFirst({
@@ -892,6 +919,7 @@ export async function stockOutbound(input: {
   note?: string | null;
   imageUrl?: string | null;
   reason?: string | null;
+  documentNo?: string | null;
 } & Actor) {
   if (input.quantity <= 0) throw new StockError("จำนวนต้องมากกว่า 0");
 
@@ -949,6 +977,7 @@ export async function stockOutbound(input: {
         stockLocationId: location.id,
         fromLocationId: location.id,
         note: [input.reason, input.note].filter(Boolean).join(" — ") || null,
+        documentNo: input.documentNo?.trim() || null,
         imageUrl: input.imageUrl || null,
         referenceType: input.type,
         createdByAdminId: input.adminId ?? null,
@@ -1409,28 +1438,6 @@ export async function reapplyStockForOrder(orderId: string, tx?: Tx) {
 
   if (tx) return run(tx);
   return prisma.$transaction(run);
-}
-
-const BRANCH_MENU_ORDER_NOTE_PREFIX = "ORDER:";
-
-function branchMenuOrderNote(orderId: string, orderNumber: string) {
-  return `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}|${orderNumber}`;
-}
-
-/** Parse `ORDER:{orderId}|{orderNumber}` from BranchMenuItemStockHistory.note */
-export function parseBranchMenuOrderNote(
-  note: string | null | undefined,
-): { orderId: string; orderNumber: string } | null {
-  if (!note || !note.startsWith(BRANCH_MENU_ORDER_NOTE_PREFIX)) return null;
-  const rest = note.slice(BRANCH_MENU_ORDER_NOTE_PREFIX.length);
-  const pipe = rest.indexOf("|");
-  if (pipe < 0) {
-    const orderId = rest.trim();
-    return orderId ? { orderId, orderNumber: "" } : null;
-  }
-  const orderId = rest.slice(0, pipe).trim();
-  if (!orderId) return null;
-  return { orderId, orderNumber: rest.slice(pipe + 1).trim() };
 }
 
 export type BranchMenuStockSaleAgg = {

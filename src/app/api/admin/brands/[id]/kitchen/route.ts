@@ -18,6 +18,7 @@ import {
   runKitchenProduction,
 } from "@/lib/kitchen";
 import { transferWarehouseToBranch } from "@/lib/stock";
+import { assertBrandWriteAllowedByBrandId } from "@/lib/brand-plan";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -133,6 +134,7 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const { id } = await params;
     const session = await requireBrandAccess(id);
+    await assertBrandWriteAllowedByBrandId(id);
     const brandGate = await prisma.brand.findUnique({
       where: { id },
       select: { kitchenEnabled: true },

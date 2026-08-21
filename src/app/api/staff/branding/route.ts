@@ -1,4 +1,4 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, type BrandStatus } from "@prisma/client";
 import { requireStaff } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonOk } from "@/lib/api";
@@ -10,6 +10,10 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import {
+  BRAND_STATUS_LABELS,
+  getBrandSubscriptionState,
+} from "@/lib/brand-plan-shared";
 
 const COUNTABLE_STATUSES: OrderStatus[] = [
   OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
@@ -38,6 +42,9 @@ export async function GET() {
         stockEnabled: boolean;
         coverImageUrl: string | null;
         bbqEnabled: boolean;
+        status: BrandStatus;
+        trialEndsAt: Date | null;
+        nextDueAt?: Date | null;
       } | null;
     };
 
@@ -57,6 +64,9 @@ export async function GET() {
                 stockEnabled: true,
                 coverImageUrl: true,
                 bbqEnabled: true,
+                status: true,
+                trialEndsAt: true,
+                nextDueAt: true,
               },
             },
           },
@@ -78,6 +88,9 @@ export async function GET() {
                 stockEnabled: true,
                 coverImageUrl: true,
                 bbqEnabled: true,
+                status: true,
+                trialEndsAt: true,
+                nextDueAt: true,
               },
             },
           },
@@ -195,6 +208,36 @@ export async function GET() {
             ?.coverImageUrl ??
           null,
       },
+      subscription: (() => {
+        const status = branch?.brand?.status ?? null;
+        const state =
+          status != null
+            ? getBrandSubscriptionState({
+                status,
+                trialEndsAt: branch?.brand?.trialEndsAt ?? null,
+                nextDueAt: branch?.brand?.nextDueAt ?? null,
+              })
+            : null;
+        return {
+          status,
+          statusLabel:
+            status != null ? (BRAND_STATUS_LABELS[status] ?? status) : null,
+          effectiveStatus: state?.effectiveStatus ?? status,
+          effectiveStatusLabel:
+            state?.effectiveStatus != null
+              ? (BRAND_STATUS_LABELS[state.effectiveStatus] ??
+                state.effectiveStatus)
+              : null,
+          trialEndsAt: branch?.brand?.trialEndsAt?.toISOString() ?? null,
+          nextDueAt: branch?.brand?.nextDueAt?.toISOString() ?? null,
+          expiresAt: state?.expiresAt?.toISOString() ?? null,
+          nearExpiry: state?.nearExpiry ?? false,
+          warningDays: state?.warningDays ?? null,
+          daysLeft: state?.daysLeft ?? null,
+          writeAllowed: state?.writeAllowed ?? true,
+          writeBlockedReason: state?.writeBlockedReason ?? null,
+        };
+      })(),
       autoAcceptOrders: session.autoAcceptOrders ?? false,
       operatingDay,
       canToggleStore:

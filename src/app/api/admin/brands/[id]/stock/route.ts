@@ -5,6 +5,13 @@ import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { getStockDashboard, setBrandStockEnabled, StockError } from "@/lib/stock";
 import { ensureWarehouseBranch } from "@/lib/warehouse-branch";
+import {
+  excludePromoBrandProducts,
+  loadPromoBrandProductIds,
+} from "@/lib/brand-product-promo";
+import { enrichBrandProductsWithMenuOrder } from "@/lib/staff-menu-order";
+import { loadBrandProductMenuOrderMap } from "@/lib/brand-product-menu-order";
+import { assertBrandWriteAllowedByBrandId } from "@/lib/brand-plan";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -67,7 +74,7 @@ export async function GET(_request: Request, { params }: Params) {
 
     const warehouse = warehouses[0] ?? null;
 
-    const [products, branches, pendingTransfers, completedTransfers, dashboard, locations] =
+    const [productsRaw, branches, pendingTransfers, completedTransfers, dashboard, locations, menuOrderMap, promoProductIds] =
       await Promise.all([
         prisma.brandProduct.findMany({
           where: { brandId: id },
@@ -114,7 +121,14 @@ export async function GET(_request: Request, { params }: Params) {
           },
           orderBy: { name: "asc" },
         }),
+        loadBrandProductMenuOrderMap(id),
+        loadPromoBrandProductIds(id),
       ]);
+
+    const products = enrichBrandProductsWithMenuOrder(
+      excludePromoBrandProducts(productsRaw, promoProductIds),
+      menuOrderMap,
+    );
 
     if (brand.stockEnabled) {
       await ensureWarehouseBranch(id);
@@ -125,6 +139,7 @@ export async function GET(_request: Request, { params }: Params) {
       select: {
         id: true,
         name: true,
+        code: true,
         kind: true,
         warehouseIssueMode: true,
         warehouseAllowedBranchIds: true,
@@ -140,9 +155,11 @@ export async function GET(_request: Request, { params }: Params) {
         fromLocation: { select: { id: true, name: true, type: true } },
         toLocation: { select: { id: true, name: true, type: true } },
         stockLocation: { select: { id: true, name: true, type: true } },
+        createdByStaff: { select: { id: true, name: true } },
+        createdByAdmin: { select: { id: true, username: true } },
       },
       orderBy: { createdAt: "desc" },
-      take: 40,
+      take: 80,
     });
 
     return jsonOk({
@@ -168,6 +185,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const { id } = await params;
     const session = await requireBrandAccess(id);
     const body = patchSchema.parse(await request.json());
+    await assertBrandWriteAllowedByBrandId(id);
 
     if (body.stockEnabled !== undefined) {
       await setBrandStockEnabled({

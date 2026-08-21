@@ -5,9 +5,16 @@ import { prisma } from "@/lib/db";
 import { getCalendarDayState } from "@/lib/operating-day";
 import { buildSalesReport } from "@/lib/sales-report";
 import {
+  aggregateShopWeekdaySeries,
   loadShopDailySeries,
+  loadShopHourlySeries,
   loadShopTopSellers,
 } from "@/lib/shop-overview-metrics";
+import { loadShopAgingAttention } from "@/lib/shop-aging-summary";
+import {
+  BRAND_STATUS_LABELS,
+  getBrandSubscriptionState,
+} from "@/lib/brand-plan-shared";
 
 async function loadSaleStockSnapshot(branchId: string) {
   // Count from BranchMenuItemStock even when brandProductId is not linked yet
@@ -78,7 +85,7 @@ export async function GET(request: Request) {
 
     const branchIds = [session.branchId];
 
-    const [report, stock, branch, lastStockCount, lastSale, topSellers, days] =
+    const [report, stock, branch, lastStockCount, lastSale, topSellers, days, hours, aging] =
       await Promise.all([
         buildSalesReport({
           branchIds,
@@ -90,7 +97,14 @@ export async function GET(request: Request) {
           where: { id: session.branchId },
           select: {
             stockEnabled: true,
-            brand: { select: { stockEnabled: true } },
+            brand: {
+              select: {
+                stockEnabled: true,
+                status: true,
+                trialEndsAt: true,
+                nextDueAt: true,
+              },
+            },
           },
         }),
         prisma.stockCount.findFirst({
@@ -121,11 +135,22 @@ export async function GET(request: Request) {
         }),
         loadShopTopSellers(branchIds, from, to),
         loadShopDailySeries(branchIds, from, to),
+        loadShopHourlySeries(branchIds, from, to),
+        loadShopAgingAttention(branchIds),
       ]);
 
     const stockEnabled = Boolean(
       branch?.stockEnabled && branch?.brand?.stockEnabled,
     );
+    const status = branch?.brand?.status ?? null;
+    const subscriptionState =
+      status != null
+        ? getBrandSubscriptionState({
+            status,
+            trialEndsAt: branch?.brand?.trialEndsAt ?? null,
+            nextDueAt: branch?.brand?.nextDueAt ?? null,
+          })
+        : null;
 
     const lastStockCountAt = lastStockCount
       ? (lastStockCount.completedAt ?? lastStockCount.createdAt).toISOString()
@@ -146,9 +171,32 @@ export async function GET(request: Request) {
       stats: report.stats,
       byChannel: report.byChannel,
       byPayment: report.byPayment,
+      byFulfillment: report.byFulfillment,
       wasteItems: report.wasteItems,
+      cancelReasons: report.cancelReasons,
       topSellers,
       days,
+      hours,
+      weekdays: aggregateShopWeekdaySeries(days),
+      aging: stockEnabled ? aging : null,
+      subscription: {
+        status,
+        statusLabel: status != null ? (BRAND_STATUS_LABELS[status] ?? status) : null,
+        effectiveStatus: subscriptionState?.effectiveStatus ?? status,
+        effectiveStatusLabel:
+          subscriptionState?.effectiveStatus != null
+            ? (BRAND_STATUS_LABELS[subscriptionState.effectiveStatus] ??
+              subscriptionState.effectiveStatus)
+            : null,
+        trialEndsAt: branch?.brand?.trialEndsAt?.toISOString() ?? null,
+        nextDueAt: branch?.brand?.nextDueAt?.toISOString() ?? null,
+        expiresAt: subscriptionState?.expiresAt?.toISOString() ?? null,
+        nearExpiry: subscriptionState?.nearExpiry ?? false,
+        warningDays: subscriptionState?.warningDays ?? null,
+        daysLeft: subscriptionState?.daysLeft ?? null,
+        writeAllowed: subscriptionState?.writeAllowed ?? true,
+        writeBlockedReason: subscriptionState?.writeBlockedReason ?? null,
+      },
     });
   } catch (error) {
     return handleApiError(error);

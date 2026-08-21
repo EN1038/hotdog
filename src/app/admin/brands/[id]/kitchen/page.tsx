@@ -16,6 +16,7 @@ import {
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useToast } from "@/components/admin/Toast";
 import { formatPrice } from "@/lib/constants";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type ProductRow = {
   id: string;
@@ -323,6 +324,27 @@ export default function KitchenWorkspacePage() {
     } catch (e) {
       toast.error("ปฏิเสธไม่สำเร็จ", e instanceof Error ? e.message : "");
     }
+  }
+
+  if (!WAREHOUSE_UI_ENABLED) {
+    return (
+      <div className="mx-auto max-w-lg py-12">
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center shadow-sm">
+          <p className="text-lg font-extrabold text-slate-900">
+            ฟีเจอร์นี้ยังไม่เปิดใช้
+          </p>
+          <p className="mt-2 text-sm font-medium text-slate-600">
+            ใช้สต๊อกสาขาได้ตามปกติ
+          </p>
+          <Link
+            href={`/admin/brands/${brandId}`}
+            className={`${btnPrimary} mt-6 inline-flex min-h-11 items-center justify-center px-5`}
+          >
+            กลับแบรนด์
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   if (!loaded || loading || !data) {

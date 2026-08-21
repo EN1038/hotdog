@@ -8,6 +8,10 @@ import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { applyPlanPreset } from "@/lib/brand-plan";
+import {
+  BRAND_STATUS_LABELS,
+  getBrandSubscriptionState,
+} from "@/lib/brand-plan-shared";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -59,9 +63,21 @@ export async function GET(_request: Request, { params }: Params) {
     if (!brand) return jsonError("ไม่พบแบรนด์", 404);
     const liveBranchCount = brand.branches.filter((b) => !b.isTest).length;
     const hasTestBranch = brand.branches.some((b) => b.isTest);
+    const subscriptionState = getBrandSubscriptionState({
+      status: brand.status,
+      trialEndsAt: brand.trialEndsAt,
+      nextDueAt: brand.nextDueAt,
+    });
     return jsonOk({
       ...brand,
       hasTestBranch,
+      subscriptionState: {
+        ...subscriptionState,
+        statusLabel: BRAND_STATUS_LABELS[brand.status] ?? brand.status,
+        effectiveStatusLabel:
+          BRAND_STATUS_LABELS[subscriptionState.effectiveStatus] ??
+          subscriptionState.effectiveStatus,
+      },
       _count: { ...brand._count, branches: liveBranchCount },
     });
   } catch (error) {

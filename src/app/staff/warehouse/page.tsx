@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { OwnerStockInner } from "@/components/owner/OwnerStockWorkspace";
 import { LoadingState } from "@/components/LoadingState";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 export default function StaffWarehousePage() {
   const router = useRouter();
@@ -12,6 +13,10 @@ export default function StaffWarehousePage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    if (!WAREHOUSE_UI_ENABLED) {
+      router.replace("/staff");
+      return;
+    }
     let cancelled = false;
     fetch("/api/staff/branding", { cache: "no-store" })
       .then((res) => {
@@ -41,6 +46,10 @@ export default function StaffWarehousePage() {
       cancelled = true;
     };
   }, [router]);
+
+  if (!WAREHOUSE_UI_ENABLED) {
+    return null;
+  }
 
   if (!ready || !brandId) {
     return (

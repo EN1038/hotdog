@@ -35,6 +35,9 @@ export async function POST(request: Request, { params }: RouteParams) {
       // Find all menu items in this branch
       const menuItems = await prisma.branchMenuItem.findMany({
         where: { branchId: branch.id },
+        include: {
+          optionGroupLinks: { select: { group: { select: { mode: true } } } },
+        },
       });
 
       if (menuItems.length === 0) {
@@ -45,6 +48,11 @@ export async function POST(request: Request, { params }: RouteParams) {
       let linkedCount = 0;
 
       for (const item of menuItems) {
+        const isPromo = item.optionGroupLinks.some(
+          (l) => l.group.mode === "FROM_MENU",
+        );
+        if (isPromo) continue;
+
         // Check if BrandProduct exists with same name
         let product = await prisma.brandProduct.findFirst({
           where: { brandId, name: item.name },

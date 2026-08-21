@@ -8,6 +8,8 @@ const projectRoot = path.resolve(process.cwd());
 const nextConfig: NextConfig = {
   // Pin tooling to this app when a parent folder also has a lockfile
   outputFileTracingRoot: projectRoot,
+  // Allow opening the app via 127.0.0.1 during local development
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   turbopack: {
     root: projectRoot,
   },

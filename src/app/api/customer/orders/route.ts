@@ -36,6 +36,7 @@ import {
 import { formatOrderItemOptionsText } from "@/lib/order-item-display";
 import {
   assertBrandStorefrontOpen,
+  assertBrandWriteAllowed,
   brandUsageSelect,
 } from "@/lib/brand-plan";
 
@@ -102,6 +103,7 @@ export async function POST(request: Request) {
       return jsonError("สาขานี้ไม่พร้อมให้บริการในขณะนี้");
     }
     assertBrandStorefrontOpen(branch.brand);
+    assertBrandWriteAllowed(branch.brand);
     if (branch.operatingMode === BranchOperatingMode.SKEWER) {
       return jsonError("สาขานี้รับออเดอร์เสียบไม้ผ่านหน้าสั่งไม้เท่านั้น");
     }

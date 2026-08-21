@@ -41,6 +41,7 @@ import {
   getBranchServiceStatus,
   type BranchHoursFields,
 } from "@/lib/branch-hours";
+import { assertBrandWriteAllowedByBranchId } from "@/lib/brand-plan";
 import {
   isCancelledStatus,
   isOrderCountableRevenue,
@@ -323,6 +324,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await requireStaff();
+    await assertBrandWriteAllowedByBranchId(session.branchId);
     const body = createStaffOrderSchema.parse(await request.json());
 
     if (body.paymentMethod === PaymentMethod.CARD) {

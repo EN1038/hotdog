@@ -161,6 +161,9 @@ export function BrandPlanBanner({
   const starts = formatTrialEndsAt(brand.serviceStartsAt);
   const trialDays = daysUntilDate(brand.trialEndsAt);
   const trialRemain = formatDaysRemaining(trialDays);
+  const monitorDays = brandMonitorDaysRemaining(brand);
+  const nearExpiry = monitorDays != null && monitorDays >= 0 && monitorDays <= 7;
+  const monitorRemain = formatDaysRemaining(monitorDays);
   const modules = moduleLabels(brand);
   const branchUsed = brand._count?.branches;
   const maxBranches = brand.maxBranches;
@@ -189,9 +192,14 @@ export function BrandPlanBanner({
               {trialRemain ? ` · ${trialRemain}` : ""}
             </span>
           ) : null}
+          {nearExpiry ? (
+            <span className="text-[11px] text-amber-800">
+              ใกล้ครบกำหนดแพ็กเกจ {monitorRemain ? `· ${monitorRemain}` : ""}
+            </span>
+          ) : null}
           {status === "EXPIRED" ? (
             <span className="text-[11px] text-red-700">
-              หมดช่วงทดลองแล้ว — ร้านและพนักงานเข้าใช้ไม่ได้
+              หมดอายุแล้ว — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้
             </span>
           ) : null}
           {status === "DELETED" ? (
@@ -201,7 +209,7 @@ export function BrandPlanBanner({
           ) : null}
           {status === "PAUSED" ? (
             <span className="text-[11px] text-slate-600">
-              หยุดใช้ชั่วคราว — ร้านและพนักงานเข้าใช้ไม่ได้
+              หยุดใช้ชั่วคราว — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้
             </span>
           ) : null}
         </div>

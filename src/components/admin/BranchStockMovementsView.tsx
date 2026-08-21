@@ -69,12 +69,12 @@ type ShiftOpt = {
 
 const TYPE_FILTERS: Array<{ id: string; label: string }> = [
   { id: "ALL", label: "ทั้งหมด" },
-  { id: "WASTE", label: "ของเสีย / จ่ายออก" },
+  { id: "WASTE", label: "ของเสีย" },
   { id: "SALE", label: "ขาย (SALE)" },
   { id: "STOCK_IN", label: "รับเข้า" },
-  { id: "ISSUE", label: "จ่ายออก" },
+  { id: "ISSUE", label: "จ่ายออกจากสต๊อก" },
   { id: "ADJUST", label: "ปรับยอด" },
-  { id: "DAMAGE", label: "เสียหาย" },
+  { id: "DAMAGE", label: "ชำรุด" },
   { id: "LOST", label: "สูญหาย" },
 ];
 
@@ -93,13 +93,13 @@ function typeLabel(type: string) {
     case "STOCK_IN":
       return "รับเข้า";
     case "ISSUE":
-      return "จ่ายออก";
+      return "จ่ายออกจากสต๊อก";
     case "WASTE":
-      return "ของเสีย / จ่ายออก";
+      return "ของเสีย";
     case "ADJUST":
       return "ปรับยอด";
     case "DAMAGE":
-      return "เสียหาย";
+      return "ชำรุด";
     case "LOST":
       return "สูญหาย";
     default:
@@ -384,13 +384,17 @@ export function BranchStockMovementsView({
         <div className="mb-4">
           <h2 className="text-base font-extrabold text-slate-900">
             {type === "WASTE"
-              ? "ของเสีย / จ่ายออกที่หน้าร้านบันทึก"
-              : "ประวัติเคลื่อนไหวสต็อก"}
+              ? "ของเสียที่หน้าร้านบันทึก (ชำรุด/สูญหาย)"
+              : type === "ISSUE"
+                ? "จ่ายออกจากสต๊อก (เบิกใช้ / ส่งออก)"
+                : "ประวัติเคลื่อนไหวสต็อก"}
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
             {type === "WASTE"
-              ? "รายการที่พนักงานตัดของเสียหรือจ่ายออกจากแอปหน้าร้าน ตามช่วงวันที่เลือก"
-              : "ดูรับเข้า จ่ายออก ขาย ปรับยอด ตามวัน — รับเข้า/จ่ายออก สามารถยกเลิกและกู้คืนได้ (ยอดสต๊อกจะกลับคืนอัตโนมัติ)"}
+              ? "รายการของเสีย (ชำรุด/สูญหาย) จากแอปหน้าร้าน ตามช่วงวันที่เลือก"
+              : type === "ISSUE"
+                ? "รายการจ่ายออกจากสต๊อก (ไม่ใช่ของเสีย) ตามช่วงวันที่เลือก"
+                : "ดูรับเข้า จ่ายออก ขาย ปรับยอด ตามวัน — รับเข้า/จ่ายออก สามารถยกเลิกและกู้คืนได้ (ยอดสต๊อกจะกลับคืนอัตโนมัติ)"}
           </p>
         </div>
 

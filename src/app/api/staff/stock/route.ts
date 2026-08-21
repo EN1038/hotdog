@@ -66,6 +66,8 @@ const summaryLineSchema = z.object({
 });
 
 import {
+  expectedDocumentKindForAction,
+  generateStockDocumentNo,
   stockDocumentNoSchema,
   validateStockDocumentNo,
 } from "@/lib/stock-document-no";
@@ -83,7 +85,8 @@ const postSchema = z.discriminatedUnion("action", [
     action: z.literal("stock_in"),
     brandProductId: z.string(), // This is either menuItemId or nonMenuItemId
     quantity: z.number().int().positive(),
-    documentNo: stockDocumentNoSchema,
+    /** Optional — server generates when omitted (older clients / empty submit) */
+    documentNo: stockDocumentNoSchema.optional(),
     unitCost: z.number().min(0).nullable().optional(),
     supplier: z.string().trim().max(120).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
@@ -110,7 +113,7 @@ const postSchema = z.discriminatedUnion("action", [
     action: z.literal("damage"),
     brandProductId: z.string(),
     quantity: z.number().int().positive(),
-    documentNo: stockDocumentNoSchema,
+    documentNo: stockDocumentNoSchema.optional(),
     reason: z.string().trim().max(200).nullable().optional(),
     note: z.string().trim().max(300).nullable().optional(),
     imageUrl: z.string().trim().min(1).max(2000).optional(),
@@ -144,7 +147,7 @@ const postSchema = z.discriminatedUnion("action", [
     action: z.literal("issue"),
     brandProductId: z.string(),
     quantity: z.number().int().positive(),
-    documentNo: stockDocumentNoSchema,
+    documentNo: stockDocumentNoSchema.optional(),
     note: z.string().trim().min(1, "กรุณากรอกรายละเอียด").max(300),
     imageUrl: z.string().trim().min(1).max(2000).optional(),
     imageUrls: movementImageUrlsSchema,
@@ -703,6 +706,7 @@ export async function POST(request: Request) {
         brandId: true,
         stockEnabled: true,
         name: true,
+        code: true,
       },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
@@ -947,6 +951,39 @@ export async function POST(request: Request) {
           action: body.action,
           skipAvailabilityCheck: body.skipDocumentCheck,
         });
+      } else if (
+        body.action === "stock_in" ||
+        body.action === "issue" ||
+        body.action === "damage"
+      ) {
+        const batchId =
+          "batchId" in body && body.batchId ? body.batchId : null;
+        if (batchId && body.skipDocumentCheck) {
+          const fromBatch =
+            (await prisma.branchMenuItemStockHistory.findFirst({
+              where: { batchId, documentNo: { not: null } },
+              select: { documentNo: true },
+              orderBy: { createdAt: "asc" },
+            })) ??
+            (await prisma.branchNonMenuItemHistory.findFirst({
+              where: { batchId, documentNo: { not: null } },
+              select: { documentNo: true },
+              orderBy: { createdAt: "asc" },
+            }));
+          if (fromBatch?.documentNo) {
+            documentNo = fromBatch.documentNo;
+          }
+        }
+        if (!documentNo) {
+          const kind = expectedDocumentKindForAction(body.action);
+          if (kind) {
+            documentNo = await generateStockDocumentNo({
+              kind,
+              branchCode: branch.code ?? "",
+              branchId: branch.id,
+            });
+          }
+        }
       }
     }
 

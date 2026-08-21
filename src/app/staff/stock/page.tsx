@@ -765,7 +765,7 @@ function StaffStockContent() {
     setMode("items");
   };
 
-  async function genDocumentNo(kind: StockDocumentKind) {
+  async function genDocumentNo(kind: StockDocumentKind): Promise<string> {
     setDocGenBusy(true);
     try {
       const res = await fetch(`/api/staff/stock/document-no?kind=${kind}`);
@@ -774,17 +774,21 @@ function StaffStockContent() {
         throw new Error(json.error ?? "สร้างเลขที่เอกสารไม่สำเร็จ");
       }
       const next = String(json.documentNo ?? "").trim();
-      if (next) setDocumentNo(next);
+      if (next) {
+        setDocumentNo(next);
+        return next;
+      }
     } catch {
-      setDocumentNo(
-        provisionalStockDocumentNo({
-          kind,
-          branchCode: formatBranchLabel(branchName) || branchName,
-        }),
-      );
+      /* fall through to provisional */
     } finally {
       setDocGenBusy(false);
     }
+    const fallback = provisionalStockDocumentNo({
+      kind,
+      branchCode: formatBranchLabel(branchName) || branchName,
+    });
+    setDocumentNo(fallback);
+    return fallback;
   }
 
   useEffect(() => {
@@ -1246,13 +1250,6 @@ function StaffStockContent() {
 
   async function submitChanges() {
     if (selectedItems.length === 0 || !actionType) return;
-    if (
-      (actionType === "stock_in" || actionType === "issue") &&
-      !documentNo.trim()
-    ) {
-      toast.error("กรุณาระบุเลขที่เอกสาร");
-      return;
-    }
     if (actionType === "issue") {
       if (!issuePurpose) {
         toast.error("กรุณาเลือกประเภทการจ่ายออก");
@@ -1270,6 +1267,19 @@ function StaffStockContent() {
 
     setBusy(true);
     try {
+      let resolvedDocumentNo = documentNo.trim();
+      if (actionType === "stock_in" || actionType === "issue") {
+        if (!resolvedDocumentNo) {
+          resolvedDocumentNo = await genDocumentNo(
+            actionType === "stock_in" ? "IN" : "OUT",
+          );
+        }
+        if (!resolvedDocumentNo) {
+          toast.error("กรุณาระบุเลขที่เอกสาร");
+          return;
+        }
+      }
+
       const batchId =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
@@ -1289,7 +1299,7 @@ function StaffStockContent() {
           quantity: item.quantity,
           note: actionType === "stock_in" ? "เพิ่มผ่านระบบมือถือ" : issueNote,
           batchId,
-          documentNo: documentNo.trim(),
+          documentNo: resolvedDocumentNo,
           skipDocumentCheck: index > 0,
         };
         if (actionType === "issue" && issueImageUrls.length > 0) {
@@ -1325,7 +1335,10 @@ function StaffStockContent() {
             : issuePurpose === "waste"
               ? "บันทึกของเสียสำเร็จ"
               : "จ่ายออกจากสต๊อกสำเร็จ";
-        toast.success(okTitle, `${documentNo.trim()} · ${selectedItems.length} รายการ`);
+        toast.success(
+          okTitle,
+          `${resolvedDocumentNo} · ${selectedItems.length} รายการ`,
+        );
         setMode("menu");
         setActionType(null);
         setQtyByItemId({});

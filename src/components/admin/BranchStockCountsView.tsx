@@ -748,7 +748,7 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
             </button>
           </div>
         </div>
-
+        
         {/* Stats */}
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <button
@@ -819,7 +819,7 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
               <DateInput
                 id="stock-count-date"
                 className={adminInputClass}
-                value={dateStr}
+            value={dateStr}
                 max={today}
                 onChange={(v) => {
                   if (v) setDateStr(v);
@@ -846,9 +846,9 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                 placeholder="ชื่อเอกสาร, ผู้บันทึก, ชื่อรายการ…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
-          </div>
+          />
+        </div>
+      </div>
 
           <div className="flex flex-wrap gap-1.5">
             {statusChips.map((chip) => (
@@ -1174,9 +1174,9 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                                 ? value.toLocaleString("th-TH")
                                 : `฿${value.toLocaleString("th-TH")}`}
                             </p>
-                          </div>
+                  </div>
                         ))}
-                      </div>
+                  </div>
                     ) : null}
 
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -1189,7 +1189,7 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                           (จากทั้งหมด {displayLines.length})
                         </p>
                       ) : null}
-                    </div>
+                        </div>
 
                     {mismatchCount > 0 ? (
                       <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1224,7 +1224,7 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                               : " · รวมหน่วยที่เกิน"}
                           </p>
                         </div>
-                      </div>
+                        </div>
                     ) : null}
 
                     {varianceInsights &&
@@ -1252,7 +1252,7 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                           <p className="mt-0.5 text-sm font-bold leading-snug text-slate-900">
                             {varianceInsights.situation}
                           </p>
-                        </div>
+                      </div>
 
                         {varianceInsights.facts.length > 0 ? (
                           <div className="mt-2 grid gap-1 sm:grid-cols-3">
@@ -1264,8 +1264,8 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                                 {f}
                               </p>
                             ))}
-                          </div>
-                        ) : null}
+                      </div>
+                    ) : null}
 
                         {varianceInsights.actions.length > 0 ? (
                           <div className="mt-2">
@@ -1487,9 +1487,9 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                             })}
                           </tbody>
                         </table>
-                      </div>
-                    )}
-                    </div>
+                  </div>
+                )}
+              </div>
                   </div>
                 ) : null}
               </article>

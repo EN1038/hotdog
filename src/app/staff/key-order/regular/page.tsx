@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { StaffKeyOrderLayout } from "@/components/staff/StaffKeyOrderLayout";
+import { StaffKeyOrderLayout, STAFF_KEY_ORDER_STICKY_OFFSET } from "@/components/staff/StaffKeyOrderLayout";
 import {
   StaffRoundGateLoading,
-  StaffRoundStatusStrip,
   useStaffRoundGate,
 } from "@/components/staff/StaffRoundGate";
 import {
@@ -31,7 +30,7 @@ import {
 } from "@/components/staff/StaffOrderSummary";
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
 import { IconSkewerPlaceholder } from "@/components/icons";
-import { formatPrice } from "@/lib/constants";
+import { formatPrice, formatPriceLabel } from "@/lib/constants";
 import type { MenuItemData } from "@/lib/customer-types";
 import {
   isChannelSellEnabled,
@@ -50,6 +49,8 @@ import { readStaffOrderMode } from "@/lib/staff-order-mode";
 import {
   computeSelectedOptions,
   effectiveMinSelect,
+  filterVisibleOptionGroups,
+  pruneHiddenGroupSelections,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
@@ -171,9 +172,14 @@ export default function StaffRegularKeyOrderPage() {
   const sharedGroups = useMemo(
     () =>
       collectSharedOptionGroups(regularItems, qtyByItemId, {
-        onlySelected: false,
+        onlySelected: true,
       }),
     [regularItems, qtyByItemId],
+  );
+
+  const visibleSharedGroups = useMemo(
+    () => filterVisibleOptionGroups(sharedGroups, selectedByGroup),
+    [sharedGroups, selectedByGroup],
   );
 
   const selectedCount = useMemo(
@@ -490,7 +496,10 @@ export default function StaffRegularKeyOrderPage() {
       }
     >
       {selectedLineCount > 0 && showStickySummary ? (
-        <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
+        <div
+          className="fixed inset-x-0 z-20 px-4"
+          style={{ bottom: STAFF_KEY_ORDER_STICKY_OFFSET }}
+        >
           <div className="mx-auto max-w-lg">
             <StaffOrderStickySummary
               lineCount={selectedLineCount}
@@ -501,8 +510,6 @@ export default function StaffRegularKeyOrderPage() {
           </div>
         </div>
       ) : null}
-
-      <StaffRoundStatusStrip state={roundState} />
 
       <section
         id="staff-menu-section"
@@ -609,7 +616,7 @@ export default function StaffRegularKeyOrderPage() {
                           ) : (
                             <>
                               {item.category?.name ? `${item.category.name} · ` : ""}
-                              {formatPrice(price)}฿
+                              {formatPriceLabel(price)}
                               {tracked ? (
                                 <>
                                   {" · "}
@@ -628,7 +635,7 @@ export default function StaffRegularKeyOrderPage() {
                           aria-label="ลด"
                           disabled={qty <= 0 || soldOut}
                           onClick={() => setQty(item.id, qty - 1)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-lg font-bold text-gray-700 disabled:opacity-40"
+                          className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 text-xl font-bold text-gray-700 disabled:opacity-40"
                         >
                           −
                         </button>
@@ -640,7 +647,7 @@ export default function StaffRegularKeyOrderPage() {
                           aria-label="เพิ่ม"
                           disabled={soldOut || qty >= sq}
                           onClick={() => setQty(item.id, qty + 1)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-site-primary text-lg font-bold text-white disabled:opacity-40"
+                          className="flex h-12 w-12 items-center justify-center rounded-xl bg-site-primary text-xl font-bold text-white disabled:opacity-40"
                         >
                           +
                         </button>
@@ -654,7 +661,7 @@ export default function StaffRegularKeyOrderPage() {
         )}
       </section>
 
-      {sharedGroups.length > 0 ? (
+      {visibleSharedGroups.length > 0 ? (
         <section
           id="staff-shared-options"
           tabIndex={-1}
@@ -665,10 +672,11 @@ export default function StaffRegularKeyOrderPage() {
               ตัวเลือกร่วม
             </h2>
             <p className="text-xs text-gray-600">
-              รายการที่มีเครื่องหมาย *จำเป็น ต้องเลือกก่อนบันทึกออเดอร์
+              เลือกเมนูก่อน แล้วค่อยเลือกตัวเลือกร่วม · จะติดไปทุกรายการที่รองรับ ·
+              น้ำชาบูโผล่เมื่อเลือกชาบู
             </p>
           </div>
-          {sharedGroups.map((group) => (
+          {visibleSharedGroups.map((group) => (
             <div
               key={group.id}
               id={`staff-opt-group-${group.id}`}
@@ -697,10 +705,12 @@ export default function StaffRegularKeyOrderPage() {
                 highlightError={optionErrorGroupId === group.id}
                 onChange={(ids) => {
                   clearValidation();
-                  setSelectedByGroup((prev) => ({
-                    ...prev,
-                    [group.id]: ids,
-                  }));
+                  setSelectedByGroup((prev) =>
+                    pruneHiddenGroupSelections(sharedGroups, {
+                      ...prev,
+                      [group.id]: ids,
+                    }),
+                  );
                 }}
               />
             </div>

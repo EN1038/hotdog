@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
   try {
     const branch = await prisma.branch.findFirst({
-      where: { id: branchId, isHidden: false },
+      where: { id: branchId, isHidden: false, isTest: false },
       select: {
         name: true,
         nameTh: true,

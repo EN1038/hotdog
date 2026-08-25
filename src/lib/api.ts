@@ -3,6 +3,10 @@ import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { ForbiddenError } from "@/lib/admin-access";
 import { ShiftGateError } from "@/lib/branch-shift";
+import {
+  BrandInactiveError,
+  BrandLimitError,
+} from "@/lib/brand-plan-shared";
 
 export function jsonOk<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
@@ -46,6 +50,14 @@ export function handleApiError(error: unknown) {
     return jsonError(error.message || "ไม่มีสิทธิ์เข้าถึง", 403);
   }
 
+  if (error instanceof BrandInactiveError) {
+    return jsonError(error.message, error.status);
+  }
+
+  if (error instanceof BrandLimitError) {
+    return jsonError(error.message, error.status);
+  }
+
   if (error instanceof ShiftGateError) {
     return jsonError(error.message, error.status);
   }
@@ -79,9 +91,18 @@ export function handleApiError(error: unknown) {
 
   if (error instanceof Prisma.PrismaClientValidationError) {
     console.error("[api] Prisma validation", error.message);
-    const msg = error.message.includes("imageUrl")
-      ? "ฐานข้อมูลยังไม่มีคอลัมน์รูปโปร — รัน prisma db push แล้วรีสตาร์ท dev server"
-      : "ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง";
+    const raw = error.message;
+    const msg =
+      /Unknown (field|argument|arg)/i.test(raw)
+        ? "ระบบอัปเดตแล้ว — รีเฟรชหน้านี้หรือปิดแอปแล้วเปิดใหม่"
+        : raw.includes("imageUrl")
+          ? "ระบบยังอัปเดตรูปไม่ครบ — ลองใหม่หรือแจ้งแอดมิน"
+          : raw.includes("status") ||
+              raw.includes("trialEndsAt") ||
+              raw.includes("BrandPlan") ||
+              raw.includes("cancelledAt")
+            ? "ระบบอัปเดตแล้ว — ปิดแอปแล้วเปิดใหม่ หรือรีเฟรชหน้านี้"
+            : "บันทึกไม่สำเร็จ — ตรวจข้อมูลแล้วลองใหม่";
     return jsonError(msg, 400);
   }
 
@@ -91,10 +112,10 @@ export function handleApiError(error: unknown) {
 
   if (error instanceof Error) {
     if (error.message === "UNAUTHORIZED") {
-      return jsonError("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่", 401);
+      return jsonError("หมดเวลาเข้าใช้ — กรุณาเข้าสู่ระบบใหม่", 401);
     }
     if (error.message === "NOT_FOUND") {
-      return jsonError("ไม่พบข้อมูล", 404);
+      return jsonError("ไม่พบรายการนี้", 404);
     }
     if (error.message === "FORBIDDEN") {
       return jsonError("ไม่มีสิทธิ์ทำรายการนี้", 403);
@@ -106,21 +127,21 @@ export function handleApiError(error: unknown) {
       (raw.includes("Order") && raw.includes("does not exist"))
     ) {
       return jsonError(
-        "ฐานข้อมูลยังไม่อัปเดต (เลขคิวรายวัน) — รัน prisma migrate deploy บนเซิร์ฟเวอร์แล้วรีสตาร์ท",
+        "ระบบคิวยังไม่พร้อม — แจ้งแอดมินให้อัปเดต แล้วลองใหม่",
         503,
       );
     }
     if (raw.includes("expired transaction") || raw.includes("interactive transaction timeout")) {
       console.error("[api] Prisma transaction timeout", raw);
       return jsonError(
-        "บันทึกใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง",
+        "บันทึกนานเกินไป — ลองใหม่อีกครั้ง",
         408,
       );
     }
     if (raw.includes("Can't reach database server") || raw.includes("ECONNREFUSED") || raw.includes("P1001")) {
       console.error("[api] database unreachable", raw);
       return jsonError(
-        "เชื่อมต่อฐานข้อมูลไม่ได้ — ตรวจเครือข่าย / DATABASE_URL แล้วรีสตาร์ท dev server",
+        "เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่",
         503,
       );
     }

@@ -15,10 +15,11 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import { BRANCH_WASTE_HISTORY_TYPES } from "@/lib/stock-outbound";
 
 type Params = { params: Promise<{ id: string }> };
 
-const WASTE_HISTORY_TYPES = ["ISSUE", "DAMAGE", "LOST"] as const;
+const WASTE_HISTORY_TYPES = BRANCH_WASTE_HISTORY_TYPES;
 
 function normalizeRange(fromRaw: string, toRaw: string) {
   return fromRaw <= toRaw
@@ -234,6 +235,8 @@ export async function GET(request: Request, { params }: Params) {
       wasteValue: Math.round(wasteValue * 100) / 100,
       expenseTotal: expenseSummary.total,
       expenseCount: expenseSummary.count,
+      cashExpense: Math.round(expenseSummary.cash * 100) / 100,
+      transferExpense: Math.round(expenseSummary.transfer * 100) / 100,
       netRevenue: Math.round(netRevenue * 100) / 100,
       days,
     });

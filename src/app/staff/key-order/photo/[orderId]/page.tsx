@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { StaffKeyOrderLayout } from "@/components/staff/StaffKeyOrderLayout";
+import { StaffKeyOrderLayout, STAFF_KEY_ORDER_STICKY_OFFSET } from "@/components/staff/StaffKeyOrderLayout";
 import {
   StaffRoundGateLoading,
-  StaffRoundStatusStrip,
   useStaffRoundGate,
 } from "@/components/staff/StaffRoundGate";
 import {
@@ -30,7 +29,7 @@ import {
 } from "@/components/staff/StaffOrderSummary";
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
 import { IconSkewerPlaceholder } from "@/components/icons";
-import { formatPrice } from "@/lib/constants";
+import { formatPrice, formatPriceLabel } from "@/lib/constants";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import type { MenuItemData } from "@/lib/customer-types";
 import {
@@ -46,6 +45,8 @@ import {
 } from "@/lib/staff-key-order";
 import {
   computeSelectedOptions,
+  filterVisibleOptionGroups,
+  pruneHiddenGroupSelections,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
@@ -191,9 +192,14 @@ export default function StaffPhotoKeyOrderPage() {
   const sharedGroups = useMemo(
     () =>
       collectSharedOptionGroups(regularItems, qtyByItemId, {
-        onlySelected: false,
+        onlySelected: true,
       }),
     [regularItems, qtyByItemId],
+  );
+
+  const visibleSharedGroups = useMemo(
+    () => filterVisibleOptionGroups(sharedGroups, selectedByGroup),
+    [sharedGroups, selectedByGroup],
   );
 
   const selectedCount = useMemo(
@@ -432,7 +438,10 @@ export default function StaffPhotoKeyOrderPage() {
       }
     >
       {selectedLineCount > 0 && showStickySummary ? (
-        <div className="fixed inset-x-0 bottom-[4.8rem] z-20 px-4">
+        <div
+          className="fixed inset-x-0 z-20 px-4"
+          style={{ bottom: STAFF_KEY_ORDER_STICKY_OFFSET }}
+        >
           <div className="mx-auto max-w-lg">
             <StaffOrderStickySummary
               lineCount={selectedLineCount}
@@ -444,7 +453,6 @@ export default function StaffPhotoKeyOrderPage() {
         </div>
       ) : null}
 
-      <StaffRoundStatusStrip state={roundState} />
       <StaffKeyOrderAlertModal
         open={Boolean(alertMessage)}
         message={alertMessage ?? ""}
@@ -495,9 +503,9 @@ export default function StaffPhotoKeyOrderPage() {
         </div>
       </div>
 
-      {sharedGroups.length > 0 ? (
+      {visibleSharedGroups.length > 0 ? (
         <div className="mb-4 space-y-3">
-          {sharedGroups.map((group) => (
+          {visibleSharedGroups.map((group) => (
             <div
               key={group.id}
               id={`staff-opt-group-${group.id}`}
@@ -513,10 +521,12 @@ export default function StaffPhotoKeyOrderPage() {
                 highlightError={optionErrorGroupId === group.id}
                 onChange={(ids) => {
                   clearValidation();
-                  setSelectedByGroup((prev) => ({
-                    ...prev,
-                    [group.id]: ids,
-                  }));
+                  setSelectedByGroup((prev) =>
+                    pruneHiddenGroupSelections(sharedGroups, {
+                      ...prev,
+                      [group.id]: ids,
+                    }),
+                  );
                 }}
               />
             </div>
@@ -583,7 +593,7 @@ export default function StaffPhotoKeyOrderPage() {
                     {item.name}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {formatPrice(price)}฿
+                    {formatPriceLabel(price)}
                     {item.isOutOfStock ? " · หมด" : ""}
                   </p>
                 </div>
@@ -592,7 +602,7 @@ export default function StaffPhotoKeyOrderPage() {
                     type="button"
                     disabled={item.isOutOfStock || qty <= 0}
                     onClick={() => setQty(item.id, qty - 1)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-lg font-bold disabled:opacity-40"
+                    className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 text-xl font-bold disabled:opacity-40"
                   >
                     −
                   </button>
@@ -601,7 +611,7 @@ export default function StaffPhotoKeyOrderPage() {
                     type="button"
                     disabled={item.isOutOfStock}
                     onClick={() => setQty(item.id, qty + 1)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-site-primary text-lg font-bold text-white disabled:opacity-40"
+                    className="flex h-12 w-12 items-center justify-center rounded-xl bg-site-primary text-xl font-bold text-white disabled:opacity-40"
                   >
                     +
                   </button>

@@ -1,5 +1,9 @@
 /** Default store types — seeded into RestaurantType; kept for fallback labels. */
 export const DEFAULT_RESTAURANT_TYPES = [
+  { code: "mala", name: "หม่าล่า / หม้อไฟ" },
+  { code: "bbq", name: "ปิ้งย่าง / หมูกระทะ" },
+  { code: "fried", name: "ของทอด / ลูกชิ้น" },
+  { code: "shabu", name: "ชาบู / สุกี้" },
   { code: "thai", name: "อาหารไทย" },
   { code: "coffee", name: "ร้านกาแฟ" },
   { code: "single_dish", name: "อาหารจานเดียว" },
@@ -13,7 +17,6 @@ export const DEFAULT_RESTAURANT_TYPES = [
   { code: "drink", name: "เครื่องดื่ม" },
   { code: "fast_food", name: "ฟาสต์ฟู้ด" },
   { code: "noodles", name: "ก๋วยเตี๋ยว" },
-  { code: "bbq", name: "ปิ้งย่าง / หมูกระทะ" },
   { code: "vegetarian", name: "มังสวิรัติ / เจ" },
   { code: "other", name: "อื่นๆ" },
 ] as const;

@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/db";
 import type { SessionPayload } from "@/lib/auth";
 import { getAccessibleBrandIds } from "@/lib/admin-access";
-import { queueBusinessDateFromKey } from "@/lib/constants";
+import {
+  bangkokDateKey,
+  queueBusinessDateFromKey,
+} from "@/lib/constants";
+import { addDaysToDateKey } from "@/lib/operating-day";
 import {
   expenseDateFromKey,
   summarizeExpenses,
@@ -23,8 +27,8 @@ const HISTORY_TYPES = [
   "SALE",
 ] as const;
 
-/** Align with staff/branch overview: ISSUE + DAMAGE + LOST = ของเสีย */
-const WASTE_TYPES = new Set(["ISSUE", "DAMAGE", "LOST"]);
+/** ของเสียจริงในหน้าวิเคราะห์สต๊อก = ชำรุด/สูญหาย (ไม่รวม ISSUE ซึ่งนับเป็นจ่ายออก) */
+const WASTE_TYPES = new Set(["DAMAGE", "LOST"]);
 
 export type HqStockItem = {
   branchMenuItemId: string;
@@ -45,6 +49,7 @@ export type HqBranchRow = {
   branchName: string;
   brandId: string | null;
   brandName: string | null;
+  isTest: boolean;
   saleStockQty: number;
   saleStockValue: number;
   wasteQty: number;
@@ -55,15 +60,58 @@ export type HqBranchRow = {
   issueValue: number;
   expenseTotal: number;
   expenseCount: number;
+  cashExpense: number;
+  transferExpense: number;
   completedRevenue: number;
+  cashRevenue: number;
+  transferRevenue: number;
   soldQty: number;
   netRevenue: number;
   stockItems: HqStockItem[];
 };
 
+/** Daily flow for trend charts (Bangkok calendar day). */
+export type HqDailyPoint = {
+  date: string;
+  label: string;
+  soldQty: number;
+  revenueBaht: number;
+  restockQty: number;
+  issueQty: number;
+  wasteQty: number;
+};
+
+/** Same menu name across branches — for compare matrix. */
+export type HqMenuCompareBranch = {
+  branchId: string;
+  branchName: string;
+  quantity: number;
+  value: number;
+  restockQty: number;
+  issueQty: number;
+  wasteQty: number;
+  soldQty: number;
+};
+
+export type HqMenuCompareRow = {
+  key: string;
+  name: string;
+  quantity: number;
+  value: number;
+  restockQty: number;
+  issueQty: number;
+  wasteQty: number;
+  soldQty: number;
+  branchCount: number;
+  byBranch: HqMenuCompareBranch[];
+};
+
 export type HqOverviewResult = {
   from: string;
   to: string;
+  includeTest: boolean;
+  hasTestBranch: boolean;
+  filterBranchId: string | null;
   saleStockQty: number;
   saleStockValue: number;
   wasteQty: number;
@@ -74,11 +122,126 @@ export type HqOverviewResult = {
   issueValue: number;
   expenseTotal: number;
   expenseCount: number;
+  cashExpense: number;
+  transferExpense: number;
   completedRevenue: number;
+  cashRevenue: number;
+  transferRevenue: number;
   soldQty: number;
   netRevenue: number;
   branches: HqBranchRow[];
+  daily: HqDailyPoint[];
+  menuCompare: HqMenuCompareRow[];
 };
+
+function dayLabelTh(dateYmd: string): string {
+  const d = new Date(`${dateYmd}T12:00:00+07:00`);
+  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
+}
+
+function buildEmptyDaily(fromYmd: string, toYmd: string): HqDailyPoint[] {
+  const days: HqDailyPoint[] = [];
+  let cur = fromYmd;
+  while (cur <= toYmd) {
+    days.push({
+      date: cur,
+      label: dayLabelTh(cur),
+      soldQty: 0,
+      revenueBaht: 0,
+      restockQty: 0,
+      issueQty: 0,
+      wasteQty: 0,
+    });
+    cur = addDaysToDateKey(cur, 1);
+  }
+  return days;
+}
+
+function normalizeMenuName(name: string) {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+function buildMenuCompare(branches: HqBranchRow[]): HqMenuCompareRow[] {
+  const byKey = new Map<
+    string,
+    {
+      name: string;
+      quantity: number;
+      value: number;
+      restockQty: number;
+      issueQty: number;
+      wasteQty: number;
+      soldQty: number;
+      byBranch: Map<string, HqMenuCompareBranch>;
+    }
+  >();
+
+  for (const b of branches) {
+    for (const item of b.stockItems) {
+      const name = normalizeMenuName(item.name || "ไม่ระบุชื่อ");
+      const key = name.toLowerCase();
+      let row = byKey.get(key);
+      if (!row) {
+        row = {
+          name,
+          quantity: 0,
+          value: 0,
+          restockQty: 0,
+          issueQty: 0,
+          wasteQty: 0,
+          soldQty: 0,
+          byBranch: new Map(),
+        };
+        byKey.set(key, row);
+      }
+      row.quantity += item.quantity;
+      row.value += item.value;
+      row.restockQty += item.restockQty;
+      row.issueQty += item.issueQty;
+      row.wasteQty += item.wasteQty;
+      row.soldQty += item.soldQty;
+      const prev = row.byBranch.get(b.branchId) ?? {
+        branchId: b.branchId,
+        branchName: b.branchName,
+        quantity: 0,
+        value: 0,
+        restockQty: 0,
+        issueQty: 0,
+        wasteQty: 0,
+        soldQty: 0,
+      };
+      prev.quantity += item.quantity;
+      prev.value += item.value;
+      prev.restockQty += item.restockQty;
+      prev.issueQty += item.issueQty;
+      prev.wasteQty += item.wasteQty;
+      prev.soldQty += item.soldQty;
+      row.byBranch.set(b.branchId, prev);
+    }
+  }
+
+  return [...byKey.entries()]
+    .map(([key, row]) => ({
+      key,
+      name: row.name,
+      quantity: row.quantity,
+      value: Math.round(row.value * 100) / 100,
+      restockQty: row.restockQty,
+      issueQty: row.issueQty,
+      wasteQty: row.wasteQty,
+      soldQty: row.soldQty,
+      branchCount: row.byBranch.size,
+      byBranch: [...row.byBranch.values()].sort((a, b) =>
+        a.branchName.localeCompare(b.branchName, "th"),
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        b.soldQty - a.soldQty ||
+        b.wasteQty - a.wasteQty ||
+        a.name.localeCompare(b.name, "th"),
+    );
+}
 
 function rangeCreatedAt(from: string, to: string) {
   return {
@@ -99,7 +262,11 @@ function emptyTotals() {
     issueValue: 0,
     expenseTotal: 0,
     expenseCount: 0,
+    cashExpense: 0,
+    transferExpense: 0,
     completedRevenue: 0,
+    cashRevenue: 0,
+    transferRevenue: 0,
     soldQty: 0,
   };
 }
@@ -109,7 +276,12 @@ export async function buildHqOverview(
   session: SessionPayload,
   from: string,
   to: string,
-  options?: { brandId?: string },
+  options?: {
+    brandId?: string;
+    includeTest?: boolean;
+    /** When set, only this branch is included in aggregates. */
+    branchId?: string | null;
+  },
 ): Promise<HqOverviewResult> {
   const accessible = getAccessibleBrandIds(session);
   const branchWhere = options?.brandId
@@ -117,30 +289,53 @@ export async function buildHqOverview(
     : accessible === null
       ? {}
       : { brandId: { in: accessible } };
+  const includeTest = options?.includeTest === true;
+  const filterBranchId = options?.branchId?.trim() || null;
 
-  const branches = await prisma.branch.findMany({
+  const allBranches = await prisma.branch.findMany({
     where: branchWhere,
     select: {
       id: true,
       name: true,
       brandId: true,
+      isTest: true,
+      isHidden: true,
+      kind: true,
       brand: { select: { id: true, name: true } },
     },
     orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
   });
+  const hasTestBranch = allBranches.some((b) => b.isTest);
+  let branches = includeTest
+    ? allBranches
+    : allBranches.filter((b) => !b.isTest);
+  branches = branches.filter(
+    (b) => b.kind !== "WAREHOUSE" && !b.isHidden,
+  );
+  if (filterBranchId) {
+    branches = branches.filter((b) => b.id === filterBranchId);
+  }
 
   const empty: HqOverviewResult = {
     from,
     to,
+    includeTest,
+    hasTestBranch,
+    filterBranchId,
     ...emptyTotals(),
     netRevenue: 0,
     branches: [],
+    daily: buildEmptyDaily(from, to),
+    menuCompare: [],
   };
 
   if (branches.length === 0) return empty;
 
   const branchIds = branches.map((b) => b.id);
   const createdAtRange = rangeCreatedAt(from, to);
+  const dailyMap = new Map(
+    buildEmptyDaily(from, to).map((d) => [d.date, d]),
+  );
 
   const [orders, expenses, menuItems, stockHistory] = await Promise.all([
     prisma.order.findMany({
@@ -155,8 +350,10 @@ export async function buildHqOverview(
         branchId: true,
         status: true,
         awaitingPhotoKey: true,
+        paymentMethod: true,
         deliveryFee: true,
         discountAmount: true,
+        queueBusinessDate: true,
         items: {
           select: {
             branchMenuItemId: true,
@@ -198,12 +395,14 @@ export async function buildHqOverview(
         branchId: { in: branchIds },
         type: { in: [...HISTORY_TYPES] },
         createdAt: createdAtRange,
+        cancelledAt: null,
       },
       select: {
         branchId: true,
         menuItemId: true,
         quantity: true,
         type: true,
+        createdAt: true,
       },
     }),
   ]);
@@ -215,6 +414,7 @@ export async function buildHqOverview(
       branchName: b.name,
       brandId: b.brand?.id ?? b.brandId,
       brandName: b.brand?.name ?? null,
+      isTest: b.isTest,
       saleStockQty: 0,
       saleStockValue: 0,
       wasteQty: 0,
@@ -225,7 +425,11 @@ export async function buildHqOverview(
       issueValue: 0,
       expenseTotal: 0,
       expenseCount: 0,
+      cashExpense: 0,
+      transferExpense: 0,
       completedRevenue: 0,
+      cashRevenue: 0,
+      transferRevenue: 0,
       soldQty: 0,
       netRevenue: 0,
       stockItems: [],
@@ -248,6 +452,8 @@ export async function buildHqOverview(
     if (!agg) continue;
     const unitPrice = priceByMenuId.get(row.menuItemId) ?? 0;
     const value = qty * unitPrice;
+    const dayKey = bangkokDateKey(row.createdAt);
+    const day = dailyMap.get(dayKey);
 
     if (row.type === "STOCK_IN") {
       restockByMenuId.set(
@@ -256,24 +462,25 @@ export async function buildHqOverview(
       );
       agg.restockQty += qty;
       agg.restockValue += value;
+      if (day) day.restockQty += qty;
     } else if (row.type === "SALE") {
       // Menu sold qty comes from completed orders below (more accurate for “ขาย”)
+    } else if (row.type === "ISSUE") {
+      issueByMenuId.set(
+        row.menuItemId,
+        (issueByMenuId.get(row.menuItemId) ?? 0) + qty,
+      );
+      agg.issueQty += qty;
+      agg.issueValue += value;
+      if (day) day.issueQty += qty;
     } else if (WASTE_TYPES.has(row.type)) {
-      // ISSUE is both "จ่ายออก" and ของเสีย (staff records waste as ISSUE)
-      if (row.type === "ISSUE") {
-        issueByMenuId.set(
-          row.menuItemId,
-          (issueByMenuId.get(row.menuItemId) ?? 0) + qty,
-        );
-        agg.issueQty += qty;
-        agg.issueValue += value;
-      }
       wasteByMenuId.set(
         row.menuItemId,
         (wasteByMenuId.get(row.menuItemId) ?? 0) + qty,
       );
       agg.wasteQty += qty;
       agg.wasteValue += value;
+      if (day) day.wasteQty += qty;
     }
   }
 
@@ -354,7 +561,15 @@ export async function buildHqOverview(
       Number(order.discountAmount),
     );
     const agg = byBranch.get(order.branchId);
-    if (agg) agg.completedRevenue += total;
+    if (agg) {
+      agg.completedRevenue += total;
+      if (order.paymentMethod === "CASH") agg.cashRevenue += total;
+      else if (order.paymentMethod === "TRANSFER") agg.transferRevenue += total;
+    }
+
+    const dayKey = bangkokDateKey(order.queueBusinessDate);
+    const day = dailyMap.get(dayKey);
+    if (day) day.revenueBaht += total;
 
     for (const it of order.items) {
       if (!it.branchMenuItemId) continue;
@@ -365,6 +580,7 @@ export async function buildHqOverview(
         it.branchMenuItemId,
         (soldFromOrdersByMenuId.get(it.branchMenuItemId) ?? 0) + soldUnits,
       );
+      if (day) day.soldQty += soldUnits;
     }
   }
 
@@ -391,6 +607,8 @@ export async function buildHqOverview(
     );
     agg.expenseTotal = summary.total;
     agg.expenseCount = summary.count;
+    agg.cashExpense = summary.cash;
+    agg.transferExpense = summary.transfer;
   }
 
   for (const agg of byBranch.values()) {
@@ -398,7 +616,11 @@ export async function buildHqOverview(
     agg.wasteValue = Math.round(agg.wasteValue * 100) / 100;
     agg.restockValue = Math.round(agg.restockValue * 100) / 100;
     agg.issueValue = Math.round(agg.issueValue * 100) / 100;
+    agg.cashExpense = Math.round(agg.cashExpense * 100) / 100;
+    agg.transferExpense = Math.round(agg.transferExpense * 100) / 100;
     agg.completedRevenue = Math.round(agg.completedRevenue * 100) / 100;
+    agg.cashRevenue = Math.round(agg.cashRevenue * 100) / 100;
+    agg.transferRevenue = Math.round(agg.transferRevenue * 100) / 100;
     agg.netRevenue =
       Math.round((agg.completedRevenue - agg.expenseTotal) * 100) / 100;
     agg.stockItems.sort(
@@ -419,14 +641,26 @@ export async function buildHqOverview(
     acc.issueValue += b.issueValue;
     acc.expenseTotal += b.expenseTotal;
     acc.expenseCount += b.expenseCount;
+    acc.cashExpense += b.cashExpense;
+    acc.transferExpense += b.transferExpense;
     acc.completedRevenue += b.completedRevenue;
+    acc.cashRevenue += b.cashRevenue;
+    acc.transferRevenue += b.transferRevenue;
     acc.soldQty += b.soldQty;
     return acc;
   }, emptyTotals());
 
+  const daily = [...dailyMap.values()].map((d) => ({
+    ...d,
+    revenueBaht: Math.round(d.revenueBaht * 100) / 100,
+  }));
+
   return {
     from,
     to,
+    includeTest,
+    hasTestBranch,
+    filterBranchId,
     saleStockQty: totals.saleStockQty,
     saleStockValue: Math.round(totals.saleStockValue * 100) / 100,
     wasteQty: totals.wasteQty,
@@ -437,10 +671,16 @@ export async function buildHqOverview(
     issueValue: Math.round(totals.issueValue * 100) / 100,
     expenseTotal: Math.round(totals.expenseTotal * 100) / 100,
     expenseCount: totals.expenseCount,
+    cashExpense: Math.round(totals.cashExpense * 100) / 100,
+    transferExpense: Math.round(totals.transferExpense * 100) / 100,
     completedRevenue: Math.round(totals.completedRevenue * 100) / 100,
+    cashRevenue: Math.round(totals.cashRevenue * 100) / 100,
+    transferRevenue: Math.round(totals.transferRevenue * 100) / 100,
     soldQty: totals.soldQty,
     netRevenue:
       Math.round((totals.completedRevenue - totals.expenseTotal) * 100) / 100,
     branches: rows,
+    daily,
+    menuCompare: buildMenuCompare(rows),
   };
 }

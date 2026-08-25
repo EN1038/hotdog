@@ -1,4 +1,4 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, type BrandStatus } from "@prisma/client";
 import { requireStaff } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonOk } from "@/lib/api";
@@ -10,6 +10,10 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import {
+  BRAND_STATUS_LABELS,
+  getBrandSubscriptionState,
+} from "@/lib/brand-plan-shared";
 
 const COUNTABLE_STATUSES: OrderStatus[] = [
   OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
@@ -24,20 +28,79 @@ const COUNTABLE_STATUSES: OrderStatus[] = [
 export async function GET() {
   try {
     const { ensureProdSchemaCompat } = await import("@/lib/schema-compat");
-    void ensureProdSchemaCompat();
+    await ensureProdSchemaCompat();
 
     const session = await requireStaff();
-    const [branch, activeShift, pendingOrderCount, pendingStockCount] =
-      await Promise.all([
-        prisma.branch.findUnique({
+
+    type BranchBranding = {
+      isOpen: boolean;
+      stockEnabled: boolean;
+      brandId: string | null;
+      operatingMode: string;
+      weighSalesEnabled?: boolean;
+      brand: {
+        stockEnabled: boolean;
+        coverImageUrl: string | null;
+        bbqEnabled: boolean;
+        status: BrandStatus;
+        trialEndsAt: Date | null;
+        nextDueAt?: Date | null;
+      } | null;
+    };
+
+    async function loadBranch(): Promise<BranchBranding | null> {
+      try {
+        return await prisma.branch.findUnique({
           where: { id: session.branchId },
           select: {
             isOpen: true,
             stockEnabled: true,
             brandId: true,
-            brand: { select: { stockEnabled: true, coverImageUrl: true } },
+            operatingMode: true,
+            weighSalesEnabled: true,
+            kind: true,
+            brand: {
+              select: {
+                stockEnabled: true,
+                coverImageUrl: true,
+                bbqEnabled: true,
+                status: true,
+                trialEndsAt: true,
+                nextDueAt: true,
+              },
+            },
           },
-        }),
+        });
+      } catch (e) {
+        // Stale Prisma client / migrate lag — degrade without weigh fields
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/weighSalesEnabled|Unknown field|column|kind/i.test(msg)) throw e;
+        console.error("[staff/branding] weighSalesEnabled fallback", msg);
+        return prisma.branch.findUnique({
+          where: { id: session.branchId },
+          select: {
+            isOpen: true,
+            stockEnabled: true,
+            brandId: true,
+            operatingMode: true,
+            brand: {
+              select: {
+                stockEnabled: true,
+                coverImageUrl: true,
+                bbqEnabled: true,
+                status: true,
+                trialEndsAt: true,
+                nextDueAt: true,
+              },
+            },
+          },
+        });
+      }
+    }
+
+    const [branch, activeShift, pendingOrderCount, pendingStockCount] =
+      await Promise.all([
+        loadBranch(),
         getActiveShift(session.branchId),
         prisma.order.count({
           where: {
@@ -56,10 +119,35 @@ export async function GET() {
     const canSell = Boolean(activeShift);
     const brandStockEnabled = Boolean(branch?.brand?.stockEnabled);
     const stockEnabled = Boolean(branch?.stockEnabled);
+    const operatingMode = branch?.operatingMode ?? "NORMAL";
+    const weighSalesEnabled = Boolean(branch?.weighSalesEnabled);
+    const brandBbqEnabled = branch?.brand?.bbqEnabled !== false;
+    const weighSalesAvailable =
+      (operatingMode === "BBQ_WEIGH" ||
+        (operatingMode === "NORMAL" && weighSalesEnabled)) &&
+      brandBbqEnabled;
+    const dualSellModes =
+      operatingMode === "NORMAL" && weighSalesEnabled && brandBbqEnabled;
     const operatingDay = activeShift
       ? shiftCalendarDateKey(activeShift)
       : day.operatingDay;
     const businessDate = queueBusinessDateFromKey(operatingDay);
+
+    let todayOrderCount = 0;
+    try {
+      todayOrderCount = await prisma.order.count({
+        where: {
+          branchId: session.branchId,
+          queueBusinessDate: businessDate,
+          status: { in: COUNTABLE_STATUSES },
+        },
+      });
+    } catch (e) {
+      console.error(
+        "[staff/branding] today order count skipped",
+        e instanceof Error ? e.message : e,
+      );
+    }
 
     // Bounded scan — avoid loading unbounded/cancelled orders as a full day bloates branding.
     let todayRevenueBaht = 0;
@@ -110,6 +198,7 @@ export async function GET() {
       branchId: session.branchId,
       branchName: session.branchName,
       staffDisplayName: session.staffDisplayName,
+      staffImageUrl: session.staffImageUrl,
       staffPhone: session.staffPhone,
       brand: {
         ...session.brand,
@@ -119,6 +208,36 @@ export async function GET() {
             ?.coverImageUrl ??
           null,
       },
+      subscription: (() => {
+        const status = branch?.brand?.status ?? null;
+        const state =
+          status != null
+            ? getBrandSubscriptionState({
+                status,
+                trialEndsAt: branch?.brand?.trialEndsAt ?? null,
+                nextDueAt: branch?.brand?.nextDueAt ?? null,
+              })
+            : null;
+        return {
+          status,
+          statusLabel:
+            status != null ? (BRAND_STATUS_LABELS[status] ?? status) : null,
+          effectiveStatus: state?.effectiveStatus ?? status,
+          effectiveStatusLabel:
+            state?.effectiveStatus != null
+              ? (BRAND_STATUS_LABELS[state.effectiveStatus] ??
+                state.effectiveStatus)
+              : null,
+          trialEndsAt: branch?.brand?.trialEndsAt?.toISOString() ?? null,
+          nextDueAt: branch?.brand?.nextDueAt?.toISOString() ?? null,
+          expiresAt: state?.expiresAt?.toISOString() ?? null,
+          nearExpiry: state?.nearExpiry ?? false,
+          warningDays: state?.warningDays ?? null,
+          daysLeft: state?.daysLeft ?? null,
+          writeAllowed: state?.writeAllowed ?? true,
+          writeBlockedReason: state?.writeBlockedReason ?? null,
+        };
+      })(),
       autoAcceptOrders: session.autoAcceptOrders ?? false,
       operatingDay,
       canToggleStore:
@@ -137,9 +256,16 @@ export async function GET() {
         brandStockEnabled,
         branchStockEnabled: stockEnabled,
       }),
+      operatingMode,
+      weighSalesEnabled,
+      weighSalesAvailable,
+      dualSellModes,
       pendingOrderCount,
       pendingStockCount,
+      todayOrderCount,
       todayRevenueBaht,
+      branchKind: branch && "kind" in branch ? branch.kind : "STORE",
+      brandId: branch?.brandId ?? null,
     });
   } catch (error) {
     return handleApiError(error);

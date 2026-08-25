@@ -46,6 +46,28 @@ enum BrandMemberRole {
   MANAGER
 }
 
+enum BrandStatus {
+  TRIAL
+  ACTIVE
+  PAUSED
+  EXPIRED
+  DELETED
+}
+
+enum BrandPlan {
+  RETAIL
+  WEIGH_TABLE
+  MALA
+  MULTI
+}
+
+enum BrandInvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
+
 enum PriceRange {
   UNDER_100
   FROM_101_250
@@ -84,6 +106,19 @@ enum BranchOperatingMode {
   NORMAL
   SKEWER
   BBQ_WEIGH
+}
+
+/// STORE = หน้าร้านขาย; WAREHOUSE = สต๊อกกลาง (ไม่มีเมนูขาย)
+enum BranchKind {
+  STORE
+  WAREHOUSE
+}
+
+/// How สต๊อกกลาง sends goods to store branches
+enum WarehouseIssueMode {
+  TRANSFER
+  ISSUE
+  BOTH
 }
 
 enum TableSessionStatus {
@@ -185,6 +220,8 @@ model Admin {
   passwordHash           String
   /// AES-GCM encrypted plaintext for platform recovery/view only (never sent to brand admins)
   passwordEnc            String?
+  /// Brand owner login phone (normalized digits). Platform admins usually leave null.
+  phone                  String?            @unique
   isPlatformAdmin        Boolean            @default(false)
   /// LINE user id after admin adds the Official Account and links by one-time code
   lineUserId             String?            @unique
@@ -216,6 +253,8 @@ model Admin {
   confirmedSkewerOrders  SkewerOrder[]      @relation("SkewerOrderConfirmedByAdmin")
   closedTableSessions    TableSession[]     @relation("TableSessionClosedByAdmin")
   tableSessionLines      TableSessionLine[] @relation("TableSessionLineCreatedByAdmin")
+  primaryOfBrands        Brand[]            @relation("BrandPrimaryAdmin")
+  brandInvoicesCreated   BrandInvoice[]     @relation("BrandInvoiceCreatedBy")
 
   @@index([lineLinkCode])
 }
@@ -237,16 +276,39 @@ model Brand {
    * เบอร์ติดต่อแบรนด์ (ลูกค้ากด “แจ้งให้เราทราบ” ฯลฯ)
    */
   contactPhone       String?
-  color              String             @default("#dc2626")
+  color              String             @default("#0B2A4A")
   /// How many queue tickets to print when opening a queue (1–5). 2 = shop + customer.
   queueTicketCopies  Int                @default(1)
   /// Master switch: brand warehouse + branch stock features
   stockEnabled       Boolean            @default(false)
   /// When true, managers may push balances below zero
   allowNegativeStock Boolean            @default(false)
+  /// Fresh stock aging: orange alert when on-hand age ≥ this many days (default 3 → orange for 3–4)
+  stockAgingWarnDays     Int            @default(3)
+  /// Fresh stock aging: red alert when age ≥ this many days, or near/expired (default 5)
+  stockAgingCriticalDays Int            @default(5)
+  /// Lifecycle for selling / pausing a tenant
+  status             BrandStatus        @default(ACTIVE)
+  /// Commercial plan (limits + default modules)
+  plan               BrandPlan          @default(RETAIL)
+  maxBranches        Int                @default(10)
+  maxStaff           Int                @default(50)
+  kitchenEnabled     Boolean            @default(true)
+  bbqEnabled         Boolean            @default(true)
+  skewerEnabled      Boolean            @default(true)
+  trialEndsAt        DateTime?
+  /// When the brand may start using the system (trial/paid period start)
+  serviceStartsAt    DateTime?
+  /// Undeletable main owner account for this brand (must remain a BrandMember OWNER)
+  primaryAdminId     String?
+  /// Free-text billing notes for platform ops (โอนแล้ว / รอใบเสร็จ ฯลฯ)
+  billingNote        String?
+  lastPaidAt         DateTime?
+  nextDueAt          DateTime?
   createdAt          DateTime           @default(now())
   branches           Branch[]
   members            BrandMember[]
+  primaryAdmin       Admin?             @relation("BrandPrimaryAdmin", fields: [primaryAdminId], references: [id], onDelete: SetNull)
   activityLogs       AdminActivityLog[]
   products           BrandProduct[]
   stockLocations     StockLocation[]
@@ -258,6 +320,9 @@ model Brand {
   stockLots            StockLot[]
   kitchenProductions   KitchenProduction[]
   branchStockRequests  BranchStockRequest[]
+  invoices             BrandInvoice[]
+
+  @@index([primaryAdminId])
 }
 
 /**
@@ -299,6 +364,28 @@ model BrandMember {
   brand     Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
   @@unique([adminId, brandId])
+}
+
+/// Manual SaaS invoice / receipt ledger (platform records payment offline)
+model BrandInvoice {
+  id               String             @id @default(cuid())
+  brandId          String
+  number           String
+  title            String
+  amountBaht       Decimal            @db.Decimal(10, 2)
+  status           BrandInvoiceStatus @default(DRAFT)
+  periodLabel      String?
+  issuedAt         DateTime?
+  paidAt           DateTime?
+  note             String?
+  createdAt        DateTime           @default(now())
+  createdByAdminId String?
+  brand            Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  createdByAdmin   Admin?             @relation("BrandInvoiceCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([brandId, number])
+  @@index([brandId, createdAt])
+  @@index([brandId, status])
 }
 
 /// Idempotency log: one LINE daily summary push per branch operating day
@@ -406,6 +493,12 @@ model Branch {
   isHidden                     Boolean                      @default(false)
   /// Sandbox / QA branch for the brand — show “ทดลอง” badge; not production ops
   isTest                       Boolean                      @default(false)
+  /// STORE = ขายหน้าร้าน; WAREHOUSE = สต๊อกกลาง (ตั้งชื่อ + สิทธิ์พนักงาน ได้เหมือนสาขา)
+  kind                         BranchKind                   @default(STORE)
+  /// WAREHOUSE only: โอนรอรับ / จ่ายออกทันที / ทั้งสอง
+  warehouseIssueMode           WarehouseIssueMode           @default(TRANSFER)
+  /// WAREHOUSE only: empty = ทุกสาขาขาย; otherwise only these store branch ids
+  warehouseAllowedBranchIds    String[]                     @default([])
   /**
    * @deprecated Prefer storefrontHours / deliveryHours
    */
@@ -420,8 +513,10 @@ model Branch {
   autoAcceptOrders             Boolean                      @default(false)
   /// Opt-in stock for this branch (requires brand.stockEnabled + brandId)
   stockEnabled                 Boolean                      @default(false)
-  /// NORMAL = mala queue; SKEWER = skewer-prep; BBQ_WEIGH = dine-in weigh-by-kg (locked after create)
+  /// NORMAL = queue counter (mala/grill/fry/shabu); SKEWER = skewer-prep; BBQ_WEIGH = weigh-only (locked after create)
   operatingMode                BranchOperatingMode          @default(NORMAL)
+  /// NORMAL only: also allow BBQ weigh sales (tables/sessions) in the same branch
+  weighSalesEnabled            Boolean                      @default(false)
   /// Staff new-order alert sound (from platform library)
   alertSoundId                 String?
   createdAt                    DateTime                     @default(now())
@@ -452,6 +547,7 @@ model Branch {
 
   @@unique([brandId, code])
   @@index([alertSoundId])
+  @@index([brandId, kind])
 }
 
 /// Staff open/close round for a branch (multiple per calendar day).
@@ -467,6 +563,8 @@ model BranchShift {
   closedByStaffId String?
   /// Float / change money at open (ตังทอน)
   openingCash     Decimal      @db.Decimal(10, 2)
+  /// Cash counted in drawer when closing the round (นับเงินสดตอนปิด)
+  closingCash     Decimal?     @db.Decimal(10, 2)
   /// Optional note when opening the round (e.g. เงินทอนสำหรับเปิดร้าน)
   note            String?
   /// Admin cancelled this shift (void/mistake) — still shown in history, not active
@@ -488,15 +586,18 @@ model BranchShift {
 model Staff {
   id                           String                       @id @default(cuid())
   branchId                     String
-  phone                        String                       @unique
+  /// Unique per branch — same phone may work at multiple branches
+  phone                        String
   name                         String?
   gender                       String?
   age                          Int?
   imageUrl                     String?
   isActive                     Boolean                      @default(true)
   /// LINE user id after staff adds the Official Account and links by phone
-  lineUserId                   String?                      @unique
+  lineUserId                   String?
   lineNotifyEnabled            Boolean                      @default(true)
+  /// Set after SMS OTP proves this person owns the phone. Cleared when admin changes the number.
+  phoneVerifiedAt              DateTime?
   createdAt                    DateTime                     @default(now())
   branch                       Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   roles                        StaffRoleAssignment[]
@@ -510,6 +611,10 @@ model Staff {
   branchNonMenuItemHistories   BranchNonMenuItemHistory[]
   expenses                     BranchExpense[]
   stockRequests                BranchStockRequest[]
+
+  @@unique([branchId, phone])
+  @@index([phone])
+  @@index([lineUserId])
 }
 
 model StaffRoleAssignment {
@@ -519,6 +624,23 @@ model StaffRoleAssignment {
   staff   Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   @@unique([staffId, role])
+}
+
+/// Server-side staff login slots — one row per phone + device (max 3 live devices)
+model StaffAuthSession {
+  id         String    @id @default(cuid())
+  phone      String
+  deviceId   String
+  tokenJti   String    @unique
+  userAgent  String?
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  @@unique([phone, deviceId])
+  @@index([phone])
+  @@index([expiresAt])
 }
 
 model BranchMenuItem {
@@ -540,6 +662,8 @@ model BranchMenuItem {
   promoContinuous              Boolean                      @default(false)
   promoStartsAt                DateTime?
   promoEndsAt                  DateTime?
+  /// Default shelf life in days for fresh receive (e.g. mushrooms = 2)
+  defaultShelfLifeDays         Int?
   description                  String?
   categoryId                   String?
   imageUrl                     String?
@@ -547,10 +671,20 @@ model BranchMenuItem {
   /// Hidden from staff keyed-order menu (still visible to customers unless isHidden)
   hideFromStaff                Boolean                      @default(false)
   isOutOfStock                 Boolean                      @default(false)
+  /// Sell by piece / keyed order
+  sellPiece                    Boolean                      @default(true)
   /// BBQ_WEIGH: sell by kilogram (uses pricePerKg)
   sellByWeight                 Boolean                      @default(false)
   /// Price per kg when sellByWeight; null for piece items
   pricePerKg                   Decimal?                     @db.Decimal(10, 2)
+  /// Capability: skewer / stick sales
+  sellSkewer                   Boolean                      @default(false)
+  /// Capability: grill / BBQ style
+  sellGrill                    Boolean                      @default(false)
+  /// Capability: deep-fried
+  sellFry                      Boolean                      @default(false)
+  /// Capability: shabu / hotpot
+  sellShabu                    Boolean                      @default(false)
   /// Link to brand SKU for quantity stock (null = manual sold-out only)
   brandProductId               String?
   sortOrder                    Int                          @default(0)
@@ -596,6 +730,12 @@ model BranchMenuItemStockHistory {
   /// When set, this line was cancelled (stock effect reversed)
   cancelledAt      DateTime?
   cancelNote       String?
+  /// Business receive day (defaults to createdAt if null)
+  receivedAt       DateTime?
+  /// Expiry / best-before for fresh items
+  expiresAt        DateTime?
+  /// User-facing document number (IN-/OUT- prefix); one bill may share across lines
+  documentNo       String?
   createdAt        DateTime @default(now())
   createdByStaffId String?
 
@@ -648,6 +788,8 @@ model BranchOptionGroup {
   maxSelect                Int                         @default(1)
   allowDuplicateSelections Boolean                     @default(false)
   sortOrder                Int                         @default(0)
+  /// Show this group only when one of these option IDs is selected (empty = always)
+  visibleWhenOptionIds     String[]                    @default([])
   createdAt                DateTime                    @default(now())
   branch                   Branch                      @relation(fields: [branchId], references: [id], onDelete: Cascade)
   options                  BranchOption[]
@@ -721,11 +863,14 @@ model CustomerOtpChallenge {
   messageId   String
   otpRefNo    String?
   pendingName String?
+  /// "customer" | "staff"
+  purpose     String    @default("customer")
   expiresAt   DateTime
   createdAt   DateTime  @default(now())
   consumedAt  DateTime?
 
   @@index([phone, createdAt])
+  @@index([phone, purpose, createdAt])
   @@index([messageId])
 }
 
@@ -773,6 +918,10 @@ model Order {
   shiftId            String?
   /// Reference photo for rush “key later” orders
   photoUrl           String?
+  /// Transfer / payment slip image URL (โอนเงิน)
+  paymentSlipUrl     String?
+  /// Unguessable token for public receipt page (customer verify)
+  publicShareToken   String?           @unique
   /// True until staff finishes keying items from the photo (not counted as sales yet)
   awaitingPhotoKey   Boolean           @default(false)
   /// True after stock was deducted on accept / auto-accept
@@ -934,6 +1083,8 @@ model BrandProduct {
   trackStock         Boolean             @default(true)
   trackLots          Boolean             @default(false)
   lowStockAlert      Int?
+  /** อายุเก็บ (วัน) หลังวันผลิต — ค่าเริ่มต้นตอนนำเข้า; null = ใช้ 5 */
+  defaultShelfLifeDays Int?              @default(5)
   costPrice          Decimal?            @db.Decimal(10, 2)
   sellingPrice       Decimal?            @db.Decimal(10, 2)
   isActive           Boolean             @default(true)
@@ -1039,6 +1190,8 @@ model StockMovement {
   lotId            String?
   lotNumber        String?
   expiresAt        DateTime?
+  /// User-facing document number (IN-/OUT- prefix); one bill may share across lines
+  documentNo       String?
   createdByAdminId String?
   createdByStaffId String?
   createdAt        DateTime          @default(now())
@@ -1338,6 +1491,8 @@ model BranchNonMenuItemHistory {
   batchId             String?
   cancelledAt         DateTime?
   cancelNote          String?
+  /// User-facing document number (IN-/OUT- prefix); unique system-wide
+  documentNo          String?
   createdAt           DateTime @default(now())
   createdByStaffId    String?
 

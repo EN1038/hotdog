@@ -11,6 +11,13 @@ import {
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { appAbsoluteUrl } from "@/lib/app-url";
+import {
+  formatWeightKgDisplay,
+  parseWeightInput,
+  weightInputHint,
+  weightInputPlaceholder,
+  type WeighInputUnit,
+} from "@/lib/weigh-input";
 
 type BbqSection = "tables" | "sessions" | "bills";
 
@@ -87,6 +94,7 @@ export function BranchBbqPanel({
   const [saving, setSaving] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [weightKg, setWeightKg] = useState("");
+  const [weightUnit, setWeightUnit] = useState<WeighInputUnit>("kg");
   const [pieceQty, setPieceQty] = useState("1");
   const [selectedMenuId, setSelectedMenuId] = useState("");
   const [closePayment, setClosePayment] = useState<"CASH" | "TRANSFER">("CASH");
@@ -262,6 +270,16 @@ export function BranchBbqPanel({
       toast.error("เลือกเมนูก่อน");
       return;
     }
+    if (kind === "WEIGHT") {
+      const kg = parseWeightInput(weightKg, weightUnit);
+      if (kg == null) {
+        toast.error(
+          "กรอกน้ำหนักให้ถูกต้อง",
+          weightUnit === "g" ? "เช่น 350 กรัม" : "เช่น 1.4 กก.",
+        );
+        return;
+      }
+    }
     setSaving(true);
     try {
       const body =
@@ -269,7 +287,7 @@ export function BranchBbqPanel({
           ? {
               kind: "WEIGHT" as const,
               branchMenuItemId: selectedMenuId,
-              weightKg: Number(weightKg),
+              weightKg: parseWeightInput(weightKg, weightUnit)!,
             }
           : {
               kind: "PIECE" as const,
@@ -635,13 +653,46 @@ export function BranchBbqPanel({
                     </option>
                   ))}
                 </select>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-rose-800">น้ำหนัก</span>
+                  <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-white p-0.5 ring-1 ring-rose-100">
+                    <button
+                      type="button"
+                      onClick={() => setWeightUnit("kg")}
+                      className={`rounded-md px-2.5 py-1 text-xs font-bold ${
+                        weightUnit === "kg"
+                          ? "bg-rose-600 text-white"
+                          : "text-rose-800"
+                      }`}
+                    >
+                      กก.
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWeightUnit("g")}
+                      className={`rounded-md px-2.5 py-1 text-xs font-bold ${
+                        weightUnit === "g"
+                          ? "bg-rose-600 text-white"
+                          : "text-rose-800"
+                      }`}
+                    >
+                      กรัม
+                    </button>
+                  </div>
+                </div>
                 <input
                   className={adminInputClass}
                   inputMode="decimal"
-                  placeholder="น้ำหนัก (กก.)"
+                  placeholder={weightInputPlaceholder(weightUnit)}
                   value={weightKg}
                   onChange={(e) => setWeightKg(e.target.value)}
                 />
+                <p className="text-[11px] text-rose-800/80">
+                  {weightInputHint(weightUnit)}
+                  {parseWeightInput(weightKg, weightUnit) != null
+                    ? ` → ${formatWeightKgDisplay(parseWeightInput(weightKg, weightUnit)!)} กก.`
+                    : ""}
+                </p>
                 <button
                   type="button"
                   disabled={saving}

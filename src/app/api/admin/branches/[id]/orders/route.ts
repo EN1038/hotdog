@@ -200,6 +200,7 @@ export async function GET(request: Request, { params }: Params) {
           customer: true,
           deliveryLocation: true,
           items: { include: { branchMenuItem: true } },
+          consumableLines: true,
           shift: {
             select: {
               id: true,

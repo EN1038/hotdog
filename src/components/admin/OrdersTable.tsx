@@ -9,7 +9,10 @@ import {
   PAYMENT_METHOD_LABELS,
 } from "@/lib/constants";
 import { orderGrandTotal } from "@/lib/order-totals";
-import { summarizeOrderItems } from "@/lib/order-item-display";
+import {
+  parseOrderItemOptionsForDisplay,
+  summarizeOrderItems,
+} from "@/lib/order-item-display";
 import { CustomerTypeBadge } from "@/components/CustomerTypeBadge";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
 import {
@@ -42,7 +45,14 @@ export type AdminOrderRow = {
     optionsPrice?: string | number;
     itemName: string;
     optionsText?: string | null;
+    giftQuantity?: number | null;
   }>;
+  consumableLines?: Array<{
+    id?: string;
+    itemName: string;
+    quantity: number;
+    unit?: string | null;
+  }> | null;
 };
 
 type OrdersTableProps = {
@@ -121,6 +131,20 @@ export function OrdersTable({
                   .filter((it) => it.optionsText && it.itemName)
                   .map((it) => it.itemName)
               : [];
+            const optionLabels = [
+              ...new Set(
+                order.items.flatMap((it) => {
+                  const p = parseOrderItemOptionsForDisplay(it);
+                  return p.isPack ? p.extraNames : p.optionNames;
+                }),
+              ),
+            ].filter(Boolean);
+            const consumableText = (order.consumableLines ?? [])
+              .map(
+                (l) =>
+                  `${l.itemName} ×${l.quantity}${l.unit ? ` ${l.unit}` : ""}`,
+              )
+              .join(" · ");
 
             return (
               <tr
@@ -191,8 +215,18 @@ export function OrdersTable({
                       </p>
                     ) : null}
                     {packNames.length > 0 ? (
-                      <p className="mt-0.5 max-w-[12rem] truncate text-xs text-gray-500">
+                      <p className="mt-0.5 max-w-[14rem] truncate text-xs text-gray-500">
                         {packNames.join(", ")}
+                      </p>
+                    ) : null}
+                    {optionLabels.length > 0 ? (
+                      <p className="mt-0.5 max-w-[14rem] truncate text-xs font-medium text-sky-800">
+                        ตัวเลือก: {optionLabels.join(" · ")}
+                      </p>
+                    ) : null}
+                    {consumableText ? (
+                      <p className="mt-0.5 max-w-[14rem] truncate text-xs font-medium text-amber-800">
+                        {consumableText}
                       </p>
                     ) : null}
                   </Link>

@@ -48,7 +48,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       where: { brandId, type: StockLocationType.WAREHOUSE, name: body.name },
     });
     if (existing) {
-      return jsonError("มีคลังสินค้าบ้านกลางชื่อนี้แล้วในแบรนด์");
+      return jsonError("มีคลังสต๊อกกลางชื่อนี้แล้วในแบรนด์");
     }
 
     const warehouse = await prisma.stockLocation.create({
@@ -61,7 +61,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     await logAdminActivity(session, {
       action: "brand.stock.settings",
-      summary: `เพิ่มคลังสินค้าบ้านกลางใหม่: ${warehouse.name}`,
+      summary: `เพิ่มคลังสต๊อกกลางใหม่: ${warehouse.name}`,
       brandId,
       entityType: "stockLocation",
       entityId: warehouse.id,
@@ -86,7 +86,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     });
 
     if (!warehouse) {
-      return jsonError("ไม่พบคลังสินค้าบ้านกลาง", 404);
+      return jsonError("ไม่พบคลังสต๊อกกลาง", 404);
     }
 
     // Check if total quantity > 0
@@ -101,14 +101,14 @@ export async function DELETE(request: Request, { params }: RouteParams) {
 
     await logAdminActivity(session, {
       action: "brand.stock.settings",
-      summary: `ลบคลังสินค้าบ้านกลาง: ${warehouse.name}`,
+      summary: `ลบคลังสต๊อกกลาง: ${warehouse.name}`,
       brandId,
       entityType: "stockLocation",
       entityId: warehouse.id,
       entityName: warehouse.name,
     });
 
-    return jsonOk({ success: true, message: "ลบคลังสินค้าบ้านกลางเรียบร้อยแล้ว" });
+    return jsonOk({ success: true, message: "ลบคลังสต๊อกกลางเรียบร้อยแล้ว" });
   } catch (error) {
     return handleApiError(error);
   }

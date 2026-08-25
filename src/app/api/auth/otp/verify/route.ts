@@ -1,53 +1,46 @@
 import { z } from "zod";
-import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { completeCustomerLogin } from "@/lib/customer-login";
+import { isTaximailConfigured } from "@/lib/taximail";
 import {
-  isTaximailConfigured,
-  taximailVerifyOtp,
-} from "@/lib/taximail";
+  consumeOtpChallenge,
+  OTP_PURPOSES,
+} from "@/lib/otp-challenge";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 const schema = z.object({
   phone: z.string().min(9),
   otpCode: z.string().trim().min(4).max(8),
   challengeId: z.string().min(1),
   name: z.string().trim().min(1).optional(),
+  purpose: z.enum(OTP_PURPOSES).default("customer"),
 });
 
 export async function POST(request: Request) {
   try {
+    await ensureProdSchemaCompat();
     if (!isTaximailConfigured()) {
       return jsonError("ยังไม่ได้ตั้งค่า Taximail OTP", 503);
     }
 
     const body = schema.parse(await request.json());
     const phone = normalizePhone(body.phone);
-    const challenge = await prisma.customerOtpChallenge.findUnique({
-      where: { id: body.challengeId },
+    const consumed = await consumeOtpChallenge({
+      phone,
+      challengeId: body.challengeId,
+      otpCode: body.otpCode,
+      purpose: body.purpose,
     });
-
-    if (!challenge || challenge.phone !== phone) {
-      return jsonError("ไม่พบคำขอรหัส OTP", 400);
-    }
-    if (challenge.consumedAt) {
-      return jsonError("รหัสนี้ถูกใช้แล้ว กรุณาขอรหัสใหม่");
-    }
-    if (challenge.expiresAt.getTime() < Date.now()) {
-      return jsonError("รหัสหมดอายุ กรุณาขอรหัสใหม่");
+    if (!consumed.ok) {
+      return jsonError(consumed.message, consumed.status);
     }
 
-    const valid = await taximailVerifyOtp(challenge.messageId, body.otpCode);
-    if (!valid) {
-      return jsonError("รหัส OTP ไม่ถูกต้อง", 401);
+    if (body.purpose === "staff") {
+      return jsonOk({ ok: true, purpose: "staff" as const });
     }
 
-    await prisma.customerOtpChallenge.update({
-      where: { id: challenge.id },
-      data: { consumedAt: new Date() },
-    });
-
-    const name = body.name ?? challenge.pendingName;
+    const name = body.name ?? consumed.pendingName;
     const result = await completeCustomerLogin({ phone, name });
     if (result.needsName) {
       return jsonOk({ needsName: true });

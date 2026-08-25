@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { ToastProvider } from "@/components/admin/Toast";
 import { StaffBrandingShell } from "@/components/staff/StaffBrandingShell";
 
 export default function StaffLayout({
@@ -5,5 +7,11 @@ export default function StaffLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <StaffBrandingShell>{children}</StaffBrandingShell>;
+  return (
+    <Suspense fallback={null}>
+      <ToastProvider>
+        <StaffBrandingShell>{children}</StaffBrandingShell>
+      </ToastProvider>
+    </Suspense>
+  );
 }

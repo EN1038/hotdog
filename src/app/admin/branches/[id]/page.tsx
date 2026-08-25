@@ -35,6 +35,7 @@ import {
   isBranchOperatingMode,
   type BranchOperatingModeId,
 } from "@/lib/branch-operating-mode";
+import { HOTPOT_COUNTER_GROUP } from "@/lib/hotpot-counter-group";
 import { BranchShareCopyPanel } from "@/components/admin/BranchShareCopyPanel";
 import { BranchCustomerQrCard } from "@/components/admin/BranchCustomerQrCard";
 import { BranchMenuSalesPanel } from "@/components/admin/BranchMenuSalesPanel";
@@ -47,6 +48,7 @@ import { AdminCloseStoreModal } from "@/components/admin/AdminCloseStoreModal";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { MenuBestSellerTag } from "@/components/customer/MenuChannelPrice";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   IconBack,
   IconChevronRight,
@@ -87,7 +89,7 @@ import type { StaffRole } from "@prisma/client";
 type PhoneCheckState =
   | { status: "idle" }
   | { status: "checking" }
-  | { status: "available" }
+  | { status: "available"; notice?: string | null }
   | { status: "incomplete" }
   | {
       status: "taken";
@@ -103,6 +105,7 @@ type Brand = {
   nameTh?: string | null;
   nameEn?: string | null;
   stockEnabled?: boolean;
+  bbqEnabled?: boolean;
 };
 
 type OrderStats = {
@@ -140,6 +143,9 @@ type BranchDetail = {
   isOpen: boolean;
   isHidden: boolean;
   isTest?: boolean;
+  kind?: "STORE" | "WAREHOUSE";
+  warehouseIssueMode?: "TRANSFER" | "ISSUE" | "BOTH";
+  warehouseAllowedBranchIds?: string[];
   opensAt: string | null;
   closesAt: string | null;
   storefrontHours: unknown;
@@ -147,6 +153,7 @@ type BranchDetail = {
   allowAdvanceOrder: boolean;
   autoAcceptOrders: boolean;
   stockEnabled: boolean;
+  weighSalesEnabled?: boolean;
   operatingMode?: BranchOperatingModeId;
   brand: Brand | null;
   staff: {
@@ -157,6 +164,7 @@ type BranchDetail = {
     age: number | null;
     imageUrl: string | null;
     isActive: boolean;
+    phoneVerifiedAt?: string | null;
     lineUserId?: string | null;
     lineNotifyEnabled?: boolean;
     roles: { id: string; role: StaffRole }[];
@@ -219,7 +227,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "bbq-sessions", label: "บิลเปิด / ชั่ง" },
   { id: "bbq-bills", label: "บิลปิดแล้ว" },
   { id: "shifts", label: "รอบขาย" },
-  { id: "stock", label: "สต๊อกสาขา" },
+  { id: "stock", label: "สต๊อก" },
   { id: "expenses", label: "ค่าใช้จ่าย" },
   { id: "menu", label: "เมนู" },
   { id: "categories", label: "หมวดหมู่" },
@@ -304,13 +312,41 @@ const BBQ_WEIGH_HIDDEN_TABS = new Set<TabId>([
   "options",
 ]);
 
-function hiddenTabsForMode(mode: BranchOperatingModeId): Set<TabId> {
+const WAREHOUSE_HIDDEN_TABS = new Set<TabId>([
+  "overview",
+  "orders",
+  "skewer-orders",
+  "bbq-tables",
+  "bbq-sessions",
+  "bbq-bills",
+  "shifts",
+  "menu",
+  "categories",
+  "options",
+  "locations",
+  "copy",
+]);
+
+function hiddenTabsForMode(
+  mode: BranchOperatingModeId,
+  weighSalesEnabled = false,
+  kind?: string | null,
+): Set<TabId> {
+  if (kind === "WAREHOUSE") return WAREHOUSE_HIDDEN_TABS;
   if (mode === "SKEWER") return SKEWER_HIDDEN_TABS;
   if (mode === "BBQ_WEIGH") return BBQ_WEIGH_HIDDEN_TABS;
+  // Dual: mala + weigh — show BBQ tabs alongside NORMAL
+  if (weighSalesEnabled) {
+    return new Set<TabId>(["skewer-orders"]);
+  }
   return NORMAL_HIDDEN_TABS;
 }
 
-function defaultTabForMode(mode: BranchOperatingModeId): TabId {
+function defaultTabForMode(
+  mode: BranchOperatingModeId,
+  kind?: string | null,
+): TabId {
+  if (kind === "WAREHOUSE") return "staff";
   if (mode === "SKEWER") return "skewer-orders";
   if (mode === "BBQ_WEIGH") return "bbq-tables";
   return "orders";
@@ -567,6 +603,7 @@ function BranchDetailContent() {
     allowAdvanceOrder: true,
     autoAcceptOrders: false,
     stockEnabled: false,
+    weighSalesEnabled: false,
     operatingMode: "NORMAL" as BranchOperatingModeId,
     storefrontHours: null as WeeklySchedule | null,
     deliveryHours: null as WeeklySchedule | null,
@@ -652,6 +689,8 @@ function BranchDetailContent() {
     wasteValue: number;
     expenseTotal: number;
     expenseCount: number;
+    cashExpense: number;
+    transferExpense: number;
     netRevenue: number;
     days: OrderStats["last7Days"];
   } | null>(null);
@@ -679,6 +718,12 @@ function BranchDetailContent() {
       return;
     }
     const data: BranchDetail = await branchRes.json();
+    if (!WAREHOUSE_UI_ENABLED && data.kind === "WAREHOUSE") {
+      router.replace(
+        data.brandId ? `/admin/brands/${data.brandId}` : "/admin",
+      );
+      return;
+    }
     setBranch({
       ...data,
       menuItems: data.menuItems ?? [],
@@ -723,6 +768,7 @@ function BranchDetailContent() {
       allowAdvanceOrder: data.allowAdvanceOrder,
       autoAcceptOrders: data.autoAcceptOrders ?? false,
       stockEnabled: data.stockEnabled ?? false,
+      weighSalesEnabled: data.weighSalesEnabled ?? false,
       operatingMode: isBranchOperatingMode(data.operatingMode)
         ? data.operatingMode
         : "NORMAL",
@@ -779,11 +825,15 @@ function BranchDetailContent() {
     )
       ? branch.operatingMode
       : "NORMAL";
-    const hidden = hiddenTabsForMode(mode);
+    const hidden = hiddenTabsForMode(
+      mode,
+      Boolean(branch.weighSalesEnabled),
+      branch.kind,
+    );
     if (hidden.has(activeTab)) {
-      setTab(defaultTabForMode(mode));
+      setTab(defaultTabForMode(mode, branch.kind));
     }
-  }, [branch?.operatingMode, activeTab, branch]);
+  }, [branch?.operatingMode, branch?.weighSalesEnabled, branch?.kind, activeTab, branch]);
 
   useEffect(() => {
     if (!staffModalOpen) {
@@ -804,6 +854,7 @@ function BranchDetailContent() {
       try {
         const params = new URLSearchParams({ phone: digits });
         if (editingStaffId) params.set("excludeId", editingStaffId);
+        if (id) params.set("branchId", id);
         const res = await fetch(`/api/admin/staff/phone-check?${params}`);
         const data = await res.json();
         if (!res.ok) {
@@ -816,7 +867,11 @@ function BranchDetailContent() {
         if (data.available === null) {
           setPhoneCheck({ status: "incomplete" });
         } else if (data.available) {
-          setPhoneCheck({ status: "available" });
+          const notice =
+            data.multiBranch || data.otherBranches?.length
+              ? `เบอร์นี้มีในสาขาอื่นแล้ว — เพิ่มในสาขานี้ได้ (คนเดียวกันหลายสาขา)`
+              : null;
+          setPhoneCheck({ status: "available", notice });
         } else {
           setPhoneCheck({
             status: "taken",
@@ -833,7 +888,7 @@ function BranchDetailContent() {
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [staffPhone, staffModalOpen, editingStaffId]);
+  }, [staffPhone, staffModalOpen, editingStaffId, id]);
 
   async function saveBranch(e: React.FormEvent) {
     e.preventDefault();
@@ -965,14 +1020,14 @@ function BranchDetailContent() {
   async function addStaff(e: React.FormEvent) {
     e.preventDefault();
     const roles: StaffRole[] = [];
-    if (staffSeller) roles.push("SELLER");
-    if (staffDelivery) roles.push("DELIVERY");
+    if (staffSeller || branch?.kind === "WAREHOUSE") roles.push("SELLER");
+    if (staffDelivery && branch?.kind !== "WAREHOUSE") roles.push("DELIVERY");
     if (roles.length === 0) {
       toast.error("บันทึกไม่สำเร็จ", "เลือกอย่างน้อย 1 บทบาท");
       return;
     }
     if (phoneCheck.status === "taken") {
-      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้ถูกใช้ในระบบแล้ว");
+      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้มีในสาขานี้แล้ว");
       return;
     }
     const ageNum = staffAge.trim() ? parseInt(staffAge, 10) : null;
@@ -1045,14 +1100,14 @@ function BranchDetailContent() {
     e.preventDefault();
     if (!editingStaffId) return;
     const roles: StaffRole[] = [];
-    if (staffSeller) roles.push("SELLER");
-    if (staffDelivery) roles.push("DELIVERY");
+    if (staffSeller || branch?.kind === "WAREHOUSE") roles.push("SELLER");
+    if (staffDelivery && branch?.kind !== "WAREHOUSE") roles.push("DELIVERY");
     if (roles.length === 0) {
       toast.error("บันทึกไม่สำเร็จ", "เลือกอย่างน้อย 1 บทบาท");
       return;
     }
     if (phoneCheck.status === "taken") {
-      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้ถูกใช้ในระบบแล้ว");
+      toast.error("บันทึกไม่สำเร็จ", "เบอร์โทรนี้มีในสาขานี้แล้ว");
       return;
     }
     const ageNum = staffAge.trim() ? parseInt(staffAge, 10) : null;
@@ -1107,6 +1162,26 @@ function BranchDetailContent() {
       body: JSON.stringify({ lineUserId: null }),
     });
     load();
+  }
+
+  async function revokeStaffSessions(staffId: string, name: string | null) {
+    const ok = await confirm({
+      title: "ปลดทุกเครื่องที่เข้าใช้งาน?",
+      message:
+        "เบอร์นี้จะถูกออกจากระบบทุกเครื่อง (สูงสุด 3 เครื่อง) พนักงานต้องเข้าสู่ระบบใหม่",
+      confirmLabel: "ปลดเครื่อง",
+    });
+    if (!ok) return;
+    const res = await fetch(
+      `/api/admin/branches/${id}/staff/${staffId}/sessions`,
+      { method: "DELETE" },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error("ปลดเครื่องไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+      return;
+    }
+    toast.success("ปลดเครื่องแล้ว", `${name?.trim() || "พนักงาน"} ต้องเข้าสู่ระบบใหม่`);
   }
 
   async function toggleStaffActive(staffId: string, isActive: boolean) {
@@ -1476,6 +1551,7 @@ function BranchDetailContent() {
   const stats = overviewSummary;
   const money = (n: number) =>
     n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
+  const isWarehouse = branch.kind === "WAREHOUSE";
   const storefrontSchedule = ensureWeeklySchedule(
     branch.storefrontHours,
     branch.opensAt,
@@ -1560,6 +1636,11 @@ function BranchDetailContent() {
             >
               {branchLiveBadge.label}
             </span>
+            {isWarehouse ? (
+              <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-medium text-teal-900">
+                สต๊อกกลาง · ไม่มีเมนูขาย
+              </span>
+            ) : null}
             {branch.isHidden && (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                 ซ่อนจากลูกค้า
@@ -1573,14 +1654,28 @@ function BranchDetailContent() {
                 ⚗ ทดลอง
               </span>
             )}
-            {branch.operatingMode === "SKEWER" && (
+            {!isWarehouse && branch.operatingMode === "SKEWER" && (
               <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-900">
                 โหมดเสียบไม้
               </span>
             )}
-            {branch.operatingMode === "BBQ_WEIGH" && (
+            {!isWarehouse && branch.operatingMode === "BBQ_WEIGH" && (
               <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900">
                 โหมดหมูกระทะ
+              </span>
+            )}
+            {!isWarehouse &&
+              branch.operatingMode === "NORMAL" &&
+              branch.weighSalesEnabled && (
+              <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900">
+                {HOTPOT_COUNTER_GROUP.withWeighLabel}
+              </span>
+            )}
+            {!isWarehouse &&
+              branch.operatingMode === "NORMAL" &&
+              !branch.weighSalesEnabled && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+                {HOTPOT_COUNTER_GROUP.shortLabel}
               </span>
             )}
           </div>
@@ -1615,7 +1710,11 @@ function BranchDetailContent() {
             )
               ? branch.operatingMode
               : "NORMAL";
-            const hidden = hiddenTabsForMode(mode);
+            const hidden = hiddenTabsForMode(
+              mode,
+              Boolean(branch.weighSalesEnabled),
+              branch.kind,
+            );
             const visibleTabIds = group.tabIds.filter(
               (tabId) => !hidden.has(tabId),
             );
@@ -1833,7 +1932,21 @@ function BranchDetailContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("stock")}
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("tab", "stock");
+                    params.set("view", "movements");
+                    params.set("type", "WASTE");
+                    const from =
+                      overviewFrom <= overviewTo ? overviewFrom : overviewTo;
+                    const to =
+                      overviewFrom <= overviewTo ? overviewTo : overviewFrom;
+                    params.set("from", from);
+                    params.set("to", to);
+                    router.replace(`${pathname}?${params.toString()}`, {
+                      scroll: false,
+                    });
+                  }}
                   className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 text-left shadow-sm transition hover:border-orange-300"
                 >
                   <p className="text-sm text-orange-700">จำนวนของเสียขาย</p>
@@ -1841,12 +1954,26 @@ function BranchDetailContent() {
                     {money(stats?.wasteQty ?? 0)}
                   </p>
                   <p className="mt-1 text-xs text-orange-600/80">
-                    ชิ้นเมนูขายที่ตัดของเสียในช่วงนี้
+                    ชิ้นเมนูขายที่ตัดของเสีย · ดูรายการที่ร้านบันทึก
                   </p>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("stock")}
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("tab", "stock");
+                    params.set("view", "movements");
+                    params.set("type", "WASTE");
+                    const from =
+                      overviewFrom <= overviewTo ? overviewFrom : overviewTo;
+                    const to =
+                      overviewFrom <= overviewTo ? overviewTo : overviewFrom;
+                    params.set("from", from);
+                    params.set("to", to);
+                    router.replace(`${pathname}?${params.toString()}`, {
+                      scroll: false,
+                    });
+                  }}
                   className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 text-left shadow-sm transition hover:border-orange-300"
                 >
                   <p className="text-sm text-orange-700">มูลค่าของเสียขาย</p>
@@ -1854,7 +1981,7 @@ function BranchDetailContent() {
                     {money(stats?.wasteValue ?? 0)} ฿
                   </p>
                   <p className="mt-1 text-xs text-orange-600/80">
-                    คิดจากราคาเมนู × จำนวนของเสีย
+                    คิดจากราคาเมนู × จำนวนของเสีย · ดูรายการที่ร้านบันทึก
                   </p>
                 </button>
                 <button
@@ -1866,8 +1993,23 @@ function BranchDetailContent() {
                   <p className="mt-1 text-2xl font-bold text-rose-800">
                     {money(stats?.expenseTotal ?? 0)} ฿
                   </p>
-                  <p className="mt-1 text-xs text-rose-600/80">
-                    {stats?.expenseCount ?? 0} รายการ · ดูแท็บค่าใช้จ่าย
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-rose-800/90">
+                    <span>
+                      เงินสด{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(stats?.cashExpense ?? 0)} ฿
+                      </span>
+                    </span>
+                    <span className="text-rose-300">·</span>
+                    <span>
+                      เงินโอน{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(stats?.transferExpense ?? 0)} ฿
+                      </span>
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-rose-600/80">
+                    {stats?.expenseCount ?? 0} รายการ · กดดูแท็บค่าใช้จ่าย
                   </p>
                 </button>
                 <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
@@ -1875,7 +2017,28 @@ function BranchDetailContent() {
                   <p className="mt-1 text-2xl font-bold text-indigo-900">
                     {money(stats?.netRevenue ?? 0)} ฿
                   </p>
-                  <p className="mt-1 text-xs text-indigo-600/80">
+                  <div className="mt-2 space-y-0.5 text-xs text-indigo-800/85">
+                    <p>
+                      เงินสด{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(
+                          (stats?.cashRevenue ?? 0) - (stats?.cashExpense ?? 0),
+                        )}{" "}
+                        ฿
+                      </span>
+                    </p>
+                    <p>
+                      เงินโอน{" "}
+                      <span className="font-semibold tabular-nums">
+                        {money(
+                          (stats?.transferRevenue ?? 0) -
+                            (stats?.transferExpense ?? 0),
+                        )}{" "}
+                        ฿
+                      </span>
+                    </p>
+                  </div>
+                  <p className="mt-1.5 text-xs text-indigo-600/80">
                     รายได้สำเร็จหักค่าใช้จ่ายช่วงนี้
                   </p>
                 </div>
@@ -2415,7 +2578,28 @@ function BranchDetailContent() {
 
         {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
 
-        {activeTab === "stock" && <BranchStockPanel branchId={id} />}
+        {activeTab === "stock" &&
+          (isWarehouse ? (
+            <div className={panelClass}>
+              <h3 className="text-base font-semibold text-gray-900">
+                สต๊อกกลาง
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                บันทึกนำเข้า เสียบไม้ และจ่ายออกที่หน้าสต๊อกแบรนด์
+                ไม่มีเมนูขายที่นี่
+              </p>
+              {branch.brandId ? (
+                <Link
+                  href={`/admin/brands/${branch.brandId}/stock`}
+                  className={`mt-4 inline-flex ${btnPrimary}`}
+                >
+                  เปิดหน้าสต๊อกกลาง
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <BranchStockPanel branchId={id} />
+          ))}
 
         {activeTab === "expenses" && <BranchExpensesPanel branchId={id} />}
 
@@ -2424,10 +2608,12 @@ function BranchDetailContent() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">
-                  พนักงานประจำสาขา
+                  {isWarehouse ? "พนักงานสต๊อกกลาง" : "พนักงานประจำสาขา"}
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-600">
-                  {branch.staff.length} คน · รูปไม่บังคับ
+                  {isWarehouse
+                    ? `${branch.staff.length} คน · เข้าแอปสต๊อกกลางได้ (ไม่มีเมนูขาย) · สูงสุด 3 เครื่องต่อเบอร์`
+                    : `${branch.staff.length} คน · รูปไม่บังคับ · เข้าใช้งานได้สูงสุด 3 เครื่องต่อเบอร์`}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   เชื่อม LINE: เพิ่มเพื่อน Official Account แล้วส่งเบอร์โทรในระบบมาในแชท
@@ -2477,12 +2663,23 @@ function BranchDetailContent() {
                           {formatThaiPhone(s.phone)}
                         </p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                          {s.phoneVerifiedAt ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+                              ยืนยันเบอร์แล้ว
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
+                              ยังไม่ยืนยันเบอร์
+                            </span>
+                          )}
                           {s.roles.map((r) => (
                             <span
                               key={r.id}
                               className="rounded-full bg-gray-900/90 px-2 py-0.5 font-medium text-white"
                             >
-                              {ROLE_LABELS[r.role] ?? r.role}
+                              {isWarehouse && r.role === "SELLER"
+                                ? "พนักงานคลัง"
+                                : ROLE_LABELS[r.role] ?? r.role}
                             </span>
                           ))}
                           {s.lineUserId ? (
@@ -2524,6 +2721,13 @@ function BranchDetailContent() {
                         className={btnOutline}
                       >
                         แก้ไข
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => revokeStaffSessions(s.id, s.name)}
+                        className={btnOutline}
+                      >
+                        ปลดเครื่อง
                       </button>
                       <button
                         type="button"
@@ -2598,7 +2802,7 @@ function BranchDetailContent() {
                       )}
                       {phoneCheck.status === "available" && (
                         <p className="mt-1.5 text-xs font-medium text-emerald-700">
-                          เบอร์นี้ใช้ได้
+                          {phoneCheck.notice ?? "เบอร์นี้ใช้ได้"}
                         </p>
                       )}
                       {phoneCheck.status === "incomplete" && (
@@ -2608,7 +2812,7 @@ function BranchDetailContent() {
                       )}
                       {phoneCheck.status === "taken" && (
                         <p className="mt-1.5 text-xs font-medium text-red-600">
-                          เบอร์ซ้ำ — ใช้โดย{" "}
+                          เบอร์ซ้ำในสาขานี้ — ใช้โดย{" "}
                           {phoneCheck.staffName || "พนักงาน"}
                           {phoneCheck.branchName
                             ? ` (สาขา ${phoneCheck.branchName})`
@@ -2618,6 +2822,18 @@ function BranchDetailContent() {
                       {phoneCheck.status === "error" && (
                         <p className="mt-1.5 text-xs text-red-600">
                           {phoneCheck.message}
+                        </p>
+                      )}
+                      {editingStaffId ? (
+                        <p className="mt-1.5 text-xs text-gray-500">
+                          {branch.staff.find((s) => s.id === editingStaffId)
+                            ?.phoneVerifiedAt
+                            ? "ยืนยันเบอร์แล้ว — ถ้าเปลี่ยนเบอร์ พนักงานต้องยืนยัน OTP ใหม่ตอนเข้าสู่ระบบ"
+                            : "ยังไม่ยืนยันเบอร์ — พนักงานจะยืนยัน OTP ครั้งแรกตอนเข้าสู่ระบบ"}
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-xs text-gray-500">
+                          พนักงานจะยืนยัน OTP ครั้งแรกตอนเข้าสู่ระบบ
                         </p>
                       )}
                     </div>
@@ -2682,8 +2898,9 @@ function BranchDetailContent() {
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
-                          คนขาย
+                          {isWarehouse ? "พนักงานคลัง" : "คนขาย"}
                         </button>
+                        {isWarehouse ? null : (
                         <button
                           type="button"
                           onClick={() => setStaffDelivery((v) => !v)}
@@ -2695,6 +2912,7 @@ function BranchDetailContent() {
                         >
                           คนส่ง
                         </button>
+                        )}
                       </div>
                       {!staffSeller && !staffDelivery && (
                         <p className="mt-1.5 text-xs text-red-600">
@@ -3304,6 +3522,79 @@ function BranchDetailContent() {
                       </button>
                     )}
                   </div>
+
+                  {settings.operatingMode === "NORMAL" ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {HOTPOT_COUNTER_GROUP.weighAddonTitle}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {branch?.brand && branch.brand.bbqEnabled === false
+                            ? "แพ็กเกจแบรนด์ยังไม่เปิดโหมดชั่งกิโล"
+                            : settings.weighSalesEnabled
+                              ? `เปิดอยู่ — ${HOTPOT_COUNTER_GROUP.withWeighLabel} · พนักงานสลับโหมดได้`
+                              : `ปิดอยู่ — เปิดเพื่อครอบคลุม ${HOTPOT_COUNTER_GROUP.withWeighLabel}`}
+                        </p>
+                      </div>
+                      {settings.weighSalesEnabled ? (
+                        <button
+                          type="button"
+                          className={`${btnDanger} shrink-0`}
+                          onClick={() =>
+                            patchBranchSetting(
+                              { weighSalesEnabled: false },
+                              {
+                                successMessage: "ปิดขายชั่งกิโลแล้ว",
+                                errorTitle: "บันทึกไม่สำเร็จ",
+                                onSuccessLocal: () => {
+                                  setSettings((s) => ({
+                                    ...s,
+                                    weighSalesEnabled: false,
+                                  }));
+                                  setBranch((prev) =>
+                                    prev
+                                      ? { ...prev, weighSalesEnabled: false }
+                                      : prev,
+                                  );
+                                },
+                              },
+                            )
+                          }
+                        >
+                          ปิดชั่งกิโล
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`${btnPrimary} shrink-0 disabled:opacity-50`}
+                          disabled={branch?.brand?.bbqEnabled === false}
+                          onClick={() =>
+                            patchBranchSetting(
+                              { weighSalesEnabled: true },
+                              {
+                                successMessage: "เปิดขายชั่งกิโลแล้ว",
+                                errorTitle: "บันทึกไม่สำเร็จ",
+                                onSuccessLocal: () => {
+                                  setSettings((s) => ({
+                                    ...s,
+                                    weighSalesEnabled: true,
+                                  }));
+                                  setBranch((prev) =>
+                                    prev
+                                      ? { ...prev, weighSalesEnabled: true }
+                                      : prev,
+                                  );
+                                },
+                              },
+                            )
+                          }
+                        >
+                          เปิดชั่งกิโล
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                     <div className="min-w-0 flex-1">
@@ -3946,7 +4237,7 @@ function BranchDetailContent() {
                   สาขาทดลอง
                 </p>
                 <p className="mt-0.5 text-xs text-violet-900/70">
-                  ติดป้าย “ทดลอง” ในรายการสาขา — ใช้แยกจากสาขาเปิดขายจริงตอนทำระบบขาย
+                  ได้ 1 สล็อตต่อแบรนด์ — ไม่นับโควต้าแพ็กเกจ และไม่โชว์หน้าร้านลูกค้า
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
@@ -3958,8 +4249,8 @@ function BranchDetailContent() {
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">
                     {settings.isTest
-                      ? "แอดมินจะเห็นป้ายม่วง “⚗ ทดลอง” บนการ์ดและหัวหน้าสาขา"
-                      : "แนะนำตั้ง 1 สาขาต่อแบรนด์ สำหรับเทรนพนักงาน / ทดลอง stock และออเดอร์"}
+                      ? "แอดมินจะเห็นป้ายม่วง “⚗ ทดลอง” — ยกเลิกได้ถ้ามีโควต้าสาขาจริงว่าง"
+                      : "แบรนด์ละ 1 สาขาเท่านั้น สำหรับเทรนพนักงาน / ทดลอง stock และออเดอร์"}
                   </p>
                 </div>
                 <button

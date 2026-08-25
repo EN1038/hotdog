@@ -139,12 +139,8 @@ async function loadDayMenuActivity(
     const acc = ensure(name);
     if (!acc) continue;
     if (row.type === "STOCK_IN") acc.restockQty += qty;
-    else if (row.type === "ISSUE") {
-      acc.issueQty += qty;
-      acc.wasteQty += qty;
-    } else {
-      acc.wasteQty += qty;
-    }
+    else if (row.type === "ISSUE") acc.issueQty += qty;
+    else if (row.type === "DAMAGE" || row.type === "LOST") acc.wasteQty += qty;
   }
 
   return [...byName.entries()]

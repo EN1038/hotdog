@@ -1,0 +1,243 @@
+"use client";
+
+import type { BrandPlan } from "@prisma/client";
+import {
+  BRAND_PLAN_LABELS,
+  BRAND_PLAN_PRICES,
+} from "@/lib/brand-plan-shared";
+
+export type BrandStatusId =
+  | "TRIAL"
+  | "ACTIVE"
+  | "PAUSED"
+  | "EXPIRED"
+  | "DELETED";
+export type BrandPlanId = BrandPlan;
+
+export const BRAND_STATUS_LABELS: Record<BrandStatusId, string> = {
+  TRIAL: "ทดลอง",
+  ACTIVE: "ใช้งาน",
+  PAUSED: "หยุดใช้",
+  EXPIRED: "หมดอายุ",
+  DELETED: "ลบแล้ว",
+};
+
+export { BRAND_PLAN_LABELS };
+
+export const BRAND_STATUS_BADGE: Record<BrandStatusId, string> = {
+  TRIAL: "bg-amber-100 text-amber-800",
+  ACTIVE: "bg-emerald-100 text-emerald-800",
+  PAUSED: "bg-slate-200 text-slate-700",
+  EXPIRED: "bg-red-100 text-red-800",
+  DELETED: "bg-slate-800 text-white",
+};
+
+/** Statuses editable in plan forms (ไม่รวม DELETED — ใช้ soft-delete / กู้คืน) */
+export const BRAND_STATUS_EDITABLE: BrandStatusId[] = [
+  "TRIAL",
+  "ACTIVE",
+  "PAUSED",
+  "EXPIRED",
+];
+
+export type BrandPlanSummary = {
+  status?: BrandStatusId;
+  plan?: BrandPlanId;
+  maxBranches?: number;
+  maxStaff?: number;
+  stockEnabled?: boolean;
+  kitchenEnabled?: boolean;
+  bbqEnabled?: boolean;
+  skewerEnabled?: boolean;
+  trialEndsAt?: string | Date | null;
+  serviceStartsAt?: string | Date | null;
+  nextDueAt?: string | Date | null;
+  hasTestBranch?: boolean;
+  _count?: { branches: number; members?: number };
+};
+
+export function effectiveStatus(
+  brand: Pick<BrandPlanSummary, "status" | "trialEndsAt">,
+): BrandStatusId {
+  const status = brand.status ?? "ACTIVE";
+  if (status === "DELETED") return "DELETED";
+  if (status === "TRIAL" && brand.trialEndsAt) {
+    const ends = new Date(brand.trialEndsAt);
+    if (!Number.isNaN(ends.getTime()) && ends < new Date()) return "EXPIRED";
+  }
+  return status;
+}
+
+export function formatTrialEndsAt(value: string | Date | null | undefined) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("th-TH", {
+    timeZone: "Asia/Bangkok",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** Calendar-day difference in Asia/Bangkok (positive = future). */
+export function daysUntilDate(value: string | Date | null | undefined): number | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const endKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+  const todayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [ey, em, ed] = endKey.split("-").map(Number);
+  const [ty, tm, td] = todayKey.split("-").map(Number);
+  return Math.round(
+    (Date.UTC(ey, em - 1, ed) - Date.UTC(ty, tm - 1, td)) / 86_400_000,
+  );
+}
+
+export function formatDaysRemaining(days: number | null): string | null {
+  if (days == null) return null;
+  if (days > 1) return `เหลือ ${days} วัน`;
+  if (days === 1) return "เหลือ 1 วัน";
+  if (days === 0) return "วันนี้";
+  if (days === -1) return "เลยมา 1 วัน";
+  return `เลยมา ${Math.abs(days)} วัน`;
+}
+
+/** วันครบกำหนดที่ใช้มอนิเตอร์: ทดลองใช้ trialEndsAt, อื่นๆ ใช้ nextDueAt */
+export function brandMonitorDeadline(
+  brand: Pick<BrandPlanSummary, "status" | "trialEndsAt" | "nextDueAt">,
+): Date | null {
+  const status = effectiveStatus(brand);
+  if (status === "DELETED") return null;
+  if (status === "TRIAL" || status === "EXPIRED") {
+    if (!brand.trialEndsAt) return null;
+    const d = new Date(brand.trialEndsAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (brand.nextDueAt) {
+    const d = new Date(brand.nextDueAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+export function brandMonitorDaysRemaining(
+  brand: Pick<BrandPlanSummary, "status" | "trialEndsAt" | "nextDueAt">,
+): number | null {
+  return daysUntilDate(brandMonitorDeadline(brand));
+}
+
+export function moduleLabels(brand: BrandPlanSummary): string[] {
+  return [
+    brand.stockEnabled ? "สต็อก" : null,
+    brand.kitchenEnabled ? "ครัว" : null,
+    brand.bbqEnabled ? "หมูกระทะ" : null,
+    brand.skewerEnabled ? "เสียบไม้" : null,
+  ].filter((v): v is string => Boolean(v));
+}
+
+export function BrandPlanBanner({
+  brand,
+  editable = false,
+  onEdit,
+}: {
+  brand: BrandPlanSummary;
+  editable?: boolean;
+  onEdit?: () => void;
+}) {
+  const status = effectiveStatus(brand);
+  const plan = brand.plan ?? "RETAIL";
+  const trial = formatTrialEndsAt(brand.trialEndsAt);
+  const starts = formatTrialEndsAt(brand.serviceStartsAt);
+  const trialDays = daysUntilDate(brand.trialEndsAt);
+  const trialRemain = formatDaysRemaining(trialDays);
+  const monitorDays = brandMonitorDaysRemaining(brand);
+  const nearExpiry = monitorDays != null && monitorDays >= 0 && monitorDays <= 7;
+  const monitorRemain = formatDaysRemaining(monitorDays);
+  const modules = moduleLabels(brand);
+  const branchUsed = brand._count?.branches;
+  const maxBranches = brand.maxBranches;
+  const maxStaff = brand.maxStaff;
+  const price = BRAND_PLAN_PRICES[plan];
+
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="min-w-0 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BRAND_STATUS_BADGE[status]}`}
+          >
+            {BRAND_STATUS_LABELS[status]}
+          </span>
+          <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
+            {BRAND_PLAN_LABELS[plan]}
+          </span>
+          <span className="text-[11px] text-slate-500">฿{price}/เดือน</span>
+          {starts ? (
+            <span className="text-[11px] text-slate-600">เริ่ม {starts}</span>
+          ) : null}
+          {status === "TRIAL" && trial ? (
+            <span className="text-[11px] text-amber-800">
+              ทดลองถึง {trial}
+              {trialRemain ? ` · ${trialRemain}` : ""}
+            </span>
+          ) : null}
+          {nearExpiry ? (
+            <span className="text-[11px] text-amber-800">
+              ใกล้ครบกำหนดแพ็กเกจ {monitorRemain ? `· ${monitorRemain}` : ""}
+            </span>
+          ) : null}
+          {status === "EXPIRED" ? (
+            <span className="text-[11px] text-red-700">
+              หมดอายุแล้ว — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้
+            </span>
+          ) : null}
+          {status === "DELETED" ? (
+            <span className="text-[11px] text-slate-700">
+              ลบแล้ว (soft) — ไม่แสดงในรายการปกติ · เข้าใช้ไม่ได้
+            </span>
+          ) : null}
+          {status === "PAUSED" ? (
+            <span className="text-[11px] text-slate-600">
+              หยุดใช้ชั่วคราว — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้
+            </span>
+          ) : null}
+        </div>
+        <p className="text-sm text-slate-600">
+          สาขาสูงสุด {maxBranches ?? "—"}
+          {typeof branchUsed === "number" ? ` · ใช้แล้ว ${branchUsed}` : ""}
+          {brand.hasTestBranch ? " · +ทดลอง 1 (ไม่นับโควต้า)" : " · สล็อตทดลองว่าง"}
+          {" · "}
+          พนักงานสูงสุด {maxStaff ?? "—"}
+          {modules.length > 0
+            ? ` · โมดูล: ${modules.join(" · ")}`
+            : " · โมดูลพิเศษปิดอยู่"}
+        </p>
+        {!editable ? (
+          <p className="text-xs text-slate-500">
+            เปลี่ยนแพ็กเกจ / สถานะ / โควต้าได้เฉพาะผู้ดูแลแพลตฟอร์ม
+          </p>
+        ) : null}
+      </div>
+      {editable && onEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          ตั้งแพ็กเกจ
+        </button>
+      ) : null}
+    </div>
+  );
+}

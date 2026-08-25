@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/constants";
 import type { BranchData, MenuItemData, MenuOptionGroupData } from "@/lib/customer-types";
 import { useCustomer } from "@/components/customer/CustomerProvider";
 import {
+  MenuWeighPriceTag,
   menuItemSellPrice,
   menuItemVisibleForFulfillment,
 } from "@/components/customer/MenuChannelPrice";
@@ -26,6 +27,8 @@ import {
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
 import {
   computeSelectedOptions,
+  filterVisibleOptionGroups,
+  pruneHiddenGroupSelections,
   validateOptionGroupSelections,
   type SelectedByGroup,
 } from "@/lib/option-selection";
@@ -138,6 +141,13 @@ export default function ItemDetailPage() {
   const computed = useMemo(
     () =>
       item ? computeSelectedOptions(item.optionGroups, selectedByGroup) : null,
+    [item, selectedByGroup],
+  );
+  const visibleOptionGroups = useMemo(
+    () =>
+      item
+        ? filterVisibleOptionGroups(item.optionGroups, selectedByGroup)
+        : [],
     [item, selectedByGroup],
   );
   const unitTotal = item ? itemBasePrice + (computed?.optionsPrice ?? 0) : 0;
@@ -284,6 +294,15 @@ export default function ItemDetailPage() {
         {item.description && (
           <p className="mt-1 text-[15px] text-gray-500 leading-relaxed">{item.description}</p>
         )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <MenuWeighPriceTag item={item} className="text-[12px]" />
+        </div>
+        {item.sellByWeight && item.pricePerKg != null ? (
+          <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-[13px] leading-relaxed text-rose-900">
+            ชั่งกิโลที่ร้าน: น้ำหนัก × {formatPrice(Number(item.pricePerKg))}฿/กก.
+            — สแกน QR โต๊ะเพื่อดูบิลชั่งแบบเรียลไทม์
+          </p>
+        ) : null}
         {item.isOutOfStock ? (
           <p className="mt-2 text-sm font-medium text-gray-400">หมดชั่วคราว</p>
         ) : null}
@@ -292,12 +311,12 @@ export default function ItemDetailPage() {
       <div className="h-2 w-full bg-[#f5f5f6]"></div>
 
       <section className="bg-white">
-        {item.optionGroups.length === 0 ? (
+        {visibleOptionGroups.length === 0 ? (
           <div className="px-4 py-4">
             <p className="text-sm text-gray-500">เมนูนี้ไม่มีตัวเลือกเพิ่มเติม</p>
           </div>
         ) : (
-          item.optionGroups.map((group, gi) => (
+          visibleOptionGroups.map((group, gi) => (
               <div
                 id={`option-group-${group.id}`}
                 key={group.id}
@@ -331,10 +350,13 @@ export default function ItemDetailPage() {
                     group={group}
                     selectedIds={selectedByGroup[group.id] ?? []}
                     onChange={(ids) => {
-                      setSelectedByGroup((prev) => ({
-                        ...prev,
-                        [group.id]: ids,
-                      }));
+                      if (!item) return;
+                      setSelectedByGroup((prev) =>
+                        pruneHiddenGroupSelections(item.optionGroups, {
+                          ...prev,
+                          [group.id]: ids,
+                        }),
+                      );
                       rememberGroupSelection(branchId, group, ids);
                       if (ids.length > 0 && errorGroupId === group.id) {
                         setErrorGroupId(null);

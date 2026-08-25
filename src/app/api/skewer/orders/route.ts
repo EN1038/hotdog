@@ -13,6 +13,7 @@ import {
   requestedDateToKey,
   SKEWER_MIN_QTY_PER_ITEM,
 } from "@/lib/skewer-order";
+import { assertBrandWriteAllowed } from "@/lib/brand-plan";
 
 const itemSchema = z.object({
   branchMenuItemId: z.string().min(1),
@@ -146,6 +147,13 @@ export async function POST(request: Request) {
         isOpen: true,
         isHidden: true,
         operatingMode: true,
+        brand: {
+          select: {
+            status: true,
+            trialEndsAt: true,
+            nextDueAt: true,
+          },
+        },
       },
     });
     if (!branch || branch.isHidden) {
@@ -154,6 +162,7 @@ export async function POST(request: Request) {
     if (branch.operatingMode !== BranchOperatingMode.SKEWER) {
       return jsonError("สาขานี้ไม่รับสั่งเสียบไม้");
     }
+    assertBrandWriteAllowed(branch.brand);
     if (!branch.isOpen) {
       return jsonError("สาขายังไม่เปิดรับออเดอร์");
     }
@@ -165,10 +174,23 @@ export async function POST(request: Request) {
         id: { in: menuIds },
         isHidden: false,
       },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        category: { select: { stockExempt: true } },
+        optionGroupLinks: { select: { group: { select: { mode: true } } } },
+      },
     });
     if (menuItems.length !== menuIds.length) {
       return jsonError("มีเมนูที่ไม่พร้อมสั่ง");
+    }
+    const hasPromo = menuItems.some(
+      (item) =>
+        item.optionGroupLinks.some((l) => l.group.mode === "FROM_MENU") ||
+        item.category?.stockExempt,
+    );
+    if (hasPromo) {
+      return jsonError("โปรโมชั่นไม่ใช่รายการสั่งไม้ — เลือกเมนูขายเป็นชิ้น");
     }
     const menuById = new Map(menuItems.map((m) => [m.id, m]));
 

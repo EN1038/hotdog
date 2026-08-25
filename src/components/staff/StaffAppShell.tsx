@@ -1,25 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 import {
   IconHome,
   IconLogout,
-  IconPackage,
   IconReceipt,
   IconStore,
 } from "@/components/icons";
-import { useToast } from "@/components/admin/Toast";
-import { StaffShiftControls, type ActiveShiftInfo } from "@/components/staff/StaffShiftControls";
+import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 import { StaffOrderModeProvider } from "@/components/staff/StaffOrderModeContext";
 import { formatPrice } from "@/lib/constants";
+import {
+  canReturnToOwnerFromStaff,
+  returnToOwnerFromStaff,
+} from "@/lib/owner-enter-staff";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
-export type StaffShellTab = "home" | "key" | "orders" | "stock" | "shift-stock" | "settings";
+export type StaffShellTab = "home" | "key" | "orders" | "summary" | "stock" | "shift-stock" | "settings";
 
 type BrandingPayload = {
   branchName?: string;
+  staffDisplayName?: string;
+  staffImageUrl?: string | null;
   brand?: {
     name?: string | null;
     nameTh?: string | null;
@@ -34,9 +39,29 @@ type BrandingPayload = {
   pendingOrderCount?: number;
   pendingStockCount?: number;
   canSell?: boolean;
-  activeShift?: ActiveShiftInfo | null;
   todayRevenueBaht?: number;
+  todayOrderCount?: number;
+  branchKind?: string;
+  brandId?: string | null;
+  subscription?: {
+    nearExpiry?: boolean;
+    daysLeft?: number | null;
+    writeAllowed?: boolean;
+    writeBlockedReason?: string | null;
+    effectiveStatusLabel?: string | null;
+  } | null;
 };
+
+type BranchChoice = {
+  branchId: string;
+  branchName: string;
+  brandName: string | null;
+  branchKind?: "STORE" | "WAREHOUSE";
+};
+
+function formatBranchLabel(name: string) {
+  return name.replace(/^สาขา\s*/i, "").trim() || name;
+}
 
 function IconKeyOrder({ size = 22 }: { size?: number }) {
   return (
@@ -117,9 +142,17 @@ function StaffAppShellInner({
   showHeader?: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const branding = useSiteBranding();
-  const toast = useToast();
+  const branchPickerId = useId();
   const [meta, setMeta] = useState<BrandingPayload | null>(null);
+  const [branchChoices, setBranchChoices] = useState<BranchChoice[]>([]);
+  const [currentBranchId, setCurrentBranchId] = useState("");
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const [canReturnOwner, setCanReturnOwner] = useState(false);
+  const [returningOwner, setReturningOwner] = useState(false);
+  const [switchingBranch, setSwitchingBranch] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   const reloadMeta = () => {
     fetch("/api/staff/branding")
@@ -130,15 +163,114 @@ function StaffAppShellInner({
       .catch(() => {});
   };
 
+  const reloadBranches = () => {
+    fetch("/api/staff/switch-branch")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (
+          data: {
+            currentBranchId?: string;
+            branches?: BranchChoice[];
+          } | null,
+        ) => {
+          if (!data) return;
+          setCurrentBranchId(data.currentBranchId ?? "");
+          setBranchChoices(Array.isArray(data.branches) ? data.branches : []);
+        },
+      )
+      .catch(() => {});
+  };
+
   useEffect(() => {
     reloadMeta();
+    reloadBranches();
   }, [pathname]);
 
   useEffect(() => {
-    const onReload = () => reloadMeta();
+    void canReturnToOwnerFromStaff().then(setCanReturnOwner);
+  }, [pathname]);
+
+  async function goBackToOwner() {
+    if (returningOwner) return;
+    setReturningOwner(true);
+    try {
+      const result = await returnToOwnerFromStaff();
+      if (!result.ok) {
+        setSwitchError(result.error);
+        setReturningOwner(false);
+        return;
+      }
+      window.location.assign("/owner");
+    } catch {
+      setReturningOwner(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!meta) return;
+    const warehouse = meta.branchKind === "WAREHOUSE";
+    const path = pathname || "";
+    if (warehouse && !WAREHOUSE_UI_ENABLED) {
+      router.replace("/staff/login");
+      return;
+    }
+    const warehouseOk =
+      path.startsWith("/staff/warehouse") ||
+      path.startsWith("/staff/settings") ||
+      path.startsWith("/staff/login");
+    if (warehouse && !warehouseOk) {
+      router.replace("/staff/warehouse");
+    }
+  }, [meta, pathname, router]);
+
+  useEffect(() => {
+    const onReload = () => {
+      reloadMeta();
+      reloadBranches();
+    };
     window.addEventListener("staff-branding-reload", onReload);
     return () => window.removeEventListener("staff-branding-reload", onReload);
   }, []);
+
+  useEffect(() => {
+    if (!branchPickerOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !switchingBranch) setBranchPickerOpen(false);
+    }
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [branchPickerOpen, switchingBranch]);
+
+  async function switchBranch(branchId: string) {
+    if (branchId === currentBranchId || switchingBranch) return;
+    setSwitchingBranch(true);
+    setSwitchError(null);
+    try {
+      const res = await fetch("/api/staff/switch-branch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branchId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSwitchError(
+          typeof data.error === "string" ? data.error : "สลับสาขาไม่สำเร็จ",
+        );
+        return;
+      }
+      syncStaffBrandFromLogin(data.brand);
+      window.location.assign("/staff");
+    } catch {
+      setSwitchError("เชื่อมต่อไม่ได้ — ลองใหม่");
+    } finally {
+      setSwitchingBranch(false);
+    }
+  }
 
   const brandName =
     meta?.brand?.nameTh ||
@@ -146,16 +278,45 @@ function StaffAppShellInner({
     branding.siteName ||
     "SkillSale";
   const branchName = meta?.branchName || "";
-  const logoUrl = meta?.brand?.logoUrl || branding.logoUrl;
+  const brandLogo = meta?.brand?.logoUrl || branding.logoUrl;
+  const staffPhoto = meta?.staffImageUrl?.trim() || null;
+  const staffInitial = (meta?.staffDisplayName || brandName || "?").trim().slice(0, 1);
   const coverUrl = meta?.brand?.coverImageUrl || null;
-  const accent = meta?.brand?.color || branding.primaryColor || "#ea580c";
-  const stockOn = Boolean(
-    meta?.stockEnabled && meta?.brandStockEnabled,
-  );
   const pendingOrders = meta?.pendingOrderCount ?? 0;
-  const pendingStock = meta?.pendingStockCount ?? 0;
-  const isOpen = meta?.isOpen ?? false;
-  const canSell = meta?.canSell ?? false;
+  const canSwitchBranch = branchChoices.length > 1;
+  const warehouseMode = meta?.branchKind === "WAREHOUSE";
+  const branchLabel = branchName
+    ? warehouseMode
+      ? formatBranchLabel(branchName)
+      : `สาขา ${formatBranchLabel(branchName)}`
+    : "—";
+  const subscription = meta?.subscription ?? null;
+  const packageBanner = subscription?.writeAllowed === false
+    ? {
+        tone: "border-rose-200 bg-rose-50 text-rose-950",
+        text:
+          subscription.writeBlockedReason ??
+          `แพ็กเกจ${subscription.effectiveStatusLabel ?? "หมดอายุ"} — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้`,
+      }
+    : subscription?.nearExpiry
+      ? {
+          tone: "border-amber-200 bg-amber-50 text-amber-950",
+          text:
+            subscription.daysLeft != null
+              ? subscription.daysLeft > 0
+                ? `แพ็กเกจใกล้หมดอายุ · เหลือ ${subscription.daysLeft} วัน`
+                : "แพ็กเกจจะหมดอายุวันนี้"
+              : "แพ็กเกจใกล้หมดอายุ",
+        }
+      : null;
+
+  const navActive: StaffShellTab = warehouseMode
+    ? active === "settings"
+      ? "settings"
+      : "stock"
+    : active === "key" || active === "stock" || active === "shift-stock"
+      ? "home"
+      : active;
 
   const tabs: {
     id: StaffShellTab;
@@ -163,99 +324,70 @@ function StaffAppShellInner({
     label: string;
     icon: ReactNode;
     badge?: number;
-    center?: boolean;
-    hide?: boolean;
-  }[] = (
-    [
-      {
-        id: "home" as const,
-        href: "/staff",
-        label: "หน้าหลัก",
-        icon: <IconHome size={22} />,
-      },
-      {
-        id: "key" as const,
-        href: "/staff/key-order/regular",
-        label: "คีย์ออเดอร์",
-        icon: <IconKeyOrder size={22} />,
-      },
-      {
-        id: "orders" as const,
-        href: "/staff/orders",
-        label: "ประวัติออเดอร์",
-        icon: <IconBasket size={26} />,
-        badge: pendingOrders,
-        center: true,
-      },
-      {
-        id: "stock" as const,
-        href: "/staff/stock",
-        label: "สต๊อก",
-        icon: <IconPackage size={22} />,
-        badge: pendingStock,
-        hide: !stockOn,
-      },
-      {
-        id: "shift-stock" as const,
-        href: "/staff/shift-stock",
-        label: "นับรอบกะ",
-        icon: (
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        ),
-        hide: !stockOn,
-      },
-      {
-        id: "settings" as const,
-        href: "/staff/settings",
-        label: "ตั้งค่า",
-        icon: <IconGear size={22} />,
-      },
-    ] as const
-  ).filter((t) => {
-    if ("hide" in t && t.hide) return false;
-    return ["home", "key", "orders", "stock"].includes(t.id);
-  }) as {
-    id: StaffShellTab;
-    href: string;
-    label: string;
-    icon: ReactNode;
-    badge?: number;
-    center?: boolean;
-    hide?: boolean;
-  }[];
-
-  // If stock hidden, keep 4 tabs balanced; if we need 5th use receipt for summary via settings only
+  }[] = warehouseMode
+    ? [
+        {
+          id: "stock",
+          href: "/staff/warehouse",
+          label: "สต๊อกกลาง",
+          icon: <IconStore size={24} />,
+        },
+        {
+          id: "settings",
+          href: "/staff/settings",
+          label: "ตั้งค่า",
+          icon: <IconGear size={24} />,
+        },
+      ]
+    : [
+    {
+      id: "home",
+      href: "/staff",
+      label: "หน้าหลัก",
+      icon: <IconHome size={24} />,
+    },
+    {
+      id: "orders",
+      href: "/staff/orders",
+      label: "ออเดอร์",
+      icon: <IconBasket size={24} />,
+      badge: pendingOrders,
+    },
+    {
+      id: "summary",
+      href: "/staff/summary",
+      label: "สรุปยอด",
+      icon: <IconReceipt size={26} />,
+    },
+    {
+      id: "settings",
+      href: "/staff/settings",
+      label: "ตั้งค่า",
+      icon: <IconGear size={24} />,
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] pb-[4.75rem]">
+    <div className="min-h-screen bg-[#f5f5f7] pb-[4.75rem]">
       {showHeader ? (
-        <header className="relative overflow-hidden bg-[#1e1e1e] text-white shadow-md">
+        <header className="relative overflow-hidden bg-site-primary text-white shadow-md">
           {coverUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={coverUrl}
               alt=""
-              className="absolute inset-0 h-full w-full object-cover object-center"
+              className="absolute inset-0 h-full w-full object-cover object-center opacity-30"
             />
           ) : null}
-          {/* Overlay gradient to keep text readable */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/60 to-black/85 backdrop-blur-[2px]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />
 
-          <div className="relative z-[60] mx-auto max-w-lg px-4 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))]">
-            <div className="flex items-center gap-3.5">
-              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-white/20 ring-2 ring-white/40 shadow-md">
-                {logoUrl ? (
+          <div className="relative z-[60] mx-auto max-w-lg px-4 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))]">
+            <div className="flex items-center gap-3">
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-white/20 ring-2 ring-white/50 shadow-md">
+                {brandLogo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={logoUrl}
+                    src={brandLogo}
                     alt=""
                     className="h-full w-full object-cover"
                   />
@@ -266,58 +398,208 @@ function StaffAppShellInner({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[17px] font-extrabold leading-tight drop-shadow-sm">
+                <p className="truncate text-[18px] font-extrabold leading-tight drop-shadow-sm">
                   {brandName}
                 </p>
-                <p className="mt-1 truncate text-xs font-medium text-white/90 drop-shadow-sm">
-                  {branchName ? `สาขา ${branchName.replace(/^สาขา\s*/, "")}` : "—"}
-                </p>
+                {canSwitchBranch ? (
+                  <button
+                    type="button"
+                    id={branchPickerId}
+                    onClick={() => {
+                      setSwitchError(null);
+                      setBranchPickerOpen(true);
+                    }}
+                    className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full border border-white/35 bg-white/15 px-2.5 py-1 text-left text-sm font-semibold text-white/95 shadow-sm backdrop-blur-[2px] transition active:bg-white/25"
+                    aria-haspopup="dialog"
+                    aria-expanded={branchPickerOpen}
+                    title="สลับสาขา"
+                  >
+                    <span className="truncate">{branchLabel}</span>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      aria-hidden
+                      className="shrink-0 opacity-90"
+                    >
+                      <path
+                        d="M6 9l6 6 6-6"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                ) : (
+                  <p className="mt-1 truncate text-sm font-medium text-white/90">
+                    {branchLabel}
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <div
-                  className="flex h-11 max-w-[9.5rem] flex-col items-center justify-center rounded-full bg-emerald-500 px-3 py-1 text-center text-white shadow-sm"
-                  title="ยอดขายวันนี้ (ออเดอร์ที่สำเร็จแล้ว)"
-                >
-                  <span className="text-[9px] font-semibold leading-none text-white/90">
-                    ยอดขายวันนี้
-                  </span>
-                  <span className="mt-0.5 truncate text-[12px] font-extrabold leading-tight tabular-nums">
-                    {formatPrice(meta?.todayRevenueBaht ?? 0)}฿
-                  </span>
-                </div>
+                {active !== "home" && !warehouseMode ? (
+                  <div
+                    className="flex min-w-[7.25rem] flex-col items-start justify-center rounded-2xl bg-white px-3.5 py-2.5 text-left shadow-sm"
+                    title="ยอดขายวันนี้ (ออเดอร์ที่สำเร็จแล้ว)"
+                  >
+                    <span className="text-[11px] font-semibold leading-none text-slate-500">
+                      ยอดขายวันนี้
+                    </span>
+                    <span className="mt-1.5 truncate text-[17px] font-black leading-none tabular-nums text-site-primary">
+                      ฿{formatPrice(meta?.todayRevenueBaht ?? 0)}
+                    </span>
+                  </div>
+                ) : null}
                 <Link
-                  href="/staff/settings"
-                  className="relative flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white shadow-sm transition hover:bg-white/30"
-                  aria-label="ตั้งค่า"
+                  href="/staff/settings#profile"
+                  className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-white/50 bg-white/15 shadow-sm ring-2 ring-white/40"
+                  aria-label="โปรไฟล์พนักงาน"
+                  title="โปรไฟล์พนักงาน"
                 >
-                  <IconGear size={22} />
+                  {staffPhoto ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={staffPhoto}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-base font-extrabold text-white">
+                      {staffInitial}
+                    </span>
+                  )}
                 </Link>
               </div>
             </div>
-
-            {meta?.activeShift || active !== "home" ? (
-              <div className="mt-3.5">
-                <StaffShiftControls
-                  canToggleStore={Boolean(meta?.canToggleStore)}
-                  canSell={Boolean(meta?.canSell)}
-                  activeShift={meta?.activeShift ?? null}
-                  hideClosedButton={active === "home"}
-                  onOpened={() => {
-                    toast.success("เปิดรอบแล้ว", "พร้อมรับออเดอร์");
-                    reloadMeta();
-                    window.dispatchEvent(new Event("staff-branding-reload"));
-                  }}
-                  onClosed={(msg) => {
-                    toast.success("ปิดรอบแล้ว", msg);
-                    reloadMeta();
-                    window.dispatchEvent(new Event("staff-branding-reload"));
-                  }}
-                  onError={(title, detail) => toast.error(title, detail)}
-                />
-              </div>
-            ) : null}
           </div>
         </header>
+      ) : null}
+
+      {canReturnOwner ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
+          <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
+            <p className="min-w-0 text-[13px] font-semibold text-amber-950">
+              แม่ค้าคนเดียว · ขายหน้าร้านอยู่
+            </p>
+            <button
+              type="button"
+              disabled={returningOwner}
+              onClick={() => void goBackToOwner()}
+              className="shrink-0 rounded-full bg-slate-900 px-3.5 py-1.5 text-[12px] font-extrabold text-white disabled:opacity-60"
+            >
+              {returningOwner ? "กำลังไป…" : "บัญชีร้าน"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {packageBanner ? (
+        <div className={`border-b px-4 py-2.5 ${packageBanner.tone}`}>
+          <div className="mx-auto max-w-lg">
+            <p className="text-[13px] font-semibold">{packageBanner.text}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {branchPickerOpen && canSwitchBranch ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            aria-label="ปิด"
+            disabled={switchingBranch}
+            onClick={() => setBranchPickerOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${branchPickerId}-title`}
+            className="relative z-10 w-full max-w-lg rounded-t-3xl bg-white px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-xl sm:mx-4 sm:rounded-3xl"
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+            <div className="flex items-start justify-between gap-3 px-1">
+              <div>
+                <h2
+                  id={`${branchPickerId}-title`}
+                  className="text-[17px] font-extrabold text-slate-900"
+                >
+                  สลับสาขา
+                </h2>
+                <p className="mt-0.5 text-[13px] text-slate-500">
+                  เลือกสาขาที่ต้องการทำงานตอนนี้
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={switchingBranch}
+                onClick={() => setBranchPickerOpen(false)}
+                className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-500"
+              >
+                ปิด
+              </button>
+            </div>
+            {switchError ? (
+              <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+                {switchError}
+              </p>
+            ) : null}
+            <ul className="mt-3 max-h-[55vh] space-y-2 overflow-y-auto pb-1">
+              {branchChoices
+                .filter(
+                  (b) =>
+                    WAREHOUSE_UI_ENABLED || b.branchKind !== "WAREHOUSE",
+                )
+                .map((b) => {
+                const activeBranch = b.branchId === currentBranchId;
+                return (
+                  <li key={b.branchId}>
+                    <button
+                      type="button"
+                      disabled={switchingBranch || activeBranch}
+                      onClick={() => void switchBranch(b.branchId)}
+                      className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
+                        activeBranch
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                          : "border-slate-200 bg-white text-slate-900 active:bg-slate-50"
+                      } disabled:opacity-70`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-[15px] font-bold">
+                          {formatBranchLabel(b.branchName)}
+                        </span>
+                        {b.branchKind === "WAREHOUSE" ? (
+                          <span className="mt-0.5 block text-xs font-semibold text-teal-700">
+                            สต๊อกกลาง
+                          </span>
+                        ) : null}
+                        {b.brandName ? (
+                          <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
+                            {b.brandName}
+                          </span>
+                        ) : null}
+                      </span>
+                      {activeBranch ? (
+                        <span className="shrink-0 text-xs font-bold text-emerald-700">
+                          ใช้อยู่
+                        </span>
+                      ) : switchingBranch ? (
+                        <span className="shrink-0 text-xs font-semibold text-slate-400">
+                          …
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs font-semibold text-site-primary">
+                          เลือก
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
       ) : null}
 
       <div className="mx-auto max-w-lg">{children}</div>
@@ -326,30 +608,31 @@ function StaffAppShellInner({
         className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
         aria-label="เมนูหลักพนักงาน"
       >
-        <div className="mx-auto flex max-w-lg items-end justify-between px-1 pt-1">
+        <div className="mx-auto flex max-w-lg items-end justify-between px-1 pt-2">
           {tabs.map((tab) => {
-            const isActive = active === tab.id;
-            if (tab.center) {
+            const isActive = navActive === tab.id;
+            const isFeatured = tab.id === "summary" && !warehouseMode;
+
+            if (isFeatured) {
               return (
                 <Link
                   key={tab.id}
                   href={tab.href}
-                  className="relative -mt-5 flex w-[4.5rem] flex-col items-center"
+                  className="relative flex min-w-0 flex-1 flex-col items-center justify-end pb-1.5"
+                  aria-current={isActive ? "page" : undefined}
                 >
                   <span
-                    className="relative flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-white text-white shadow-lg"
-                    style={{ backgroundColor: accent }}
+                    className={`-mt-6 flex h-[3.6rem] w-[3.6rem] items-center justify-center rounded-full text-white shadow-[0_8px_20px_rgba(15,23,42,0.22)] ring-[3px] ring-white transition active:scale-95 ${
+                      isActive
+                        ? "bg-site-primary"
+                        : "bg-site-primary/90"
+                    }`}
                   >
                     {tab.icon}
-                    {(tab.badge ?? 0) > 0 ? (
-                      <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold">
-                        {tab.badge! > 99 ? "99+" : tab.badge}
-                      </span>
-                    ) : null}
                   </span>
                   <span
-                    className={`mt-1 text-[10px] font-semibold ${
-                      isActive ? "text-slate-900" : "text-slate-500"
+                    className={`mt-1 truncate text-[12px] font-extrabold ${
+                      isActive ? "text-site-primary" : "text-slate-700"
                     }`}
                   >
                     {tab.label}
@@ -357,24 +640,24 @@ function StaffAppShellInner({
                 </Link>
               );
             }
+
             return (
               <Link
                 key={tab.id}
                 href={tab.href}
-                className={`relative flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2 ${
-                  isActive ? "text-orange-600" : "text-slate-500"
+                className={`relative flex min-h-[3.75rem] min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 ${
+                  isActive ? "text-site-primary" : "text-slate-500"
                 }`}
-                style={isActive ? { color: accent } : undefined}
               >
                 <span className="relative">
                   {tab.icon}
                   {(tab.badge ?? 0) > 0 ? (
-                    <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white">
+                    <span className="absolute -right-2.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-site-primary px-0.5 text-[11px] font-bold text-white">
                       {tab.badge! > 99 ? "99+" : tab.badge}
                     </span>
                   ) : null}
                 </span>
-                <span className="truncate text-[10px] font-semibold">
+                <span className="truncate text-[13px] font-bold">
                   {tab.label}
                 </span>
               </Link>

@@ -24,7 +24,7 @@ const loadBrandMeta = cache(async (brandCode: string) => {
         logoUrl: true,
         coverImageUrl: true,
         branches: {
-          where: { isHidden: false },
+          where: { isHidden: false, isTest: false },
           select: { imageUrl: true },
           orderBy: { createdAt: "asc" },
           take: 1,

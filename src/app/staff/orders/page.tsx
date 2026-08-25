@@ -12,13 +12,12 @@ import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import type { StaffRole } from "@/lib/constants";
 import {
   formatPrice,
-  formatStaffRoles,
   getStaffFilterStatuses,
   getStaffLegendStatuses,
 } from "@/lib/constants";
+import { formatOperatingDayLabel } from "@/lib/operating-day";
 import {
   playOrderAlertSound,
-  previewAlertSound,
   setOrderAlertSoundUrl,
   STAFF_SOUND_PREF_KEY,
   unlockOrderAlertSound,
@@ -31,9 +30,8 @@ import {
   IconVolumeOff,
 } from "@/components/icons";
 import { StaffRoundSelector } from "@/components/staff/StaffRoundSelector";
-import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 import type { MenuItemData } from "@/lib/customer-types";
-import { isPromoMenuItem } from "@/lib/staff-key-order";
+import { listActivePromoMenuItems } from "@/lib/staff-key-order";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import {
@@ -67,16 +65,11 @@ type DayStats = {
   revenueBaht: number;
 };
 
-type AlertSoundOption = {
-  id: string;
-  name: string;
-  fileUrl: string;
-};
-
 export default function StaffPage() {
   const router = useRouter();
   const { success: pushSuccessToast, error: pushErrorToast } = useToast();
   const [orders, setOrders] = useState<OrderCardData[]>([]);
+  const [pendingWaitingCount, setPendingWaitingCount] = useState(0);
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [branchName, setBranchName] = useState("");
   const [brandName, setBrandName] = useState("");
@@ -89,7 +82,6 @@ export default function StaffPage() {
   const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
   const [canToggleStore, setCanToggleStore] = useState(false);
   const [canSell, setCanSell] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState(false);
   const [viewDate, setViewDate] = useState<string | null>(null);
   const [operatingDay, setOperatingDay] = useState("");
   const [isViewingToday, setIsViewingToday] = useState(true);
@@ -113,10 +105,6 @@ export default function StaffPage() {
   const [soundError, setSoundError] = useState("");
   const [newOrderFlash, setNewOrderFlash] = useState(false);
   const [preferSound, setPreferSound] = useState(false);
-  const [alertSounds, setAlertSounds] = useState<AlertSoundOption[]>([]);
-  const [selectedAlertSoundId, setSelectedAlertSoundId] = useState<string>("");
-  const [savingAlertSound, setSavingAlertSound] = useState(false);
-  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(
@@ -128,6 +116,7 @@ export default function StaffPage() {
   const titleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrolledToCreatedOrderRef = useRef(false);
+  const userPickedStatusTabRef = useRef(false);
 
   useEffect(() => {
     soundOnRef.current = soundOn;
@@ -149,18 +138,18 @@ export default function StaffPage() {
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
-        const list: AlertSoundOption[] = Array.isArray(data.alertSounds)
-          ? data.alertSounds
-          : [];
-        setAlertSounds(list);
+        const list = Array.isArray(data.alertSounds) ? data.alertSounds : [];
         const selectedId =
           typeof data.alertSoundId === "string" ? data.alertSoundId : "";
-        setSelectedAlertSoundId(selectedId);
         const url =
           typeof data.alertSound?.fileUrl === "string"
             ? data.alertSound.fileUrl
-            : (list.find((s) => s.id === selectedId)?.fileUrl ?? null);
-        setOrderAlertSoundUrl(url);
+            : (list.find(
+                (s: { id?: string; fileUrl?: string }) => s.id === selectedId,
+              )?.fileUrl ?? null);
+        setOrderAlertSoundUrl(
+          typeof url === "string" ? url : null,
+        );
       } catch {
         /* ignore */
       }
@@ -306,6 +295,13 @@ export default function StaffPage() {
     }
 
     setOrders(nextOrders);
+    setPendingWaitingCount(
+      typeof data.pendingWaitingCount === "number"
+        ? data.pendingWaitingCount
+        : nextOrders.filter(
+            (o) => o.status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+          ).length,
+    );
     setRoles(data.roles ?? []);
     setBranchName(data.branchName ?? "");
     setBrandName(data.brand?.name ?? "");
@@ -321,6 +317,7 @@ export default function StaffPage() {
 
   function goToToday() {
     knownIdsRef.current = null;
+    userPickedStatusTabRef.current = false;
     setViewDate(null);
     setLoading(true);
   }
@@ -329,15 +326,23 @@ export default function StaffPage() {
   function goToTodayQuiet() {
     if (isViewingToday) return;
     knownIdsRef.current = null;
+    userPickedStatusTabRef.current = false;
     setViewDate(null);
   }
 
   function onViewRoundChange(next: string) {
     if (!next) return;
     knownIdsRef.current = null;
+    userPickedStatusTabRef.current = false;
     setViewDate(next);
     setLoading(true);
   }
+
+  useEffect(() => {
+    if (isViewingToday) return;
+    userPickedStatusTabRef.current = false;
+    setStatusFilter(OrderStatus.COMPLETED);
+  }, [isViewingToday, viewDate]);
 
   async function onPhotoSelected(file: File | null) {
     if (!file) return;
@@ -408,12 +413,40 @@ export default function StaffPage() {
   }
 
   useEffect(() => {
-    const legend = getStaffLegendStatuses(roles, { autoAcceptOrders });
-    if (legend.length === 0) return;
-    setStatusFilter((current) =>
-      current && legend.includes(current) ? current : legend[0],
+    const waiting = Math.max(
+      pendingWaitingCount,
+      orders.filter(
+        (o) => o.status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+      ).length,
     );
-  }, [roles, autoAcceptOrders]);
+    const legend = getStaffLegendStatuses(roles, {
+      autoAcceptOrders,
+      hasWaitingOrders: waiting > 0,
+    });
+    if (legend.length === 0) return;
+    setStatusFilter((current) => {
+      // มีออเดอร์รอรับ — พาไปแท็บรอรับทันที (ยกเว้นผู้ใช้เลือกแท็บอื่นเองแล้ว)
+      if (
+        waiting > 0 &&
+        !userPickedStatusTabRef.current &&
+        legend.includes(OrderStatus.WAITING_FOR_STORE_ACCEPTANCE)
+      ) {
+        return OrderStatus.WAITING_FOR_STORE_ACCEPTANCE;
+      }
+      if (current && legend.includes(current)) return current;
+      return legend[0]!;
+    });
+  }, [roles, autoAcceptOrders, orders, pendingWaitingCount]);
+
+  const waitingCount = Math.max(
+    pendingWaitingCount,
+    orders.filter(
+      (o) => o.status === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
+    ).length,
+  );
+  /** รวมออเดอร์ในลิสต์ (รวมรอรับข้ามวัน) ไม่ใช้แค่สถิติรอบปัจจุบัน */
+  const totalOrderCount = Math.max(dayStats?.totalOrders ?? 0, orders.length);
+  const revenueBaht = dayStats?.revenueBaht ?? 0;
 
   const filteredOrders =
     statusFilter == null
@@ -474,9 +507,7 @@ export default function StaffPage() {
         const items = Array.isArray(data.menuItems)
           ? (data.menuItems as MenuItemData[])
           : [];
-        const promos = items.filter(
-          (item) => isPromoMenuItem(item) && !item.isOutOfStock,
-        );
+        const promos = listActivePromoMenuItems(items);
         if (cancelled) return;
         if (promos.length === 1) {
           const only = promos[0]!;
@@ -542,42 +573,6 @@ export default function StaffPage() {
       localStorage.setItem(STAFF_SOUND_PREF_KEY, "0");
     } catch {
       /* ignore */
-    }
-  }
-
-  async function saveAlertSound(nextId: string) {
-    setSavingAlertSound(true);
-    try {
-      const res = await fetch("/api/staff/alert-sound", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alertSoundId: nextId || null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        pushErrorToast("บันทึกเสียงไม่สำเร็จ", data.error ?? "ลองใหม่");
-        return;
-      }
-      const id =
-        typeof data.alertSoundId === "string" ? data.alertSoundId : "";
-      setSelectedAlertSoundId(id);
-      const url =
-        typeof data.alertSound?.fileUrl === "string"
-          ? data.alertSound.fileUrl
-          : (alertSounds.find((s) => s.id === id)?.fileUrl ?? null);
-      setOrderAlertSoundUrl(url);
-      pushSuccessToast(
-        "บันทึกเสียงแจ้งเตือนแล้ว",
-        id
-          ? alertSounds.find((s) => s.id === id)?.name ?? "ใช้เสียงที่เลือก"
-          : "ใช้เสียงบี๊บเริ่มต้น",
-      );
-      if (url) previewAlertSound(url);
-      else playOrderAlertSound();
-    } finally {
-      setSavingAlertSound(false);
     }
   }
 
@@ -660,12 +655,39 @@ export default function StaffPage() {
   return (
     <StaffAppShell active="orders">
     <main className="p-4">
-      <header className="mb-4">
-        <div className="flex items-start justify-between gap-3">
+      {/* หัวสั้น: ชื่อ + สถานะ | เสียง/พิมพ์ + รอบ */}
+      <header className="mb-2.5">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold text-gray-900">ประวัติออเดอร์</h1>
-            <p className="truncate text-sm text-gray-600">
-              พนักงาน: {formatStaffRoles(roles)}
+            <h1 className="text-[18px] font-extrabold leading-tight text-gray-900">
+              {isViewingToday
+                ? "ออเดอร์วันนี้"
+                : `ออเดอร์ · ${formatOperatingDayLabel(viewDate ?? operatingDay)}`}
+            </h1>
+            <p className="mt-0.5 truncate text-[12px] font-medium text-slate-500">
+              {!isViewingToday ? (
+                <span className="text-amber-800">ดูย้อนหลัง · แก้ไขไม่ได้</span>
+              ) : null}
+              {!isViewingToday ? " · " : null}
+              {branchStatus?.isOpen ? (
+                <span className="text-emerald-700">ร้านเปิด</span>
+              ) : (
+                <span className="text-red-600">ร้านปิด</span>
+              )}
+              {" · "}
+              {autoAcceptOrders ? "รับออโต้" : "รับมือ"}
+              {" · "}
+              <span className="tabular-nums text-slate-700">
+                รอรับ {waitingCount.toLocaleString("th-TH")}
+              </span>
+              {" · "}
+              <span className="tabular-nums text-slate-700">
+                ทั้งหมด {totalOrderCount.toLocaleString("th-TH")}
+              </span>
+              {" · "}
+              <span className="tabular-nums font-semibold text-site-primary">
+                {revenueBaht.toLocaleString("th-TH")}฿
+              </span>
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -675,9 +697,9 @@ export default function StaffPage() {
                 onClick={enableSound}
                 aria-label="เปิดเสียงแจ้งเตือน"
                 title="เปิดเสียงแจ้งเตือน"
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-amber-400 bg-amber-50 text-amber-950 hover:bg-amber-100"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400 bg-amber-50 text-amber-950"
               >
-                <IconVolumeOff size={22} aria-hidden />
+                <IconVolumeOff size={20} aria-hidden />
               </button>
             ) : (
               <button
@@ -685,135 +707,28 @@ export default function StaffPage() {
                 onClick={disableSound}
                 aria-label="ปิดเสียงแจ้งเตือน"
                 title="ปิดเสียงแจ้งเตือน"
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900"
               >
-                <IconVolume size={22} aria-hidden />
+                <IconVolume size={20} aria-hidden />
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setSoundPickerOpen((v) => !v)}
-              aria-label="เลือกเสียงแจ้งเตือน"
-              title="เลือกเสียงแจ้งเตือน"
-              className="flex h-10 items-center gap-1 rounded-xl border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              เสียง
-            </button>
             {printBridgeReady ? (
               <button
                 type="button"
-                onClick={() => {
-                  selectPrinter();
-                }}
+                onClick={() => selectPrinter()}
                 aria-label={printerLabel}
                 title={printerLabel}
-                className={`flex h-10 items-center gap-1.5 rounded-xl border px-2.5 text-orange-900 ${
+                className={`flex h-10 w-10 items-center justify-center rounded-xl border ${
                   printerConfigured
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
-                    : "border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                    : "border-amber-300 bg-amber-50 text-amber-950"
                 }`}
               >
-                <IconPrinter size={20} aria-hidden />
-                <span className="hidden max-w-[7.5rem] truncate text-[11px] font-semibold sm:inline">
-                  {printerConfigured ? "เชื่อมแล้ว" : "ยังไม่เชื่อม"}
-                </span>
-                <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${
-                    printerConfigured ? "bg-emerald-500" : "bg-amber-500"
-                  }`}
-                  aria-hidden
-                />
+                <IconPrinter size={18} aria-hidden />
               </button>
             ) : null}
-          </div>
-        </div>
-        {soundPickerOpen ? (
-          <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-            <p className="text-xs font-semibold text-gray-800">
-              เสียงแจ้งเตือนของสาขา
-            </p>
-            <p className="mt-0.5 text-[11px] text-gray-500">
-              ทุกเครื่องในสาขานี้ใช้เสียงเดียวกัน
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <select
-                className="min-w-[12rem] flex-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-900"
-                value={selectedAlertSoundId}
-                disabled={savingAlertSound}
-                onChange={(e) => {
-                  void saveAlertSound(e.target.value);
-                }}
-              >
-                <option value="">บี๊บเริ่มต้น</option>
-                {alertSounds.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={savingAlertSound}
-                onClick={() => {
-                  const url = selectedAlertSoundId
-                    ? alertSounds.find((s) => s.id === selectedAlertSoundId)
-                        ?.fileUrl
-                    : null;
-                  if (url) previewAlertSound(url);
-                  else playOrderAlertSound();
-                }}
-                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-100"
-              >
-                ลองฟัง
-              </button>
-            </div>
-          </div>
-        ) : null}
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            {branchStatus ? (
-              <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-gray-500">
-                <p
-                  className={
-                    branchStatus.isOpen ? "text-emerald-700" : "text-red-700"
-                  }
-                >
-                  สถานะร้าน:{" "}
-                  {branchStatus.isOpen ? "เปิด" : "ปิดชั่วคราว"}
-                </p>
-                <p>
-                  หน้าร้าน{" "}
-                  {branchStatus.pickup.acceptingOrders ? "รับสั่งได้" : "ไม่รับ"}
-                </p>
-                <p>
-                  เดลิเวอรี{" "}
-                  {branchStatus.delivery.acceptingOrders
-                    ? "รับสั่งได้"
-                    : "ไม่รับ"}
-                </p>
-              </div>
-            ) : null}
-            <p
-              className={`mt-1 text-[11px] font-medium ${
-                autoAcceptOrders
-                  ? "animate-pulse text-emerald-600"
-                  : "text-gray-400"
-              }`}
-            >
-              {autoAcceptOrders
-                ? "รับออเดอร์อัตโนมัติ: เปิดอยู่"
-                : "รับออเดอร์อัตโนมัติ: ปิดอยู่"}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <button
-              type="button"
-              onClick={() => setSummaryOpen(true)}
-              className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-800 shadow-sm hover:bg-gray-50"
-            >
-              สรุปยอดขายตามรอบ
-            </button>
             <StaffRoundSelector
+              compact
               viewRound={viewDate}
               currentRound={operatingDay}
               isViewingCurrent={isViewingToday}
@@ -822,48 +737,14 @@ export default function StaffPage() {
             />
           </div>
         </div>
+
+        {soundError ? (
+          <p className="mt-1.5 text-[13px] text-red-600">{soundError}</p>
+        ) : null}
       </header>
 
-      <StaffShiftSummarySheet
-        open={summaryOpen}
-        onClose={() => setSummaryOpen(false)}
-        initialDate={viewDate ?? operatingDay}
-      />
-
-      {soundError ? (
-        <p className="mb-3 text-xs text-red-600">{soundError}</p>
-      ) : null}
-
-      {dayStats ? (
-        <div className="mb-3 grid grid-cols-4 gap-1.5">
-          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
-            <p className="text-[10px] text-gray-500">ทั้งหมด</p>
-            <p className="text-base font-bold text-gray-900">
-              {dayStats.totalOrders.toLocaleString("th-TH")}
-            </p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
-            <p className="text-[10px] text-gray-500">รับแล้ว</p>
-            <p className="text-base font-bold text-emerald-700">
-              {dayStats.acceptedOrders.toLocaleString("th-TH")}
-            </p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
-            <p className="text-[10px] text-gray-500">ยกเลิก</p>
-            <p className="text-base font-bold text-red-700">
-              {dayStats.cancelledOrders.toLocaleString("th-TH")}
-            </p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
-            <p className="text-[10px] text-gray-500">ยอดรวม</p>
-            <p className="text-sm font-bold text-site-primary">
-              {dayStats.revenueBaht.toLocaleString("th-TH")}฿
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="mb-4 space-y-2">
+      {/* คีย์ออเดอร์ — แถวเดียว (งานหลักอยู่หน้าหลัก) */}
+      <div className="mb-3">
         {isViewingToday && canEnter ? (
           <>
             <input
@@ -931,7 +812,8 @@ export default function StaffPage() {
                 </div>
               </div>
             ) : null}
-            <div className="grid grid-cols-[3.25rem_1fr_1fr] gap-2">
+
+            <div className="grid grid-cols-[2.75rem_1.35fr_1fr_1fr] gap-1.5">
               <button
                 type="button"
                 disabled={creatingPhoto}
@@ -946,52 +828,55 @@ export default function StaffPage() {
                     ? "กำลังเปิดคิว..."
                     : "ถ่ายรูปเปิดคิว (คีย์ทีหลัง)"
                 }
-                className="flex items-center justify-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 disabled:opacity-60"
+                className="flex min-h-11 items-center justify-center rounded-xl bg-orange-500 text-white shadow-sm disabled:opacity-60"
               >
                 <IconCamera size={22} aria-hidden />
               </button>
               <Link
                 href="/staff/key-order/regular"
-                className="flex items-center justify-center rounded-xl bg-site-primary px-3 py-3.5 text-sm font-bold text-white shadow-sm hover:opacity-95"
+                className="flex min-h-11 items-center justify-center rounded-xl bg-site-primary px-2 text-[13px] font-extrabold text-white shadow-sm"
               >
-                แบบธรรมดา
+                คีย์ออเดอร์
               </Link>
               <Link
                 href={promoLink.href}
                 title={promoLink.label}
-                className="flex items-center justify-center rounded-xl bg-amber-500 px-3 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-amber-600"
+                className="flex min-h-11 items-center justify-center rounded-xl bg-amber-500 px-2 text-[12px] font-extrabold text-white shadow-sm"
               >
                 <span className="line-clamp-2 text-center leading-snug">
                   {promoLink.label}
                 </span>
               </Link>
+              <Link
+                href="/staff/new-order"
+                className="flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-2 text-[12px] font-bold text-slate-700"
+              >
+                แบบลูกค้า
+              </Link>
             </div>
-            <Link
-              href="/staff/new-order"
-              className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-            >
-              คีย์ออเดอร์แบบลูกค้า
-            </Link>
           </>
         ) : isViewingToday && !canEnter ? (
-          <div className="flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3.5 text-center text-base font-semibold text-amber-800">
-            <span>กด「เปิดรอบขาย」ด้านบนเพื่อเริ่มขาย</span>
+          <div className="flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-800">
+            <span>กลับหน้าหลักแล้วเปิดรอบขายก่อน</span>
             {!canToggleStore ? (
               <span className="text-xs font-normal text-amber-700">
                 เฉพาะพนักงานขายที่เปิด/ปิดร้านได้
               </span>
             ) : null}
+            <Link
+              href="/staff"
+              className="mt-1.5 rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white"
+            >
+              ไปหน้าหลัก
+            </Link>
           </div>
         ) : (
           <button
             type="button"
             onClick={goToToday}
-            className="flex w-full cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3.5 text-base font-semibold text-amber-900"
+            className="flex w-full cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900"
           >
             <span>กำลังดูรอบอื่น — แตะเพื่อกลับรอบปัจจุบัน</span>
-            <span className="text-xs font-normal text-amber-800">
-              จากนั้นจึงคีย์ออเดอร์หรือเปิดรอบได้
-            </span>
           </button>
         )}
       </div>
@@ -1009,21 +894,27 @@ export default function StaffPage() {
         <StatusLegend
           roles={roles}
           autoAcceptOrders={autoAcceptOrders}
+          waitingCount={waitingCount}
           value={statusFilter}
-          onChange={setStatusFilter}
+          onChange={(status) => {
+            userPickedStatusTabRef.current = true;
+            setStatusFilter(status);
+          }}
         />
       </div>
 
       {filteredOrders.length === 0 ? (
         <p className="rounded-lg bg-white p-8 text-center text-gray-500">
           {!isViewingToday
-            ? "ไม่มีออเดอร์ในวันนี้"
+            ? statusFilter === OrderStatus.COMPLETED
+              ? "ไม่มีออเดอร์เสร็จ/ยกเลิกในวันนี้"
+              : "ไม่มีออเดอร์ในสถานะนี้ — ลองแท็บเสร็จสิ้น"
             : statusFilter === OrderStatus.COMPLETED
               ? "ยังไม่มีออเดอร์ที่เสร็จสิ้นหรือยกเลิกวันนี้"
               : "ไม่มีออเดอร์ที่รอดำเนินการ"}
         </p>
       ) : (
-        <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:gap-4">
           {filteredOrders.map((order) => (
             <OrderCard
               key={order.id}
@@ -1031,6 +922,7 @@ export default function StaffPage() {
               roles={roles}
               showActions={isViewingToday && canEnter}
               collapsibleItems
+              compactTools
               branchPin={branchPin}
               highlight={order.id === highlightedOrderId}
               queueTicketCopies={queueTicketCopies}

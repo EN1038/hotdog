@@ -4,7 +4,7 @@ import { confirmStockTransfer, StockError } from "@/lib/stock";
 
 type Params = { params: Promise<{ id: string }> };
 
-/** POST — พนักงานยืนยันรับของจากบ้านกลางเข้าสต๊อกสาขา */
+/** POST — พนักงานยืนยันรับของจากสต๊อกกลางเข้าสต๊อกสาขา */
 export async function POST(request: Request, { params }: Params) {
   try {
     const session = await requireStaff();

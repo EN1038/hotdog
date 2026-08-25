@@ -35,7 +35,7 @@ export function MenuPromoPrice({
   return (
     <span className={`inline-flex flex-wrap items-baseline gap-1.5 ${className}`}>
       <span className="font-bold text-site-primary">
-        ฿{formatPrice(priced.final)}
+        {priced.final <= 0 ? "ฟรี" : `฿${formatPrice(priced.final)}`}
       </span>
       {priced.discounted && (
         <span className="text-xs font-normal text-gray-400 line-through">
@@ -76,6 +76,26 @@ export function MenuBestSellerTag({
       className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800 ${className}`}
     >
       ขายดี
+    </span>
+  );
+}
+
+/** ป้ายราคาชั่งกิโลให้ลูกค้าเห็นภาพแยกจากราคาชิ้น */
+export function MenuWeighPriceTag({
+  item,
+  className = "",
+}: {
+  item: Pick<MenuItemData, "sellByWeight" | "pricePerKg">;
+  className?: string;
+}) {
+  if (!item.sellByWeight || item.pricePerKg == null) return null;
+  const perKg = Number(item.pricePerKg);
+  if (!Number.isFinite(perKg) || perKg <= 0) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[11px] font-bold text-rose-800 ring-1 ring-rose-100 ${className}`}
+    >
+      ชั่งกิโล · ฿{formatPrice(perKg)}/กก.
     </span>
   );
 }

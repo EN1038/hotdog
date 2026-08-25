@@ -17,10 +17,15 @@ import {
   restoreStockForOrder,
   StockError,
 } from "@/lib/stock";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+import { orderGrandTotal } from "@/lib/order-totals";
 
 const statusSchema = z.object({
-  status: z.nativeEnum(OrderStatus),
+  status: z.nativeEnum(OrderStatus).optional(),
   cancelReason: z.string().trim().min(2).max(200).optional(),
+  paymentSlipUrl: z
+    .union([z.string().min(1).max(2000), z.literal(""), z.null()])
+    .optional(),
 });
 
 type Params = { params: Promise<{ id: string }> };
@@ -32,12 +37,72 @@ async function loadStaffOrder(id: string, branchId: string) {
       customer: true,
       deliveryLocation: true,
       items: { include: { branchMenuItem: true } },
+      consumableLines: true,
     },
   });
 }
 
+/** GET — read-only order detail (history / share). */
+export async function GET(_request: Request, { params }: Params) {
+  try {
+    const session = await requireStaff();
+    const { id } = await params;
+    const order = await loadStaffOrder(id, session.branchId);
+    if (!order) return jsonError("ไม่พบออเดอร์", 404);
+
+    const items = order.items.map((it) => {
+      const unitPrice = Number(it.unitPrice);
+      const optionsPrice = Number(it.optionsPrice);
+      return {
+        id: it.id,
+        itemName: it.itemName,
+        quantity: it.quantity,
+        unitPrice,
+        optionsPrice,
+        optionsText: it.optionsText,
+        giftQuantity: it.giftQuantity ?? 0,
+        note: it.note,
+        lineTotal: (unitPrice + optionsPrice) * it.quantity,
+      };
+    });
+
+    return jsonOk({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      queueNumber: order.queueNumber,
+      status: order.status,
+      fulfillmentType: order.fulfillmentType,
+      paymentMethod: order.paymentMethod,
+      salesChannel: order.salesChannel,
+      customerName: order.customerName,
+      createdAt: order.createdAt.toISOString(),
+      note: order.note,
+      deliveryFee: Number(order.deliveryFee),
+      discountAmount: Number(order.discountAmount),
+      grandTotal: orderGrandTotal(
+        items.map((i) => ({
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          optionsPrice: i.optionsPrice,
+        })),
+        Number(order.deliveryFee),
+        Number(order.discountAmount),
+      ),
+      items,
+      consumableLines: order.consumableLines.map((c) => ({
+        itemName: c.itemName,
+        quantity: c.quantity,
+        unit: c.unit,
+      })),
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
 export async function PATCH(request: Request, { params }: Params) {
   try {
+    await ensureProdSchemaCompat();
     const session = await requireStaff();
     const { id } = await params;
     const body = statusSchema.parse(await request.json());
@@ -46,6 +111,27 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { id, branchId: session.branchId },
     });
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
+
+    // Slip-only update: may attach anytime for current shift orders (closed shift OK for view+patch on today's orders)
+    if (body.paymentSlipUrl !== undefined && body.status === undefined) {
+      const url =
+        body.paymentSlipUrl == null || body.paymentSlipUrl === ""
+          ? null
+          : String(body.paymentSlipUrl).trim();
+      if (url && !/^https?:\/\//i.test(url) && !url.startsWith("/uploads/")) {
+        return jsonError("ลิงก์รูปสลิปไม่ถูกต้อง");
+      }
+      await prisma.order.update({
+        where: { id },
+        data: { paymentSlipUrl: url },
+      });
+      const latest = await loadStaffOrder(id, session.branchId);
+      return jsonOk(latest);
+    }
+
+    if (body.status === undefined) {
+      return jsonError("ไม่มีข้อมูลให้อัปเดต");
+    }
 
     try {
       await assertOrderMutableInActiveShift({
@@ -169,8 +255,23 @@ export async function PATCH(request: Request, { params }: Params) {
       }
     }
 
-    const updated = await loadStaffOrder(id, session.branchId);
-    return jsonOk(updated);
+    // Optional slip on same request as status change
+    if (body.paymentSlipUrl !== undefined) {
+      const url =
+        body.paymentSlipUrl == null || body.paymentSlipUrl === ""
+          ? null
+          : String(body.paymentSlipUrl).trim();
+      if (url && !/^https?:\/\//i.test(url) && !url.startsWith("/uploads/")) {
+        return jsonError("ลิงก์รูปสลิปไม่ถูกต้อง");
+      }
+      await prisma.order.update({
+        where: { id },
+        data: { paymentSlipUrl: url },
+      });
+    }
+
+    const latest = await loadStaffOrder(id, session.branchId);
+    return jsonOk(latest);
   } catch (error) {
     return handleApiError(error);
   }

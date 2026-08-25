@@ -2,27 +2,31 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "brand.create": "สร้างแบรนด์",
   "brand.update": "แก้ไขแบรนด์",
   "brand.delete": "ลบแบรนด์",
+  "brand.soft_delete": "ตั้งสถานะลบแบรนด์",
   "brand.stock.enable": "เปิดสต๊อกแบรนด์",
   "brand.stock.disable": "ปิดสต๊อกแบรนด์",
   "brand.stock.settings": "ตั้งค่าสต๊อกแบรนด์",
   "brand.product.create": "เพิ่มสินค้าสต๊อก",
   "brand.product.update": "แก้ไขสินค้าสต๊อก",
   "brand.product.delete": "ลบสินค้าสต๊อก",
-  "brand.stock.receive": "รับเข้าบ้านกลาง",
+  "brand.stock.receive": "รับเข้าสต๊อกกลาง",
   "brand.stock.stock_in": "รับเข้าสต๊อก",
+  "brand.stock.produce": "บันทึกเสียบไม้/ผลิตเข้าสต๊อกกลาง",
   "brand.stock.transfer": "โอนสต๊อกไปสาขา",
   "brand.stock.adjust": "ปรับยอดสต๊อก",
   "brand.stock.damage": "บันทึกสินค้าเสีย",
   "brand.stock.lost": "บันทึกสินค้าสูญหาย",
-  "brand.stock.issue": "เบิกของสิ้นเปลือง",
+  "brand.stock.waste": "บันทึกของเสีย",
+  "brand.stock.sale": "บันทึกขายออกจากสต๊อกกลาง",
+  "brand.stock.issue": "เบิก/จ่ายออก",
   "brand.stock.count.create": "สร้างรอบตรวจนับ",
   "brand.stock.count.complete": "ปิดรอบตรวจนับ",
   "brand.supplier.create": "เพิ่มผู้ขาย",
   "brand.po.create": "สร้างใบสั่งซื้อ",
   "brand.po.receive": "รับของจากใบสั่งซื้อ",
   "brand.stock.branch_transfer": "โอนสต๊อกระหว่างสาขา",
-  "brand.stock.copy_from_branch": "คัดลอกเมนูจากสาขาเข้าบ้านกลาง",
-  "brand.stock.copy_to_branch": "คัดลอกเมนูจากบ้านกลางไปสาขา",
+  "brand.stock.copy_from_branch": "คัดลอกเมนูจากสาขาเข้าสต๊อกกลาง",
+  "brand.stock.copy_to_branch": "คัดลอกเมนูจากสต๊อกกลางไปสาขา",
   "brand.kitchen.produce": "ผลิต/เสียบไม้ที่ครัว",
   "brand.kitchen.request": "คำขอสต๊อกจากสาขา",
   "brand.kitchen.fulfill": "จัดส่งตามคำขอสาขา",
@@ -30,6 +34,10 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "brand.admin.link": "ผูกผู้ดูแลกับแบรนด์",
   "brand.admin.update": "แก้ไขผู้ดูแลแบรนด์",
   "brand.admin.remove": "ถอดผู้ดูแลออกจากแบรนด์",
+  "brand.owner_as_staff": "เพิ่มเจ้าของเป็นพนักงาน",
+  "brand.account.update": "อัปเดตบัญชีเจ้าของแบรนด์",
+  "brand.invoice.create": "สร้างใบแจ้งหนี้แบรนด์",
+  "brand.invoice.update": "อัปเดตใบแจ้งหนี้แบรนด์",
   "branch.create": "สร้างสาขา",
   "branch.update": "แก้ไขสาขา",
   "branch.delete": "ลบสาขา",
@@ -52,6 +60,7 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "staff.create": "เพิ่มพนักงาน",
   "staff.update": "แก้ไขพนักงาน",
   "staff.delete": "ลบพนักงาน",
+  "staff.revoke_sessions": "ปลดเครื่องเข้าใช้งานพนักงาน",
   "menu.create": "เพิ่มเมนู",
   "menu.update": "แก้ไขเมนู",
   "menu.delete": "ลบเมนู",
@@ -90,6 +99,9 @@ export const ADMIN_ACTIVITY_ACTIONS = {
 } as const;
 
 export type AdminActivityAction = keyof typeof ADMIN_ACTIVITY_ACTIONS;
+
+export const STAFF_REVOKE_SESSIONS_ACTION: AdminActivityAction =
+  "staff.revoke_sessions";
 
 export const ADMIN_ACTIVITY_ACTION_OPTIONS = (
   Object.keys(ADMIN_ACTIVITY_ACTIONS) as AdminActivityAction[]

@@ -1,3 +1,5 @@
+import { HOTPOT_COUNTER_GROUP } from "@/lib/hotpot-counter-group";
+
 export const BRANCH_OPERATING_MODES = [
   "NORMAL",
   "SKEWER",
@@ -21,8 +23,8 @@ export const BRANCH_OPERATING_MODE_META: Record<
 > = {
   NORMAL: {
     id: "NORMAL",
-    title: "หมาล่าปกติ",
-    description: "คิวออเดอร์ · กะ · หน้าร้านลูกค้าเดิม",
+    title: HOTPOT_COUNTER_GROUP.modeTitle,
+    description: HOTPOT_COUNTER_GROUP.modeDescription,
     selectedClass: "border-slate-900 bg-slate-900 text-white",
     badgeClass: "bg-slate-100 text-slate-800",
   },
@@ -35,8 +37,9 @@ export const BRANCH_OPERATING_MODE_META: Record<
   },
   BBQ_WEIGH: {
     id: "BBQ_WEIGH",
-    title: "หมูกระทะชั่งกิโล",
-    description: "QR โต๊ะ · ชั่งกิโล · เปิดบิลแล้วปิดท้ายมื้อ",
+    title: "ชั่งกิโล / โต๊ะเท่านั้น",
+    description:
+      "QR โต๊ะ · ชั่งกิโล · เปิด–ปิดบิล — ไม่มีคิวหม่าล่า/คีย์ออเดอร์เคาน์เตอร์",
     selectedClass: "border-rose-800 bg-rose-800 text-white",
     badgeClass: "bg-rose-100 text-rose-900",
   },
@@ -58,4 +61,15 @@ export function branchOperatingModeLabel(
     return BRANCH_OPERATING_MODE_META[mode].title;
   }
   return BRANCH_OPERATING_MODE_META.NORMAL.title;
+}
+
+/** Modes a brand may create — BBQ / เสียบไม้ only when the plan module is on. */
+export function allowedOperatingModesForBrand(brand: {
+  bbqEnabled?: boolean;
+  skewerEnabled?: boolean;
+} | null | undefined): BranchOperatingModeId[] {
+  const modes: BranchOperatingModeId[] = ["NORMAL"];
+  if (brand?.skewerEnabled) modes.push("SKEWER");
+  if (brand?.bbqEnabled) modes.push("BBQ_WEIGH");
+  return modes;
 }

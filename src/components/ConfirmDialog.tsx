@@ -12,6 +12,7 @@ import {
 } from "react";
 import { IconClose } from "@/components/icons";
 import {
+  adminInputClass,
   btnOutline,
   btnPrimary,
 } from "@/components/admin/AdminShell";
@@ -24,6 +25,9 @@ export type ConfirmOptions = {
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: ConfirmTone;
+  /** When set, user must type this exact text (trimmed) to enable confirm. */
+  confirmText?: string;
+  confirmTextHint?: string;
 };
 
 type ConfirmContextValue = {
@@ -38,11 +42,15 @@ type Pending = ConfirmOptions & {
 
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
+  const [typed, setTyped] = useState("");
   const titleId = useId();
+  const inputId = useId();
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const confirm = useCallback((options: ConfirmOptions) => {
     return new Promise<boolean>((resolve) => {
+      setTyped("");
       setPending({ ...options, resolve });
     });
   }, []);
@@ -52,7 +60,15 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
       current?.resolve(result);
       return null;
     });
+    setTyped("");
   }, []);
+
+  const requiredText = pending?.confirmText?.trim() ?? "";
+  const needsTypedMatch = Boolean(requiredText);
+  const typedMatches =
+    !needsTypedMatch || typed.trim() === requiredText;
+  const typedMatchesRef = useRef(typedMatches);
+  typedMatchesRef.current = typedMatches;
 
   useEffect(() => {
     if (!pending) return;
@@ -72,21 +88,25 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
       // would otherwise auto-confirm instantly.
       if (e.key === "Enter" && ready) {
         e.preventDefault();
-        close(true);
+        if (typedMatchesRef.current) close(true);
       }
     }
 
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
-    confirmBtnRef.current?.focus();
+    if (needsTypedMatch) {
+      inputRef.current?.focus();
+    } else {
+      confirmBtnRef.current?.focus();
+    }
 
     return () => {
       window.clearTimeout(readyTimer);
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [pending, close]);
+  }, [pending, close, needsTypedMatch]);
 
   const value = useMemo(() => ({ confirm }), [confirm]);
 
@@ -94,8 +114,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const confirmClass =
     tone === "primary"
       ? btnPrimary
-      : "cursor-pointer rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700";
-
+      : "cursor-pointer rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300 disabled:shadow-none";
 
   return (
     <ConfirmContext.Provider value={value}>
@@ -115,7 +134,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             className="relative z-10 w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
           >
             <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-red-50 via-white to-orange-50 px-5 py-4">
-              <div>
+              <div className="min-w-0 flex-1">
                 <h3
                   id={titleId}
                   className="text-base font-semibold text-gray-900"
@@ -127,6 +146,28 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                     {pending.message}
                   </p>
                 )}
+                {needsTypedMatch ? (
+                  <div className="mt-3">
+                    <label
+                      htmlFor={inputId}
+                      className="block text-sm font-medium text-slate-700"
+                    >
+                      {pending.confirmTextHint ??
+                        `พิมพ์ชื่อแบรนด์ «${requiredText}» เพื่อยืนยัน`}
+                    </label>
+                    <input
+                      ref={inputRef}
+                      id={inputId}
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className={`${adminInputClass} mt-1.5`}
+                      placeholder={requiredText}
+                      value={typed}
+                      onChange={(e) => setTyped(e.target.value)}
+                    />
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -148,7 +189,11 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               <button
                 ref={confirmBtnRef}
                 type="button"
-                onClick={() => close(true)}
+                disabled={!typedMatches}
+                onClick={() => {
+                  if (!typedMatches) return;
+                  close(true);
+                }}
                 className={confirmClass}
               >
                 {pending.confirmLabel ?? "ตกลง"}

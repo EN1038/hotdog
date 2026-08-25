@@ -33,6 +33,12 @@ import {
   optionGroupDetailInclude,
   resolveOrderItemOptionsFromPrisma,
 } from "@/lib/menu-option-groups";
+import { formatOrderItemOptionsText } from "@/lib/order-item-display";
+import {
+  assertBrandStorefrontOpen,
+  assertBrandWriteAllowed,
+  brandUsageSelect,
+} from "@/lib/brand-plan";
 
 const orderItemSchema = z.object({
   branchMenuItemId: z.string(),
@@ -90,11 +96,14 @@ export async function POST(request: Request) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: body.branchId },
+      include: { brand: { select: brandUsageSelect } },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
-    if (branch.isHidden) {
+    if (branch.isHidden || branch.isTest) {
       return jsonError("สาขานี้ไม่พร้อมให้บริการในขณะนี้");
     }
+    assertBrandStorefrontOpen(branch.brand);
+    assertBrandWriteAllowed(branch.brand);
     if (branch.operatingMode === BranchOperatingMode.SKEWER) {
       return jsonError("สาขานี้รับออเดอร์เสียบไม้ผ่านหน้าสั่งไม้เท่านั้น");
     }
@@ -296,7 +305,7 @@ export async function POST(request: Request) {
         itemName: menu.name,
         quantity: item.quantity,
         unitPrice: new Prisma.Decimal(priced.final),
-        optionsText: chosen.map((o) => o.name).join(", ") || null,
+        optionsText: formatOrderItemOptionsText(chosen),
         optionsPrice,
         giftQuantity: computeLineGiftQuantity(
           groups,

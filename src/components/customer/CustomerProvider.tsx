@@ -15,7 +15,13 @@ import { rememberCustomerPhone } from "@/lib/customer-remember";
 type CustomerSession = { phone: string; name: string } | null;
 
 export type SendOtpResult =
-  | { ok: true; challengeId: string; otpRefNo: string | null; resendIn: number }
+  | {
+      ok: true;
+      challengeId: string;
+      otpRefNo: string | null;
+      resendIn: number;
+      expiresIn: number;
+    }
   | { ok: false; error: string; needsName?: boolean };
 
 type CustomerContextValue = {
@@ -185,6 +191,7 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
         challengeId: data.challengeId as string,
         otpRefNo: (data.otpRefNo as string | null) ?? null,
         resendIn: Number(data.resendIn) || 60,
+        expiresIn: Number(data.expiresIn) || 300,
       };
     },
     [],

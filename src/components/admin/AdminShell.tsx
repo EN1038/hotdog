@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { logout } from "@/components/LoginForm";
 import { PlatformMark } from "@/components/PlatformMark";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
@@ -32,6 +32,11 @@ import {
   OwnerViewSwitchButton,
   useOwnerViewHomeSoftRedirect,
 } from "@/components/owner/OwnerViewSwitch";
+import { counterpartBranchAdminPath } from "@/lib/branch-admin-path";
+import {
+  OWNER_VIEW_PREFERENCE_EVENT,
+  resolveOwnerView,
+} from "@/lib/owner-view-preference";
 
 export {
   adminInputClass,
@@ -496,6 +501,7 @@ function ShellHeader() {
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { session } = useAdminSession();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -532,6 +538,27 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       ? "desktop"
       : null,
   );
+
+  useEffect(() => {
+    function redirectBranchToOwnerShell() {
+      if (!session || session.isPlatformAdmin || !onBranchPage) return;
+      if (resolveOwnerView() === "desktop") return;
+      const qs = searchParams.toString();
+      const search = qs ? `?${qs}` : "";
+      const target = counterpartBranchAdminPath(pathname, search);
+      if (target?.startsWith("/owner/")) {
+        router.replace(target);
+      }
+    }
+    redirectBranchToOwnerShell();
+    window.addEventListener(OWNER_VIEW_PREFERENCE_EVENT, redirectBranchToOwnerShell);
+    return () => {
+      window.removeEventListener(
+        OWNER_VIEW_PREFERENCE_EVENT,
+        redirectBranchToOwnerShell,
+      );
+    };
+  }, [session, onBranchPage, pathname, router, searchParams]);
 
   useEffect(() => {
     if (!onBranchPage) setBranchMeta(null);

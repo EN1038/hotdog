@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { IconPlus } from "@/components/icons";
 import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShell";
 import { useToast } from "@/components/admin/Toast";
 import {
@@ -12,6 +13,8 @@ import {
 } from "@/components/owner/OwnerDatePresetChips";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import type {
+  OwnerBranchActiveShift,
+  OwnerBranchLastClosedShift,
   OwnerBranchRow,
   OwnerBranchShare,
   OwnerDashboardPayload,
@@ -20,6 +23,9 @@ import {
   enterOwnerStaffAndGo,
   type OwnerEnterStaffBranch,
 } from "@/lib/owner-enter-staff";
+import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
+import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
+import { branchAdminBasePath } from "@/lib/branch-admin-path";
 import { ownerExpensesHref, ownerHomeHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockFlowHref, ownerSummaryHref, ownerTopSellersHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
 
 type BranchCard = {
@@ -27,6 +33,8 @@ type BranchCard = {
   name: string;
   isOpen: boolean;
   isTest: boolean;
+  activeShift: OwnerBranchActiveShift | null;
+  lastClosedShift: OwnerBranchLastClosedShift | null;
   completedRevenue: number;
   completedCount: number;
   openCount: number;
@@ -64,6 +72,8 @@ function mergeBranchCards(
         name: b.name,
         isOpen: b.isOpen,
         isTest: b.isTest,
+        activeShift: b.activeShift ?? null,
+        lastClosedShift: b.lastClosedShift ?? null,
         completedRevenue: row?.completedRevenue ?? 0,
         completedCount: row?.completedCount ?? 0,
         openCount: row?.openCount ?? 0,
@@ -81,6 +91,9 @@ function mergeBranchCards(
       };
     })
     .sort((a, b) => {
+      const aOpen = a.activeShift ? 1 : 0;
+      const bOpen = b.activeShift ? 1 : 0;
+      if (bOpen !== aOpen) return bOpen - aOpen;
       if (b.completedRevenue !== a.completedRevenue) {
         return b.completedRevenue - a.completedRevenue;
       }
@@ -152,7 +165,8 @@ function OwnerBranchesInner() {
     payload?.hasTestBranch ??
     data?.hasTestBranch ??
     branches.some((b) => b.isTest);
-  const openCount = cards.filter((c) => c.isOpen).length;
+  const openCount = cards.filter((c) => c.activeShift).length;
+  const closedCount = cards.length - openCount;
   const totalRevenue = cards.reduce((sum, c) => sum + c.completedRevenue, 0);
   const totalBills = cards.reduce((sum, c) => sum + c.completedCount, 0);
   const totalOpenBills = cards.reduce((sum, c) => sum + c.openCount, 0);
@@ -189,18 +203,32 @@ function OwnerBranchesInner() {
   return (
     <div className="px-4 pb-6 pt-4">
       <header className="mb-4">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400">
-          Owner · Mobile
-        </p>
-        <h1 className="mt-1 text-[22px] font-black text-slate-900">
-          รวมทุกสาขา
-        </h1>
-        <p className="mt-1 text-[14px] font-medium text-slate-500">
-          {cards.length > 0
-            ? `${cards.length} สาขา · กดการ์ดเพื่อดูยอดสาขานั้น`
-            : "ยังไม่มีสาขาในร้าน"}
-          {hasTestBranch && !includeTest ? " · ไม่รวมทดลอง" : ""}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400">
+              Owner · Mobile
+            </p>
+            <h1 className="mt-1 text-[22px] font-black text-slate-900">
+              รวมทุกสาขา
+            </h1>
+            <p className="mt-1 text-[14px] font-medium text-slate-500">
+              {cards.length > 0
+                ? `${cards.length} สาขา · กดการ์ดเพื่อดูยอดสาขานั้น`
+                : "ยังไม่มีสาขาในร้าน"}
+              {hasTestBranch && !includeTest ? " · ไม่รวมทดลอง" : ""}
+            </p>
+          </div>
+          <Link
+            href="/admin"
+            className="flex shrink-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center shadow-sm transition active:bg-slate-50"
+            title="จัดการและเพิ่มสาขา"
+          >
+            <IconPlus size={18} className="text-site-primary" />
+            <span className="mt-0.5 text-[10px] font-bold text-slate-600">
+              สาขา
+            </span>
+          </Link>
+        </div>
       </header>
 
       {hasTestBranch ? (
@@ -229,7 +257,7 @@ function OwnerBranchesInner() {
 
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-2xl bg-white px-3 py-3 shadow-sm">
-          <p className="text-[11px] font-semibold text-slate-500">เปิดอยู่</p>
+          <p className="text-[11px] font-semibold text-slate-500">เปิดรอบ</p>
           <p className="mt-1 text-[18px] font-black tabular-nums text-slate-900">
             {openCount}/{cards.length}
           </p>
@@ -273,9 +301,16 @@ function OwnerBranchesInner() {
       {loading && cards.length === 0 ? (
         <p className="py-10 text-center text-sm text-slate-500">กำลังโหลด…</p>
       ) : cards.length === 0 ? (
-        <p className="rounded-2xl bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
-          ยังไม่มีสาขา — เพิ่มสาขาจากเมนูหลังบ้าน
-        </p>
+        <div className="rounded-2xl bg-white px-4 py-10 text-center shadow-sm">
+          <p className="text-sm text-slate-500">ยังไม่มีสาขาในร้าน</p>
+          <Link
+            href="/admin"
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-site-primary px-4 py-2.5 text-sm font-bold text-white shadow-sm active:opacity-90"
+          >
+            <IconPlus size={16} />
+            เพิ่มสาขาแรก
+          </Link>
+        </div>
       ) : (
         <ul className="space-y-3" aria-label="รายการสาขา">
           {cards.map((card, index) => {
@@ -305,20 +340,24 @@ function OwnerBranchesInner() {
                             {card.name}
                           </h2>
                         </div>
-                        <p className="mt-1 text-[12px] font-semibold text-slate-500">
-                          {card.isOpen ? (
-                            <span className="text-emerald-700">เปิดอยู่</span>
+                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
+                          {card.activeShift ? (
+                            <OwnerBranchShiftLine shift={card.activeShift} />
                           ) : (
-                            <span className="text-slate-500">ปิดร้าน</span>
+                            <OwnerBranchClosedShiftLine
+                              shift={card.lastClosedShift}
+                            />
                           )}
-                          {card.isTest ? " · ทดลอง" : ""}
+                          {card.isTest ? (
+                            <span className="text-slate-500"> · ทดลอง</span>
+                          ) : null}
                           {card.openCount > 0
                             ? ` · ค้าง ${formatPrice(card.openCount)} บิล`
                             : ""}
                           {card.cancelledCount > 0
                             ? ` · ยกเลิก ${formatPrice(card.cancelledCount)}`
                             : ""}
-                        </p>
+                        </div>
                       </div>
                       <span className="shrink-0 text-lg text-slate-300" aria-hidden>
                         ›
@@ -458,7 +497,7 @@ function OwnerBranchesInner() {
                       {stockEnabled ? "สต๊อก" : "ดูยอด"}
                     </Link>
                     <Link
-                      href={`/admin/branches/${card.id}`}
+                      href={branchAdminBasePath(card.id, { ownerShell: true })}
                       className="border-l border-slate-100 py-2.5 text-slate-700 active:bg-slate-50"
                     >
                       จัดการ

@@ -191,6 +191,68 @@ export async function GET(request: Request) {
       .filter((b) => !b.isTest && b.kind !== "WAREHOUSE")
       .map((b) => b.id);
 
+    const openShiftRows =
+      liveBranchIds.length === 0
+        ? []
+        : await prisma.branchShift.findMany({
+            where: {
+              branchId: { in: liveBranchIds },
+              closedAt: null,
+            },
+            select: {
+              branchId: true,
+              roundNumber: true,
+              openedAt: true,
+              calendarDate: true,
+              cancelledAt: true,
+            },
+            orderBy: { openedAt: "desc" },
+          });
+
+    const activeShiftByBranch = new Map<
+      string,
+      { roundNumber: number; openedAt: string; calendarDate: string }
+    >();
+    for (const row of openShiftRows) {
+      if (row.cancelledAt) continue;
+      if (activeShiftByBranch.has(row.branchId)) continue;
+      activeShiftByBranch.set(row.branchId, {
+        roundNumber: row.roundNumber,
+        openedAt: row.openedAt.toISOString(),
+        calendarDate: row.calendarDate.toISOString().slice(0, 10),
+      });
+    }
+
+    const closedShiftRows =
+      liveBranchIds.length === 0
+        ? []
+        : await prisma.branchShift.findMany({
+            where: {
+              branchId: { in: liveBranchIds },
+              closedAt: { not: null },
+              cancelledAt: null,
+            },
+            select: {
+              branchId: true,
+              roundNumber: true,
+              closedAt: true,
+            },
+            orderBy: { closedAt: "desc" },
+          });
+
+    const lastClosedShiftByBranch = new Map<
+      string,
+      { roundNumber: number; closedAt: string }
+    >();
+    for (const row of closedShiftRows) {
+      if (lastClosedShiftByBranch.has(row.branchId)) continue;
+      if (!row.closedAt) continue;
+      lastClosedShiftByBranch.set(row.branchId, {
+        roundNumber: row.roundNumber,
+        closedAt: row.closedAt.toISOString(),
+      });
+    }
+
     const staffCount =
       liveBranchIds.length === 0
         ? 0
@@ -361,6 +423,8 @@ export async function GET(request: Request) {
         isHidden: b.isHidden,
         kind: b.kind,
         isTest: isTestBranch(b),
+        activeShift: activeShiftByBranch.get(b.id) ?? null,
+        lastClosedShift: lastClosedShiftByBranch.get(b.id) ?? null,
       })),
       hasTestBranch,
       includeTest,

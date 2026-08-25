@@ -22,6 +22,12 @@ import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { PhoneInput } from "@/components/PhoneInput";
 import { PhoneCallButton } from "@/components/PhoneCallButton";
+import { AdminBranchMobileTabNav } from "@/components/admin/AdminBranchMobileTabNav";
+import { AdminStaffRowActions } from "@/components/admin/AdminStaffRowActions";
+import { QuickAddMenuBar } from "@/components/admin/QuickAddMenuBar";
+import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
+import { useAdminBranchShell } from "@/components/admin/AdminBranchShellContext";
+import { branchAdminBasePath, branchMenuEditorPath, shouldUseOwnerBranchShell } from "@/lib/branch-admin-path";
 import { BranchLocationPicker } from "@/components/admin/BranchLocationPicker";
 import { AdminMapLocationPicker } from "@/components/admin/AdminMapLocationPicker";
 import type { MapLocationValue } from "@/components/admin/AdminMapLocationField";
@@ -55,9 +61,11 @@ import {
   IconClose,
   IconDelivery,
   IconEdit,
+  IconMic,
   IconPackage,
   IconPin,
   IconPlus,
+  IconSearch,
   IconStore,
   IconTrash,
   IconUser,
@@ -570,6 +578,7 @@ export default function BranchDetailPage() {
 }
 
 function BranchDetailContent() {
+  const { embeddedInOwnerShell } = useAdminBranchShell();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const pathname = usePathname();
@@ -618,17 +627,50 @@ function BranchDetailContent() {
   const [staffDelivery, setStaffDelivery] = useState(false);
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
   const [staffSaving, setStaffSaving] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [phoneCheck, setPhoneCheck] = useState<PhoneCheckState>({
     status: "idle",
   });
   const toast = useToast();
+  const { isMobileLayout: viewportMobile, phoneFrame } = useAdminMobileLayout();
+  const isMobileLayout = embeddedInOwnerShell || viewportMobile;
+  const showPhoneFrame = phoneFrame && !embeddedInOwnerShell;
+  const branchBase = branchAdminBasePath(id, { ownerShell: embeddedInOwnerShell });
+  const [layoutReady, setLayoutReady] = useState(false);
   const { confirm } = useConfirm();
+
+  useEffect(() => {
+    if (!session) return;
+    if (session.isPlatformAdmin) {
+      setLayoutReady(true);
+      return;
+    }
+    const useOwnerShell = shouldUseOwnerBranchShell();
+    const qs = searchParams.toString();
+    const suffix = qs ? `?${qs}` : "";
+    if (embeddedInOwnerShell && !useOwnerShell) {
+      router.replace(`/admin/branches/${id}${suffix}`);
+      return;
+    }
+    if (!embeddedInOwnerShell && useOwnerShell) {
+      router.replace(`/owner/branches/${id}${suffix}`);
+      return;
+    }
+    setLayoutReady(true);
+  }, [embeddedInOwnerShell, id, router, searchParams, session]);
 
   const emptyLocationMap = (): MapLocationValue => ({
     address: "",
     latitude: null,
     longitude: null,
   });
+  function openAddLocationModal() {
+    setLocationName("");
+    setLocationFee("0");
+    setLocationCustomAddress(false);
+    setLocationMap(emptyLocationMap());
+    setLocationModalOpen(true);
+  }
   const [locationName, setLocationName] = useState("");
   const [locationFee, setLocationFee] = useState("0");
   const [locationCustomAddress, setLocationCustomAddress] = useState(false);
@@ -658,6 +700,8 @@ function BranchDetailContent() {
     soldOutParsed: { raw: string; name: string }[];
   } | null>(null);
   const [menuSearch, setMenuSearch] = useState("");
+  const [menuSearchOpen, setMenuSearchOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [menuCategoryFilter, setMenuCategoryFilter] = useState("ALL");
   const [menuStatusFilter, setMenuStatusFilter] = useState<
     "ALL" | "OUT_OF_STOCK" | "HIDDEN"
@@ -892,6 +936,7 @@ function BranchDetailContent() {
 
   async function saveBranch(e: React.FormEvent) {
     e.preventDefault();
+    if (settingsSaving) return;
     if (!settings.storefrontHours || !settings.deliveryHours) {
       toast.error("บันทึกไม่สำเร็จ", "ตารางเวลายังไม่พร้อม");
       return;
@@ -925,6 +970,8 @@ function BranchDetailContent() {
       }
     }
 
+    setSettingsSaving(true);
+    try {
     const res = await fetch(`/api/admin/branches/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -957,6 +1004,9 @@ function BranchDetailContent() {
     }
     toast.success("บันทึกตั้งค่าแล้ว");
     load();
+    } finally {
+      setSettingsSaving(false);
+    }
   }
 
   async function patchBranchSetting(
@@ -1543,8 +1593,34 @@ function BranchDetailContent() {
     setMenuDragOverId(null);
   }
 
+  async function moveMenuByStep(itemId: string, direction: -1 | 1) {
+    if (!canReorderMenu || menuReorderSaving) return;
+    const list = [...menuItemsOrderRef.current];
+    const idx = list.indexOf(itemId);
+    const target = idx + direction;
+    if (idx < 0 || target < 0 || target >= list.length) return;
+    [list[idx], list[target]] = [list[target], list[idx]];
+    menuItemsOrderRef.current = list;
+    setBranch((prev) => {
+      if (!prev) return prev;
+      const byId = new Map(prev.menuItems.map((m) => [m.id, m]));
+      const nextItems = list
+        .map((mid, index) => {
+          const item = byId.get(mid);
+          return item ? { ...item, sortOrder: index } : null;
+        })
+        .filter(Boolean) as BranchDetail["menuItems"];
+      return { ...prev, menuItems: nextItems };
+    });
+    await persistMenuOrder(list);
+  }
+
   if (!branch) {
     return <AdminLoadingState />;
+  }
+
+  if (!layoutReady && !session?.isPlatformAdmin) {
+    return <AdminLoadingState compact label="กำลังเปิดมุมมอง…" />;
   }
 
   const activeStaff = (branch.staff ?? []).filter((s) => s.isActive).length;
@@ -1552,6 +1628,58 @@ function BranchDetailContent() {
   const money = (n: number) =>
     n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
   const isWarehouse = branch.kind === "WAREHOUSE";
+  const branchOperatingMode: BranchOperatingModeId = isBranchOperatingMode(
+    branch.operatingMode,
+  )
+    ? branch.operatingMode
+    : "NORMAL";
+  const hiddenTabIds = hiddenTabsForMode(
+    branchOperatingMode,
+    Boolean(branch.weighSalesEnabled),
+    branch.kind,
+  );
+
+  async function goAddMenu() {
+    const [catRes, optRes] = await Promise.all([
+      fetch(`/api/admin/branches/${id}/categories`),
+      fetch(`/api/admin/branches/${id}/option-groups`),
+    ]);
+    const cats = catRes.ok ? await catRes.json() : [];
+    const opts = optRes.ok ? await optRes.json() : [];
+    const categoryList = Array.isArray(cats) ? cats : (cats.categories ?? []);
+    const optionList = Array.isArray(opts)
+      ? opts
+      : (opts.groups ?? opts.optionGroups ?? []);
+    const missingCategories = categoryList.length === 0;
+    const missingOptions = optionList.length === 0;
+
+    setBranch((prev) =>
+      prev
+        ? {
+            ...prev,
+            menuCategories: categoryList.map(
+              (c: { id: string; name: string }) => ({
+                id: c.id,
+                name: c.name,
+              }),
+            ),
+            optionGroups: optionList.map(
+              (g: { id: string; name: string }) => ({
+                id: g.id,
+                name: g.name,
+              }),
+            ),
+          }
+        : prev,
+    );
+
+    if (missingCategories || missingOptions) {
+      setMenuSetupModalOpen(true);
+      return;
+    }
+    router.push(branchMenuEditorPath(id, "new", { ownerShell: embeddedInOwnerShell }));
+  }
+
   const storefrontSchedule = ensureWeeklySchedule(
     branch.storefrontHours,
     branch.opensAt,
@@ -1623,13 +1751,16 @@ function BranchDetailContent() {
   })();
 
   return (
+    <div className={showPhoneFrame ? "mx-auto w-full max-w-md" : undefined}>
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            {!embeddedInOwnerShell ? (
             <h2 className="text-xl font-bold tracking-tight text-slate-900">
               {branch.name}
             </h2>
+            ) : null}
             <span
               title={branchLiveBadge.hint}
               className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${branchLiveBadge.className}`}
@@ -1685,6 +1816,7 @@ function BranchDetailContent() {
                 /{branch.brand.code}/{branch.code}
               </span>
             ) : null}
+            {!embeddedInOwnerShell ? (
             <Link
               href={
                 session?.isPlatformAdmin && branch.brandId
@@ -1698,23 +1830,28 @@ function BranchDetailContent() {
                 ? "รายการสาขา"
                 : "รายการ"}
             </Link>
+            ) : null}
           </div>
         </div>
       </div>
 
+      {isMobileLayout ? (
+      <div className={`sticky z-20 -mx-1 mt-4 bg-[#eef3f8]/95 px-1 py-2 backdrop-blur ${embeddedInOwnerShell ? "top-0" : "top-[3rem]"}`}>
+        <AdminBranchMobileTabNav
+          groups={TAB_GROUPS}
+          tabsById={TAB_BY_ID}
+          activeTab={activeTab}
+          hiddenTabIds={hiddenTabIds}
+          onTabChange={(tabId) => setTab(tabId as TabId)}
+          getTabAttention={(tabId) => getTabAttention(tabId as TabId, branch)}
+        />
+      </div>
+      ) : (
       <div className="sticky top-[3rem] z-20 -mx-1 mt-4 overflow-x-auto filter-scroll-row bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.25rem]">
         <div className="flex min-w-max items-center gap-0.5 rounded-2xl border border-slate-200 bg-white/90 p-1.5 shadow-sm">
           {TAB_GROUPS.map((group, groupIndex) => {
-            const mode: BranchOperatingModeId = isBranchOperatingMode(
-              branch.operatingMode,
-            )
-              ? branch.operatingMode
-              : "NORMAL";
-            const hidden = hiddenTabsForMode(
-              mode,
-              Boolean(branch.weighSalesEnabled),
-              branch.kind,
-            );
+            const mode: BranchOperatingModeId = branchOperatingMode;
+            const hidden = hiddenTabIds;
             const visibleTabIds = group.tabIds.filter(
               (tabId) => !hidden.has(tabId),
             );
@@ -1790,6 +1927,7 @@ function BranchDetailContent() {
           })}
         </div>
       </div>
+      )}
 
       <div className="mt-4">
         {activeTab === "overview" && (
@@ -2263,10 +2401,10 @@ function BranchDetailContent() {
         )}
 
         {activeTab === "menu" && (
-          <div className={panelClass}>
+          <div className={`${panelClass}${isMobileLayout ? " pb-8" : " pb-4"}`}>
             <div className="space-y-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-base font-semibold text-gray-900">
                     เมนูของสาขานี้
                   </h3>
@@ -2275,11 +2413,59 @@ function BranchDetailContent() {
                       ? `${branch.menuItems.length} รายการ`
                       : `แสดง ${filteredMenuItems.length} จาก ${branch.menuItems.length} รายการ`}
                     {canReorderMenu
-                      ? " · ลากรายการเพื่อจัดลำดับแสดงผลหน้าร้าน"
+                      ? " · ลากหรือกด ↑↓ เพื่อจัดลำดับ"
                       : " · ล้างตัวกรองเพื่อจัดลำดับ"}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                  {menuSearchOpen || menuSearch.trim() || !isMobileLayout ? (
+                    <input
+                      id="menu-search"
+                      className={`${adminInputClass} h-9 w-[7.5rem] sm:w-36`}
+                      value={menuSearch}
+                      onChange={(e) => setMenuSearch(e.target.value)}
+                      placeholder="ค้นหา…"
+                      aria-label="ค้นหาเมนู"
+                      autoFocus={menuSearchOpen && isMobileLayout}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setMenuSearchOpen(true)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50"
+                      aria-label="ค้นหาเมนู"
+                      title="ค้นหาเมนู"
+                    >
+                      <IconSearch size={18} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddOpen((v) => !v)}
+                    className={`inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-bold transition sm:px-3 sm:text-sm ${
+                      quickAddOpen
+                        ? "border-amber-300 bg-amber-100 text-amber-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <IconMic size={16} />
+                    <span className="hidden sm:inline">เพิ่มด่วน</span>
+                    <span className="sm:hidden">ด่วน</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void goAddMenu()}
+                    className={`inline-flex h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold sm:gap-1.5 sm:px-3 sm:text-sm ${btnPrimary}`}
+                  >
+                    <IconPlus size={16} />
+                    <span className="hidden sm:inline">เพิ่มเมนู</span>
+                    <span className="sm:hidden">เพิ่ม</span>
+                  </button>
+                </div>
+              </div>
+
+              {!isMobileLayout ? (
+                <div className="hidden flex-wrap items-center gap-2 sm:flex">
                   <button
                     type="button"
                     onClick={() => {
@@ -2298,67 +2484,19 @@ function BranchDetailContent() {
                   >
                     คัดลอกด้วยโค้ด
                   </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const [catRes, optRes] = await Promise.all([
-                        fetch(`/api/admin/branches/${id}/categories`),
-                        fetch(`/api/admin/branches/${id}/option-groups`),
-                      ]);
-                      const cats = catRes.ok ? await catRes.json() : [];
-                      const opts = optRes.ok ? await optRes.json() : [];
-                      const categoryList = Array.isArray(cats)
-                        ? cats
-                        : (cats.categories ?? []);
-                      const optionList = Array.isArray(opts)
-                        ? opts
-                        : (opts.groups ?? opts.optionGroups ?? []);
-                      const missingCategories = categoryList.length === 0;
-                      const missingOptions = optionList.length === 0;
-
-                      setBranch((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              menuCategories: categoryList.map(
-                                (c: { id: string; name: string }) => ({
-                                  id: c.id,
-                                  name: c.name,
-                                }),
-                              ),
-                              optionGroups: optionList.map(
-                                (g: { id: string; name: string }) => ({
-                                  id: g.id,
-                                  name: g.name,
-                                }),
-                              ),
-                            }
-                          : prev,
-                      );
-
-                      if (missingCategories || missingOptions) {
-                        setMenuSetupModalOpen(true);
-                        return;
-                      }
-                      router.push(`/admin/branches/${id}/menu/new`);
-                    }}
-                    className={`inline-flex items-center gap-1.5 ${btnPrimary}`}
-                  >
-                    <IconPlus size={16} />
-                    เพิ่มเมนู
-                  </button>
                 </div>
-              </div>
+              ) : null}
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
-                  id="menu-search"
-                  className={`${adminInputClass} sm:max-w-xs sm:flex-1`}
-                  value={menuSearch}
-                  onChange={(e) => setMenuSearch(e.target.value)}
-                  placeholder="ค้นหาเมนู..."
-                  aria-label="ค้นหาเมนู"
-                />
+              <QuickAddMenuBar
+                branchId={id}
+                branchName={branch.name}
+                compact={isMobileLayout}
+                open={quickAddOpen}
+                onClose={() => setQuickAddOpen(false)}
+                onDone={() => void load()}
+              />
+
+              <div className={`flex flex-col gap-2${isMobileLayout ? "" : " sm:flex-row sm:items-center"}`}>
                 <select
                   id="menu-category-filter"
                   className={`${adminSelectClass} sm:w-44`}
@@ -2431,7 +2569,16 @@ function BranchDetailContent() {
               </p>
             ) : (
             <ul className="mt-4 space-y-2">
-              {filteredMenuItems.map((m) => (
+              {filteredMenuItems.map((m) => {
+                const orderIndex = menuItemsOrderRef.current.indexOf(m.id);
+                const canMoveUp =
+                  canReorderMenu && orderIndex > 0 && !menuReorderSaving;
+                const canMoveDown =
+                  canReorderMenu &&
+                  orderIndex >= 0 &&
+                  orderIndex < menuItemsOrderRef.current.length - 1 &&
+                  !menuReorderSaving;
+                return (
                 <li
                   key={m.id}
                   draggable={canReorderMenu}
@@ -2442,111 +2589,165 @@ function BranchDetailContent() {
                     e.preventDefault();
                     void onMenuDrop(m.id);
                   }}
-                  className={`flex flex-wrap items-stretch gap-3 rounded-lg border px-3 py-2.5 transition ${
+                  className={`rounded-lg border px-3 py-2.5 transition ${
                     menuDraggingId === m.id
                       ? "border-slate-300 opacity-60 shadow-sm"
                       : menuDragOverId === m.id
                         ? "border-amber-300 bg-amber-50/70"
                         : "border-gray-200"
-                  } ${canReorderMenu ? "cursor-move" : ""}`}
+                  } ${canReorderMenu && !isMobileLayout ? "lg:cursor-move" : ""}`}
                 >
-                  <div className="flex w-8 shrink-0 flex-col items-center justify-center gap-1 self-center">
-                    {canReorderMenu ? (
-                      <span className="select-none text-slate-400" aria-hidden>
-                        ::
+                  <div className="flex gap-3">
+                    <div className="flex shrink-0 flex-col items-center justify-center gap-1 self-start pt-1">
+                      {canReorderMenu ? (
+                        <>
+                          <span
+                            className={`select-none text-slate-400 ${isMobileLayout ? "hidden" : "hidden lg:inline"}`}
+                            aria-hidden
+                          >
+                            ::
+                          </span>
+                          {isMobileLayout ? (
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              type="button"
+                              disabled={!canMoveUp}
+                              onClick={() => void moveMenuByStep(m.id, -1)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                              aria-label={`เลื่อน ${m.name} ขึ้น`}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!canMoveDown}
+                              onClick={() => void moveMenuByStep(m.id, 1)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                              aria-label={`เลื่อน ${m.name} ลง`}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                          ) : null}
+                        </>
+                      ) : null}
+                      <span className="text-xs font-bold tabular-nums text-slate-400">
+                        {menuSeqById.get(m.id) ?? "—"}
                       </span>
-                    ) : null}
-                    <span className="text-xs font-bold tabular-nums text-slate-400">
-                      {menuSeqById.get(m.id) ?? "—"}
-                    </span>
-                  </div>
-                  {m.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={m.imageUrl}
-                      alt=""
-                      className="h-20 w-20 shrink-0 rounded-lg object-cover sm:h-24 sm:w-24"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-24 sm:w-24">
-                      ไม่มีรูป
                     </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900">
-                      <span>{m.name}</span>
-                      <MenuBestSellerTag show={m.isBestSeller} />
-                    </p>
-                    {m.description && (
-                      <p className="mt-0.5 truncate text-sm text-gray-700">
-                        {m.description}
-                      </p>
+                    {m.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={m.imageUrl}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-lg object-cover sm:h-20 sm:w-20"
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-20 sm:w-20">
+                        ไม่มีรูป
+                      </div>
                     )}
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                      {m.category ? (
-                        <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                          {m.category.name}
-                        </span>
-                      ) : (
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                          ไม่มีหมวดหมู่
-                        </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900">
+                        <span>{m.name}</span>
+                        <MenuBestSellerTag show={m.isBestSeller} />
+                      </p>
+                      {m.description && (
+                        <p className="mt-0.5 line-clamp-2 text-sm text-gray-700 sm:truncate">
+                          {m.description}
+                        </p>
                       )}
-                      <MenuChannelPrices item={m} />
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                        {m.category ? (
+                          <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                            {m.category.name}
+                          </span>
+                        ) : (
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                            ไม่มีหมวดหมู่
+                          </span>
+                        )}
+                        <MenuChannelPrices item={m} />
+                      </div>
+                      <div className={`mt-2.5 flex flex-col gap-2${isMobileLayout ? "" : " sm:flex-row sm:flex-wrap"}`}>
+                        <AdminToggle
+                          checked={m.isHidden}
+                          onChange={(next) => toggleHidden(m.id, next)}
+                          label="ซ่อนจากลูกค้า"
+                        />
+                        <AdminToggle
+                          checked={m.isOutOfStock}
+                          onChange={(next) => toggleOutOfStock(m.id, next)}
+                          label="หมดชั่วคราว"
+                        />
+                      </div>
                     </div>
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      <AdminToggle
-                        checked={m.isHidden}
-                        onChange={(next) => toggleHidden(m.id, next)}
-                        label="ซ่อนจากลูกค้า"
-                      />
-                      <AdminToggle
-                        checked={m.isOutOfStock}
-                        onChange={(next) => toggleOutOfStock(m.id, next)}
-                        label="หมดชั่วคราว"
-                      />
+                    <div className="flex shrink-0 items-start gap-2 self-start">
+                      <Link
+                        href={branchMenuEditorPath(id, m.id, {
+                          ownerShell: embeddedInOwnerShell,
+                        })}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                        aria-label={`แก้ไข ${m.name}`}
+                        title="แก้ไข"
+                      >
+                        <IconEdit size={18} />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => deleteMenu(m.id)}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+                        aria-label={`ลบ ${m.name}`}
+                        title="ลบ"
+                      >
+                        <IconTrash size={18} />
+                      </button>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 flex-col justify-center gap-2 self-center">
-                    <Link
-                      href={`/admin/branches/${id}/menu/${m.id}`}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                      aria-label={`แก้ไข ${m.name}`}
-                      title="แก้ไข"
-                    >
-                      <IconEdit size={18} />
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => deleteMenu(m.id)}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
-                      aria-label={`ลบ ${m.name}`}
-                      title="ลบ"
-                    >
-                      <IconTrash size={18} />
-                    </button>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
             )}
+            {isMobileLayout ? (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStockPasteResult(null);
+                  setStockPasteText("");
+                  setStockPasteOpen(true);
+                }}
+                className={btnOutline}
+              >
+                วางสต็อก
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("copy")}
+                className={btnOutline}
+              >
+                คัดลอกโค้ด
+              </button>
+            </div>
+            ) : null}
           </div>
         )}
 
         {activeTab === "options" && (
-          <div className={panelClass}>
+          <div className={`${panelClass} pb-4`}>
             <BranchOptionLibrary branchId={id} />
           </div>
         )}
 
         {activeTab === "categories" && (
-          <div className={panelClass}>
+          <div className={`${panelClass} pb-4`}>
             <BranchCategoryLibrary branchId={id} />
           </div>
         )}
 
         {activeTab === "copy" && (
-          <div className={panelClass}>
+          <div className={`${panelClass} pb-4`}>
             <BranchShareCopyPanel branchId={id} onImported={() => load()} />
           </div>
         )}
@@ -2604,8 +2805,8 @@ function BranchDetailContent() {
         {activeTab === "expenses" && <BranchExpensesPanel branchId={id} />}
 
         {activeTab === "staff" && (
-          <div className={panelClass}>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className={`${panelClass}${isMobileLayout ? " pb-24" : " pb-4"}`}>
+            <div className={`mb-3 flex flex-col gap-3${isMobileLayout ? "" : " sm:flex-row sm:items-center sm:justify-between"}`}>
               <div>
                 <h3 className="text-base font-semibold text-gray-900">
                   {isWarehouse ? "พนักงานสต๊อกกลาง" : "พนักงานประจำสาขา"}
@@ -2623,7 +2824,7 @@ function BranchDetailContent() {
               <button
                 type="button"
                 onClick={openCreateStaffModal}
-                className={`inline-flex items-center gap-1.5 ${btnPrimary}`}
+                className={`${isMobileLayout ? "hidden" : "hidden items-center gap-1.5 sm:inline-flex"} ${btnPrimary}`}
               >
                 <IconPlus size={16} />
                 เพิ่มพนักงาน
@@ -2636,7 +2837,7 @@ function BranchDetailContent() {
                   key={s.id}
                   className="rounded-xl border border-gray-200 bg-gradient-to-r from-white to-gray-50/60 px-3 py-3"
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className={`flex flex-col gap-3${isMobileLayout ? "" : " sm:flex-row sm:items-start sm:justify-between"}`}>
                     <div className="flex min-w-0 flex-1 gap-3">
                       {s.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -2704,46 +2905,17 @@ function BranchDetailContent() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <PhoneCallButton phone={s.phone} />
-                      {s.lineUserId ? (
-                        <button
-                          type="button"
-                          onClick={() => unlinkStaffLine(s.id)}
-                          className={btnOutline}
-                        >
-                          ยกเลิก LINE
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => startEditStaff(s)}
-                        className={btnOutline}
-                      >
-                        แก้ไข
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => revokeStaffSessions(s.id, s.name)}
-                        className={btnOutline}
-                      >
-                        ปลดเครื่อง
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleStaffActive(s.id, !s.isActive)}
-                        className={btnOutline}
-                      >
-                        {s.isActive ? "ปิด" : "เปิด"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteStaff(s.id)}
-                        className={btnDanger}
-                      >
-                        ลบ
-                      </button>
-                    </div>
+                    <AdminStaffRowActions
+                      phone={s.phone}
+                      hasLine={Boolean(s.lineUserId)}
+                      isActive={s.isActive}
+                      compact={isMobileLayout}
+                      onEdit={() => startEditStaff(s)}
+                      onUnlinkLine={() => unlinkStaffLine(s.id)}
+                      onRevokeSessions={() => revokeStaffSessions(s.id, s.name)}
+                      onToggleActive={() => toggleStaffActive(s.id, !s.isActive)}
+                      onDelete={() => deleteStaff(s.id)}
+                    />
                   </div>
                 </li>
               ))}
@@ -2950,12 +3122,24 @@ function BranchDetailContent() {
                 </div>
               </form>
             </AdminModal>
+
+            {isMobileLayout ? (
+            <button
+              type="button"
+              onClick={openCreateStaffModal}
+              className={`fixed bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white shadow-lg active:scale-[0.98] ${btnPrimary}`}
+              style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+            >
+              <IconPlus size={18} />
+              เพิ่มพนักงาน
+            </button>
+            ) : null}
           </div>
         )}
 
         {activeTab === "locations" && (
-          <div className={panelClass}>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className={`${panelClass}${isMobileLayout ? " pb-24" : " pb-4"}`}>
+            <div className={`mb-3 flex flex-col gap-3${isMobileLayout ? "" : " sm:flex-row sm:items-center sm:justify-between"}`}>
               <div>
                 <h3 className="text-base font-semibold text-gray-900">
                   พื้นที่จัดส่ง
@@ -2967,14 +3151,8 @@ function BranchDetailContent() {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setLocationName("");
-                  setLocationFee("0");
-                  setLocationCustomAddress(false);
-                  setLocationMap(emptyLocationMap());
-                  setLocationModalOpen(true);
-                }}
-                className={`inline-flex items-center gap-1.5 ${btnPrimary}`}
+                onClick={openAddLocationModal}
+                className={`${isMobileLayout ? "hidden" : "hidden items-center gap-1.5 sm:inline-flex"} ${btnPrimary}`}
               >
                 <IconPlus size={16} />
                 เพิ่มพื้นที่
@@ -2997,13 +3175,7 @@ function BranchDetailContent() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    setLocationName("");
-                    setLocationFee("0");
-                    setLocationCustomAddress(false);
-                    setLocationMap(emptyLocationMap());
-                    setLocationModalOpen(true);
-                  }}
+                  onClick={openAddLocationModal}
                   className={`mt-3 inline-flex items-center gap-1.5 ${btnPrimary}`}
                 >
                   <IconPlus size={16} />
@@ -3096,7 +3268,7 @@ function BranchDetailContent() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className={`flex flex-col gap-3${isMobileLayout ? "" : " sm:flex-row sm:items-start sm:justify-between"}`}>
                       <div className="min-w-0">
                         <p className="font-medium text-slate-900">
                           {loc.name}
@@ -3131,7 +3303,7 @@ function BranchDetailContent() {
                           </p>
                         ) : null}
                       </div>
-                      <div className="flex gap-2">
+                      <div className={`flex w-full gap-2${isMobileLayout ? "" : " sm:w-auto"}`}>
                         <button
                           type="button"
                           onClick={() => {
@@ -3149,14 +3321,14 @@ function BranchDetailContent() {
                               longitude: loc.longitude ?? null,
                             });
                           }}
-                          className={btnOutline}
+                          className={`min-h-10 flex-1 ${isMobileLayout ? "" : "sm:flex-none"} ${btnOutline}`}
                         >
                           แก้ไข
                         </button>
                         <button
                           type="button"
                           onClick={() => removeLocation(loc.id)}
-                          className={btnDanger}
+                          className={`min-h-10 flex-1 ${isMobileLayout ? "" : "sm:flex-none"} ${btnDanger}`}
                         >
                           ลบ
                         </button>
@@ -3246,18 +3418,35 @@ function BranchDetailContent() {
                 </div>
               </form>
             </AdminModal>
+
+            {isMobileLayout ? (
+            <button
+              type="button"
+              onClick={openAddLocationModal}
+              className={`fixed bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white shadow-lg active:scale-[0.98] ${btnPrimary}`}
+              style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+            >
+              <IconPlus size={18} />
+              เพิ่มพื้นที่
+            </button>
+            ) : null}
           </div>
         )}
 
         {activeTab === "settings" && (
-          <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-5 py-4">
+          <>
+          <section className={`overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm${isMobileLayout ? " pb-24" : ""}`}>
+            <div className="border-b border-gray-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-4 sm:px-5">
               <h3 className="font-semibold text-gray-900">ตั้งค่าสาขา</h3>
               <p className="mt-0.5 text-sm text-gray-600">
                 จัดการสถานะรับออเดอร์ ข้อมูลร้าน แผนที่ และเวลาทำการ
               </p>
             </div>
-            <form onSubmit={saveBranch} className="space-y-8 p-5">
+            <form
+              id="branch-settings-form"
+              onSubmit={saveBranch}
+              className="space-y-8 p-4 sm:p-5"
+            >
               {(() => {
                 const draftGaps = getBranchSettingsGaps({
                   latitude: settings.latitude,
@@ -3364,7 +3553,7 @@ function BranchDetailContent() {
                   </p>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">
                         สวิตช์เปิด/ปิดร้าน
@@ -3378,7 +3567,7 @@ function BranchDetailContent() {
                     {settings.isOpen ? (
                       <button
                         type="button"
-                        className={`${btnDanger} shrink-0`}
+                        className={`${btnDanger} w-full shrink-0 sm:w-auto`}
                         onClick={() => setCloseStoreOpen(true)}
                       >
                         ปิดร้าน
@@ -3386,7 +3575,7 @@ function BranchDetailContent() {
                     ) : (
                       <button
                         type="button"
-                        className={`${btnPrimary} shrink-0`}
+                        className={`${btnPrimary} w-full shrink-0 sm:w-auto`}
                         onClick={() =>
                           patchBranchSetting(
                             { isOpen: true },
@@ -3411,7 +3600,7 @@ function BranchDetailContent() {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">
                         รับสั่งล่วงหน้า
@@ -3425,7 +3614,7 @@ function BranchDetailContent() {
                     {settings.allowAdvanceOrder ? (
                       <button
                         type="button"
-                        className={`${btnDanger} shrink-0`}
+                        className={`${btnDanger} w-full shrink-0 sm:w-auto`}
                         onClick={() =>
                           patchBranchSetting(
                             { allowAdvanceOrder: false },
@@ -3446,7 +3635,7 @@ function BranchDetailContent() {
                     ) : (
                       <button
                         type="button"
-                        className={`${btnPrimary} shrink-0`}
+                        className={`${btnPrimary} w-full shrink-0 sm:w-auto`}
                         onClick={() =>
                           patchBranchSetting(
                             { allowAdvanceOrder: true },
@@ -3467,7 +3656,7 @@ function BranchDetailContent() {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">
                         รับออเดอร์อัตโนมัติ
@@ -3481,7 +3670,7 @@ function BranchDetailContent() {
                     {settings.autoAcceptOrders ? (
                       <button
                         type="button"
-                        className={`${btnDanger} shrink-0`}
+                        className={`${btnDanger} w-full shrink-0 sm:w-auto`}
                         onClick={() =>
                           patchBranchSetting(
                             { autoAcceptOrders: false },
@@ -3502,7 +3691,7 @@ function BranchDetailContent() {
                     ) : (
                       <button
                         type="button"
-                        className={`${btnPrimary} shrink-0`}
+                        className={`${btnPrimary} w-full shrink-0 sm:w-auto`}
                         onClick={() =>
                           patchBranchSetting(
                             { autoAcceptOrders: true },
@@ -3524,7 +3713,7 @@ function BranchDetailContent() {
                   </div>
 
                   {settings.operatingMode === "NORMAL" ? (
-                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3">
+                    <div className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3 sm:flex-row sm:items-center">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-gray-900">
                           {HOTPOT_COUNTER_GROUP.weighAddonTitle}
@@ -3540,7 +3729,7 @@ function BranchDetailContent() {
                       {settings.weighSalesEnabled ? (
                         <button
                           type="button"
-                          className={`${btnDanger} shrink-0`}
+                          className={`${btnDanger} w-full shrink-0 sm:w-auto`}
                           onClick={() =>
                             patchBranchSetting(
                               { weighSalesEnabled: false },
@@ -3567,7 +3756,7 @@ function BranchDetailContent() {
                       ) : (
                         <button
                           type="button"
-                          className={`${btnPrimary} shrink-0 disabled:opacity-50`}
+                          className={`${btnPrimary} w-full shrink-0 sm:w-auto disabled:opacity-50`}
                           disabled={branch?.brand?.bbqEnabled === false}
                           onClick={() =>
                             patchBranchSetting(
@@ -3596,7 +3785,7 @@ function BranchDetailContent() {
                     </div>
                   ) : null}
 
-                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">
                         ระบบสต๊อกสาขา
@@ -3614,8 +3803,8 @@ function BranchDetailContent() {
                     <div className="flex flex-wrap gap-2">
                       {branch?.brandId && (
                         <Link
-                          href={`/admin/branches/${id}?tab=stock`}
-                          className={`${btnOutline} shrink-0`}
+                          href={`${branchBase}?tab=stock`}
+                          className={`${btnOutline} w-full shrink-0 sm:w-auto`}
                         >
                           จัดการสต๊อก
                         </Link>
@@ -3623,7 +3812,7 @@ function BranchDetailContent() {
                       {settings.stockEnabled ? (
                         <button
                           type="button"
-                          className={`${btnDanger} shrink-0`}
+                          className={`${btnDanger} w-full shrink-0 sm:w-auto`}
                           onClick={async () => {
                             const res = await fetch(
                               `/api/admin/branches/${id}/stock`,
@@ -3660,7 +3849,7 @@ function BranchDetailContent() {
                       ) : (
                         <button
                           type="button"
-                          className={`${btnPrimary} shrink-0 disabled:opacity-50`}
+                          className={`${btnPrimary} w-full shrink-0 sm:w-auto disabled:opacity-50`}
                           disabled={
                             !branch?.brandId || !branch.brand?.stockEnabled
                           }
@@ -4224,11 +4413,17 @@ function BranchDetailContent() {
                 </div>
               </div>
 
+              {!isMobileLayout ? (
               <div className="border-t border-slate-100 pt-5">
-                <button type="submit" className={`${btnPrimary} w-full sm:w-auto`}>
-                  บันทึกตั้งค่า
+                <button
+                  type="submit"
+                  disabled={settingsSaving}
+                  className={`${btnPrimary} w-full sm:w-auto`}
+                >
+                  {settingsSaving ? "กำลังบันทึก…" : "บันทึกตั้งค่า"}
                 </button>
               </div>
+              ) : null}
             </form>
 
             <div className="mt-8 space-y-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-4 sm:p-5">
@@ -4240,7 +4435,7 @@ function BranchDetailContent() {
                   ได้ 1 สล็อตต่อแบรนด์ — ไม่นับโควต้าแพ็กเกจ และไม่โชว์หน้าร้านลูกค้า
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-gray-900">
                     {settings.isTest
@@ -4257,7 +4452,7 @@ function BranchDetailContent() {
                   type="button"
                   className={`${
                     settings.isTest ? btnOutline : btnPrimary
-                  } shrink-0`}
+                  } w-full shrink-0 sm:w-auto`}
                   onClick={() =>
                     patchBranchSetting(
                       { isTest: !settings.isTest },
@@ -4290,7 +4485,7 @@ function BranchDetailContent() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-gray-900">
                     {settings.isHidden ? "สาขาถูกซ่อนอยู่" : "ซ่อนสาขาจากลูกค้า"}
@@ -4304,7 +4499,7 @@ function BranchDetailContent() {
                 {settings.isHidden ? (
                   <button
                     type="button"
-                    className={`${btnPrimary} shrink-0`}
+                    className={`${btnPrimary} w-full shrink-0 sm:w-auto`}
                     onClick={() =>
                       patchBranchSetting(
                         { isHidden: false },
@@ -4328,7 +4523,7 @@ function BranchDetailContent() {
                 ) : (
                   <button
                     type="button"
-                    className={`${btnDanger} shrink-0`}
+                    className={`${btnDanger} w-full shrink-0 sm:w-auto`}
                     onClick={() =>
                       patchBranchSetting(
                         { isHidden: true },
@@ -4352,7 +4547,7 @@ function BranchDetailContent() {
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/80 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-gray-900">ลบสาขา</p>
                   <p className="mt-0.5 text-xs text-gray-500">
@@ -4361,7 +4556,7 @@ function BranchDetailContent() {
                 </div>
                 <button
                   type="button"
-                  className={`${btnDanger} shrink-0`}
+                  className={`${btnDanger} w-full shrink-0 sm:w-auto`}
                   onClick={() => void deleteBranch()}
                 >
                   ลบสาขา
@@ -4369,6 +4564,23 @@ function BranchDetailContent() {
               </div>
             </div>
           </section>
+
+          {isMobileLayout ? (
+          <div
+            className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-sm"
+            style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+          >
+            <button
+              type="submit"
+              form="branch-settings-form"
+              disabled={settingsSaving}
+              className={`w-full min-h-12 ${btnPrimary}`}
+            >
+              {settingsSaving ? "กำลังบันทึก…" : "บันทึกตั้งค่า"}
+            </button>
+          </div>
+          ) : null}
+          </>
         )}
       </div>
 
@@ -4561,6 +4773,7 @@ function BranchDetailContent() {
           }
         }}
       />
+    </div>
     </div>
   );
 }

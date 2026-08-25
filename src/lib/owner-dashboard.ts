@@ -12,6 +12,17 @@ import type {
 
 export type OwnerPeriod = "day" | "month";
 
+export type OwnerBranchActiveShift = {
+  roundNumber: number;
+  openedAt: string;
+  calendarDate: string;
+};
+
+export type OwnerBranchLastClosedShift = {
+  roundNumber: number;
+  closedAt: string;
+};
+
 export type OwnerBranchRow = {
   id: string;
   name: string;
@@ -20,6 +31,10 @@ export type OwnerBranchRow = {
   isTest: boolean;
   isHidden: boolean;
   kind?: "STORE" | "WAREHOUSE";
+  /** รอบขายที่เปิดอยู่ตอนนี้ (null = ไม่มีรอบเปิด) */
+  activeShift?: OwnerBranchActiveShift | null;
+  /** รอบขายที่ปิดล่าสุด (เมื่อไม่มีรอบเปิด) */
+  lastClosedShift?: OwnerBranchLastClosedShift | null;
 };
 
 export type OwnerBrandRow = {

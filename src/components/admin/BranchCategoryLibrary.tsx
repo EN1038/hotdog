@@ -258,6 +258,18 @@ export function BranchCategoryLibrary({ branchId }: Props) {
     setDragOverId(null);
   }
 
+  async function moveCategoryByStep(categoryId: string, direction: -1 | 1) {
+    if (saving || deleting || editingId) return;
+    const list = [...categoriesRef.current];
+    const idx = list.findIndex((category) => category.id === categoryId);
+    const target = idx + direction;
+    if (idx < 0 || target < 0 || target >= list.length) return;
+    const next = reorderCategories(list, list[idx].id, list[target].id);
+    categoriesRef.current = next;
+    setCategories(next);
+    await persistOrder(next);
+  }
+
   if (loading) {
     return <AdminLoadingState compact label="กำลังโหลดหมวดหมู่" />;
   }
@@ -274,9 +286,9 @@ export function BranchCategoryLibrary({ branchId }: Props) {
 
       <form
         onSubmit={createCategory}
-        className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4"
+        className="flex flex-col gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-end"
       >
-        <div className="min-w-[12rem] flex-1">
+        <div className="min-w-0 flex-1">
           <label className={adminLabelClass}>ชื่อหมวดใหม่</label>
           <input
             className={adminInputClass}
@@ -285,7 +297,7 @@ export function BranchCategoryLibrary({ branchId }: Props) {
             placeholder="เช่น เมนูปิ้ง"
           />
         </div>
-        <button type="submit" disabled={saving} className={btnDark}>
+        <button type="submit" disabled={saving} className={`min-h-10 ${btnDark}`}>
           เพิ่มหมวด
         </button>
       </form>
@@ -293,10 +305,10 @@ export function BranchCategoryLibrary({ branchId }: Props) {
       <div className="space-y-2">
         {categories.length > 1 && (
           <p className="text-sm text-slate-500">
-            ลากการ์ดเพื่อจัดลำดับการแสดงผลของหมวดหมู่บนหน้าเมนู
+            ลากการ์ดหรือกด ↑↓ เพื่อจัดลำดับการแสดงผลบนหน้าเมนู
           </p>
         )}
-        {categories.map((cat) => (
+        {categories.map((cat, index) => (
           <div
             key={cat.id}
             draggable={editingId !== cat.id && !saving && !deleting}
@@ -307,42 +319,66 @@ export function BranchCategoryLibrary({ branchId }: Props) {
               e.preventDefault();
               void onDrop(cat.id);
             }}
-            className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4 transition ${
+            className={`flex flex-col gap-3 rounded-xl border bg-white p-4 transition sm:flex-row sm:items-center sm:justify-between ${
               draggingId === cat.id
                 ? "border-slate-300 opacity-60 shadow-sm"
                 : dragOverId === cat.id
                   ? "border-amber-300 bg-amber-50/70"
                   : "border-slate-200"
-            } ${editingId === cat.id ? "" : "cursor-move"}`}
+            } ${editingId === cat.id ? "" : "sm:cursor-move"}`}
           >
             {editingId === cat.id ? (
-              <div className="flex w-full flex-wrap items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
                 <input
-                  className={`${adminInputClass} min-w-[10rem] flex-1`}
+                  className={`${adminInputClass} min-w-0 flex-1`}
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                 />
-                <button
-                  type="button"
-                  className={btnDark}
-                  disabled={saving}
-                  onClick={() => saveEdit(cat.id)}
-                >
-                  บันทึก
-                </button>
-                <button
-                  type="button"
-                  className={btnOutline}
-                  onClick={() => setEditingId(null)}
-                >
-                  ยกเลิก
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={`min-h-10 flex-1 sm:flex-none ${btnDark}`}
+                    disabled={saving}
+                    onClick={() => saveEdit(cat.id)}
+                  >
+                    บันทึก
+                  </button>
+                  <button
+                    type="button"
+                    className={`min-h-10 flex-1 sm:flex-none ${btnOutline}`}
+                    onClick={() => setEditingId(null)}
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
               </div>
             ) : (
               <>
-                <div className="flex items-start gap-3">
-                  <div className="select-none pt-0.5 text-slate-400">::</div>
-                  <div>
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  {categories.length > 1 ? (
+                    <div className="flex shrink-0 flex-col gap-1 sm:hidden">
+                      <button
+                        type="button"
+                        disabled={index === 0 || saving}
+                        onClick={() => void moveCategoryByStep(cat.id, -1)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                        aria-label={`เลื่อน ${cat.name} ขึ้น`}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === categories.length - 1 || saving}
+                        onClick={() => void moveCategoryByStep(cat.id, 1)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                        aria-label={`เลื่อน ${cat.name} ลง`}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="hidden select-none pt-0.5 text-slate-400 sm:block">::</div>
+                  <div className="min-w-0">
                     <p className="font-semibold text-slate-900">{cat.name}</p>
                     <p className="text-sm text-slate-500">
                       ใช้กับเมนู {cat._count?.menuItems ?? 0} รายการ
@@ -354,10 +390,10 @@ export function BranchCategoryLibrary({ branchId }: Props) {
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   <button
                     type="button"
-                    className={cat.stockExempt ? btnDark : btnOutline}
+                    className={`min-h-10 ${cat.stockExempt ? btnDark : btnOutline}`}
                     disabled={Boolean(draggingId) || saving}
                     onClick={() => void toggleStockExempt(cat)}
                     title={
@@ -370,7 +406,7 @@ export function BranchCategoryLibrary({ branchId }: Props) {
                   </button>
                   <button
                     type="button"
-                    className={btnOutline}
+                    className={`min-h-10 ${btnOutline}`}
                     disabled={Boolean(draggingId) || saving}
                     onClick={() => {
                       setEditingId(cat.id);
@@ -381,7 +417,7 @@ export function BranchCategoryLibrary({ branchId }: Props) {
                   </button>
                   <button
                     type="button"
-                    className={btnDanger}
+                    className={`min-h-10 col-span-2 sm:col-span-1 ${btnDanger}`}
                     disabled={Boolean(draggingId) || deleting}
                     onClick={() => openDelete(cat)}
                   >

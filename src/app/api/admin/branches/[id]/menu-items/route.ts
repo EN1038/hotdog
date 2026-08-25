@@ -84,11 +84,16 @@ export async function POST(request: Request, { params }: Params) {
         sellDelivery: body.sellDelivery ?? true,
         sellPickup: body.sellPickup ?? true,
         sellStorefront: body.sellStorefront ?? true,
+        sellPiece: body.sellPiece ?? true,
         sellByWeight: body.sellByWeight ?? false,
         pricePerKg:
           body.sellByWeight && body.pricePerKg != null
             ? body.pricePerKg
             : body.pricePerKg ?? null,
+        sellSkewer: body.sellSkewer ?? false,
+        sellGrill: body.sellGrill ?? false,
+        sellFry: body.sellFry ?? false,
+        sellShabu: body.sellShabu ?? false,
         description: body.description ?? null,
         categoryId,
         imageUrl: body.imageUrl ?? null,
@@ -96,6 +101,7 @@ export async function POST(request: Request, { params }: Params) {
         hideFromStaff: body.hideFromStaff ?? false,
         isOutOfStock: body.isOutOfStock ?? false,
         sortOrder: body.sortOrder ?? 0,
+        defaultShelfLifeDays: body.defaultShelfLifeDays ?? null,
         ...(optionGroupIds.length
           ? {
               optionGroupLinks: {

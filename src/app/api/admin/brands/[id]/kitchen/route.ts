@@ -18,6 +18,7 @@ import {
   runKitchenProduction,
 } from "@/lib/kitchen";
 import { transferWarehouseToBranch } from "@/lib/stock";
+import { assertBrandWriteAllowedByBrandId } from "@/lib/brand-plan";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -25,6 +26,13 @@ export async function GET(request: Request, { params }: Params) {
   try {
     const { id } = await params;
     await requireBrandAccess(id);
+    const brandGate = await prisma.brand.findUnique({
+      where: { id },
+      select: { kitchenEnabled: true },
+    });
+    if (!brandGate?.kitchenEnabled) {
+      return jsonError("แพ็กเกจนี้ยังไม่เปิดโมดูลครัว", 403);
+    }
     const url = new URL(request.url);
     const view = url.searchParams.get("view") ?? "overview";
 
@@ -126,6 +134,14 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const { id } = await params;
     const session = await requireBrandAccess(id);
+    await assertBrandWriteAllowedByBrandId(id);
+    const brandGate = await prisma.brand.findUnique({
+      where: { id },
+      select: { kitchenEnabled: true },
+    });
+    if (!brandGate?.kitchenEnabled) {
+      return jsonError("แพ็กเกจนี้ยังไม่เปิดโมดูลครัว", 403);
+    }
     const body = postSchema.parse(await request.json());
     const brand = await prisma.brand.findUnique({ where: { id } });
 

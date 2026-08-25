@@ -14,6 +14,7 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { DateInput } from "@/components/DateInput";
 import { useToast } from "@/components/admin/Toast";
 import { bangkokDateKey, isBangkokDateKey } from "@/lib/constants";
+import { ZoomableImage } from "@/components/ZoomableImage";
 
 type Movement = {
   id: string;
@@ -68,11 +69,12 @@ type ShiftOpt = {
 
 const TYPE_FILTERS: Array<{ id: string; label: string }> = [
   { id: "ALL", label: "ทั้งหมด" },
+  { id: "WASTE", label: "ของเสีย" },
   { id: "SALE", label: "ขาย (SALE)" },
   { id: "STOCK_IN", label: "รับเข้า" },
-  { id: "ISSUE", label: "จ่ายออก" },
+  { id: "ISSUE", label: "จ่ายออกจากสต๊อก" },
   { id: "ADJUST", label: "ปรับยอด" },
-  { id: "DAMAGE", label: "เสียหาย" },
+  { id: "DAMAGE", label: "ชำรุด" },
   { id: "LOST", label: "สูญหาย" },
 ];
 
@@ -91,11 +93,13 @@ function typeLabel(type: string) {
     case "STOCK_IN":
       return "รับเข้า";
     case "ISSUE":
-      return "จ่ายออก";
+      return "จ่ายออกจากสต๊อก";
+    case "WASTE":
+      return "ของเสีย";
     case "ADJUST":
       return "ปรับยอด";
     case "DAMAGE":
-      return "เสียหาย";
+      return "ชำรุด";
     case "LOST":
       return "สูญหาย";
     default:
@@ -136,10 +140,44 @@ function stockTypesLabel(types: string[]) {
   return types.map((t) => STOCK_TYPE_LABEL[t] ?? t).join(" · ");
 }
 
-export function BranchStockMovementsView({ branchId }: { branchId: string }) {
+export function BranchStockMovementsView({
+  branchId,
+  initialType = "ALL",
+  initialDate,
+  initialFrom,
+  initialTo,
+}: {
+  branchId: string;
+  initialType?: string;
+  initialDate?: string | null;
+  initialFrom?: string | null;
+  initialTo?: string | null;
+}) {
   const toast = useToast();
-  const [date, setDate] = useState(() => bangkokDateKey());
-  const [type, setType] = useState("ALL");
+  const rangeFrom =
+    initialFrom && initialTo && isBangkokDateKey(initialFrom) && isBangkokDateKey(initialTo)
+      ? initialFrom <= initialTo
+        ? initialFrom
+        : initialTo
+      : null;
+  const rangeTo =
+    initialFrom && initialTo && isBangkokDateKey(initialFrom) && isBangkokDateKey(initialTo)
+      ? initialFrom <= initialTo
+        ? initialTo
+        : initialFrom
+      : null;
+  const [date, setDate] = useState(
+    () =>
+      (initialDate && isBangkokDateKey(initialDate)
+        ? initialDate
+        : rangeTo) || bangkokDateKey(),
+  );
+  const [from, setFrom] = useState(rangeFrom ?? "");
+  const [to, setTo] = useState(rangeTo ?? "");
+  const useRange = Boolean(from && to && from !== to);
+  const [type, setType] = useState(
+    TYPE_FILTERS.some((t) => t.id === initialType) ? initialType : "ALL",
+  );
   const [stockType, setStockType] = useState<
     "ALL" | "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT"
   >("ALL");
@@ -193,7 +231,13 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ date, type });
+      const qs = new URLSearchParams({ type });
+      if (useRange) {
+        qs.set("from", from);
+        qs.set("to", to);
+      } else {
+        qs.set("date", date);
+      }
       if (shiftId) qs.set("shiftId", shiftId);
       if (q) qs.set("q", q);
       const res = await fetch(
@@ -212,7 +256,7 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [branchId, date, type, shiftId, q]); // eslint-disable-line react-hooks/exhaustive-deps -- toast stable enough
+  }, [branchId, date, from, to, useRange, type, shiftId, q]); // eslint-disable-line react-hooks/exhaustive-deps -- toast stable enough
 
   useEffect(() => {
     void load();
@@ -249,7 +293,7 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
   }, [batches, stockType]);
 
   const showBatches =
-    (type === "STOCK_IN" || type === "ISSUE") &&
+    (type === "STOCK_IN" || type === "ISSUE" || type === "WASTE") &&
     Array.isArray(filteredBatches) &&
     filteredBatches.length > 0;
 
@@ -339,15 +383,55 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4">
           <h2 className="text-base font-extrabold text-slate-900">
-            ประวัติเคลื่อนไหวสต็อก
+            {type === "WASTE"
+              ? "ของเสียที่หน้าร้านบันทึก (ชำรุด/สูญหาย)"
+              : type === "ISSUE"
+                ? "จ่ายออกจากสต๊อก (เบิกใช้ / ส่งออก)"
+                : "ประวัติเคลื่อนไหวสต็อก"}
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            ดูรับเข้า จ่ายออก ขาย ปรับยอด ตามวัน — รับเข้า/จ่ายออก
-            สามารถยกเลิกและกู้คืนได้ (ยอดสต๊อกจะกลับคืนอัตโนมัติ)
+            {type === "WASTE"
+              ? "รายการของเสีย (ชำรุด/สูญหาย) จากแอปหน้าร้าน ตามช่วงวันที่เลือก"
+              : type === "ISSUE"
+                ? "รายการจ่ายออกจากสต๊อก (ไม่ใช่ของเสีย) ตามช่วงวันที่เลือก"
+                : "ดูรับเข้า จ่ายออก ขาย ปรับยอด ตามวัน — รับเข้า/จ่ายออก สามารถยกเลิกและกู้คืนได้ (ยอดสต๊อกจะกลับคืนอัตโนมัติ)"}
           </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {useRange ? (
+            <>
+              <div>
+                <label className={adminLabelClass} htmlFor="stock-move-from">
+                  จากวันที่
+                </label>
+                <DateInput
+                  id="stock-move-from"
+                  className={adminInputClass}
+                  value={from}
+                  max={to || bangkokDateKey()}
+                  onChange={(v) => {
+                    if (v) setFrom(v);
+                  }}
+                />
+              </div>
+              <div>
+                <label className={adminLabelClass} htmlFor="stock-move-to">
+                  ถึงวันที่
+                </label>
+                <DateInput
+                  id="stock-move-to"
+                  className={adminInputClass}
+                  value={to}
+                  min={from}
+                  max={bangkokDateKey()}
+                  onChange={(v) => {
+                    if (v) setTo(v);
+                  }}
+                />
+              </div>
+            </>
+          ) : (
           <div>
             <label className={adminLabelClass} htmlFor="stock-move-date">
               วันที่
@@ -362,6 +446,8 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
               }}
             />
           </div>
+          )}
+          {useRange ? null : (
           <div>
             <label className={adminLabelClass} htmlFor="stock-move-shift">
               รอบขาย
@@ -381,6 +467,7 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
               ))}
             </select>
           </div>
+          )}
           <div>
             <label className={adminLabelClass} htmlFor="stock-move-type">
               ประเภทรายการ
@@ -527,10 +614,9 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
                     {b.imageUrl ? (
                       <div className="mb-3">
                         <p className="mb-1.5 text-xs font-semibold text-slate-500">
-                          รูปประกอบ
+                          รูปประกอบ — กดเพื่อดูเต็ม
                         </p>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
+                        <ZoomableImage
                           src={b.imageUrl}
                           alt="รูปประกอบ"
                           className="max-h-48 rounded-xl object-contain ring-1 ring-slate-200"
@@ -632,8 +718,7 @@ export function BranchStockMovementsView({ branchId }: { branchId: string }) {
                     </div>
                     {m.imageUrl ? (
                       <div className="mt-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
+                        <ZoomableImage
                           src={m.imageUrl}
                           alt="รูปประกอบ"
                           className="max-h-28 rounded-lg object-contain ring-1 ring-slate-200"

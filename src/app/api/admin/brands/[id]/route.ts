@@ -7,6 +7,11 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 import { logAdminActivity } from "@/lib/admin-activity";
+import { applyPlanPreset } from "@/lib/brand-plan";
+import {
+  BRAND_STATUS_LABELS,
+  getBrandSubscriptionState,
+} from "@/lib/brand-plan-shared";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -26,6 +31,17 @@ const patchSchema = z.object({
   contactPhone: z.string().nullable().optional(),
   color: z.string().optional(),
   queueTicketCopies: z.number().int().min(1).max(5).optional(),
+  status: z.enum(["TRIAL", "ACTIVE", "PAUSED", "EXPIRED", "DELETED"]).optional(),
+  plan: z.enum(["RETAIL", "WEIGH_TABLE", "MALA", "MULTI"]).optional(),
+  applyPlanPreset: z.boolean().optional(),
+  maxBranches: z.number().int().min(1).max(200).optional(),
+  maxStaff: z.number().int().min(1).max(500).optional(),
+  stockEnabled: z.boolean().optional(),
+  kitchenEnabled: z.boolean().optional(),
+  bbqEnabled: z.boolean().optional(),
+  skewerEnabled: z.boolean().optional(),
+  trialEndsAt: z.string().datetime().nullable().optional(),
+  serviceStartsAt: z.string().datetime().nullable().optional(),
 });
 
 function normalizeColor(input: string) {
@@ -45,7 +61,25 @@ export async function GET(_request: Request, { params }: Params) {
       },
     });
     if (!brand) return jsonError("ไม่พบแบรนด์", 404);
-    return jsonOk(brand);
+    const liveBranchCount = brand.branches.filter((b) => !b.isTest).length;
+    const hasTestBranch = brand.branches.some((b) => b.isTest);
+    const subscriptionState = getBrandSubscriptionState({
+      status: brand.status,
+      trialEndsAt: brand.trialEndsAt,
+      nextDueAt: brand.nextDueAt,
+    });
+    return jsonOk({
+      ...brand,
+      hasTestBranch,
+      subscriptionState: {
+        ...subscriptionState,
+        statusLabel: BRAND_STATUS_LABELS[brand.status] ?? brand.status,
+        effectiveStatusLabel:
+          BRAND_STATUS_LABELS[subscriptionState.effectiveStatus] ??
+          subscriptionState.effectiveStatus,
+      },
+      _count: { ...brand._count, branches: liveBranchCount },
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -57,12 +91,31 @@ export async function PATCH(request: Request, { params }: Params) {
     const session = await requireBrandAccess(id);
     const body = patchSchema.parse(await request.json());
 
+    const planFieldsTouched =
+      body.status !== undefined ||
+      body.plan !== undefined ||
+      body.applyPlanPreset === true ||
+      body.maxBranches !== undefined ||
+      body.maxStaff !== undefined ||
+      body.stockEnabled !== undefined ||
+      body.kitchenEnabled !== undefined ||
+      body.bbqEnabled !== undefined ||
+      body.skewerEnabled !== undefined ||
+      body.trialEndsAt !== undefined;
+
+    if (planFieldsTouched && !session.isPlatformAdmin) {
+      return jsonError("เฉพาะผู้ดูแลแพลตฟอร์มที่ตั้งแพ็กเกจ/สถานะแบรนด์ได้", 403);
+    }
+
     if (body.code) {
       const dup = await prisma.brand.findFirst({
         where: { code: body.code, NOT: { id } },
       });
       if (dup) return jsonError("รหัสแบรนด์ซ้ำ");
     }
+
+    const usePreset = Boolean(body.plan) && body.applyPlanPreset === true;
+    const preset = usePreset && body.plan ? applyPlanPreset(body.plan) : null;
 
     const brand = await prisma.brand.update({
       where: { id },
@@ -92,6 +145,42 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.queueTicketCopies !== undefined && {
           queueTicketCopies: body.queueTicketCopies,
         }),
+        ...(body.status !== undefined && { status: body.status }),
+        ...(body.plan !== undefined && { plan: body.plan }),
+        ...(usePreset && preset
+          ? {
+              maxBranches: preset.maxBranches,
+              maxStaff: preset.maxStaff,
+              stockEnabled: preset.stockEnabled,
+              kitchenEnabled: preset.kitchenEnabled,
+              bbqEnabled: preset.bbqEnabled,
+              skewerEnabled: preset.skewerEnabled,
+            }
+          : {}),
+        ...(body.maxBranches !== undefined && {
+          maxBranches: body.maxBranches,
+        }),
+        ...(body.maxStaff !== undefined && { maxStaff: body.maxStaff }),
+        ...(body.stockEnabled !== undefined && {
+          stockEnabled: body.stockEnabled,
+        }),
+        ...(body.kitchenEnabled !== undefined && {
+          kitchenEnabled: body.kitchenEnabled,
+        }),
+        ...(body.bbqEnabled !== undefined && {
+          bbqEnabled: body.bbqEnabled,
+        }),
+        ...(body.skewerEnabled !== undefined && {
+          skewerEnabled: body.skewerEnabled,
+        }),
+        ...(body.trialEndsAt !== undefined && {
+          trialEndsAt: body.trialEndsAt ? new Date(body.trialEndsAt) : null,
+        }),
+        ...(body.serviceStartsAt !== undefined && {
+          serviceStartsAt: body.serviceStartsAt
+            ? new Date(body.serviceStartsAt)
+            : null,
+        }),
       },
     });
 
@@ -118,25 +207,27 @@ export async function DELETE(_request: Request, { params }: Params) {
     const { id } = await params;
     const existing = await prisma.brand.findUnique({
       where: { id },
-      select: { id: true, name: true, code: true },
+      select: { id: true, name: true, code: true, status: true },
     });
     if (!existing) return jsonError("ไม่พบแบรนด์", 404);
-
-    const count = await prisma.branch.count({ where: { brandId: id } });
-    if (count > 0) {
-      return jsonError("ลบแบรนด์ไม่ได้ ยังมีสาขาผูกอยู่");
+    if (existing.status === "DELETED") {
+      return jsonOk({ ok: true, alreadyDeleted: true });
     }
-    await prisma.brand.delete({ where: { id } });
+
+    await prisma.brand.update({
+      where: { id },
+      data: { status: "DELETED" },
+    });
 
     await logAdminActivity(session, {
-      action: "brand.delete",
-      summary: `ลบแบรนด์ ${existing.name} (/${existing.code})`,
-      brandId: null,
+      action: "brand.soft_delete",
+      summary: `ตั้งสถานะลบแบรนด์ ${existing.name} (/${existing.code})`,
+      brandId: existing.id,
       brandName: existing.name,
       entityType: "brand",
       entityId: existing.id,
       entityName: existing.name,
-      metadata: { code: existing.code },
+      metadata: { code: existing.code, previousStatus: existing.status },
     });
 
     return jsonOk({ ok: true });

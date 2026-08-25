@@ -1,52 +1,53 @@
+import { Pool } from "pg";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /** Bump when Prisma schema/models change so Next.js HMR drops a stale client. */
-const PRISMA_CLIENT_VERSION = 27;
+const PRISMA_CLIENT_VERSION = 45;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
+  prismaPool?: Pool;
   prismaClientVersion?: number;
 };
 
-function createClient() {
-  const adapter = new PrismaPg(
-    {
+function getPool() {
+  if (!globalForPrisma.prismaPool) {
+    globalForPrisma.prismaPool = new Pool({
       connectionString: process.env.DATABASE_URL,
-    },
-    {
-      schema: process.env.DATABASE_SCHEMA ?? "public",
-    },
-  );
+      // Managed Postgres (DO) has a small slot budget; HMR must not open a new pool.
+      max: 8,
+      idleTimeoutMillis: 30_000,
+    });
+    globalForPrisma.prismaPool.on("error", (err) => {
+      console.error("[pg] pool", err.message);
+    });
+  }
+  return globalForPrisma.prismaPool;
+}
+
+function createClient() {
+  const adapter = new PrismaPg(getPool(), {
+    schema: process.env.DATABASE_SCHEMA ?? "public",
+    disposeExternalPool: false,
+  });
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 }
 
-function clientHasExpectedModels(client: PrismaClient): boolean {
-  return (
-    "restaurantType" in client &&
-    "deliveryLocation" in client &&
-    "adminActivityLog" in client &&
-    "lineDailySummaryLog" in client &&
-    "kitchenProduction" in client &&
-    "branchStockRequest" in client
-  );
-}
-
 function getClient() {
   const existing = globalForPrisma.prisma;
   if (
     existing &&
-    globalForPrisma.prismaClientVersion === PRISMA_CLIENT_VERSION &&
-    clientHasExpectedModels(existing)
+    globalForPrisma.prismaClientVersion === PRISMA_CLIENT_VERSION
   ) {
     return existing;
   }
 
-  void existing?.$disconnect().catch(() => undefined);
-
+  // Replace the Prisma wrapper only. Never pool.end() — in-flight queries
+  // and the next client share this process-wide pool.
   const client = createClient();
   globalForPrisma.prisma = client;
   globalForPrisma.prismaClientVersion = PRISMA_CLIENT_VERSION;

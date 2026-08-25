@@ -173,7 +173,7 @@ async function main() {
       name: "SkillSale",
       siteTitle: "SkillSale - สั่งอาหารออนไลน์",
       siteDescription: "แบรนด์ตัวอย่างบนแพลตฟอร์ม SkillSale",
-      color: "#b91c1c",
+      color: "#0B2A4A",
       logoUrl: img("skillsale-logo"),
     },
     create: {
@@ -182,7 +182,7 @@ async function main() {
       siteTitle: "SkillSale - สั่งอาหารออนไลน์",
       siteDescription: "แบรนด์ตัวอย่างบนแพลตฟอร์ม SkillSale",
       logoUrl: img("skillsale-logo"),
-      color: "#b91c1c",
+      color: "#0B2A4A",
     },
   });
 
@@ -429,8 +429,10 @@ async function main() {
   }
 
   await prisma.staff.upsert({
-    where: { phone: "0811111111" },
-    update: { branchId: "seed-branch-1", isActive: true },
+    where: {
+      branchId_phone: { branchId: "seed-branch-1", phone: "0811111111" },
+    },
+    update: { isActive: true },
     create: {
       phone: "0811111111",
       branchId: "seed-branch-1",
@@ -439,8 +441,10 @@ async function main() {
   });
 
   await prisma.staff.upsert({
-    where: { phone: "0822222222" },
-    update: { branchId: "seed-branch-1", isActive: true },
+    where: {
+      branchId_phone: { branchId: "seed-branch-1", phone: "0822222222" },
+    },
+    update: { isActive: true },
     create: {
       phone: "0822222222",
       branchId: "seed-branch-1",

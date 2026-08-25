@@ -6,6 +6,7 @@ import {
   flattenMenuItemOptionGroups,
   menuItemOptionGroupInclude,
 } from "@/lib/menu-option-groups";
+import { serializePromoSchedule } from "@/lib/promo-schedule";
 
 function parseChannel(raw: string | null): MenuPriceChannel {
   return raw === "delivery" ? "delivery" : "storefront";
@@ -85,8 +86,10 @@ export async function GET(request: Request) {
           (g) => g.mode === "FROM_MENU",
         );
         const stockExempt = Boolean(item.category?.stockExempt) || isPromo;
+        const schedule = serializePromoSchedule(item);
         return {
           ...flattened,
+          ...schedule,
           category: item.category
             ? {
                 id: item.category.id,

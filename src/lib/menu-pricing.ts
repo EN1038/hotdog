@@ -9,6 +9,12 @@ export type MenuPricingFields = {
   sellDelivery?: boolean;
   sellPickup?: boolean;
   sellStorefront?: boolean;
+  promoEnabled?: boolean | null;
+  promoType?: "AMOUNT" | "PERCENT" | string | null;
+  promoValue?: number | string | { toString(): string } | null;
+  promoContinuous?: boolean | null;
+  promoStartsAt?: Date | string | null;
+  promoEndsAt?: Date | string | null;
 };
 
 export type PromoResult = {
@@ -63,18 +69,75 @@ export function resolveChannelPrice(
   return roundMoney(toNumber(item.storefrontPrice) ?? delivery);
 }
 
-/** Sell price for a channel (no item-level promos). */
+/** Sell price for a channel, applying active item-level promo when set. */
 export function resolveSellPrice(
   item: MenuPricingFields,
   channel: MenuPriceChannel,
+  now = new Date(),
 ): PromoResult {
   const base = resolveChannelPrice(item, channel);
+  if (!item.promoEnabled || !item.promoType || item.promoValue == null) {
+    return {
+      final: base,
+      original: base,
+      discounted: false,
+      label: null,
+      savings: 0,
+    };
+  }
+
+  const continuous = item.promoContinuous === true;
+  if (!continuous) {
+    const start =
+      item.promoStartsAt != null ? new Date(item.promoStartsAt) : null;
+    const end = item.promoEndsAt != null ? new Date(item.promoEndsAt) : null;
+    if (start && !Number.isNaN(start.getTime()) && now < start) {
+      return {
+        final: base,
+        original: base,
+        discounted: false,
+        label: null,
+        savings: 0,
+      };
+    }
+    if (end && !Number.isNaN(end.getTime()) && now > end) {
+      return {
+        final: base,
+        original: base,
+        discounted: false,
+        label: null,
+        savings: 0,
+      };
+    }
+  }
+
+  const value = toNumber(item.promoValue) ?? 0;
+  let final = base;
+  let label: string | null = null;
+  if (item.promoType === "PERCENT") {
+    const pct = Math.min(90, Math.max(0, value));
+    final = roundMoney(base * (1 - pct / 100));
+    label = `ลด ${pct}%`;
+  } else if (item.promoType === "AMOUNT") {
+    final = roundMoney(Math.max(0, base - value));
+    label = `ลด ฿${roundMoney(value)}`;
+  } else {
+    return {
+      final: base,
+      original: base,
+      discounted: false,
+      label: null,
+      savings: 0,
+    };
+  }
+
+  const savings = roundMoney(Math.max(0, base - final));
   return {
-    final: base,
+    final,
     original: base,
-    discounted: false,
-    label: null,
-    savings: 0,
+    discounted: savings > 0,
+    label,
+    savings,
   };
 }
 

@@ -13,6 +13,7 @@ import {
   serializeExpense,
   summarizeExpenses,
 } from "@/lib/branch-expense";
+import { assertBrandWriteAllowedByBranchId } from "@/lib/brand-plan";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -89,6 +90,7 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const { id: branchId } = await params;
     const { session } = await requireBranchAccess(branchId);
+    await assertBrandWriteAllowedByBranchId(branchId);
     const body = expenseCreateSchema.parse(await request.json());
     const activeShift = await getActiveShift(branchId);
 

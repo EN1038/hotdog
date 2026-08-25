@@ -7,6 +7,7 @@ import { StaffRole } from "@prisma/client";
 import {
   logAdminActivity,
 } from "@/lib/admin-activity";
+import { assertCanCreateStaff } from "@/lib/brand-plan";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -58,22 +59,43 @@ export async function POST(request: Request, { params }: Params) {
       return jsonError("เบอร์โทรไม่ถูกต้อง");
     }
 
-    const duplicate = await prisma.staff.findUnique({ where: { phone } });
-    if (duplicate) {
-      return jsonError("เบอร์โทรนี้ถูกใช้ในระบบแล้ว", 409);
+    if (branch.brandId) {
+      await assertCanCreateStaff(branch.brandId, { phone });
     }
 
-    const name = body.name?.trim() ? body.name.trim() : null;
+    const duplicate = await prisma.staff.findFirst({
+      where: { branchId, phone },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return jsonError("เบอร์โทรนี้มีในสาขานี้แล้ว", 409);
+    }
+
+    const peer = await prisma.staff.findFirst({
+      where: { phone, NOT: { branchId } },
+      select: {
+        name: true,
+        gender: true,
+        age: true,
+        imageUrl: true,
+        phoneVerifiedAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const name = body.name?.trim()
+      ? body.name.trim()
+      : peer?.name?.trim() || null;
 
     const staff = await prisma.staff.create({
-
       data: {
         branchId,
         phone,
         name,
-        gender: body.gender ?? null,
-        age: body.age ?? null,
-        imageUrl: body.imageUrl ?? null,
+        gender: body.gender ?? peer?.gender ?? null,
+        age: body.age ?? peer?.age ?? null,
+        imageUrl: body.imageUrl ?? peer?.imageUrl ?? null,
+        phoneVerifiedAt: peer?.phoneVerifiedAt ?? null,
         roles: {
           create: body.roles.map((role) => ({ role })),
         },

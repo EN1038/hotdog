@@ -11,6 +11,10 @@ import { IconPhone } from "@/components/icons";
 import { getRememberedCustomerPhone } from "@/lib/customer-remember";
 import { formatThaiPhone } from "@/lib/constants";
 import { resolvePlatformMarkForPlacement } from "@/lib/platform-branding";
+import {
+  OTP_TTL_SECONDS,
+  formatOtpCountdown,
+} from "@/lib/otp-ttl";
 
 type CustomerLoginScreenProps = {
   onSuccess?: () => void;
@@ -129,6 +133,7 @@ export function CustomerLoginScreen({
   const [otpRefNo, setOtpRefNo] = useState<string | null>(null);
   const [otpStep, setOtpStep] = useState(false);
   const [resendIn, setResendIn] = useState(0);
+  const [expiresIn, setExpiresIn] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [rememberedPhone, setRememberedPhone] = useState("");
@@ -146,6 +151,12 @@ export function CustomerLoginScreen({
     const t = window.setTimeout(() => setResendIn((s) => s - 1), 1000);
     return () => window.clearTimeout(t);
   }, [resendIn]);
+
+  useEffect(() => {
+    if (expiresIn <= 0) return;
+    const t = window.setTimeout(() => setExpiresIn((s) => s - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [expiresIn]);
 
   async function requestOtp(nextName?: string) {
     setError("");
@@ -182,6 +193,9 @@ export function CustomerLoginScreen({
     setOtpStep(true);
     setOtpCode("");
     setResendIn(result.resendIn);
+    setExpiresIn(
+      result.expiresIn > 0 ? result.expiresIn : OTP_TTL_SECONDS,
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -203,6 +217,10 @@ export function CustomerLoginScreen({
     }
     if (!otpCode.trim()) {
       setError("กรุณากรอกรหัส OTP");
+      return;
+    }
+    if (expiresIn <= 0) {
+      setError("รหัสหมดอายุ กรุณาขอรหัสใหม่");
       return;
     }
 
@@ -355,6 +373,15 @@ export function CustomerLoginScreen({
                 required
                 autoFocus
               />
+              <p
+                className={`mt-2 text-center text-sm font-medium ${
+                  expiresIn <= 0 ? "text-red-600" : "text-gray-500"
+                }`}
+              >
+                {expiresIn > 0
+                  ? `รหัสใช้ได้ 5 นาที — หมดอายุใน ${formatOtpCountdown(expiresIn)}`
+                  : "รหัสหมดอายุแล้ว — กดขอรหัสใหม่"}
+              </p>
               <div className="mt-3 flex items-center justify-between gap-2 text-sm">
                 <button
                   type="button"
@@ -363,6 +390,7 @@ export function CustomerLoginScreen({
                     setOtpStep(false);
                     setOtpCode("");
                     setChallengeId(null);
+                    setExpiresIn(0);
                     setError("");
                   }}
                 >
@@ -384,7 +412,7 @@ export function CustomerLoginScreen({
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (otpStep && expiresIn <= 0)}
             className="w-full rounded-xl bg-site-primary py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {loading
@@ -392,7 +420,9 @@ export function CustomerLoginScreen({
                 ? "กำลังยืนยัน..."
                 : "กำลังส่งรหัส..."
               : otpStep
-                ? "ยืนยัน OTP"
+                ? expiresIn <= 0
+                  ? "รหัสหมดอายุ"
+                  : "ยืนยัน OTP"
                 : showName
                   ? "ส่งรหัส OTP"
                   : "ขอรหัส OTP"}

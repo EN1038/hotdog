@@ -16,7 +16,7 @@ function itemSortOf(item: StaffMenuOrderFields): number {
   return item.sortOrder ?? 0;
 }
 
-/** sortOrder → categorySortOrder → Thai name */
+/** sortOrder → categorySortOrder → Thai name — หลักเดียวกับหน้าร้าน */
 export function compareStaffMenuItems(
   a: StaffMenuOrderFields,
   b: StaffMenuOrderFields,
@@ -69,4 +69,30 @@ export function sortMenuItemData<
   },
 >(items: T[]): T[] {
   return sortStaffMenuItems(items.map(withMenuOrderFields));
+}
+
+export function enrichBrandProductsWithMenuOrder<
+  T extends { id: string; name: string; category?: string | null },
+>(
+  products: T[],
+  orderMap: Map<
+    string,
+    { sortOrder: number; categorySortOrder: number; category: string | null }
+  >,
+): Array<
+  T & {
+    sortOrder: number;
+    categorySortOrder: number;
+    category: string | null;
+  }
+> {
+  return products.map((p) => {
+    const ord = orderMap.get(p.id);
+    return {
+      ...p,
+      sortOrder: ord?.sortOrder ?? 999_999,
+      categorySortOrder: ord?.categorySortOrder ?? 999,
+      category: ord?.category ?? p.category ?? null,
+    };
+  });
 }

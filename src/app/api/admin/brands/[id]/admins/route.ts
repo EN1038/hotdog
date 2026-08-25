@@ -5,7 +5,11 @@ import {
 } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { hashAndSealPassword, decryptAdminPassword } from "@/lib/admin-password";
+import { ensureBrandPrimaryAdmin } from "@/lib/brand-primary-owner";
+import {
+  decryptAdminPassword,
+  hashAndSealPassword,
+} from "@/lib/admin-password";
 import { logAdminActivity } from "@/lib/admin-activity";
 
 type Params = { params: Promise<{ id: string }> };
@@ -22,9 +26,18 @@ export async function GET(_request: Request, { params }: Params) {
     const session = await requireBrandAccess(brandId);
     const isPlatform = Boolean(session.isPlatformAdmin);
 
+    const primaryAdminId = await ensureBrandPrimaryAdmin(brandId).catch(
+      () => null,
+    );
+
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
-      select: { id: true, name: true, code: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        primaryAdminId: true,
+      },
     });
     if (!brand) return jsonError("ไม่พบแบรนด์", 404);
 
@@ -44,6 +57,8 @@ export async function GET(_request: Request, { params }: Params) {
       orderBy: { createdAt: "asc" },
     });
 
+    const resolvedPrimary = primaryAdminId ?? brand.primaryAdminId;
+
     const items = members
       .filter((m) => !m.admin.isPlatformAdmin)
       .map((m) => {
@@ -60,6 +75,7 @@ export async function GET(_request: Request, { params }: Params) {
           adminId: m.admin.id,
           username: m.admin.username,
           createdAt: m.admin.createdAt,
+          isPrimary: m.admin.id === resolvedPrimary,
           ...(isPlatform
             ? {
                 password: recovered,
@@ -72,6 +88,7 @@ export async function GET(_request: Request, { params }: Params) {
     return jsonOk({
       brand,
       canManage: isPlatform,
+      primaryAdminId: resolvedPrimary,
       members: items,
     });
   } catch (error) {

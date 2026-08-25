@@ -1,4 +1,6 @@
 /** จำธีมแบรนด์ของพนักงานหลังเข้าสู่ระบบ (สี / โลโก้ ใน /staff) */
+import { DEFAULT_BRAND_COLOR } from "@/lib/color";
+
 const STORAGE_KEY = "skillsale_staff_brand";
 
 export type StaffBrandSession = {
@@ -64,6 +66,6 @@ export function staffBrandFromApi(brand: {
     code: brand.code.trim(),
     name: brand.nameTh?.trim() || brand.nameEn?.trim() || brand.name,
     logoUrl: brand.logoUrl?.trim() || null,
-    primaryColor: brand.color?.trim() || "#dc2626",
+    primaryColor: brand.color?.trim() || DEFAULT_BRAND_COLOR,
   };
 }

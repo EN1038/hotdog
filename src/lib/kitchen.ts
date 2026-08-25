@@ -13,6 +13,7 @@ import {
   transferWarehouseToBranch,
 } from "@/lib/stock";
 import { addToLot, deductFromLotsFefo } from "@/lib/stock-advanced";
+import { assertBrandWriteAllowedByBrandId } from "@/lib/brand-plan";
 
 type Actor = { adminId?: string | null; staffId?: string | null };
 
@@ -119,6 +120,7 @@ export async function runKitchenProduction(
   } & Actor,
 ) {
   const waste = input.quantityWasted ?? 0;
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   if (input.quantityProduced < 0 || waste < 0) {
     throw new StockError("จำนวนต้องไม่ติดลบ");
   }
@@ -429,6 +431,7 @@ export async function createBranchStockRequest(input: {
   note?: string | null;
   staffId?: string | null;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   if (input.quantityRequested <= 0) {
     throw new StockError("จำนวนที่ขอต้องมากกว่า 0");
   }
@@ -532,6 +535,7 @@ export async function fulfillBranchStockRequest(input: {
   note?: string | null;
   adminId?: string | null;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   const req = await prisma.branchStockRequest.findFirst({
     where: {
       id: input.requestId,
@@ -582,6 +586,7 @@ export async function rejectBranchStockRequest(input: {
   note?: string | null;
   adminId?: string | null;
 }) {
+  await assertBrandWriteAllowedByBrandId(input.brandId);
   const req = await prisma.branchStockRequest.findFirst({
     where: {
       id: input.requestId,

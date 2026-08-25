@@ -26,6 +26,7 @@ import {
 } from "@/components/icons";
 import { slugifyCode } from "@/lib/slug";
 import { DEFAULT_BRAND_COLOR, rgba } from "@/lib/color";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   defaultWeeklyHours,
   type WeeklySchedule,
@@ -35,16 +36,22 @@ import { BrandOverviewPanel } from "@/components/admin/BrandOverviewPanel";
 import { parseBrandHqSection } from "@/lib/brand-hq-nav";
 import { isTestBranch } from "@/lib/branch-test";
 import {
+  allowedOperatingModesForBrand,
   BRANCH_OPERATING_MODE_META,
-  BRANCH_OPERATING_MODES,
   type BranchOperatingModeId,
 } from "@/lib/branch-operating-mode";
+import { HOTPOT_COUNTER_GROUP } from "@/lib/hotpot-counter-group";
 
 export type DashboardBrand = {
   id: string;
   name: string;
   code: string;
   color?: string;
+  kitchenEnabled?: boolean;
+  bbqEnabled?: boolean;
+  skewerEnabled?: boolean;
+  maxBranches?: number;
+  plan?: string;
 };
 
 type Branch = {
@@ -55,6 +62,7 @@ type Branch = {
   isOpen?: boolean;
   isHidden?: boolean;
   isTest?: boolean;
+  kind?: "STORE" | "WAREHOUSE" | string | null;
   brand: DashboardBrand | null;
   _count?: {
     staff: number;
@@ -63,6 +71,12 @@ type Branch = {
     orders: number;
   };
 };
+
+function defaultWeighAddonForBrand(brand: DashboardBrand | null | undefined) {
+  if (!brand?.bbqEnabled) return false;
+  const plan = brand.plan;
+  return plan === "MALA" || plan === "MULTI" || plan === "WEIGH_TABLE";
+}
 
 function resetFormState(setters: {
   setName: (v: string) => void;
@@ -78,7 +92,11 @@ function resetFormState(setters: {
   setError: (v: string | null) => void;
   setCreateStep: (v: 1 | 2) => void;
   setOperatingMode: (v: BranchOperatingModeId | null) => void;
+  setWeighSalesEnabled: (v: boolean) => void;
+  setCreateAsTest: (v: boolean) => void;
   defaultBrandId: string;
+  defaultWeighSalesEnabled?: boolean;
+  defaultCreateAsTest?: boolean;
 }) {
   setters.setName("");
   setters.setBrandId(setters.defaultBrandId);
@@ -92,7 +110,9 @@ function resetFormState(setters: {
   setters.setDeliveryHours(defaultWeeklyHours());
   setters.setError(null);
   setters.setCreateStep(1);
-  setters.setOperatingMode(null);
+  setters.setOperatingMode("NORMAL");
+  setters.setWeighSalesEnabled(Boolean(setters.defaultWeighSalesEnabled));
+  setters.setCreateAsTest(Boolean(setters.defaultCreateAsTest));
 }
 
 type BranchListDashboardProps = {
@@ -156,6 +176,8 @@ function BranchListDashboardInner({
   const [createStep, setCreateStep] = useState<1 | 2>(1);
   const [operatingMode, setOperatingMode] =
     useState<BranchOperatingModeId | null>(null);
+  const [weighSalesEnabled, setWeighSalesEnabled] = useState(false);
+  const [createAsTest, setCreateAsTest] = useState(false);
 
   const defaultBrandId = effectiveLockedBrandId ?? "";
 
@@ -211,6 +233,14 @@ function BranchListDashboardInner({
   }, [modalOpen, saving]);
 
   function formSetters() {
+    const brand =
+      brands.find((b) => b.id === (effectiveLockedBrandId || defaultBrandId)) ||
+      brandMeta;
+    const liveCount = branches.filter((b) => !b.isTest).length;
+    const hasTest = branches.some((b) => b.isTest);
+    const liveAtLimit =
+      typeof brand?.maxBranches === "number" &&
+      liveCount >= brand.maxBranches;
     return {
       setName,
       setBrandId,
@@ -225,12 +255,25 @@ function BranchListDashboardInner({
       setError,
       setCreateStep,
       setOperatingMode,
+      setWeighSalesEnabled,
+      setCreateAsTest,
       defaultBrandId,
+      defaultWeighSalesEnabled: defaultWeighAddonForBrand(brand),
+      defaultCreateAsTest: liveAtLimit && !hasTest,
     };
   }
 
   function openModal() {
     resetFormState(formSetters());
+    const brand =
+      brands.find((b) => b.id === (effectiveLockedBrandId || defaultBrandId)) ||
+      brandMeta;
+    const modes = allowedOperatingModesForBrand(brand);
+    setWeighSalesEnabled(defaultWeighAddonForBrand(brand));
+    if (modes.length === 1) {
+      setOperatingMode(modes[0]);
+      setCreateStep(2);
+    }
     setModalOpen(true);
   }
 
@@ -254,7 +297,16 @@ function BranchListDashboardInner({
     setSaving(true);
     try {
       const resolvedBrandId = effectiveLockedBrandId || brandId || null;
+      const brandForCreate =
+        brands.find((b) => b.id === (resolvedBrandId || "")) || brandMeta;
       const autoCode = slugifyCode(name);
+      const liveCount = branches.filter(
+        (b) => !b.isTest && b.kind !== "WAREHOUSE",
+      ).length;
+      const alreadyHasTest = branches.some((b) => b.isTest);
+      const liveFull =
+        typeof brandForCreate?.maxBranches === "number" &&
+        liveCount >= brandForCreate.maxBranches;
       const res = await fetch("/api/admin/branches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -269,6 +321,15 @@ function BranchListDashboardInner({
           storefrontHours,
           deliveryHours,
           operatingMode,
+          weighSalesEnabled:
+            operatingMode === "NORMAL" &&
+            Boolean(brandForCreate?.bbqEnabled) &&
+            weighSalesEnabled,
+          ...(createAsTest || liveFull
+            ? { isTest: true }
+            : alreadyHasTest
+              ? { isTest: false }
+              : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -298,6 +359,18 @@ function BranchListDashboardInner({
   const previewCode = code || slugifyCode(name) || "…";
   const accent = selectedBrand?.color || DEFAULT_BRAND_COLOR;
   const brandLocked = Boolean(effectiveLockedBrandId);
+  const availableModes = allowedOperatingModesForBrand(selectedBrand);
+  const liveBranchCount = branches.filter(
+    (b) => !b.isTest && b.kind !== "WAREHOUSE",
+  ).length;
+  const hasTestBranch = branches.some((b) => b.isTest);
+  const liveAtLimit =
+    typeof selectedBrand?.maxBranches === "number" &&
+    liveBranchCount >= selectedBrand.maxBranches;
+  const atBranchLimit = liveAtLimit && hasTestBranch;
+  const visibleBranches = WAREHOUSE_UI_ENABLED
+    ? branches
+    : branches.filter((b) => b.kind !== "WAREHOUSE");
 
   return (
     <div>
@@ -311,6 +384,21 @@ function BranchListDashboardInner({
         </Link>
       ) : null}
 
+      {!session?.isPlatformAdmin ? (
+        <Link
+          href="/owner"
+          className="mb-4 flex items-center justify-between rounded-2xl bg-[#0b2a4a] px-4 py-3 text-white shadow-sm"
+        >
+          <div>
+            <p className="text-sm font-bold">โหมดใช้งานทุกวัน</p>
+            <p className="text-xs text-white/75">
+              ปุ่มใหญ่ · ดูยอดวันนี้ · ไม่ต้องหาเมนู
+            </p>
+          </div>
+          <span className="text-sm font-semibold">เปิด ›</span>
+        </Link>
+      ) : null}
+
       <AdminPageHeader
         title={title}
         description={description}
@@ -318,9 +406,26 @@ function BranchListDashboardInner({
           <>
             {headerActions}
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm">
-              {branches.length} สาขา
+              {liveBranchCount}
+              {typeof selectedBrand?.maxBranches === "number"
+                ? `/${selectedBrand.maxBranches}`
+                : ""}{" "}
+              สาขา
+              {hasTestBranch ? " · +ทดลอง" : ""}
             </span>
-            <button type="button" onClick={openModal} className={btnPrimaryXl}>
+            <button
+              type="button"
+              onClick={openModal}
+              disabled={atBranchLimit}
+              title={
+                atBranchLimit
+                  ? `แพ็กนี้เปิดสาขาได้สูงสุด ${selectedBrand?.maxBranches} สาขา และใช้สล็อตทดลองแล้ว`
+                  : liveAtLimit
+                    ? "โควต้าสาขาจริงเต็ม — ยังสร้างสาขาทดลองได้อีก 1 สล็อต"
+                    : undefined
+              }
+              className={btnPrimaryXl}
+            >
               <IconPlus size={16} />
               เพิ่มสาขา
             </button>
@@ -337,7 +442,7 @@ function BranchListDashboardInner({
 
       {hqSection === "home" ? (
       <section className="mt-6">
-        {branches.length === 0 ? (
+        {visibleBranches.length === 0 ? (
           <AdminEmptyState
             title="ยังไม่มีสาขา"
             description="กด “เพิ่มสาขา” เพื่อสร้างสาขาแรก"
@@ -350,8 +455,9 @@ function BranchListDashboardInner({
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-            {branches.map((branch) => {
+            {visibleBranches.map((branch) => {
               const brandColor = branch.brand?.color || accent;
+              const isWarehouse = branch.kind === "WAREHOUSE";
               const chipStyle = {
                 backgroundColor: rgba(brandColor, 0.14),
                 color: brandColor,
@@ -361,17 +467,22 @@ function BranchListDashboardInner({
                   key={branch.id}
                   href={`/admin/branches/${branch.id}`}
                   className={`group overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-                    isTestBranch(branch)
-                      ? "border-violet-300 ring-1 ring-violet-200/80"
-                      : "border-slate-200"
+                    isWarehouse
+                      ? "border-teal-300 ring-1 ring-teal-200/70"
+                      : isTestBranch(branch)
+                        ? "border-violet-300 ring-1 ring-violet-200/80"
+                        : "border-slate-200"
                   }`}
                   style={{
-                    borderColor: isTestBranch(branch)
-                      ? undefined
-                      : rgba(brandColor, 0.35),
-                    background: isTestBranch(branch)
-                      ? "linear-gradient(to bottom right, rgba(124,58,237,0.08), #ffffff)"
-                      : `linear-gradient(to bottom right, ${rgba(brandColor, 0.12)}, #ffffff)`,
+                    borderColor:
+                      isWarehouse || isTestBranch(branch)
+                        ? undefined
+                        : rgba(brandColor, 0.35),
+                    background: isWarehouse
+                      ? "linear-gradient(to bottom right, rgba(13,148,136,0.1), #ffffff)"
+                      : isTestBranch(branch)
+                        ? "linear-gradient(to bottom right, rgba(124,58,237,0.08), #ffffff)"
+                        : `linear-gradient(to bottom right, ${rgba(brandColor, 0.12)}, #ffffff)`,
                   }}
                 >
                   <div className="relative aspect-[16/10] bg-white/60">
@@ -381,22 +492,35 @@ function BranchListDashboardInner({
                         src={branch.imageUrl}
                         alt=""
                         className={`absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] ${
-                          branch.isHidden ? "opacity-70 grayscale-[0.35]" : ""
+                          branch.isHidden && !isWarehouse
+                            ? "opacity-70 grayscale-[0.35]"
+                            : ""
                         }`}
                       />
                     ) : (
                       <div
                         className="absolute inset-0 flex flex-col items-center justify-center gap-2"
                         style={{
-                          background: `linear-gradient(to bottom right, ${rgba(brandColor, 0.22)}, ${rgba(brandColor, 0.06)})`,
-                          color: rgba(brandColor, 0.55),
+                          background: isWarehouse
+                            ? "linear-gradient(to bottom right, rgba(13,148,136,0.22), rgba(13,148,136,0.06))"
+                            : `linear-gradient(to bottom right, ${rgba(brandColor, 0.22)}, ${rgba(brandColor, 0.06)})`,
+                          color: isWarehouse
+                            ? "rgba(13,148,136,0.7)"
+                            : rgba(brandColor, 0.55),
                         }}
                       >
                         <IconStore size={28} />
-                        <span className="text-xs">ยังไม่มีรูป</span>
+                        <span className="text-xs">
+                          {isWarehouse ? "สต๊อกกลาง" : "ยังไม่มีรูป"}
+                        </span>
                       </div>
                     )}
                     <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+                      {isWarehouse ? (
+                        <span className="rounded-full bg-teal-600/95 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white shadow-sm">
+                          สต๊อกกลาง
+                        </span>
+                      ) : null}
                       {isTestBranch(branch) ? (
                         <span
                           title="สาขาทดลอง / ทดสอบระบบ — ไม่ใช่สาขาเปิดขายจริง"
@@ -405,11 +529,11 @@ function BranchListDashboardInner({
                           ⚗ ทดลอง
                         </span>
                       ) : null}
-                      {branch.isHidden ? (
+                      {!isWarehouse && branch.isHidden ? (
                         <span className="rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
                           ซ่อน
                         </span>
-                      ) : branch.isOpen === false ? (
+                      ) : !isWarehouse && branch.isOpen === false ? (
                         <span className="rounded-full bg-slate-800/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
                           ปิดร้าน
                         </span>
@@ -432,29 +556,40 @@ function BranchListDashboardInner({
                           ` · /${branch.brand?.code ?? selectedBrand?.code ?? "?"}/${branch.code}`}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1 sm:mt-3 sm:gap-1.5">
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-[11px]"
-                          style={chipStyle}
-                        >
-                          เมนู {branch._count?.menuItems ?? 0}
-                        </span>
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-[11px]"
-                          style={chipStyle}
-                        >
-                          ส่ง {branch._count?.deliveryLocations ?? 0}
-                        </span>
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-[11px]"
-                          style={chipStyle}
-                        >
-                          ออเดอร์ {branch._count?.orders ?? 0}
-                        </span>
+                        {isWarehouse ? (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-[11px]"
+                            style={chipStyle}
+                          >
+                            พนักงาน {branch._count?.staff ?? 0}
+                          </span>
+                        ) : (
+                          <>
+                            <span
+                              className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-[11px]"
+                              style={chipStyle}
+                            >
+                              เมนู {branch._count?.menuItems ?? 0}
+                            </span>
+                            <span
+                              className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-[11px]"
+                              style={chipStyle}
+                            >
+                              ส่ง {branch._count?.deliveryLocations ?? 0}
+                            </span>
+                            <span
+                              className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-[11px]"
+                              style={chipStyle}
+                            >
+                              ออเดอร์ {branch._count?.orders ?? 0}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <span
                       className="mt-0.5 shrink-0 opacity-60 transition group-hover:opacity-100"
-                      style={{ color: brandColor }}
+                      style={{ color: isWarehouse ? "#0d9488" : brandColor }}
                     >
                       <IconChevronRight size={18} />
                     </span>
@@ -520,19 +655,34 @@ function BranchListDashboardInner({
                         โหมดสาขา
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
-                        เลือกรูปแบบธุรกิจของสาขานี้ การ์ดที่เลือกจะกำหนด
-                        flow การขายทั้งหมด
+                        กลุ่ม {HOTPOT_COUNTER_GROUP.shortLabel} เลือก「คิวเคาน์เตอร์」
+                        แล้วติ๊กชั่งกิโลได้ — พนักงานใช้บัญชีเดียวสลับโหมดขาย
                       </p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      {BRANCH_OPERATING_MODES.map((modeId) => {
+                    <div
+                      className={`grid gap-3 ${
+                        availableModes.length === 1
+                          ? "sm:grid-cols-1"
+                          : "sm:grid-cols-3"
+                      }`}
+                    >
+                      {availableModes.map((modeId) => {
                         const meta = BRANCH_OPERATING_MODE_META[modeId];
                         const selected = operatingMode === modeId;
                         return (
                           <button
                             key={modeId}
                             type="button"
-                            onClick={() => setOperatingMode(modeId)}
+                            onClick={() => {
+                              setOperatingMode(modeId);
+                              if (modeId === "NORMAL") {
+                                setWeighSalesEnabled(
+                                  defaultWeighAddonForBrand(selectedBrand),
+                                );
+                              } else {
+                                setWeighSalesEnabled(false);
+                              }
+                            }}
                             className={`rounded-2xl border px-4 py-5 text-left transition ${
                               selected
                                 ? meta.selectedClass
@@ -553,6 +703,32 @@ function BranchListDashboardInner({
                         );
                       })}
                     </div>
+                    {operatingMode === "NORMAL" &&
+                    selectedBrand?.bbqEnabled ? (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3.5">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-rose-300 text-rose-700 focus:ring-rose-500"
+                          checked={weighSalesEnabled}
+                          onChange={(e) =>
+                            setWeighSalesEnabled(e.target.checked)
+                          }
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-rose-950">
+                            {HOTPOT_COUNTER_GROUP.weighAddonTitle}
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-rose-900/75">
+                            {HOTPOT_COUNTER_GROUP.weighAddonHint}
+                          </span>
+                        </span>
+                      </label>
+                    ) : null}
+                    {availableModes.length === 1 ? (
+                      <p className="text-xs text-slate-500">
+                        แพ็กเกจนี้ใช้โหมดร้านทั่วไป — เปิดหมูกระทะ/เสียบไม้ได้ที่ผู้ดูแลแพลตฟอร์ม
+                      </p>
+                    ) : null}
                     {error && (
                       <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
                         {error}
@@ -603,7 +779,15 @@ function BranchListDashboardInner({
                         <select
                           className={adminInputClass}
                           value={brandId}
-                          onChange={(e) => setBrandId(e.target.value)}
+                          onChange={(e) => {
+                            const nextId = e.target.value;
+                            setBrandId(nextId);
+                            const nextBrand = brands.find((b) => b.id === nextId);
+                            const modes = allowedOperatingModesForBrand(nextBrand);
+                            setOperatingMode((prev) =>
+                              prev && modes.includes(prev) ? prev : "NORMAL",
+                            );
+                          }}
                           required={brands.length > 0}
                         >
                           <option value="">— เลือกแบรนด์ —</option>
@@ -673,6 +857,37 @@ function BranchListDashboardInner({
                           : null}
                       </p>
                     </div>
+                    {!hasTestBranch ? (
+                      <label
+                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 ${
+                          createAsTest || liveAtLimit
+                            ? "border-violet-300 bg-violet-50"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={createAsTest || liveAtLimit}
+                          disabled={liveAtLimit}
+                          onChange={(e) => setCreateAsTest(e.target.checked)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-violet-950">
+                            สาขาทดลอง (ไม่นับโควต้า)
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-violet-900/75">
+                            {liveAtLimit
+                              ? "โควต้าสาขาจริงเต็มแล้ว — สร้างได้เฉพาะสล็อตทดลองนี้ (แบรนด์ละ 1)"
+                              : "ได้ 1 สล็อตต่อแบรนด์ · ไม่โชว์หน้าร้านลูกค้า"}
+                          </span>
+                        </span>
+                      </label>
+                    ) : (
+                      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        ใช้สล็อตสาขาทดลองแล้ว — สาขาใหม่จะนับโควต้าแพ็กเกจ
+                      </p>
+                    )}
                   </div>
                 </div>
 

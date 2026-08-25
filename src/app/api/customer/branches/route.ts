@@ -8,21 +8,23 @@ import {
   attachBestsellerFlag,
   getBestsellerMenuItemIdsByBranch,
 } from "@/lib/menu-bestsellers";
+import { publicCustomerBranchWhere } from "@/lib/brand-plan";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 export async function GET(request: Request) {
   try {
+    await ensureProdSchemaCompat();
     const { searchParams } = new URL(request.url);
     const brandCode = searchParams.get("brand");
     const branchCode = searchParams.get("branch");
     const query = searchParams.get("q")?.trim();
 
     const branches = await prisma.branch.findMany({
-      where: {
-        isHidden: false,
-        ...(brandCode && { brand: { code: brandCode } }),
-        ...(branchCode && { code: branchCode }),
-        ...(query && { name: { contains: query, mode: "insensitive" } }),
-      },
+      where: publicCustomerBranchWhere({
+        brandCode,
+        branchCode,
+        query,
+      }),
       include: {
         brand: true,
         menuItems: {

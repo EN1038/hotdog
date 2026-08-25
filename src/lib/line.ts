@@ -265,37 +265,34 @@ export async function tryLinkStaffByPhoneMessage(
     };
   }
 
-  const staff = await prisma.staff.findUnique({
-    where: { phone: digits },
+  const staffRows = await prisma.staff.findMany({
+    where: { phone: digits, isActive: true },
     include: { branch: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
   });
-  if (!staff) {
+  if (staffRows.length === 0) {
     return {
       linked: false,
       reply: `ไม่พบพนักงานเบอร์ ${digits} ในระบบ กรุณาตรวจสอบกับแอดมิน`,
     };
   }
-  if (!staff.isActive) {
-    return {
-      linked: false,
-      reply: "บัญชีพนักงานนี้ถูกปิดใช้งานอยู่",
-    };
-  }
 
+  // Clear this LINE from any other phones, then attach to all memberships of this phone
   await prisma.staff.updateMany({
-    where: { lineUserId, NOT: { id: staff.id } },
+    where: { lineUserId, NOT: { phone: digits } },
     data: { lineUserId: null },
   });
-
-  await prisma.staff.update({
-    where: { id: staff.id },
+  await prisma.staff.updateMany({
+    where: { phone: digits },
     data: { lineUserId },
   });
 
+  const staff = staffRows[0]!;
   const name = staff.name?.trim() || staff.phone;
+  const branchNames = staffRows.map((s) => s.branch.name).join(", ");
   return {
     linked: true,
-    reply: `เชื่อมต่อสำเร็จ\n${name} · ${staff.branch.name}\nจะได้รับการแจ้งเตือนออเดอร์ทาง LINE`,
+    reply: `เชื่อมต่อสำเร็จ\n${name} · ${branchNames}\nจะได้รับการแจ้งเตือนออเดอร์ทาง LINE`,
   };
 }
 

@@ -136,7 +136,7 @@ function ConsumableRow({
           aria-label="ลด"
           disabled={qty <= 0}
           onClick={() => onChangeQty(item.id, qty - 1)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-lg font-bold text-gray-700 disabled:opacity-40"
+          className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 text-xl font-bold text-gray-700 disabled:opacity-40"
         >
           −
         </button>
@@ -148,7 +148,7 @@ function ConsumableRow({
           aria-label="เพิ่ม"
           disabled={soldOut || qty >= max}
           onClick={() => onChangeQty(item.id, qty + 1)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg bg-site-primary text-lg font-bold text-white disabled:opacity-40"
+          className="flex h-12 w-12 items-center justify-center rounded-xl bg-site-primary text-xl font-bold text-white disabled:opacity-40"
         >
           +
         </button>

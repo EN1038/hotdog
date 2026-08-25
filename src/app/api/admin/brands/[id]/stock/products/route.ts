@@ -17,6 +17,7 @@ const createSchema = z.object({
   trackStock: z.boolean().optional(),
   trackLots: z.boolean().optional(),
   lowStockAlert: z.number().int().min(0).nullable().optional(),
+  defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
   costPrice: z.number().min(0).nullable().optional(),
   sellingPrice: z.number().min(0).nullable().optional(),
   isActive: z.boolean().optional(),
@@ -83,6 +84,8 @@ export async function POST(request: Request, { params }: Params) {
         trackStock: body.trackStock ?? true,
         trackLots: body.trackLots ?? false,
         lowStockAlert: body.lowStockAlert ?? null,
+        defaultShelfLifeDays:
+          body.defaultShelfLifeDays != null ? body.defaultShelfLifeDays : 5,
         costPrice:
           body.costPrice != null ? new Prisma.Decimal(body.costPrice) : null,
         sellingPrice:

@@ -12,6 +12,7 @@ import {
   BranchListDashboard,
   type DashboardBrand,
 } from "@/components/admin/BranchListDashboard";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type BrandDetail = DashboardBrand & {
   logoUrl?: string | null;
@@ -51,6 +52,11 @@ export default function BrandBranchesPage() {
           code: data.code,
           color: data.color,
           logoUrl: data.logoUrl,
+          kitchenEnabled: data.kitchenEnabled,
+          bbqEnabled: data.bbqEnabled,
+          skewerEnabled: data.skewerEnabled,
+          maxBranches: data.maxBranches,
+          plan: data.plan,
         });
       }
       setLoading(false);
@@ -73,23 +79,27 @@ export default function BrandBranchesPage() {
       backLabel="กลับไปเลือกแบรนด์"
       headerActions={
         <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/admin/brands/${brand.id}/kitchen`}
-            className={btnOutline}
-          >
-            ครัว / ผลิต
-          </Link>
-          <Link
-            href={`/admin/brands/${brand.id}/stock`}
-            className={btnOutline}
-          >
-            สต๊อก / บ้านกลาง
-          </Link>
+          {WAREHOUSE_UI_ENABLED && brand.kitchenEnabled ? (
+            <Link
+              href={`/admin/brands/${brand.id}/kitchen`}
+              className={btnOutline}
+            >
+              ครัว / ผลิต
+            </Link>
+          ) : null}
+          {WAREHOUSE_UI_ENABLED ? (
+            <Link
+              href={`/admin/brands/${brand.id}/stock`}
+              className={btnOutline}
+            >
+              สต๊อก / สต๊อกกลาง
+            </Link>
+          ) : null}
           <Link
             href={`/admin/brands/${brand.id}/admins`}
             className={btnOutline}
           >
-            ผู้ดูแล
+            บัญชีเจ้าของ
           </Link>
         </div>
       }

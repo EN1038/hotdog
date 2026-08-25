@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { hashAndSealPassword } from "@/lib/admin-password";
 import { logAdminActivity } from "@/lib/admin-activity";
+import {
+  countBrandOwners,
+  ensureBrandPrimaryAdmin,
+} from "@/lib/brand-primary-owner";
 
 type Params = { params: Promise<{ id: string; adminId: string }> };
 
@@ -27,12 +31,37 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { adminId_brandId: { adminId, brandId } },
       include: {
         admin: true,
-        brand: { select: { id: true, name: true, code: true } },
+        brand: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            primaryAdminId: true,
+          },
+        },
       },
     });
     if (!membership) return jsonError("ไม่พบผู้ดูแลในแบรนด์นี้", 404);
     if (membership.admin.isPlatformAdmin) {
       return jsonError("แก้ไขบัญชีแพลตฟอร์มจากหน้านี้ไม่ได้");
+    }
+
+    const primaryAdminId =
+      (await ensureBrandPrimaryAdmin(brandId)) ??
+      membership.brand.primaryAdminId;
+    const isPrimary = primaryAdminId === adminId;
+
+    if (body.role === "MANAGER" && isPrimary) {
+      return jsonError(
+        "ลดสิทธิ์เจ้าของหลักไม่ได้ — ตั้งเจ้าของหลักคนอื่นก่อน หรือเพิ่มเจ้าของคนอื่นแล้วสลับ",
+      );
+    }
+
+    if (body.role === "MANAGER" && membership.role === "OWNER") {
+      const otherOwners = await countBrandOwners(brandId, membership.id);
+      if (otherOwners === 0) {
+        return jsonError("ต้องเหลือเจ้าของอย่างน้อย 1 บัญชี");
+      }
     }
 
     if (body.username) {
@@ -102,7 +131,14 @@ export async function DELETE(_request: Request, { params }: Params) {
       where: { adminId_brandId: { adminId, brandId } },
       include: {
         admin: true,
-        brand: { select: { id: true, name: true, code: true } },
+        brand: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            primaryAdminId: true,
+          },
+        },
       },
     });
     if (!membership) return jsonError("ไม่พบผู้ดูแลในแบรนด์นี้", 404);
@@ -110,11 +146,31 @@ export async function DELETE(_request: Request, { params }: Params) {
       return jsonError("ลบบัญชีแพลตฟอร์มจากหน้านี้ไม่ได้");
     }
 
+    const primaryAdminId =
+      (await ensureBrandPrimaryAdmin(brandId)) ??
+      membership.brand.primaryAdminId;
+    if (primaryAdminId === adminId) {
+      return jsonError(
+        "ลบเจ้าของหลักไม่ได้ — ตั้งเจ้าของหลักคนอื่นก่อน แล้วค่อยถอดบัญชีนี้",
+      );
+    }
+
     const otherCount = await prisma.brandMember.count({
-      where: { brandId, NOT: { id: membership.id } },
+      where: {
+        brandId,
+        NOT: { id: membership.id },
+        admin: { isPlatformAdmin: false },
+      },
     });
     if (otherCount === 0) {
       return jsonError("ลบไม่ได้ — แบรนด์ต้องมีผู้ดูแลอย่างน้อย 1 บัญชี");
+    }
+
+    if (membership.role === "OWNER") {
+      const otherOwners = await countBrandOwners(brandId, membership.id);
+      if (otherOwners === 0) {
+        return jsonError("ลบไม่ได้ — ต้องเหลือเจ้าของอย่างน้อย 1 บัญชี");
+      }
     }
 
     await prisma.brandMember.delete({ where: { id: membership.id } });

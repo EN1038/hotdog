@@ -1,6 +1,7 @@
 import { BranchOperatingMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import { publicUsableBrandWhere } from "@/lib/brand-plan";
 import {
   flattenMenuItemOptionGroups,
   menuItemOptionGroupInclude,
@@ -16,7 +17,11 @@ export async function GET(request: Request) {
       where: {
         id: branchId,
         isHidden: false,
+        isTest: false,
         operatingMode: BranchOperatingMode.SKEWER,
+        brand: {
+          is: { AND: [publicUsableBrandWhere(), { skewerEnabled: true }] },
+        },
       },
       include: {
         brand: {
@@ -36,7 +41,14 @@ export async function GET(request: Request) {
           where: { isHidden: false },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
           include: {
-            category: { select: { id: true, name: true, sortOrder: true } },
+            category: {
+              select: {
+                id: true,
+                name: true,
+                sortOrder: true,
+                stockExempt: true,
+              },
+            },
             ...menuItemOptionGroupInclude,
           },
         },
@@ -59,13 +71,21 @@ export async function GET(request: Request) {
       isOpen: branch.isOpen,
       operatingMode: branch.operatingMode,
       brand: branch.brand,
-      menuItems: branch.menuItems.map((item) => ({
-        ...flattenMenuItemOptionGroups(item),
-        // Skewer UI does not show prices
-        price: undefined,
-        pickupPrice: undefined,
-        storefrontPrice: undefined,
-      })),
+      menuItems: branch.menuItems
+        .filter((item) => {
+          const isPromo = item.optionGroupLinks.some(
+            (l) => l.group.mode === "FROM_MENU",
+          );
+          if (isPromo || item.category?.stockExempt) return false;
+          return true;
+        })
+        .map((item) => ({
+          ...flattenMenuItemOptionGroups(item),
+          // Skewer UI does not show prices
+          price: undefined,
+          pickupPrice: undefined,
+          storefrontPrice: undefined,
+        })),
     });
   } catch (error) {
     return handleApiError(error);

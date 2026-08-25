@@ -30,6 +30,7 @@ type CloseSummary = {
   revenueBaht: number;
   cashRevenueBaht: number;
   transferRevenueBaht: number;
+  expectedCash: number;
   totalWithOpeningCash: number;
   giftQuantity: number;
   menus: Array<{ name: string; quantity: number; revenueBaht: number }>;
@@ -53,6 +54,11 @@ type Props = {
   onBeforeOpen?: () => void;
   /** Hide the "เปิดรอบขาย" trigger (e.g. when shown as overlay elsewhere) */
   hideClosedButton?: boolean;
+  /** Merchant home: white status card with cash / orders + close shift */
+  variant?: "default" | "merchant";
+  todayOrderCount?: number;
+  todayRevenueBaht?: number;
+  pendingOrderCount?: number;
 };
 
 function formatShiftTime(iso: string) {
@@ -157,11 +163,17 @@ export function StaffShiftControls({
   onError,
   onBeforeOpen,
   hideClosedButton = false,
+  variant = "default",
+  todayOrderCount = 0,
+  todayRevenueBaht = 0,
+  pendingOrderCount = 0,
 }: Props) {
   const [openModal, setOpenModal] = useState(false);
   const [closeModal, setCloseModal] = useState(false);
   const [detailModal, setDetailModal] = useState(false);
   const [openingCashInput, setOpeningCashInput] = useState("0");
+  const [openingCashHint, setOpeningCashHint] = useState("");
+  const [closingCashInput, setClosingCashInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const openSubmittingRef = useRef(false);
@@ -173,10 +185,29 @@ export function StaffShiftControls({
   function startOpen() {
     window.dispatchEvent(new Event("staff-shift-before-open"));
     onBeforeOpen?.();
+    setOpeningCashHint("");
+    setOpeningCashInput("0");
     setOpenModal(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/staff/shifts/suggested-opening-cash");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const amount = Number(data.amount);
+        if (Number.isFinite(amount) && amount >= 0) {
+          setOpeningCashInput(String(Math.round(amount)));
+        }
+        if (typeof data.label === "string" && data.label.trim()) {
+          setOpeningCashHint(data.label.trim());
+        }
+      } catch {
+        /* keep 0 */
+      }
+    })();
   }
 
   function startClose() {
+    setClosingCashInput("");
     setCloseModal(true);
   }
 
@@ -207,7 +238,14 @@ export function StaffShiftControls({
           setCloseSummary(null);
           return;
         }
-        setCloseSummary((data.summary as CloseSummary) ?? null);
+        const summary = (data.summary as CloseSummary) ?? null;
+        setCloseSummary(summary);
+        if (closeModal && summary && closingCashInput === "") {
+          const expected = Number(summary.expectedCash);
+          if (Number.isFinite(expected) && expected >= 0) {
+            setClosingCashInput(String(Math.round(expected)));
+          }
+        }
       } catch {
         if (!cancelled) {
           setCloseSummaryError("โหลดสรุปไม่สำเร็จ");
@@ -220,7 +258,8 @@ export function StaffShiftControls({
     return () => {
       cancelled = true;
     };
-  }, [summaryModalOpen, activeShift?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reload when modal/shift changes
+  }, [summaryModalOpen, activeShift?.id, closeModal]);
 
   function apiErrorDetail(data: unknown, fallback: string, status?: number) {
     if (data && typeof data === "object") {
@@ -282,11 +321,18 @@ export function StaffShiftControls({
 
   async function submitClose() {
     if (closeSubmittingRef.current) return;
+    const closingCash = Number(closingCashInput.replace(/,/g, ""));
+    if (!Number.isFinite(closingCash) || closingCash < 0) {
+      onError("นับเงินสดไม่ถูกต้อง", "กรุณานับเงินในลิ้นชักแล้วกรอกจำนวน ≥ 0");
+      return;
+    }
     closeSubmittingRef.current = true;
     setSubmitting(true);
     try {
       const res = await fetch("/api/staff/shifts/current/close", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ closingCash }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -366,78 +412,172 @@ export function StaffShiftControls({
   return (
     <>
       {canSell && activeShift ? (
-        <div
-          className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3.5 text-emerald-950 shadow-sm"
-          role="status"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <p className="text-sm font-bold text-emerald-950">
-                  รอบที่ {activeShift.roundNumber} · เปิดขายอยู่
-                </p>
+        variant === "merchant" ? (
+          <div
+            className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm"
+            role="status"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                  เปิดขายอยู่
+                </span>
+                <span className="text-sm font-extrabold text-slate-800">
+                  รอบที่ {activeShift.roundNumber}
+                </span>
+                <span className="text-xs font-medium text-slate-500">
+                  เปิด {formatShiftTime(activeShift.openedAt)} น.
+                </span>
               </div>
-              <p className="mt-1 text-xs font-medium text-emerald-700">
-                เปิดเวลา {formatShiftTime(activeShift.openedAt)} น. · เงินทอน{" "}
-                {formatPrice(activeShift.openingCash)}฿
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-sm font-bold leading-none text-emerald-950">
-                เปิดมาแล้ว
-              </p>
               <p
-                className="mt-1 font-mono text-xs font-bold tabular-nums text-emerald-700"
+                className="shrink-0 text-[11px] font-medium tabular-nums text-slate-400"
                 aria-live="polite"
               >
                 {formatElapsed(elapsedMs)}
               </p>
             </div>
-          </div>
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              disabled={busy || submitting}
-              onClick={startDetail}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-emerald-300 bg-white text-emerald-900 shadow-sm hover:bg-emerald-50 disabled:opacity-60 transition active:scale-[0.98]"
-              aria-label="ดูรายละเอียดรอบขาย"
-              title="ดูรายละเอียดรอบขาย"
-            >
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden
-              >
-                <path
-                  d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="2.75"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                />
-              </svg>
-            </button>
-            {canToggleStore ? (
+
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-emerald-50/90 px-2.5 py-2">
+                <p className="text-[11px] font-semibold leading-none text-emerald-700">
+                  ยอดวันนี้
+                </p>
+                <p className="mt-1 text-[17px] font-black leading-none tabular-nums text-emerald-900">
+                  ฿{formatPrice(todayRevenueBaht)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-amber-50/90 px-2.5 py-2">
+                <p className="text-[11px] font-semibold leading-none text-amber-700">
+                  ออเดอร์
+                </p>
+                <p className="mt-1 text-[17px] font-black leading-none tabular-nums text-amber-900">
+                  {todayOrderCount}
+                  <span className="ml-0.5 text-[11px] font-bold text-amber-700/80">
+                    รายการ
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-2.5 flex gap-2">
+              {canToggleStore ? (
+                <button
+                  type="button"
+                  disabled={busy || submitting}
+                  onClick={startClose}
+                  className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-site-primary px-3 text-sm font-extrabold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-60"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden
+                    className="shrink-0"
+                  >
+                    <path
+                      d="M12 3v9"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M7.5 6.2a7.5 7.5 0 108.9 0"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  ปิดรอบขาย
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={busy || submitting}
-                onClick={startClose}
-                className="min-w-0 flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60 transition active:scale-[0.98]"
+                onClick={startDetail}
+                className={`flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition active:scale-[0.98] disabled:opacity-60 ${
+                  canToggleStore ? "shrink-0" : "flex-1"
+                }`}
               >
-                ปิดรอบขาย
+                รายละเอียด
               </button>
-            ) : null}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div
+            className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3.5 text-emerald-950 shadow-sm"
+            role="status"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <p className="text-sm font-bold text-emerald-950">
+                    รอบที่ {activeShift.roundNumber} · เปิดขายอยู่
+                  </p>
+                </div>
+                <p className="mt-1 text-xs font-medium text-emerald-700">
+                  เปิดเวลา {formatShiftTime(activeShift.openedAt)} น. · เงินทอน{" "}
+                  {formatPrice(activeShift.openingCash)}฿
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-sm font-bold leading-none text-emerald-950">
+                  เปิดมาแล้ว
+                </p>
+                <p
+                  className="mt-1 font-mono text-xs font-bold tabular-nums text-emerald-700"
+                  aria-live="polite"
+                >
+                  {formatElapsed(elapsedMs)}
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={busy || submitting}
+                onClick={startDetail}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-emerald-300 bg-white text-emerald-900 shadow-sm hover:bg-emerald-50 disabled:opacity-60 transition active:scale-[0.98]"
+                aria-label="ดูรายละเอียดรอบขาย"
+                title="ดูรายละเอียดรอบขาย"
+              >
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden
+                >
+                  <path
+                    d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="2.75"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+              </button>
+              {canToggleStore ? (
+                <button
+                  type="button"
+                  disabled={busy || submitting}
+                  onClick={startClose}
+                  className="min-w-0 flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60 transition active:scale-[0.98]"
+                >
+                  ปิดรอบขาย
+                </button>
+              ) : null}
+            </div>
+          </div>
+        )
       ) : canToggleStore ? (
         hideClosedButton ? null : (
           <button
@@ -472,10 +612,10 @@ export function StaffShiftControls({
               เปิดรอบขาย
             </p>
             <p className="mt-1 text-center text-xs text-gray-500">
-              กรอกตังทอนเริ่มรอบ เพื่อใช้คำนวณเงินสดตอนปิดรอบ
+              ใส่ว่ามีเงินสดในลิ้นชักเท่าไรตอนเปิดรอบ (รวมที่ยกมา)
             </p>
             <label className="mt-4 block text-xs font-medium text-gray-600">
-              ตังทอน (บาท)
+              ตังทอน / เงินสดในลิ้นชัก (บาท)
               <input
                 type="number"
                 inputMode="decimal"
@@ -487,6 +627,11 @@ export function StaffShiftControls({
                 autoFocus
               />
             </label>
+            {openingCashHint ? (
+              <p className="mt-1.5 text-[11px] font-medium leading-snug text-emerald-700">
+                {openingCashHint}
+              </p>
+            ) : null}
             <label className="mt-3 block text-xs font-medium text-gray-600">
               หมายเหตุ
               <span className="ml-1 font-normal text-gray-400">(ไม่บังคับ)</span>
@@ -815,6 +960,56 @@ export function StaffShiftControls({
                 </p>
               ) : null}
 
+              {closeSummary ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                  <p className="text-xs font-bold text-amber-900">
+                    นับเงินสดในลิ้นชัก (บังคับ)
+                  </p>
+                  <p className="mt-1 text-[11px] font-medium text-amber-800">
+                    ระบบคาดว่าควรมี{" "}
+                    {formatPrice(closeSummary.expectedCash)} บาท
+                    (ตั้งต้น + ขายสด) — นับจริงแล้วกรอก
+                  </p>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="1"
+                    value={closingCashInput}
+                    onChange={(e) => setClosingCashInput(e.target.value)}
+                    placeholder="ยอดที่นับได้"
+                    className="mt-2 w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-base font-bold tabular-nums text-gray-900 outline-none focus:border-amber-500"
+                  />
+                  {closingCashInput !== "" &&
+                  Number.isFinite(Number(closingCashInput)) ? (
+                    <p
+                      className={`mt-1.5 text-[11px] font-bold ${
+                        Number(closingCashInput) -
+                          Number(closeSummary.expectedCash) ===
+                        0
+                          ? "text-emerald-700"
+                          : "text-rose-700"
+                      }`}
+                    >
+                      {Number(closingCashInput) -
+                        Number(closeSummary.expectedCash) ===
+                      0
+                        ? "ตรงกับยอดที่ระบบคาดไว้"
+                        : `ต่างจากระบบ ${
+                            Number(closingCashInput) -
+                              Number(closeSummary.expectedCash) >
+                            0
+                              ? "+"
+                              : ""
+                          }${formatPrice(
+                            Number(closingCashInput) -
+                              Number(closeSummary.expectedCash),
+                          )} บาท`}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <p className="text-center text-sm font-semibold text-gray-800">
                 ปิดรอบจริงใช่ไหม?
               </p>
@@ -831,7 +1026,11 @@ export function StaffShiftControls({
               </button>
               <button
                 type="button"
-                disabled={submitting || closeSummaryLoading}
+                disabled={
+                  submitting ||
+                  closeSummaryLoading ||
+                  closingCashInput.trim() === ""
+                }
                 onClick={() => void submitClose()}
                 className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60"
               >

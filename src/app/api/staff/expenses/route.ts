@@ -12,6 +12,7 @@ import {
   serializeExpense,
   summarizeExpenses,
 } from "@/lib/branch-expense";
+import { assertBrandWriteAllowedByBranchId } from "@/lib/brand-plan";
 
 /** GET — list branch expenses for a date range (default today → today). */
 export async function GET(request: Request) {
@@ -85,6 +86,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await requireStaff();
+    await assertBrandWriteAllowedByBranchId(session.branchId);
     const body = expenseCreateSchema.parse(await request.json());
     const activeShift = await getActiveShift(session.branchId);
 

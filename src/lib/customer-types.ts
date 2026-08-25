@@ -26,6 +26,8 @@ export type MenuOptionGroupData = {
   maxSelect: number;
   allowDuplicateSelections?: boolean;
   sortOrder?: number;
+  /** Show only when one of these option IDs is selected (empty = always) */
+  visibleWhenOptionIds?: string[];
   options: MenuOptionData[];
 };
 
@@ -53,7 +55,15 @@ export type MenuItemData = {
   sortOrder?: number;
   /** Top sellers from completed orders at this branch */
   isBestSeller?: boolean;
+  /** Weigh-by-kg capability — show ฿/กก. to customers */
+  sellByWeight?: boolean;
+  pricePerKg?: string | number | null;
+  sellPiece?: boolean;
   optionGroups: MenuOptionGroupData[];
+  /** ช่วงโปรแพ็ก / ลดราคา — จาก BranchMenuItem */
+  promoContinuous?: boolean;
+  promoStartsAt?: string | null;
+  promoEndsAt?: string | null;
 };
 
 export type BranchData = {

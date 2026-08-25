@@ -15,6 +15,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       where: {
         code: branchCode,
         isHidden: false,
+        isTest: false,
         brand: { code: brandCode },
       },
       select: {

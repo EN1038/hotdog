@@ -35,6 +35,9 @@ export async function POST(request: Request, { params }: RouteParams) {
       // Find all menu items in this branch
       const menuItems = await prisma.branchMenuItem.findMany({
         where: { branchId: branch.id },
+        include: {
+          optionGroupLinks: { select: { group: { select: { mode: true } } } },
+        },
       });
 
       if (menuItems.length === 0) {
@@ -45,6 +48,11 @@ export async function POST(request: Request, { params }: RouteParams) {
       let linkedCount = 0;
 
       for (const item of menuItems) {
+        const isPromo = item.optionGroupLinks.some(
+          (l) => l.group.mode === "FROM_MENU",
+        );
+        if (isPromo) continue;
+
         // Check if BrandProduct exists with same name
         let product = await prisma.brandProduct.findFirst({
           where: { brandId, name: item.name },
@@ -78,7 +86,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
       await logAdminActivity(session, {
         action: "brand.stock.copy_from_branch",
-        summary: `คัดลอกเมนูจากสาขา ${branch.name} เข้าบ้านกลาง (สร้างใหม่ ${createdCount} รายการ, เชื่อมโยง ${linkedCount} รายการ)`,
+        summary: `คัดลอกเมนูจากสาขา ${branch.name} เข้าสต๊อกกลาง (สร้างใหม่ ${createdCount} รายการ, เชื่อมโยง ${linkedCount} รายการ)`,
         brandId,
         branchId: branch.id,
       });
@@ -87,7 +95,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         success: true,
         createdCount,
         linkedCount,
-        message: `สร้าง SKU ในบ้านกลาง ${createdCount} รายการ และผูกกับสาขา ${linkedCount} รายการสำเร็จ`,
+        message: `สร้าง SKU ในสต๊อกกลาง ${createdCount} รายการ และผูกกับสาขา ${linkedCount} รายการสำเร็จ`,
       });
     }
 
@@ -98,7 +106,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       });
 
       if (products.length === 0) {
-        return jsonError("ไม่พบสินค้า SKU ในบ้านกลาง");
+        return jsonError("ไม่พบสินค้า SKU ในสต๊อกกลาง");
       }
 
       let createdCount = 0;
@@ -143,7 +151,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
       await logAdminActivity(session, {
         action: "brand.stock.copy_to_branch",
-        summary: `คัดลอกเมนูจากบ้านกลางไปยังสาขา ${branch.name} (สร้างเมนูขาย ${createdCount} รายการ, เชื่อมโยง ${linkedCount} รายการ)`,
+        summary: `คัดลอกเมนูจากสต๊อกกลางไปยังสาขา ${branch.name} (สร้างเมนูขาย ${createdCount} รายการ, เชื่อมโยง ${linkedCount} รายการ)`,
         brandId,
         branchId: branch.id,
       });
@@ -152,7 +160,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         success: true,
         createdCount,
         linkedCount,
-        message: `สร้างเมนูขายในสาขา ${createdCount} รายการ และผูกกับ SKU บ้านกลาง ${linkedCount} รายการสำเร็จ`,
+        message: `สร้างเมนูขายในสาขา ${createdCount} รายการ และผูกกับ SKU สต๊อกกลาง ${linkedCount} รายการสำเร็จ`,
       });
     }
 

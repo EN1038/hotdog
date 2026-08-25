@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/admin/Toast";
+import { DateInput } from "@/components/DateInput";
 import {
   EXPENSE_QUICK_TITLES,
   PAY_CHANNEL_LABEL,
@@ -280,32 +281,24 @@ export function StaffExpensesSheet({ open, onClose, initialDate }: Props) {
               <div className="grid grid-cols-2 gap-2">
                 <label className="block text-xs font-medium text-gray-600">
                   วันที่เริ่ม
-                  <input
-                    type="date"
+                  <DateInput
                     value={dateFrom}
                     max={dateTo}
-                    onChange={(e) => {
-                      if (e.target.value && isBangkokDateKey(e.target.value)) {
-                        setDateFrom(e.target.value);
-                      } else if (e.target.value) {
-                        setDateFrom(e.target.value);
-                      }
+                    aria-label="วันที่เริ่ม"
+                    onChange={(v) => {
+                      if (v) setDateFrom(v);
                     }}
                     className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900"
                   />
                 </label>
                 <label className="block text-xs font-medium text-gray-600">
                   วันที่สิ้นสุด
-                  <input
-                    type="date"
+                  <DateInput
                     value={dateTo}
                     min={dateFrom}
-                    onChange={(e) => {
-                      if (e.target.value && isBangkokDateKey(e.target.value)) {
-                        setDateTo(e.target.value);
-                      } else if (e.target.value) {
-                        setDateTo(e.target.value);
-                      }
+                    aria-label="วันที่สิ้นสุด"
+                    onChange={(v) => {
+                      if (v) setDateTo(v);
                     }}
                     className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900"
                   />
@@ -435,11 +428,11 @@ export function StaffExpensesSheet({ open, onClose, initialDate }: Props) {
 
               <label className="block text-xs font-medium text-gray-600">
                 วันที่รายการ
-                <input
-                  type="date"
+                <DateInput
                   value={formExpenseDate}
-                  onChange={(e) => {
-                    if (e.target.value) setFormExpenseDate(e.target.value);
+                  aria-label="วันที่รายการ"
+                  onChange={(v) => {
+                    if (v) setFormExpenseDate(v);
                   }}
                   className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
                 />

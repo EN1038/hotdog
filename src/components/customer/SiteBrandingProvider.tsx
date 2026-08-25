@@ -39,6 +39,11 @@ export function useSiteBranding() {
   return useContext(SiteBrandingContext);
 }
 
+/** Platform shell only — never the restaurant brand override. */
+export function usePlatformBranding() {
+  return useContext(PlatformBrandingContext);
+}
+
 
 
 function mergeBranding(

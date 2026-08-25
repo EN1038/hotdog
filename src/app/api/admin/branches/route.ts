@@ -18,6 +18,11 @@ import { PRICE_RANGE_IDS } from "@/lib/localized";
 import { assertValidRestaurantCategories } from "@/lib/restaurant-type-access";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { nameLooksLikeTestBranch } from "@/lib/branch-test";
+import {
+  assertCanCreateBranch,
+  assertOperatingModeAllowed,
+  brandUsageSelect,
+} from "@/lib/brand-plan";
 
 const branchSchema = z.object({
   name: z.string().min(1),
@@ -40,6 +45,8 @@ const branchSchema = z.object({
   allowAdvanceOrder: z.boolean().optional(),
   autoAcceptOrders: z.boolean().optional(),
   operatingMode: z.enum(["NORMAL", "SKEWER", "BBQ_WEIGH"]),
+  /// NORMAL + bbqEnabled brand: queue + weigh in one branch
+  weighSalesEnabled: z.boolean().optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
   deliveryHours: weeklyScheduleSchema.optional(),
 });
@@ -120,6 +127,41 @@ export async function POST(request: Request) {
       await assertBrandAccess(session, brandId);
     }
 
+    const isTest = body.isTest ?? nameLooksLikeTestBranch(body.name);
+
+    if (brandId) {
+      await assertCanCreateBranch(brandId, { isTest });
+      const brand = await prisma.brand.findUnique({
+        where: { id: brandId },
+        select: brandUsageSelect,
+      });
+      if (brand) {
+        assertOperatingModeAllowed(brand, body.operatingMode);
+      }
+    } else if (body.operatingMode !== "NORMAL" && !session.isPlatformAdmin) {
+      return jsonError("สาขาที่ไม่มีแบรนด์ใช้ได้เฉพาะโหมดปกติ");
+    }
+
+    let weighSalesEnabled = false;
+    if (body.weighSalesEnabled) {
+      if (body.operatingMode !== "NORMAL") {
+        return jsonError(
+          "เปิดขายชั่งกิโลคู่คิวเคาน์เตอร์ได้เฉพาะโหมดคิวเคาน์เตอร์",
+          400,
+        );
+      }
+      if (brandId) {
+        const brand = await prisma.brand.findUnique({
+          where: { id: brandId },
+          select: { bbqEnabled: true },
+        });
+        if (brand && !brand.bbqEnabled) {
+          return jsonError("แพ็กเกจแบรนด์ยังไม่เปิดโหมดชั่งกิโล", 403);
+        }
+      }
+      weighSalesEnabled = true;
+    }
+
     const code = await resolveUniqueBranchCode(body.code, body.name, brandId);
     const storefrontHours = body.storefrontHours ?? defaultWeeklyHours();
     const deliveryHours = body.deliveryHours ?? defaultWeeklyHours();
@@ -142,11 +184,11 @@ export async function POST(request: Request) {
         ownerMessage: body.ownerMessage?.trim() || null,
         extraMessage: body.extraMessage?.trim() || null,
         isOpen: body.isOpen ?? true,
-        isTest:
-          body.isTest ?? nameLooksLikeTestBranch(body.name),
+        isTest,
         allowAdvanceOrder: body.allowAdvanceOrder ?? true,
         autoAcceptOrders: body.autoAcceptOrders ?? false,
         operatingMode: body.operatingMode,
+        weighSalesEnabled,
         storefrontHours: storefrontHours as unknown as Prisma.InputJsonValue,
         deliveryHours: deliveryHours as unknown as Prisma.InputJsonValue,
         opensAt:
@@ -168,6 +210,11 @@ export async function POST(request: Request) {
         },
       },
     });
+
+    if (weighSalesEnabled || body.operatingMode === "BBQ_WEIGH") {
+      const { ensureTakeawayDiningTable } = await import("@/lib/bbq-branch");
+      await ensureTakeawayDiningTable(branch.id);
+    }
 
     await logAdminActivity(session, {
       action: "branch.create",

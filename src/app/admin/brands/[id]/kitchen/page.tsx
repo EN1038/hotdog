@@ -16,6 +16,7 @@ import {
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useToast } from "@/components/admin/Toast";
 import { formatPrice } from "@/lib/constants";
+import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type ProductRow = {
   id: string;
@@ -325,6 +326,27 @@ export default function KitchenWorkspacePage() {
     }
   }
 
+  if (!WAREHOUSE_UI_ENABLED) {
+    return (
+      <div className="mx-auto max-w-lg py-12">
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center shadow-sm">
+          <p className="text-lg font-extrabold text-slate-900">
+            ฟีเจอร์นี้ยังไม่เปิดใช้
+          </p>
+          <p className="mt-2 text-sm font-medium text-slate-600">
+            ใช้สต๊อกสาขาได้ตามปกติ
+          </p>
+          <Link
+            href={`/admin/brands/${brandId}`}
+            className={`${btnPrimary} mt-6 inline-flex min-h-11 items-center justify-center px-5`}
+          >
+            กลับแบรนด์
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!loaded || loading || !data) {
     return <AdminLoadingState />;
   }
@@ -396,7 +418,7 @@ export default function KitchenWorkspacePage() {
           </h2>
           <ol className="space-y-3 text-sm text-slate-700">
             <li className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-              <strong>1. ซื้อวัตถุดิบ</strong> — ใบสั่งซื้อ (PO) รับเข้าบ้านกลาง
+              <strong>1. ซื้อวัตถุดิบ</strong> — ใบสั่งซื้อ (PO) รับเข้าสต๊อกกลาง
               <div className="mt-1">
                 <Link
                   href={`${stockHref}?tab=po`}
@@ -425,7 +447,7 @@ export default function KitchenWorkspacePage() {
               <strong>4. รวม demand จากสาขา</strong> — คำขอสาขา + แผนผลิต
             </li>
             <li className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-              <strong>5. ส่งสาขา</strong> — โอนจากบ้านกลาง รอนับรับที่หน้าร้าน
+              <strong>5. ส่งสาขา</strong> — โอนจากสต๊อกกลาง รอนับรับที่หน้าร้าน
             </li>
             <li className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
               <strong>6. ล็อต / ต้นทุน</strong> — ถ้าเปิด trackLots จะตัด FEFO และติด
@@ -435,7 +457,7 @@ export default function KitchenWorkspacePage() {
 
           <div>
             <h3 className="mb-2 text-sm font-bold text-slate-800">
-              คงเหลือบ้านกลาง (สรุป)
+              คงเหลือสต๊อกกลาง (สรุป)
             </h3>
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="min-w-full text-left text-sm">
@@ -481,7 +503,7 @@ export default function KitchenWorkspacePage() {
         <section className={`${adminCardClass} space-y-4`}>
           <h2 className="text-base font-extrabold">ผลิต / เสียบไม้</h2>
           <p className="text-xs text-slate-500">
-            ระบบตัดวัตถุดิบตามสูตร × (ผลิตได้ + เสีย) แล้วเพิ่มเมนูสำเร็จรูปเข้าบ้านกลาง
+            ระบบตัดวัตถุดิบตามสูตร × (ผลิตได้ + เสีย) แล้วเพิ่มเมนูสำเร็จรูปเข้าสต๊อกกลาง
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -736,7 +758,7 @@ export default function KitchenWorkspacePage() {
         <section className={`${adminCardClass} space-y-4`}>
           <h2 className="text-base font-extrabold">ส่งสำเร็จรูปไปสาขา</h2>
           <p className="text-xs text-slate-500">
-            ตัดจากบ้านกลางทันที · สาขานับรับในหน้าสต๊อกหน้าร้าน
+            ตัดจากสต๊อกกลางทันที · สาขานับรับในหน้าสต๊อกหน้าร้าน
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { BranchOperatingMode } from "@prisma/client";
 import { sessionGrandTotal } from "@/lib/table-session-totals";
+import { publicUsableBrandWhere } from "@/lib/brand-plan";
 
 type Params = {
   params: Promise<{ brandCode: string; branchCode: string; tableToken: string }>;
@@ -18,8 +19,23 @@ export async function GET(_request: Request, { params }: Params) {
         isActive: true,
         branch: {
           code: branchCode,
-          operatingMode: BranchOperatingMode.BBQ_WEIGH,
-          brand: { code: brandCode },
+          isHidden: false,
+          isTest: false,
+          OR: [
+            { operatingMode: BranchOperatingMode.BBQ_WEIGH },
+            {
+              operatingMode: BranchOperatingMode.NORMAL,
+              weighSalesEnabled: true,
+            },
+          ],
+          brand: {
+            is: {
+              AND: [
+                publicUsableBrandWhere(),
+                { code: brandCode, bbqEnabled: true },
+              ],
+            },
+          },
         },
       },
       include: {
@@ -49,6 +65,23 @@ export async function GET(_request: Request, { params }: Params) {
       return jsonError("สาขานี้ไม่พร้อมให้บริการในขณะนี้", 403);
     }
 
+    const weighMenus = await prisma.branchMenuItem.findMany({
+      where: {
+        branchId: table.branch.id,
+        isHidden: false,
+        sellByWeight: true,
+        pricePerKg: { not: null },
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        pricePerKg: true,
+        category: { select: { name: true, sortOrder: true } },
+        imageUrl: true,
+      },
+    });
+
     const open = table.sessions[0] ?? null;
     const lines =
       open?.lines.map((l) => ({
@@ -69,6 +102,14 @@ export async function GET(_request: Request, { params }: Params) {
         token: table.token,
       },
       branch: table.branch,
+      /** ป้ายราคาชั่งกิโลให้ลูกค้าเห็นภาพก่อน/ระหว่างนั่ง */
+      weighPriceBoard: weighMenus.map((m) => ({
+        id: m.id,
+        name: m.name,
+        pricePerKg: Number(m.pricePerKg),
+        categoryName: m.category?.name ?? null,
+        imageUrl: m.imageUrl,
+      })),
       session: open
         ? {
             id: open.id,
@@ -95,9 +136,15 @@ export async function POST(_request: Request, { params }: Params) {
         isActive: true,
         branch: {
           code: branchCode,
-          operatingMode: BranchOperatingMode.BBQ_WEIGH,
           isHidden: false,
-          brand: { code: brandCode },
+          OR: [
+            { operatingMode: BranchOperatingMode.BBQ_WEIGH },
+            {
+              operatingMode: BranchOperatingMode.NORMAL,
+              weighSalesEnabled: true,
+            },
+          ],
+          brand: { code: brandCode, bbqEnabled: true },
         },
       },
     });

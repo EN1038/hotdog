@@ -1,0 +1,18 @@
+-- CreateEnum
+CREATE TYPE "BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED');
+
+-- CreateEnum
+CREATE TYPE "BrandPlan" AS ENUM ('STARTER', 'SHOP');
+
+-- AlterTable
+ALTER TABLE "Brand" ADD COLUMN "status" "BrandStatus" NOT NULL DEFAULT 'ACTIVE';
+ALTER TABLE "Brand" ADD COLUMN "plan" "BrandPlan" NOT NULL DEFAULT 'SHOP';
+ALTER TABLE "Brand" ADD COLUMN "maxBranches" INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE "Brand" ADD COLUMN "maxStaff" INTEGER NOT NULL DEFAULT 50;
+ALTER TABLE "Brand" ADD COLUMN "kitchenEnabled" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Brand" ADD COLUMN "bbqEnabled" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Brand" ADD COLUMN "skewerEnabled" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Brand" ADD COLUMN "trialEndsAt" TIMESTAMP(3);
+
+-- CreateIndex
+CREATE INDEX "Brand_status_idx" ON "Brand"("status");

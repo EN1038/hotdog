@@ -62,6 +62,7 @@ export const ADMIN_ACTIVITY_ACTIONS = {
   "staff.delete": "ลบพนักงาน",
   "staff.revoke_sessions": "ปลดเครื่องเข้าใช้งานพนักงาน",
   "menu.create": "เพิ่มเมนู",
+  "menu.quick_add": "เพิ่มเมนูด่วน",
   "menu.update": "แก้ไขเมนู",
   "menu.delete": "ลบเมนู",
   "menu.reorder": "จัดลำดับเมนู",

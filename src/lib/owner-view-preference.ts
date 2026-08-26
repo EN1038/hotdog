@@ -4,6 +4,7 @@ export type OwnerViewPreference = "auto" | "mobile" | "desktop";
 export type OwnerViewMode = "mobile" | "desktop";
 
 export const OWNER_VIEW_STORAGE_KEY = "skillsale_owner_view_v1";
+export const OWNER_VIEW_PREFERENCE_EVENT = "skillsale:owner-view-preference";
 
 /** Align with Tailwind `lg` used by AdminShell */
 export const OWNER_VIEW_DESKTOP_MIN_PX = 1024;
@@ -29,6 +30,7 @@ export function setOwnerViewPreference(value: OwnerViewPreference) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(OWNER_VIEW_STORAGE_KEY, value);
+    window.dispatchEvent(new Event(OWNER_VIEW_PREFERENCE_EVENT));
   } catch {
     /* ignore */
   }

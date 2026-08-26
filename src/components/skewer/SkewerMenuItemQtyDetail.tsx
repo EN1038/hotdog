@@ -1,7 +1,10 @@
 "use client";
 
 import { IconBack, IconSkewerPlaceholder } from "@/components/icons";
-import { SKEWER_MIN_QTY_PER_ITEM } from "@/lib/skewer-order";
+import {
+  SKEWER_MIN_QTY_PER_ITEM,
+  SKEWER_PHOTO_ASPECT_CLASS,
+} from "@/lib/skewer-order";
 
 export function SkewerMenuItemQtyDetail({
   name,
@@ -29,13 +32,15 @@ export function SkewerMenuItemQtyDetail({
         ย้อนกลับ
       </button>
 
-      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-site-primary-soft">
+      <div
+        className={`relative w-full overflow-hidden rounded-2xl bg-site-primary-soft ${SKEWER_PHOTO_ASPECT_CLASS}`}
+      >
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={imageUrl}
             alt={name}
-            className="h-full w-full object-contain"
+            className="h-full w-full object-cover"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-gray-400">

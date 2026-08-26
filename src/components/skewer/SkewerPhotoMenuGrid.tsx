@@ -1,6 +1,7 @@
 "use client";
 
 import { IconSkewerPlaceholder } from "@/components/icons";
+import { SKEWER_PHOTO_ASPECT_CLASS } from "@/lib/skewer-order";
 
 export type SkewerPhotoMenuItem = {
   id: string;
@@ -25,14 +26,14 @@ export function SkewerPhotoTileChrome({
 
   return (
     <div
-      className={`relative aspect-square overflow-hidden bg-site-primary-soft ${className}`}
+      className={`relative overflow-hidden bg-site-primary-soft ${SKEWER_PHOTO_ASPECT_CLASS} ${className}`}
     >
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={imageUrl}
           alt={name}
-          className="h-full w-full object-contain"
+          className="h-full w-full object-cover"
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-gray-400">
@@ -42,7 +43,7 @@ export function SkewerPhotoTileChrome({
 
       {showQty ? (
         <div
-          className="absolute left-1/2 top-[44%] z-[1] flex aspect-square w-[46%] min-w-[4.25rem] max-w-[6.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[2.5px] border-site-primary bg-white px-1 shadow-md"
+          className="absolute left-1/2 top-[42%] z-[1] flex aspect-square w-[48%] min-w-[4.25rem] max-w-[6.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[2.5px] border-site-primary bg-white px-1 shadow-md"
           aria-label={`สั่งแล้ว ${qty} ไม้`}
         >
           <span className="text-[9px] font-semibold leading-none text-site-primary sm:text-[10px]">

@@ -7,6 +7,10 @@ import {
 
 export const SKEWER_MIN_QTY_PER_ITEM = 12;
 
+/** Portrait frame for skewer menu photos (matches typical phone/menu shots ≈ 3:4). */
+export const SKEWER_PHOTO_ASPECT = 3 / 4;
+export const SKEWER_PHOTO_ASPECT_CLASS = "aspect-[3/4]";
+
 /** Prefer skewer-specific photo; fall back to normal menu image. */
 export function resolveSkewerMenuImageUrl(item: {
   imageUrl?: string | null;

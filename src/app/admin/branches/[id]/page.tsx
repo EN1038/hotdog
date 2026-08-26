@@ -2649,7 +2649,7 @@ function BranchDetailContent() {
                           alt=""
                           className={`h-16 w-16 shrink-0 rounded-lg sm:h-20 sm:w-20 ${
                             branch?.operatingMode === "SKEWER"
-                              ? "object-contain bg-neutral-900"
+                              ? "object-contain bg-site-primary-soft"
                               : "object-cover"
                           }`}
                         />

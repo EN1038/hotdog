@@ -23,6 +23,7 @@ import {
 } from "@/lib/menu-pricing";
 import { serializeOptionGroup } from "@/lib/menu-option-groups";
 import type { MenuOptionData } from "@/lib/customer-types";
+import { resolveMenuDisplayImageUrl } from "@/lib/skewer-order";
 
 type MenuItemDetail = {
   id: string;
@@ -180,6 +181,9 @@ export default function MenuItemEditorPage() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [shopCode, setShopCode] = useState<string | null>(null);
+  const [branchOperatingMode, setBranchOperatingMode] = useState<string | null>(
+    null,
+  );
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
@@ -245,9 +249,11 @@ export default function MenuItemEditorPage() {
     if (!res.ok) return;
     const data = (await res.json()) as {
       code?: string | null;
+      operatingMode?: string | null;
       brand?: { code?: string | null } | null;
     };
     setShopCode(data.code?.trim() || data.brand?.code?.trim() || null);
+    setBranchOperatingMode(data.operatingMode ?? null);
   }
 
   async function loadItem() {
@@ -469,18 +475,24 @@ export default function MenuItemEditorPage() {
         }`}
       >
         <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
-          {form.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={form.imageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
-              <IconSkewerPlaceholder size={40} />
-            </div>
-          )}
+          {(() => {
+            const thumb = resolveMenuDisplayImageUrl(branchOperatingMode, {
+              imageUrl: form.imageUrl || null,
+              skewerImageUrl: form.skewerImageUrl || null,
+            });
+            return thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumb}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                <IconSkewerPlaceholder size={40} />
+              </div>
+            );
+          })()}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium text-slate-500">

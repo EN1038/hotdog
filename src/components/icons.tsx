@@ -673,6 +673,65 @@ export function IconSkewerPlaceholder({ size = 40, className }: IconProps) {
   );
 }
 
+export function IconListView(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconGridView(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <rect
+        x="3"
+        y="3"
+        width="7"
+        height="7"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <rect
+        x="14"
+        y="3"
+        width="7"
+        height="7"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <rect
+        x="3"
+        y="14"
+        width="7"
+        height="7"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <rect
+        x="14"
+        y="14"
+        width="7"
+        height="7"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
 /** ไอคอน + ข้อความแนวนอน */
 export function IconLabel({
   icon: Icon,

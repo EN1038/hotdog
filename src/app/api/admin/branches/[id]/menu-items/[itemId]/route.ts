@@ -104,6 +104,9 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.description !== undefined && { description: body.description }),
         ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
         ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
+        ...(body.skewerImageUrl !== undefined && {
+          skewerImageUrl: body.skewerImageUrl,
+        }),
         ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
         ...(body.hideFromStaff !== undefined && {
           hideFromStaff: body.hideFromStaff,

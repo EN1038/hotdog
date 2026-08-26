@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { IconBack, IconDelivery, IconPackage, IconStore, IconSkewerPlaceholder } from "@/components/icons";
+import {
+  IconBack,
+  IconDelivery,
+  IconPackage,
+  IconStore,
+  IconSkewerPlaceholder,
+} from "@/components/icons";
 import {
   AdminLoadingState,
   adminInputClass,
@@ -21,12 +27,14 @@ import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
 import { useAdminBranchShell } from "@/components/admin/AdminBranchShellContext";
 import { branchAdminBasePath, shouldUseOwnerBranchShell } from "@/lib/branch-admin-path";
 import type { BranchOptionGroup } from "@/components/admin/BranchOptionLibrary";
+import { SkewerPhotoTileChrome } from "@/components/skewer/SkewerPhotoMenuGrid";
 import {
   resolveSellPrice,
   type MenuPricingFields,
 } from "@/lib/menu-pricing";
 import { serializeOptionGroup } from "@/lib/menu-option-groups";
 import type { MenuOptionData } from "@/lib/customer-types";
+import { resolveMenuDisplayImageUrl } from "@/lib/skewer-order";
 
 type MenuItemDetail = {
   id: string;
@@ -48,6 +56,7 @@ type MenuItemDetail = {
   categoryId: string | null;
   category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;
+  skewerImageUrl: string | null;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: number;
@@ -80,6 +89,7 @@ type FormState = {
   description: string;
   categoryId: string;
   imageUrl: string;
+  skewerImageUrl: string;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: string;
@@ -106,6 +116,7 @@ const EMPTY_ITEM: MenuItemDetail = {
   categoryId: null,
   category: null,
   imageUrl: null,
+  skewerImageUrl: null,
   isHidden: false,
   isOutOfStock: false,
   sortOrder: 0,
@@ -132,6 +143,7 @@ const EMPTY_FORM: FormState = {
   description: "",
   categoryId: "",
   imageUrl: "",
+  skewerImageUrl: "",
   isHidden: false,
   isOutOfStock: false,
   sortOrder: "0",
@@ -188,6 +200,9 @@ export default function MenuItemEditorPage() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [shopCode, setShopCode] = useState<string | null>(null);
+  const [branchOperatingMode, setBranchOperatingMode] = useState<string | null>(
+    null,
+  );
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
@@ -221,6 +236,7 @@ export default function MenuItemEditorPage() {
       description: data.description ?? "",
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
+      skewerImageUrl: data.skewerImageUrl ?? "",
       isHidden,
       isOutOfStock,
       sortOrder: String(data.sortOrder ?? 0),
@@ -252,9 +268,11 @@ export default function MenuItemEditorPage() {
     if (!res.ok) return;
     const data = (await res.json()) as {
       code?: string | null;
+      operatingMode?: string | null;
       brand?: { code?: string | null } | null;
     };
     setShopCode(data.code?.trim() || data.brand?.code?.trim() || null);
+    setBranchOperatingMode(data.operatingMode ?? null);
   }
 
   async function loadItem() {
@@ -398,6 +416,7 @@ export default function MenuItemEditorPage() {
         description: form.description.trim() || null,
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
+        skewerImageUrl: form.skewerImageUrl || null,
         isHidden: form.isHidden,
         isOutOfStock: form.isHidden ? false : form.isOutOfStock,
         sortOrder: (() => {
@@ -498,18 +517,28 @@ export default function MenuItemEditorPage() {
         }`}
       >
         <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
-          {form.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={form.imageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
-              <IconSkewerPlaceholder size={40} />
-            </div>
-          )}
+          {(() => {
+            const thumb = resolveMenuDisplayImageUrl(branchOperatingMode, {
+              imageUrl: form.imageUrl || null,
+              skewerImageUrl: form.skewerImageUrl || null,
+            });
+            return thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumb}
+                alt=""
+                className={`h-full w-full ${
+                  branchOperatingMode === "SKEWER"
+                    ? "object-contain bg-site-primary-soft"
+                    : "object-cover"
+                }`}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
+                <IconSkewerPlaceholder size={40} />
+              </div>
+            );
+          })()}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium text-slate-500">
@@ -624,6 +653,61 @@ export default function MenuItemEditorPage() {
                 shopCode={shopCode}
                 folder="Products"
               />
+              <div className="space-y-2">
+                <ImageField
+                  label="รูปสั่งเสียบไม้ (ถ้ามี)"
+                  value={form.skewerImageUrl}
+                  onChange={(url) =>
+                    setForm((f) => ({ ...f, skewerImageUrl: url }))
+                  }
+                  shopCode={shopCode}
+                  folder="Products"
+                  cropAspect={1}
+                  cropTitle="ครอปรูปสั่งเสียบไม้ (สี่เหลี่ยมจัตุรัส)"
+                  aspectClassName="aspect-square"
+                  objectFit="contain"
+                  hint="ครอปเป็นสี่เหลี่ยมจัตุรัสให้ตรงกับกริดหน้าสั่ง — รูปจะแสดงแบบไม่ตัดขอบ (contain)"
+                />
+                {(form.skewerImageUrl || form.imageUrl) && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="mb-2 text-[11px] font-semibold text-slate-600">
+                      ตัวอย่างในกริดสั่งเสียบไม้
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="mb-1.5 text-center text-[10px] font-medium text-slate-500">
+                          ยังไม่เลือกจำนวน
+                        </p>
+                        <SkewerPhotoTileChrome
+                          name={form.name.trim() || "ชื่อเมนู"}
+                          imageUrl={
+                            form.skewerImageUrl.trim() ||
+                            form.imageUrl.trim() ||
+                            null
+                          }
+                          qty={0}
+                          className="rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-1.5 text-center text-[10px] font-medium text-slate-500">
+                          มีจำนวนแล้ว
+                        </p>
+                        <SkewerPhotoTileChrome
+                          name={form.name.trim() || "ชื่อเมนู"}
+                          imageUrl={
+                            form.skewerImageUrl.trim() ||
+                            form.imageUrl.trim() ||
+                            null
+                          }
+                          qty={12}
+                          className="rounded-md"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
                 <AdminToggle
                   checked={form.isHidden}

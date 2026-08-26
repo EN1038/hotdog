@@ -7,6 +7,27 @@ import {
 
 export const SKEWER_MIN_QTY_PER_ITEM = 12;
 
+/** Prefer skewer-specific photo; fall back to normal menu image. */
+export function resolveSkewerMenuImageUrl(item: {
+  imageUrl?: string | null;
+  skewerImageUrl?: string | null;
+}): string | null {
+  const skewer = item.skewerImageUrl?.trim();
+  if (skewer) return skewer;
+  const normal = item.imageUrl?.trim();
+  return normal || null;
+}
+
+/** Pick the menu thumbnail that matches the branch operating mode. */
+export function resolveMenuDisplayImageUrl(
+  mode: string | null | undefined,
+  item: { imageUrl?: string | null; skewerImageUrl?: string | null },
+): string | null {
+  if (mode === "SKEWER") return resolveSkewerMenuImageUrl(item);
+  const normal = item.imageUrl?.trim();
+  return normal || null;
+}
+
 export const SKEWER_ORDER_STATUS_LABELS: Record<SkewerOrderStatus, string> = {
   PENDING_CONFIRM: "รอยืนยัน",
   CONFIRMED: "ยืนยันแล้ว",

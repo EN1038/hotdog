@@ -7,6 +7,13 @@ import {
   useSkewerBranchMeta,
 } from "@/components/skewer/SkewerAppShell";
 import { SkewerKeyOrderLayout } from "@/components/skewer/SkewerKeyOrderLayout";
+import { SkewerMenuItemQtyDetail } from "@/components/skewer/SkewerMenuItemQtyDetail";
+import {
+  SkewerMenuViewToggle,
+  SKEWER_MENU_VIEW_STORAGE_KEY,
+  type SkewerMenuViewMode,
+} from "@/components/skewer/SkewerMenuViewToggle";
+import { SkewerPhotoMenuGrid } from "@/components/skewer/SkewerPhotoMenuGrid";
 import { LoadingState } from "@/components/LoadingState";
 import { DateInput } from "@/components/DateInput";
 import {
@@ -19,7 +26,7 @@ import {
 } from "@/components/staff/StaffOrderSummary";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
-import { SKEWER_MIN_QTY_PER_ITEM } from "@/lib/skewer-order";
+import { SKEWER_MIN_QTY_PER_ITEM, resolveSkewerMenuImageUrl } from "@/lib/skewer-order";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -33,6 +40,7 @@ type MenuItem = {
   name: string;
   description: string | null;
   imageUrl: string | null;
+  skewerImageUrl?: string | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
   category: {
@@ -107,7 +115,19 @@ function SkewerOrderPageInner({ params }: PageProps) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [prefillHint, setPrefillHint] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [menuView, setMenuView] = useState<SkewerMenuViewMode>("list");
+  const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const [detailDraftQty, setDetailDraftQty] = useState(0);
   const prefillsDoneKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SKEWER_MENU_VIEW_STORAGE_KEY);
+      if (raw === "list" || raw === "grid") setMenuView(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -261,7 +281,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
       return {
         id: item.id,
         name: item.name,
-        imageUrl: item.imageUrl,
+        imageUrl: resolveSkewerMenuImageUrl(item),
         seq: seqById.get(item.id) ?? 0,
         quantity: ordered ? quantity : 0,
         ordered,
@@ -270,6 +290,12 @@ function SkewerOrderPageInner({ params }: PageProps) {
   }, [catalogSorted, qtys, seqById]);
 
   const totalSkewers = selectedLines.reduce((s, l) => s + l.quantity, 0);
+  const detailItem = detailItemId
+    ? (visibleItems.find((m) => m.id === detailItemId) ??
+      catalogSorted.find((m) => m.id === detailItemId) ??
+      null)
+    : null;
+  const detailOpen = Boolean(detailItemId && detailItem);
 
   function clearValidation() {
     setError("");
@@ -300,6 +326,32 @@ function SkewerOrderPageInner({ params }: PageProps) {
       else copy[id] = next;
       return copy;
     });
+  }
+
+  function changeMenuView(next: SkewerMenuViewMode) {
+    setMenuView(next);
+    setDetailItemId(null);
+    try {
+      window.localStorage.setItem(SKEWER_MENU_VIEW_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function openItemDetail(id: string) {
+    clearValidation();
+    setDetailItemId(id);
+    setDetailDraftQty(qtys[id] ?? 0);
+  }
+
+  function closeItemDetail() {
+    setDetailItemId(null);
+  }
+
+  function confirmItemDetail() {
+    if (!detailItemId) return;
+    setQty(detailItemId, detailDraftQty);
+    setDetailItemId(null);
   }
 
   async function tryGeocodeAddress() {
@@ -454,16 +506,18 @@ function SkewerOrderPageInner({ params }: PageProps) {
               : `ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้/รายการ`
           }
           footer={
-            <button
-              type="button"
-              disabled={submitting || !isOpen}
-              onClick={openReview}
-              className="w-full rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white disabled:opacity-50"
-            >
-              {selectedLines.length === 0
-                ? "ตรวจสอบคำสั่ง"
-                : `ตรวจสอบคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ไม้`}
-            </button>
+            detailOpen ? undefined : (
+              <button
+                type="button"
+                disabled={submitting || !isOpen}
+                onClick={openReview}
+                className="w-full rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white disabled:opacity-50"
+              >
+                {selectedLines.length === 0
+                  ? "ตรวจสอบคำสั่ง"
+                  : `ตรวจสอบคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ไม้`}
+              </button>
+            )
           }
         >
           <StaffKeyOrderAlertModal
@@ -561,7 +615,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                               <img
                                 src={row.imageUrl}
                                 alt=""
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-contain"
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-gray-400">
@@ -645,126 +699,174 @@ function SkewerOrderPageInner({ params }: PageProps) {
             tabIndex={-1}
             className={`rounded-2xl border bg-white p-4 outline-none transition ${highlightClass("skewer-menu-section")}`}
           >
-            <div className="mb-3">
-              <h2 className="text-sm font-semibold text-gray-900">เลือกเมนู</h2>
-              <p className="text-xs text-gray-500">
-                ลำดับเหมือนหน้าสต๊อก · กด + เพิ่มจำนวน (ขั้นต่ำ{" "}
-                {SKEWER_MIN_QTY_PER_ITEM} ไม้)
-              </p>
-            </div>
-
-            {categories.length > 1 ? (
-              <div className="mb-3 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex w-max min-w-full gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCategoryFilter("ALL")}
-                    className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
-                      categoryFilter === "ALL"
-                        ? "bg-site-primary text-white"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    ทั้งหมด
-                  </button>
-                  {categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setCategoryFilter(cat.id)}
-                      className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
-                        categoryFilter === cat.id
-                          ? "bg-site-primary text-white"
-                          : "bg-gray-100 text-gray-700"
-                      }`}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {visibleItems.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
-                ไม่พบเมนู
-              </p>
+            {detailOpen && detailItem ? (
+              <SkewerMenuItemQtyDetail
+                name={detailItem.name}
+                imageUrl={resolveSkewerMenuImageUrl(detailItem)}
+                draftQty={detailDraftQty}
+                onDraftChange={setDetailDraftQty}
+                onBack={closeItemDetail}
+                onConfirm={confirmItemDetail}
+              />
             ) : (
-              <ul className="divide-y divide-gray-100">
-                {visibleItems.map((item) => {
-                  const qty = qtys[item.id] ?? 0;
-                  const seq = seqById.get(item.id) ?? 0;
-                  return (
-                    <li
-                      key={item.id}
-                      className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
-                    >
-                      <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
-                        {seq}
+              <>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-semibold text-gray-900">
+                      เลือกเมนู
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      ลำดับเหมือนหน้าสต๊อก · ขั้นต่ำ {SKEWER_MIN_QTY_PER_ITEM}{" "}
+                      ไม้/รายการ
+                    </p>
+                  </div>
+                  <SkewerMenuViewToggle
+                    value={menuView}
+                    onChange={changeMenuView}
+                  />
+                </div>
+
+                {menuView === "grid" ? (
+                  <div className="mb-3 rounded-xl bg-site-primary-soft px-3 py-2.5">
+                    <p className="text-xs font-medium text-gray-600">
+                      รวมที่เลือก
+                    </p>
+                    <p className="text-lg font-black tabular-nums text-site-primary">
+                      {totalSkewers}{" "}
+                      <span className="text-sm font-semibold">ไม้</span>
+                      <span className="ml-2 text-xs font-medium text-gray-500">
+                        · {selectedLines.length} รายการ
                       </span>
-                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
-                        {item.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.imageUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-gray-400">
-                            <IconSkewerPlaceholder size={28} />
+                    </p>
+                  </div>
+                ) : null}
+
+                {categories.length > 1 ? (
+                  <div className="mb-3 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <div className="flex w-max min-w-full gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCategoryFilter("ALL")}
+                        className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                          categoryFilter === "ALL"
+                            ? "bg-site-primary text-white"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        ทั้งหมด
+                      </button>
+                      {categories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setCategoryFilter(cat.id)}
+                          className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                            categoryFilter === cat.id
+                              ? "bg-site-primary text-white"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {menuView === "grid" ? (
+                  <SkewerPhotoMenuGrid
+                    items={visibleItems.map((item) => ({
+                      id: item.id,
+                      name: item.name,
+                      imageUrl: resolveSkewerMenuImageUrl(item),
+                    }))}
+                    qtys={qtys}
+                    onSelect={openItemDetail}
+                  />
+                ) : visibleItems.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
+                    ไม่พบเมนู
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {visibleItems.map((item) => {
+                      const qty = qtys[item.id] ?? 0;
+                      const seq = seqById.get(item.id) ?? 0;
+                      const displayImage = resolveSkewerMenuImageUrl(item);
+                      return (
+                        <li
+                          key={item.id}
+                          className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                        >
+                          <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
+                            {seq}
+                          </span>
+                          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                            {displayImage ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={displayImage}
+                                alt=""
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                <IconSkewerPlaceholder size={28} />
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900">
-                          {item.name}
-                        </p>
-                        {item.category ? (
-                          <p className="truncate text-xs text-gray-500">
-                            {item.category.name}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-lg leading-none text-gray-700 disabled:opacity-40"
-                          disabled={qty <= 0}
-                          onClick={() =>
-                            setQty(
-                              item.id,
-                              qty <= SKEWER_MIN_QTY_PER_ITEM ? 0 : qty - 1,
-                            )
-                          }
-                        >
-                          −
-                        </button>
-                        <span className="min-w-[2rem] text-center text-sm font-bold tabular-nums">
-                          {qty || "0"}
-                        </span>
-                        <button
-                          type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-full bg-site-primary text-lg leading-none text-white"
-                          onClick={() =>
-                            setQty(
-                              item.id,
-                              qty < SKEWER_MIN_QTY_PER_ITEM
-                                ? SKEWER_MIN_QTY_PER_ITEM
-                                : qty + 1,
-                            )
-                          }
-                        >
-                          +
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">
+                              {item.name}
+                            </p>
+                            {item.category ? (
+                              <p className="truncate text-xs text-gray-500">
+                                {item.category.name}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-lg leading-none text-gray-700 disabled:opacity-40"
+                              disabled={qty <= 0}
+                              onClick={() =>
+                                setQty(
+                                  item.id,
+                                  qty <= SKEWER_MIN_QTY_PER_ITEM ? 0 : qty - 1,
+                                )
+                              }
+                            >
+                              −
+                            </button>
+                            <span className="min-w-[2rem] text-center text-sm font-bold tabular-nums">
+                              {qty || "0"}
+                            </span>
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-site-primary text-lg leading-none text-white"
+                              onClick={() =>
+                                setQty(
+                                  item.id,
+                                  qty < SKEWER_MIN_QTY_PER_ITEM
+                                    ? SKEWER_MIN_QTY_PER_ITEM
+                                    : qty + 1,
+                                )
+                              }
+                            >
+                              +
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
             )}
           </section>
 
+          {!detailOpen ? (
           <section
             id="skewer-delivery"
             tabIndex={-1}
@@ -881,6 +983,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
               />
             </div>
           </section>
+          ) : null}
 
           {error && !alertMessage ? (
             <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">

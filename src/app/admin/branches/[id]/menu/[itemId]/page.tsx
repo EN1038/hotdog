@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { IconBack, IconDelivery, IconPackage, IconStore, IconSkewerPlaceholder } from "@/components/icons";
 import {
@@ -16,6 +16,10 @@ import { ImageField } from "@/components/admin/ImageField";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useAdminSession } from "@/components/admin/AdminSessionProvider";
+import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
+import { useAdminBranchShell } from "@/components/admin/AdminBranchShellContext";
+import { branchAdminBasePath, shouldUseOwnerBranchShell } from "@/lib/branch-admin-path";
 import type { BranchOptionGroup } from "@/components/admin/BranchOptionLibrary";
 import {
   resolveSellPrice,
@@ -158,13 +162,21 @@ function previewOptionsForLibraryGroup(group: BranchOptionGroup): MenuOptionData
 }
 
 export default function MenuItemEditorPage() {
+  const { embeddedInOwnerShell } = useAdminBranchShell();
   const { id: branchId, itemId } = useParams<{
     id: string;
     itemId: string;
   }>();
   const router = useRouter();
+  const pathname = usePathname();
   const toast = useToast();
   const { confirm } = useConfirm();
+  const { isMobileLayout: viewportMobile, phoneFrame } = useAdminMobileLayout();
+  const isMobileLayout = embeddedInOwnerShell || viewportMobile;
+  const showPhoneFrame = phoneFrame && !embeddedInOwnerShell;
+  const branchBase = branchAdminBasePath(branchId, { ownerShell: embeddedInOwnerShell });
+  const [layoutReady, setLayoutReady] = useState(false);
+  const { session } = useAdminSession();
   const isCreate = itemId === "new";
 
   const [item, setItem] = useState<MenuItemDetail | null>(
@@ -272,6 +284,25 @@ export default function MenuItemEditorPage() {
     loadItem();
     loadShopCode();
   }, [branchId, itemId, router]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (session.isPlatformAdmin) {
+      setLayoutReady(true);
+      return;
+    }
+    const useOwnerShell = shouldUseOwnerBranchShell();
+    const suffix = `${pathname}${window.location.search}`;
+    if (embeddedInOwnerShell && !useOwnerShell) {
+      router.replace(suffix.replace(/^\/owner\/branches/, "/admin/branches"));
+      return;
+    }
+    if (!embeddedInOwnerShell && useOwnerShell) {
+      router.replace(suffix.replace(/^\/admin\/branches/, "/owner/branches"));
+      return;
+    }
+    setLayoutReady(true);
+  }, [embeddedInOwnerShell, pathname, router, session]);
 
   function toggleGroup(groupId: string) {
     setSelectedGroupIds((prev) =>
@@ -398,7 +429,7 @@ export default function MenuItemEditorPage() {
         return;
       }
       toast.success(isCreate ? "สร้างเมนูแล้ว" : "บันทึกแล้ว");
-      router.push(`/admin/branches/${branchId}?tab=menu`);
+      router.push(`${branchBase}?tab=menu`);
     } finally {
       setSaving(false);
     }
@@ -427,6 +458,10 @@ export default function MenuItemEditorPage() {
     }
   }
 
+  if (!layoutReady && !session?.isPlatformAdmin) {
+    return <AdminLoadingState compact label="กำลังเปิดมุมมอง…" />;
+  }
+
   if (!item) {
     return <AdminLoadingState />;
   }
@@ -435,8 +470,8 @@ export default function MenuItemEditorPage() {
     .map((id) => library.find((g) => g.id === id))
     .filter((g): g is BranchOptionGroup => Boolean(g));
 
-  const optionsTabHref = `/admin/branches/${branchId}?tab=options`;
-  const categoriesTabHref = `/admin/branches/${branchId}?tab=categories`;
+  const optionsTabHref = `${branchBase}?tab=options`;
+  const categoriesTabHref = `${branchBase}?tab=categories`;
 
   async function leaveTo(href: string) {
     const ok = await confirm({
@@ -499,15 +534,18 @@ export default function MenuItemEditorPage() {
   }
 
   return (
-    <div>
+    <div className={showPhoneFrame ? "mx-auto w-full max-w-md" : undefined}>
+    <div className={isMobileLayout ? "pb-24" : undefined}>
       <div className="mb-4 flex items-center gap-3">
+        {embeddedInOwnerShell ? null : (
         <Link
-          href={`/admin/branches/${branchId}?tab=menu`}
+          href={`${branchBase}?tab=menu`}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
           aria-label="กลับ"
         >
           <IconBack size={20} />
         </Link>
+        )}
         <div>
           <h2 className="text-xl font-bold text-gray-900">
             {isCreate ? "เพิ่มเมนู" : "แก้ไขเมนู"}
@@ -520,7 +558,7 @@ export default function MenuItemEditorPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={`grid gap-6${isMobileLayout ? "" : " lg:grid-cols-2"}`}>
         <div className="space-y-6">
           <section className={sectionClass}>
             <h3 className="mb-3 font-semibold text-gray-900">ข้อมูลเมนู</h3>
@@ -843,6 +881,7 @@ export default function MenuItemEditorPage() {
             </div>
           </section>
 
+          {!isMobileLayout ? (
           <button
             type="button"
             disabled={saving}
@@ -851,6 +890,7 @@ export default function MenuItemEditorPage() {
           >
             {isCreate ? "สร้างเมนู" : "บันทึกเมนู"}
           </button>
+          ) : null}
         </div>
 
         <div className="space-y-6">
@@ -1079,6 +1119,27 @@ export default function MenuItemEditorPage() {
           </section>
         </div>
       </div>
+
+      {isMobileLayout ? (
+      <div
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-sm"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <button
+          type="button"
+          disabled={saving}
+          onClick={saveItem}
+          className={`w-full min-h-12 ${btnPrimary}`}
+        >
+          {saving
+            ? "กำลังบันทึก…"
+            : isCreate
+              ? "สร้างเมนู"
+              : "บันทึกเมนู"}
+        </button>
+      </div>
+      ) : null}
+    </div>
     </div>
   );
 }

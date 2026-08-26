@@ -172,13 +172,13 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
         <p className="mt-1 text-xs text-gray-500">
           คนอื่นเอาโค้ดนี้ไปวางที่สาขาของเขาเพื่อนำเข้าข้อมูลจากที่นี่
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <code className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-base font-semibold tracking-wide text-gray-900">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <code className="w-full break-all rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-base font-semibold tracking-wide text-gray-900 sm:w-auto">
             {myCode || "—"}
           </code>
           <button
             type="button"
-            className={btnPrimary}
+            className={`min-h-10 w-full sm:w-auto ${btnPrimary}`}
             disabled={!myCode || busy}
             onClick={copyCode}
           >
@@ -186,7 +186,7 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
           </button>
           <button
             type="button"
-            className={btnOutline}
+            className={`min-h-10 w-full sm:w-auto ${btnOutline}`}
             disabled={busy}
             onClick={regenerate}
           >
@@ -199,8 +199,8 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
         <p className="text-sm font-semibold text-gray-900">
           นำเข้าจากโค้ดสาขาอื่น
         </p>
-        <div className="mt-3 flex flex-wrap items-end gap-2">
-          <div className="min-w-[12rem] flex-1">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1">
             <label className={adminLabelClass}>วางโค้ด</label>
             <input
               className={`${adminInputClass} font-mono uppercase`}
@@ -211,7 +211,7 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
           </div>
           <button
             type="button"
-            className={btnDark}
+            className={`min-h-10 w-full sm:w-auto ${btnDark}`}
             disabled={busy}
             onClick={lookupPreview}
           >
@@ -267,7 +267,7 @@ export function BranchShareCopyPanel({ branchId, onImported }: Props) {
             </label>
             <button
               type="button"
-              className={btnPrimary}
+              className={`min-h-10 w-full sm:w-auto ${btnPrimary}`}
               disabled={busy}
               onClick={runImport}
             >

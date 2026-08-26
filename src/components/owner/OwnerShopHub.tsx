@@ -9,6 +9,7 @@ import {
 } from "@/lib/owner-enter-staff";
 import { useToast } from "@/components/admin/Toast";
 import { PlatformSupportCard } from "@/components/PlatformSupportCard";
+import { branchAdminBasePath } from "@/lib/branch-admin-path";
 import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 function formatDateLabel(iso: string | null) {
@@ -426,7 +427,7 @@ export function buildOwnerShopLinkGroups(input: {
   const { brandId, firstBranchId, stockEnabled, kitchenEnabled, bbqEnabled } =
     input;
   const branchBase = firstBranchId
-    ? `/admin/branches/${firstBranchId}`
+    ? branchAdminBasePath(firstBranchId, { ownerShell: true })
     : null;
 
   const setup: OwnerShopLink[] = [

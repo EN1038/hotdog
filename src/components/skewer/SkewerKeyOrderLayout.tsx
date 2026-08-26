@@ -19,7 +19,11 @@ export function SkewerKeyOrderLayout({
   footer?: ReactNode;
 }) {
   return (
-    <main className="mx-auto min-h-screen w-full max-w-lg overflow-x-hidden bg-gray-50 pb-28">
+    <main
+      className={`mx-auto min-h-screen w-full max-w-lg overflow-x-hidden bg-gray-50 ${
+        footer ? "pb-28" : "pb-4"
+      }`}
+    >
       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center gap-3">
           <Link

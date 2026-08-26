@@ -18,6 +18,16 @@ export function resolveSkewerMenuImageUrl(item: {
   return normal || null;
 }
 
+/** Pick the menu thumbnail that matches the branch operating mode. */
+export function resolveMenuDisplayImageUrl(
+  mode: string | null | undefined,
+  item: { imageUrl?: string | null; skewerImageUrl?: string | null },
+): string | null {
+  if (mode === "SKEWER") return resolveSkewerMenuImageUrl(item);
+  const normal = item.imageUrl?.trim();
+  return normal || null;
+}
+
 export const SKEWER_ORDER_STATUS_LABELS: Record<SkewerOrderStatus, string> = {
   PENDING_CONFIRM: "รอยืนยัน",
   CONFIRMED: "ยืนยันแล้ว",

@@ -25,7 +25,7 @@ export function SkewerPhotoTileChrome({
 
   return (
     <div
-      className={`relative aspect-square overflow-hidden bg-neutral-900 ${className}`}
+      className={`relative aspect-square overflow-hidden bg-site-primary-soft ${className}`}
     >
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -35,7 +35,7 @@ export function SkewerPhotoTileChrome({
           className="h-full w-full object-contain"
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-neutral-500">
+        <div className="flex h-full w-full items-center justify-center text-gray-400">
           <IconSkewerPlaceholder size={36} />
         </div>
       )}

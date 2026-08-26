@@ -494,7 +494,7 @@ export default function MenuItemEditorPage() {
                 alt=""
                 className={`h-full w-full ${
                   branchOperatingMode === "SKEWER"
-                    ? "object-contain bg-neutral-900"
+                    ? "object-contain bg-site-primary-soft"
                     : "object-cover"
                 }`}
               />

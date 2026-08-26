@@ -72,6 +72,7 @@ import {
   assignStableMenuSequence,
   sortMenuItemData,
 } from "@/lib/staff-menu-order";
+import { resolveMenuDisplayImageUrl } from "@/lib/skewer-order";
 import {
   ensureWeeklySchedule,
   formatTodayHoursSummary,
@@ -181,6 +182,7 @@ type BranchDetail = {
     description: string | null;
     category: { id: string; name: string; sortOrder?: number } | null;
     imageUrl: string | null;
+    skewerImageUrl?: string | null;
     isHidden: boolean;
     isOutOfStock: boolean;
     sortOrder: number;
@@ -2460,18 +2462,24 @@ function BranchDetailContent() {
                       {menuSeqById.get(m.id) ?? "—"}
                     </span>
                   </div>
-                  {m.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={m.imageUrl}
-                      alt=""
-                      className="h-20 w-20 shrink-0 rounded-lg object-cover sm:h-24 sm:w-24"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-24 sm:w-24">
-                      ไม่มีรูป
-                    </div>
-                  )}
+                  {(() => {
+                    const thumb = resolveMenuDisplayImageUrl(
+                      branch?.operatingMode,
+                      m,
+                    );
+                    return thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt=""
+                        className="h-20 w-20 shrink-0 rounded-lg object-cover sm:h-24 sm:w-24"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-24 sm:w-24">
+                        ไม่มีรูป
+                      </div>
+                    );
+                  })()}
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900">
                       <span>{m.name}</span>

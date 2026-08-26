@@ -21,20 +21,6 @@ export function SkewerMenuViewToggle({
     >
       <button
         type="button"
-        onClick={() => onChange("list")}
-        className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
-          value === "list"
-            ? "bg-site-primary text-white shadow-sm"
-            : "text-gray-500 hover:bg-white hover:text-gray-800"
-        }`}
-        aria-label="แสดงแบบรายการ"
-        aria-pressed={value === "list"}
-        title="รายการ"
-      >
-        <IconListView size={18} />
-      </button>
-      <button
-        type="button"
         onClick={() => onChange("grid")}
         className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
           value === "grid"
@@ -46,6 +32,20 @@ export function SkewerMenuViewToggle({
         title="รูป"
       >
         <IconGridView size={18} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("list")}
+        className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
+          value === "list"
+            ? "bg-site-primary text-white shadow-sm"
+            : "text-gray-500 hover:bg-white hover:text-gray-800"
+        }`}
+        aria-label="แสดงแบบรายการ"
+        aria-pressed={value === "list"}
+        title="รายการ"
+      >
+        <IconListView size={18} />
       </button>
     </div>
   );

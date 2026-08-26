@@ -116,7 +116,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [prefillHint, setPrefillHint] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [menuView, setMenuView] = useState<SkewerMenuViewMode>("list");
+  const [menuView, setMenuView] = useState<SkewerMenuViewMode>("grid");
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [detailDraftQty, setDetailDraftQty] = useState(0);
   const [showAddressSearch, setShowAddressSearch] = useState(false);

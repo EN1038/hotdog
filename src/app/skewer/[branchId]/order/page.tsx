@@ -26,7 +26,7 @@ import {
 } from "@/components/staff/StaffOrderSummary";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
-import { SKEWER_MIN_QTY_PER_ITEM, resolveSkewerMenuImageUrl } from "@/lib/skewer-order";
+import { SKEWER_MIN_QTY_PER_ITEM, resolveSkewerMenuImageUrl, resolveSkewerQtyUnit } from "@/lib/skewer-order";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -41,6 +41,7 @@ type MenuItem = {
   description: string | null;
   imageUrl: string | null;
   skewerImageUrl?: string | null;
+  quantityUnit?: string | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
   category: {
@@ -118,6 +119,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
   const [menuView, setMenuView] = useState<SkewerMenuViewMode>("list");
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [detailDraftQty, setDetailDraftQty] = useState(0);
+  const [showAddressSearch, setShowAddressSearch] = useState(false);
   const pendingScrollMenuIdRef = useRef<string | null>(null);
   const prefillsDoneKey = useRef<string | null>(null);
 
@@ -283,6 +285,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
         id: item.id,
         name: item.name,
         imageUrl: resolveSkewerMenuImageUrl(item),
+        qtyUnit: resolveSkewerQtyUnit(item),
         seq: seqById.get(item.id) ?? 0,
         quantity: ordered ? quantity : 0,
         ordered,
@@ -361,6 +364,12 @@ function SkewerOrderPageInner({ params }: PageProps) {
   }
 
   useEffect(() => {
+    if (highlightId === "skewer-map-field") {
+      setShowAddressSearch(true);
+    }
+  }, [highlightId]);
+
+  useEffect(() => {
     if (detailItemId != null) return;
     const id = pendingScrollMenuIdRef.current;
     if (!id) return;
@@ -413,7 +422,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
     }
     if (selectedLines.length === 0) {
       fail(
-        `กรุณาเลือกอย่างน้อย 1 เมนู (ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้ต่อรายการ) — กดปุ่ม + ที่เมนูด้านบน`,
+        `กรุณาเลือกอย่างน้อย 1 เมนู — กดปุ่ม + ที่เมนูด้านบน`,
         "skewer-menu-section",
       );
       return false;
@@ -436,8 +445,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
       return false;
     }
     if (!hasMapPin(mapValue)) {
+      setShowAddressSearch(true);
       fail(
-        "กรุณาปักหมุดจุดส่งบนแผนที่ — กด “ตำแหน่งปัจจุบัน” หรือแตะแผนที่",
+        "กรุณาปักหมุดจุดส่งบนแผนที่ — กด “ค้นหาที่อยู่ / แผนที่” แล้วปักหมุดหรือกดตำแหน่งปัจจุบัน",
         "skewer-map-field",
       );
       return false;
@@ -519,8 +529,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
           title="สั่งเสียบไม้"
           subtitle={
             branchName
-              ? `สาขา ${branchName.replace(/^สาขา\s*/, "")} · ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้/รายการ`
-              : `ขั้นต่ำ ${SKEWER_MIN_QTY_PER_ITEM} ไม้/รายการ`
+              ? `สาขา ${branchName.replace(/^สาขา\s*/, "")}`
+              : undefined
           }
           footer={
             detailOpen ? undefined : (
@@ -532,7 +542,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
               >
                 {selectedLines.length === 0
                   ? "ตรวจสอบคำสั่ง"
-                  : `ตรวจสอบคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ไม้`}
+                  : `ตรวจสอบคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ชิ้น`}
               </button>
             )
           }
@@ -600,11 +610,11 @@ function SkewerOrderPageInner({ params }: PageProps) {
                   <div>
                     <div className="mb-2 flex items-baseline justify-between gap-2">
                       <p className="text-sm font-semibold text-gray-900">
-                        รายการไม้
+                        รายการที่สั่ง
                       </p>
                       <p className="text-xs text-gray-500">
                         สั่ง {selectedLines.length}/{reviewRows.length} ·{" "}
-                        {totalSkewers} ไม้
+                        {totalSkewers} ชิ้น
                       </p>
                     </div>
                     <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
@@ -655,7 +665,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                                 row.ordered ? "text-gray-500" : "text-gray-300"
                               }`}
                             >
-                              {row.ordered ? "ไม้" : "ไม่ได้สั่ง"}
+                              {row.ordered ? row.qtyUnit : "ไม่ได้สั่ง"}
                             </p>
                           </div>
                           <div
@@ -720,6 +730,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
               <SkewerMenuItemQtyDetail
                 name={detailItem.name}
                 imageUrl={resolveSkewerMenuImageUrl(detailItem)}
+                qtyUnit={resolveSkewerQtyUnit(detailItem)}
                 draftQty={detailDraftQty}
                 onDraftChange={setDetailDraftQty}
                 onBack={closeItemDetail}
@@ -733,8 +744,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       เลือกเมนู
                     </h2>
                     <p className="text-xs text-gray-500">
-                      ลำดับเหมือนหน้าสต๊อก · ขั้นต่ำ {SKEWER_MIN_QTY_PER_ITEM}{" "}
-                      ไม้/รายการ
+                      ลำดับเหมือนหน้าสต๊อก
                     </p>
                   </div>
                   <SkewerMenuViewToggle
@@ -750,7 +760,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                     </p>
                     <p className="text-lg font-black tabular-nums text-site-primary">
                       {totalSkewers}{" "}
-                      <span className="text-sm font-semibold">ไม้</span>
+                      <span className="text-sm font-semibold">ชิ้นรวม</span>
                       <span className="ml-2 text-xs font-medium text-gray-500">
                         · {selectedLines.length} รายการ
                       </span>
@@ -796,6 +806,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       id: item.id,
                       name: item.name,
                       imageUrl: resolveSkewerMenuImageUrl(item),
+                      qtyUnit: resolveSkewerQtyUnit(item),
                     }))}
                     qtys={qtys}
                     onSelect={openItemDetail}
@@ -850,10 +861,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                               className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-lg leading-none text-gray-700 disabled:opacity-40"
                               disabled={qty <= 0}
                               onClick={() =>
-                                setQty(
-                                  item.id,
-                                  qty <= SKEWER_MIN_QTY_PER_ITEM ? 0 : qty - 1,
-                                )
+                                setQty(item.id, Math.max(0, qty - 1))
                               }
                             >
                               −
@@ -864,14 +872,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             <button
                               type="button"
                               className="flex h-8 w-8 items-center justify-center rounded-full bg-site-primary text-lg leading-none text-white"
-                              onClick={() =>
-                                setQty(
-                                  item.id,
-                                  qty < SKEWER_MIN_QTY_PER_ITEM
-                                    ? SKEWER_MIN_QTY_PER_ITEM
-                                    : qty + 1,
-                                )
-                              }
+                              onClick={() => setQty(item.id, qty + 1)}
                             >
                               +
                             </button>
@@ -950,9 +951,24 @@ function SkewerOrderPageInner({ params }: PageProps) {
                   : ""
               }`}
             >
-              <label className="text-sm font-medium text-gray-800">
-                ที่อยู่จัดส่ง / นัดรับ
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-gray-800">
+                  ที่อยู่จัดส่ง / นัดรับ
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddressSearch((v) => !v)}
+                  className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                    showAddressSearch
+                      ? "bg-site-primary text-white"
+                      : "bg-gray-100 text-site-primary"
+                  }`}
+                >
+                  {showAddressSearch
+                    ? "ปิดค้นหา / แผนที่"
+                    : "ค้นหาที่อยู่ / แผนที่"}
+                </button>
+              </div>
               <textarea
                 className={`mt-1 w-full rounded-xl border px-3 py-2.5 text-sm ${
                   highlightId === "skewer-address-field"
@@ -969,27 +985,32 @@ function SkewerOrderPageInner({ params }: PageProps) {
                 placeholder="บ้านเลขที่ ถนน แขวง/ตำบล อำเภอ จังหวัด"
               />
             </div>
-            <div
-              id="skewer-map-field"
-              tabIndex={-1}
-              data-skewer-focus
-              className={`rounded-xl outline-none ${
-                highlightId === "skewer-map-field"
-                  ? "ring-2 ring-amber-400 p-1"
-                  : ""
-              }`}
-            >
-              <CustomerDeliveryMapPin
-                value={mapValue}
-                onChange={(next) => {
-                  clearValidation();
-                  setMapValue(next);
-                }}
-                referencePin={branchPin}
-                autoLocate={false}
-                showUseReferencePin={false}
-              />
-            </div>
+            {showAddressSearch ||
+            highlightId === "skewer-map-field" ? (
+              <div
+                id="skewer-map-field"
+                tabIndex={-1}
+                data-skewer-focus
+                className={`rounded-xl outline-none ${
+                  highlightId === "skewer-map-field"
+                    ? "ring-2 ring-amber-400 p-1"
+                    : ""
+                }`}
+              >
+                <CustomerDeliveryMapPin
+                  value={mapValue}
+                  onChange={(next) => {
+                    clearValidation();
+                    setMapValue(next);
+                  }}
+                  referencePin={branchPin}
+                  autoLocate={false}
+                  showUseReferencePin={false}
+                />
+              </div>
+            ) : (
+              <div id="skewer-map-field" className="hidden" aria-hidden />
+            )}
             <div>
               <label className="text-sm font-medium text-gray-800">
                 โน้ต (ถ้ามี)

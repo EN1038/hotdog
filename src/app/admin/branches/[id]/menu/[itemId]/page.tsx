@@ -61,6 +61,7 @@ type MenuItemDetail = {
   category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;
   skewerImageUrl: string | null;
+  quantityUnit: string | null;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: number;
@@ -94,6 +95,7 @@ type FormState = {
   categoryId: string;
   imageUrl: string;
   skewerImageUrl: string;
+  quantityUnit: string;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: string;
@@ -121,6 +123,7 @@ const EMPTY_ITEM: MenuItemDetail = {
   category: null,
   imageUrl: null,
   skewerImageUrl: null,
+  quantityUnit: null,
   isHidden: false,
   isOutOfStock: false,
   sortOrder: 0,
@@ -148,6 +151,7 @@ const EMPTY_FORM: FormState = {
   categoryId: "",
   imageUrl: "",
   skewerImageUrl: "",
+  quantityUnit: "",
   isHidden: false,
   isOutOfStock: false,
   sortOrder: "0",
@@ -241,6 +245,7 @@ export default function MenuItemEditorPage() {
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
       skewerImageUrl: data.skewerImageUrl ?? "",
+      quantityUnit: data.quantityUnit ?? "",
       isHidden,
       isOutOfStock,
       sortOrder: String(data.sortOrder ?? 0),
@@ -421,6 +426,7 @@ export default function MenuItemEditorPage() {
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
         skewerImageUrl: form.skewerImageUrl || null,
+        quantityUnit: form.quantityUnit.trim() || null,
         isHidden: form.isHidden,
         isOutOfStock: form.isHidden ? false : form.isOutOfStock,
         sortOrder: (() => {
@@ -634,6 +640,29 @@ export default function MenuItemEditorPage() {
                   ))}
                 </select>
               </div>
+              {categories.some(
+                (c) =>
+                  c.id === form.categoryId &&
+                  c.name.trim() === "อื่นๆ",
+              ) ? (
+                <div>
+                  <label className={adminLabelClass}>
+                    หน่วยจำนวน (หมวดอื่นๆ)
+                  </label>
+                  <input
+                    className={adminInputClass}
+                    value={form.quantityUnit}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, quantityUnit: e.target.value }))
+                    }
+                    placeholder="เช่น กรัม, ซอง, ขวด"
+                    maxLength={40}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    แสดงคู่จำนวนในหน้าสั่งเสียบไม้ — ว่าง = ไม้
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <label className={adminLabelClass}>ลำดับแสดงผล</label>
                 <input

@@ -98,6 +98,7 @@ export async function POST(request: Request, { params }: Params) {
         categoryId,
         imageUrl: body.imageUrl ?? null,
         skewerImageUrl: body.skewerImageUrl ?? null,
+        quantityUnit: body.quantityUnit?.trim() || null,
         isHidden: body.isHidden ?? false,
         hideFromStaff: body.hideFromStaff ?? false,
         isOutOfStock: body.isOutOfStock ?? false,

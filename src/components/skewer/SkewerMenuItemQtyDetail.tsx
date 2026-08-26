@@ -19,6 +19,7 @@ function normalizeDraftQty(raw: string): number {
 export function SkewerMenuItemQtyDetail({
   name,
   imageUrl,
+  qtyUnit = "ไม้",
   draftQty,
   onDraftChange,
   onBack,
@@ -26,6 +27,7 @@ export function SkewerMenuItemQtyDetail({
 }: {
   name: string;
   imageUrl: string | null;
+  qtyUnit?: string;
   draftQty: number;
   onDraftChange: (next: number) => void;
   onBack: () => void;
@@ -33,6 +35,7 @@ export function SkewerMenuItemQtyDetail({
 }) {
   const [qtyText, setQtyText] = useState(() => String(draftQty || 0));
   const [editing, setEditing] = useState(false);
+  const unit = qtyUnit.trim() || "ไม้";
 
   useEffect(() => {
     if (!editing) setQtyText(String(draftQty || 0));
@@ -76,9 +79,6 @@ export function SkewerMenuItemQtyDetail({
           <p className="text-lg font-bold leading-snug text-white drop-shadow">
             {name}
           </p>
-          <p className="mt-0.5 text-xs text-white/80">
-            ขั้นต่ำ {SKEWER_MIN_QTY_PER_ITEM} ไม้
-          </p>
         </div>
       </div>
 
@@ -88,49 +88,44 @@ export function SkewerMenuItemQtyDetail({
           className="flex h-12 w-12 items-center justify-center rounded-full border border-gray-200 text-2xl leading-none text-gray-700 disabled:opacity-40"
           disabled={draftQty <= 0}
           onClick={() =>
-            onDraftChange(
-              draftQty <= SKEWER_MIN_QTY_PER_ITEM ? 0 : draftQty - 1,
-            )
+            onDraftChange(Math.max(0, draftQty - 1))
           }
           aria-label="ลดจำนวน"
         >
           −
         </button>
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          aria-label="จำนวนไม้"
-          value={qtyText}
-          onFocus={(e) => {
-            setEditing(true);
-            e.target.select();
-          }}
-          onChange={(e) => {
-            const next = e.target.value.replace(/\D/g, "");
-            setQtyText(next);
-          }}
-          onBlur={() => {
-            commitQtyText(qtyText);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-          className="min-w-[4.5rem] max-w-[7rem] border-0 bg-transparent p-0 text-center text-3xl font-black tabular-nums text-gray-900 outline-none ring-0 focus:rounded-lg focus:ring-2 focus:ring-site-primary/40"
-        />
+        <div className="flex min-w-[5rem] flex-col items-center">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            aria-label={`จำนวน${unit}`}
+            value={qtyText}
+            onFocus={(e) => {
+              setEditing(true);
+              e.target.select();
+            }}
+            onChange={(e) => {
+              const next = e.target.value.replace(/\D/g, "");
+              setQtyText(next);
+            }}
+            onBlur={() => {
+              commitQtyText(qtyText);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className="w-full border-0 bg-transparent p-0 text-center text-3xl font-black tabular-nums text-gray-900 outline-none ring-0 focus:rounded-lg focus:ring-2 focus:ring-site-primary/40"
+          />
+          <span className="text-xs font-semibold text-gray-500">{unit}</span>
+        </div>
         <button
           type="button"
           className="flex h-12 w-12 items-center justify-center rounded-full bg-site-primary text-2xl leading-none text-white"
-          onClick={() =>
-            onDraftChange(
-              draftQty < SKEWER_MIN_QTY_PER_ITEM
-                ? SKEWER_MIN_QTY_PER_ITEM
-                : draftQty + 1,
-            )
-          }
+          onClick={() => onDraftChange(draftQty + 1)}
           aria-label="เพิ่มจำนวน"
         >
           +

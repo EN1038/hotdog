@@ -669,6 +669,8 @@ model BranchMenuItem {
   imageUrl                     String?
   /// Optional photo for skewer customer order grid; falls back to imageUrl
   skewerImageUrl               String?
+  /// Optional qty unit for skewer orders (e.g. กรัม / ซอง); null → ไม้
+  quantityUnit                 String?
   isHidden                     Boolean                      @default(false)
   /// Hidden from staff keyed-order menu (still visible to customers unless isHidden)
   hideFromStaff                Boolean                      @default(false)

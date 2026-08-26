@@ -118,6 +118,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
   const [menuView, setMenuView] = useState<SkewerMenuViewMode>("list");
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [detailDraftQty, setDetailDraftQty] = useState(0);
+  const pendingScrollMenuIdRef = useRef<string | null>(null);
   const prefillsDoneKey = useRef<string | null>(null);
 
   useEffect(() => {
@@ -344,15 +345,31 @@ function SkewerOrderPageInner({ params }: PageProps) {
     setDetailDraftQty(qtys[id] ?? 0);
   }
 
-  function closeItemDetail() {
+  function returnToMenuAtItem(id: string | null) {
+    if (id) pendingScrollMenuIdRef.current = id;
     setDetailItemId(null);
+  }
+
+  function closeItemDetail() {
+    returnToMenuAtItem(detailItemId);
   }
 
   function confirmItemDetail(qty: number) {
     if (!detailItemId) return;
     setQty(detailItemId, qty);
-    setDetailItemId(null);
+    returnToMenuAtItem(detailItemId);
   }
+
+  useEffect(() => {
+    if (detailItemId != null) return;
+    const id = pendingScrollMenuIdRef.current;
+    if (!id) return;
+    pendingScrollMenuIdRef.current = null;
+    const anchorId = `skewer-menu-item-${id}`;
+    const run = () => scrollToStaffAnchor(anchorId);
+    // Wait until list/grid is painted after leaving the detail view.
+    requestAnimationFrame(() => requestAnimationFrame(run));
+  }, [detailItemId]);
 
   async function tryGeocodeAddress() {
     const q = addressText.trim();
@@ -796,7 +813,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       return (
                         <li
                           key={item.id}
-                          className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                          id={`skewer-menu-item-${item.id}`}
+                          tabIndex={-1}
+                          className="grid scroll-mt-24 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 outline-none first:pt-0 last:pb-0"
                         >
                           <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
                             {seq}

@@ -32,7 +32,10 @@ import {
   OwnerWeekdayRevenueBars,
   OwnerTopSellersList,
 } from "@/components/owner/OwnerOverviewExtras";
+import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
+import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
 import { SalesShareSection } from "@/components/merchant/SalesSummaryView";
+import { branchAdminBasePath } from "@/lib/branch-admin-path";
 import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
 
 const OWNER_HOME_TAB_KEY = "skillsale_owner_home_tab_v2";
@@ -603,14 +606,14 @@ function OwnerHomeInner() {
 
   const brand = data?.brand;
   const subscription = data?.subscription ?? null;
-  const branches = data?.branches ?? [];
+  const pulseSource = overviewPayload ?? data;
+  const branches = pulseSource?.branches ?? data?.branches ?? [];
   const liveBranches = branches.filter(
     (b) => !b.isTest && b.kind !== "WAREHOUSE",
   );
   const firstBranchId = liveBranches[0]?.id ?? branches[0]?.id ?? null;
-  const openBranchCount = liveBranches.filter((b) => b.isOpen).length;
+  const openBranchCount = liveBranches.filter((b) => b.activeShift).length;
 
-  const pulseSource = overviewPayload ?? data;
   const shellStats = data?.stats;
   const overviewStats = pulseSource?.stats ?? shellStats;
   const shellOpenCount = shellStats?.openCount ?? 0;
@@ -648,9 +651,33 @@ function OwnerHomeInner() {
   const overviewByFulfillment = pulseSource?.byFulfillment ?? [];
   const overviewByPayment = pulseSource?.byPayment ?? [];
   const overviewWeekdays = pulseSource?.weekdays ?? [];
-  const overviewByBranchAll = (pulseSource?.byBranch ?? []).filter(
-    (b) => b.completedRevenue > 0 || b.completedCount > 0,
-  );
+  const overviewByBranchAll = useMemo(() => {
+    const statsById = new Map(
+      (pulseSource?.byBranch ?? []).map((row) => [row.branchId, row]),
+    );
+
+    return liveBranches
+      .map((branch) => {
+        const stats = statsById.get(branch.id);
+        return {
+          branchId: branch.id,
+          branchName: branch.name,
+          activeShift: branch.activeShift ?? null,
+          lastClosedShift: branch.lastClosedShift ?? null,
+          completedRevenue: stats?.completedRevenue ?? 0,
+          completedCount: stats?.completedCount ?? 0,
+          cashRevenue: stats?.cashRevenue ?? 0,
+          transferRevenue: stats?.transferRevenue ?? 0,
+        };
+      })
+      .sort((a, b) => {
+        const aOpen = a.activeShift ? 1 : 0;
+        const bOpen = b.activeShift ? 1 : 0;
+        if (bOpen !== aOpen) return bOpen - aOpen;
+        return b.completedRevenue - a.completedRevenue;
+      });
+  }, [pulseSource?.byBranch, liveBranches]);
+  const closedBranchCount = liveBranches.length - openBranchCount;
   const overviewByBranchMore = overviewByBranchAll.length > 10;
   const overviewByBranch = overviewByBranchAll.slice(0, 10);
 
@@ -876,7 +903,7 @@ function OwnerHomeInner() {
               </p>
               <div className="flex shrink-0 items-center gap-2">
                 <Link
-                  href={`/admin/branches/${filterBranchId}`}
+                  href={branchAdminBasePath(filterBranchId, { ownerShell: true })}
                   className="text-[12px] font-bold text-emerald-800"
                 >
                   จัดการ
@@ -1104,7 +1131,11 @@ function OwnerHomeInner() {
                     รวม {liveBranches.length} สาขา
                   </p>
                   <p className="mt-0.5 text-[12px] font-semibold text-emerald-800/80">
-                    เปิด {openBranchCount} · กดสาขาเพื่อดูยอดสาขานั้น
+                    เปิดรอบ {openBranchCount}
+                    {closedBranchCount > 0
+                      ? ` · ปิดรอบ ${closedBranchCount}`
+                      : ""}{" "}
+                    · กดสาขาเพื่อดูยอดสาขานั้น
                   </p>
                 </div>
                 <span className="text-lg font-bold text-emerald-700" aria-hidden>
@@ -1127,11 +1158,25 @@ function OwnerHomeInner() {
                           <p className="truncate text-[14px] font-semibold text-slate-900">
                             {row.branchName}
                           </p>
-                          <p className="mt-0.5 text-[11px] font-semibold tabular-nums text-slate-500">
-                            เงินสด ฿{formatPrice(row.cashRevenue ?? 0)}
-                            {" · "}
-                            โอน ฿{formatPrice(row.transferRevenue ?? 0)}
-                          </p>
+                          {row.activeShift ? (
+                            <OwnerBranchShiftLine shift={row.activeShift} />
+                          ) : (
+                            <OwnerBranchClosedShiftLine
+                              shift={row.lastClosedShift}
+                            />
+                          )}
+                          {(row.completedCount ?? 0) > 0 ||
+                          (row.completedRevenue ?? 0) > 0 ? (
+                            <p className="mt-0.5 text-[11px] font-semibold tabular-nums text-slate-500">
+                              เงินสด ฿{formatPrice(row.cashRevenue ?? 0)}
+                              {" · "}
+                              โอน ฿{formatPrice(row.transferRevenue ?? 0)}
+                            </p>
+                          ) : !row.activeShift ? (
+                            <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                              ยังไม่มียอดในช่วงที่เลือก
+                            </p>
+                          ) : null}
                         </div>
                         <span className="shrink-0 text-right">
                           <span className="block text-[14px] font-black tabular-nums text-emerald-700">

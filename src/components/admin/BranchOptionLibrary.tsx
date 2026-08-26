@@ -212,6 +212,18 @@ export function BranchOptionLibrary({ branchId }: Props) {
     setDragOverId(null);
   }
 
+  async function moveGroupByStep(groupId: string, direction: -1 | 1) {
+    if (editingGroupId || saving || deleting) return;
+    const list = [...libraryRef.current];
+    const idx = list.findIndex((g) => g.id === groupId);
+    const target = idx + direction;
+    if (idx < 0 || target < 0 || target >= list.length) return;
+    const ordered = reorderGroups(list, list[idx].id, list[target].id);
+    libraryRef.current = ordered;
+    setLibrary(ordered);
+    await persistOrder(ordered);
+  }
+
   useEffect(() => {
     if (!focusGroupId) return;
     const el = groupRefs.current[focusGroupId];
@@ -502,13 +514,13 @@ export function BranchOptionLibrary({ branchId }: Props) {
             </select>
           </label>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
           <Toggle
             checked={newGroup.required}
             onChange={(required) => setNewGroup((g) => ({ ...g, required }))}
             label="บังคับเลือก"
           />
-          <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm text-gray-800">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-800">
             ขั้นต่ำ
             <input
               type="number"
@@ -520,7 +532,7 @@ export function BranchOptionLibrary({ branchId }: Props) {
               }
             />
           </label>
-          <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm text-gray-800">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-800">
             สูงสุด
             <input
               type="number"
@@ -532,7 +544,7 @@ export function BranchOptionLibrary({ branchId }: Props) {
               }
             />
           </label>
-          <button type="submit" disabled={saving} className={btnDark}>
+          <button type="submit" disabled={saving} className={`min-h-10 w-full sm:w-auto ${btnDark}`}>
             สร้างหัวข้อ
           </button>
         </div>
@@ -544,7 +556,12 @@ export function BranchOptionLibrary({ branchId }: Props) {
       </form>
 
       <div className="space-y-3">
-        {library.map((group) => {
+        {library.length > 1 ? (
+          <p className="text-sm text-slate-500">
+            ลากหัวข้อหรือกด ↑↓ เพื่อจัดลำดับ
+          </p>
+        ) : null}
+        {library.map((group, index) => {
           const isCollapsed = collapsed[group.id] ?? false;
           return (
             <div
@@ -568,9 +585,31 @@ export function BranchOptionLibrary({ branchId }: Props) {
                     : ""
               }`}
             >
-              <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                {library.length > 1 ? (
+                  <div className="flex shrink-0 gap-1 sm:hidden">
+                    <button
+                      type="button"
+                      disabled={index === 0 || saving}
+                      onClick={() => void moveGroupByStep(group.id, -1)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                      aria-label={`เลื่อน ${group.name} ขึ้น`}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === library.length - 1 || saving}
+                      onClick={() => void moveGroupByStep(group.id, 1)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                      aria-label={`เลื่อน ${group.name} ลง`}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                ) : null}
                 <div
-                  className={`flex cursor-grab items-center justify-center text-gray-400 hover:text-gray-600 ${
+                  className={`hidden cursor-grab items-center justify-center text-gray-400 hover:text-gray-600 sm:flex ${
                     editingGroupId === group.id ? "invisible" : ""
                   }`}
                   aria-label="ลากเพื่อสลับลำดับ"
@@ -580,7 +619,7 @@ export function BranchOptionLibrary({ branchId }: Props) {
                 </div>
                 <button
                   type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
                   aria-label={isCollapsed ? "ขยาย" : "หุบ"}
                   onClick={() =>
                     setCollapsed((c) => ({
@@ -684,17 +723,17 @@ export function BranchOptionLibrary({ branchId }: Props) {
                 />
 
                 {editingGroupId !== group.id && (
-                  <div className="flex gap-2">
+                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
                     <button
                       type="button"
-                      className={btnOutline}
+                      className={`min-h-10 ${btnOutline}`}
                       onClick={() => startEditGroup(group)}
                     >
                       แก้ชื่อ
                     </button>
                     <button
                       type="button"
-                      className={btnDanger}
+                      className={`min-h-10 ${btnDanger}`}
                       onClick={() => deleteGroup(group)}
                     >
                       ลบ

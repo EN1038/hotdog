@@ -26,7 +26,7 @@ import {
 } from "@/components/staff/StaffOrderSummary";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
-import { SKEWER_MIN_QTY_PER_ITEM } from "@/lib/skewer-order";
+import { SKEWER_MIN_QTY_PER_ITEM, resolveSkewerMenuImageUrl } from "@/lib/skewer-order";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -40,6 +40,7 @@ type MenuItem = {
   name: string;
   description: string | null;
   imageUrl: string | null;
+  skewerImageUrl?: string | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
   category: {
@@ -280,7 +281,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
       return {
         id: item.id,
         name: item.name,
-        imageUrl: item.imageUrl,
+        imageUrl: resolveSkewerMenuImageUrl(item),
         seq: seqById.get(item.id) ?? 0,
         quantity: ordered ? quantity : 0,
         ordered,
@@ -701,7 +702,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
             {detailOpen && detailItem ? (
               <SkewerMenuItemQtyDetail
                 name={detailItem.name}
-                imageUrl={detailItem.imageUrl}
+                imageUrl={resolveSkewerMenuImageUrl(detailItem)}
                 draftQty={detailDraftQty}
                 onDraftChange={setDetailDraftQty}
                 onBack={closeItemDetail}
@@ -774,7 +775,11 @@ function SkewerOrderPageInner({ params }: PageProps) {
 
                 {menuView === "grid" ? (
                   <SkewerPhotoMenuGrid
-                    items={visibleItems}
+                    items={visibleItems.map((item) => ({
+                      id: item.id,
+                      name: item.name,
+                      imageUrl: resolveSkewerMenuImageUrl(item),
+                    }))}
                     qtys={qtys}
                     seqById={seqById}
                     onSelect={openItemDetail}
@@ -788,6 +793,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                     {visibleItems.map((item) => {
                       const qty = qtys[item.id] ?? 0;
                       const seq = seqById.get(item.id) ?? 0;
+                      const displayImage = resolveSkewerMenuImageUrl(item);
                       return (
                         <li
                           key={item.id}
@@ -797,10 +803,10 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             {seq}
                           </span>
                           <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
-                            {item.imageUrl ? (
+                            {displayImage ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
-                                src={item.imageUrl}
+                                src={displayImage}
                                 alt=""
                                 className="h-full w-full object-cover"
                               />

@@ -606,7 +606,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             {row.seq}
                           </span>
                           <div
-                            className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-neutral-900 ${
+                            className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft ${
                               row.ordered ? "" : "grayscale"
                             }`}
                           >
@@ -618,7 +618,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                                 className="h-full w-full object-contain"
                               />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-neutral-500">
+                              <div className="flex h-full w-full items-center justify-center text-gray-400">
                                 <IconSkewerPlaceholder size={20} />
                               </div>
                             )}
@@ -801,7 +801,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                           <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
                             {seq}
                           </span>
-                          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-neutral-900">
+                          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
                             {displayImage ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
@@ -810,7 +810,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                                 className="h-full w-full object-contain"
                               />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-neutral-500">
+                              <div className="flex h-full w-full items-center justify-center text-gray-400">
                                 <IconSkewerPlaceholder size={28} />
                               </div>
                             )}

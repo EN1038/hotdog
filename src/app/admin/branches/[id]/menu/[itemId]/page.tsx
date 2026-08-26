@@ -670,7 +670,7 @@ export default function MenuItemEditorPage() {
                   cropTitle="ครอปรูปสั่งเสียบไม้ (แนวตั้ง 3:4)"
                   aspectClassName={SKEWER_PHOTO_ASPECT_CLASS}
                   objectFit="cover"
-                  hint="ครอปแนวตั้ง 3:4 ให้ตรงกับกริดหน้าสั่ง — รูปจะแสดงเต็มกรอบ"
+                  hint="ครอปแนวตั้ง 3:4 ให้ตรงกับกริดหน้าสั่ง — กด «ครอป» เพื่อครอปจากรูปเดิม หรือ «เปลี่ยน» เพื่อเลือกรูปใหม่"
                 />
                 {(form.skewerImageUrl || form.imageUrl) && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">

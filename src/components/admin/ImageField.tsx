@@ -42,11 +42,28 @@ export function ImageField({
 }: ImageFieldProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const cropSrcIsBlobRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showUrl, setShowUrl] = useState(false);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
+
+  function clearCropSrc() {
+    if (cropSrc && cropSrcIsBlobRef.current) {
+      URL.revokeObjectURL(cropSrc);
+    }
+    cropSrcIsBlobRef.current = false;
+    setCropSrc(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function openCropFromCurrent() {
+    if (!value.trim() || !cropAspect || cropAspect <= 0) return;
+    setError(null);
+    cropSrcIsBlobRef.current = false;
+    setCropSrc(value.trim());
+  }
 
   async function uploadFile(file: File) {
     setError(null);
@@ -80,6 +97,7 @@ export function ImageField({
     if (!file) return;
     if (cropAspect && cropAspect > 0) {
       const url = URL.createObjectURL(file);
+      cropSrcIsBlobRef.current = true;
       setCropSrc(url);
       return;
     }
@@ -93,6 +111,7 @@ export function ImageField({
         ? "px-3 py-4"
         : "px-5 py-10";
   const resolvedAspect = size === "thumb" ? "aspect-square" : aspectClassName;
+  const canCropExisting = Boolean(cropAspect && cropAspect > 0 && value.trim());
 
   return (
     <div
@@ -154,15 +173,25 @@ export function ImageField({
                   : "object-cover"
               }`}
             />
-            <div className="absolute inset-x-0 bottom-0 flex gap-1.5 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">
+            <div className="absolute inset-x-0 bottom-0 flex flex-wrap gap-1.5 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">
               <button
                 type="button"
                 disabled={uploading}
                 onClick={() => inputRef.current?.click()}
                 className="rounded-md bg-white/95 px-2 py-1 text-[11px] font-semibold text-gray-900 shadow-sm hover:bg-white disabled:opacity-60"
               >
-                {uploading ? "..." : cropAspect ? "เปลี่ยน/ครอป" : "เปลี่ยน"}
+                {uploading ? "..." : "เปลี่ยน"}
               </button>
+              {canCropExisting ? (
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={openCropFromCurrent}
+                  className="rounded-md bg-white/95 px-2 py-1 text-[11px] font-semibold text-gray-900 shadow-sm hover:bg-white disabled:opacity-60"
+                >
+                  ครอป
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={uploading}
@@ -247,14 +276,9 @@ export function ImageField({
           imageSrc={cropSrc}
           aspect={cropAspect}
           title={cropTitle ?? `ครอป${label}`}
-          onCancel={() => {
-            URL.revokeObjectURL(cropSrc);
-            setCropSrc(null);
-            if (inputRef.current) inputRef.current.value = "";
-          }}
+          onCancel={clearCropSrc}
           onConfirm={(file) => {
-            URL.revokeObjectURL(cropSrc);
-            setCropSrc(null);
+            clearCropSrc();
             void uploadFile(file);
           }}
         />

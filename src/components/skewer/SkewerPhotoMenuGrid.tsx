@@ -52,7 +52,7 @@ export function SkewerPhotoMenuGrid({
                     <IconSkewerPlaceholder size={36} />
                   </div>
                 )}
-                <span className="absolute right-1 top-1 flex h-6 min-w-6 items-center justify-center rounded-md bg-black/70 px-1.5 text-xs font-bold tabular-nums text-white">
+                <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-md bg-black/30 px-1 text-[10px] font-medium tabular-nums text-white/90">
                   {seq}
                 </span>
               </div>

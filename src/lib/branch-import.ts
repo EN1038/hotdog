@@ -215,6 +215,7 @@ export async function importBranchCatalog(opts: {
           : null,
         imageUrl: item.imageUrl,
         skewerImageUrl: item.skewerImageUrl,
+        quantityUnit: item.quantityUnit,
         isHidden: item.isHidden,
         hideFromStaff: item.hideFromStaff,
         // Fresh import: never inherit sold-out flag

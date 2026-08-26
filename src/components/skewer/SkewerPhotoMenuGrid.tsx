@@ -7,6 +7,7 @@ export type SkewerPhotoMenuItem = {
   id: string;
   name: string;
   imageUrl: string | null;
+  qtyUnit?: string | null;
 };
 
 /** Shared tile chrome for customer grid + admin previews. */
@@ -14,15 +15,18 @@ export function SkewerPhotoTileChrome({
   name,
   imageUrl,
   qty = 0,
+  qtyUnit = "ไม้",
   className = "",
 }: {
   name: string;
   imageUrl: string | null;
   /** Only shown when > 0 */
   qty?: number;
+  qtyUnit?: string;
   className?: string;
 }) {
   const showQty = typeof qty === "number" && qty > 0;
+  const unit = qtyUnit.trim() || "ไม้";
 
   return (
     <div
@@ -44,7 +48,7 @@ export function SkewerPhotoTileChrome({
       {showQty ? (
         <div
           className="absolute left-1/2 top-[40%] z-[1] flex aspect-square w-[62%] min-w-[5.25rem] max-w-[8.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[3px] border-site-primary bg-white px-1.5 shadow-md"
-          aria-label={`สั่งแล้ว ${qty} ไม้`}
+          aria-label={`สั่งแล้ว ${qty} ${unit}`}
         >
           <span className="text-[11px] font-bold leading-none text-site-primary sm:text-xs">
             สั่งแล้ว
@@ -53,7 +57,7 @@ export function SkewerPhotoTileChrome({
             {qty}
           </span>
           <span className="mt-1 text-[11px] font-bold leading-none text-site-primary sm:text-xs">
-            ไม้
+            {unit}
           </span>
         </div>
       ) : null}
@@ -100,6 +104,7 @@ export function SkewerPhotoMenuGrid({
                 name={item.name}
                 imageUrl={item.imageUrl}
                 qty={qty}
+                qtyUnit={item.qtyUnit ?? undefined}
               />
             </button>
           </li>

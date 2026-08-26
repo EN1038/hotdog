@@ -8,7 +8,6 @@ import {
 } from "@/components/skewer/SkewerAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { brandColorFromApi } from "@/lib/color";
-import { SKEWER_MIN_QTY_PER_ITEM } from "@/lib/skewer-order";
 
 type PageProps = { params: Promise<{ branchId: string }> };
 
@@ -78,7 +77,7 @@ export default function SkewerHomePage({ params }: PageProps) {
           </section>
 
           <p className="px-1 text-center text-xs text-slate-500">
-            แต่ละเมนูขั้นต่ำ {SKEWER_MIN_QTY_PER_ITEM} ไม้ · หลังสั่งรอแอดมินโทรยืนยัน
+            หลังสั่งรอแอดมินโทรยืนยัน
           </p>
         </div>
       )}

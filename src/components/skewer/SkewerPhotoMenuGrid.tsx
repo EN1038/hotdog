@@ -41,9 +41,20 @@ export function SkewerPhotoTileChrome({
       )}
 
       {showQty ? (
-        <p className="absolute inset-x-0 bottom-7 z-[1] text-center text-xl font-black tabular-nums leading-none text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
-          {qty}
-        </p>
+        <div
+          className="absolute left-1/2 top-[44%] z-[1] flex aspect-square w-[46%] min-w-[4.25rem] max-w-[6.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[2.5px] border-site-primary bg-white px-1 shadow-md"
+          aria-label={`สั่งแล้ว ${qty} ไม้`}
+        >
+          <span className="text-[9px] font-semibold leading-none text-site-primary sm:text-[10px]">
+            สั่งแล้ว
+          </span>
+          <span className="mt-0.5 text-[1.35rem] font-black tabular-nums leading-none text-site-primary sm:text-2xl">
+            {qty}
+          </span>
+          <span className="mt-0.5 text-[9px] font-semibold leading-none text-site-primary sm:text-[10px]">
+            ไม้
+          </span>
+        </div>
       ) : null}
 
       <div className="absolute inset-x-0 bottom-0 z-[1] bg-black/70 px-1.5 py-1">

@@ -15,6 +15,7 @@ import {
   type OwnerViewMode,
   type OwnerViewPreference,
 } from "@/lib/owner-view-preference";
+import { counterpartBranchAdminPath } from "@/lib/branch-admin-path";
 
 export { assignOwnerViewHome };
 
@@ -56,7 +57,19 @@ export function OwnerViewSwitchButton({
     setPref(next);
     setOpen(false);
     const view = resolveOwnerView(next);
-    router.replace(ownerViewHomePath(view));
+    const path =
+      typeof window !== "undefined" ? window.location.pathname : "";
+    const search =
+      typeof window !== "undefined" ? window.location.search : "";
+    const branchCounterpart = counterpartBranchAdminPath(path, search);
+    if (branchCounterpart && (next === "mobile" || next === "desktop")) {
+      router.replace(branchCounterpart);
+      return;
+    }
+    const isShellHome = path === "/admin" || path === "/owner";
+    if (isShellHome) {
+      router.replace(ownerViewHomePath(view));
+    }
   }
 
   const triggerClass =
@@ -148,7 +161,19 @@ export function OwnerProfileMenuButton({
     setPref(next);
     setOpen(false);
     const view = resolveOwnerView(next);
-    router.replace(ownerViewHomePath(view));
+    const path =
+      typeof window !== "undefined" ? window.location.pathname : "";
+    const search =
+      typeof window !== "undefined" ? window.location.search : "";
+    const branchCounterpart = counterpartBranchAdminPath(path, search);
+    if (branchCounterpart && (next === "mobile" || next === "desktop")) {
+      router.replace(branchCounterpart);
+      return;
+    }
+    const isShellHome = path === "/admin" || path === "/owner";
+    if (isShellHome) {
+      router.replace(ownerViewHomePath(view));
+    }
   }
 
   const initial = (

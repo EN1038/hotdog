@@ -606,7 +606,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             {row.seq}
                           </span>
                           <div
-                            className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft ${
+                            className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-neutral-900 ${
                               row.ordered ? "" : "grayscale"
                             }`}
                           >
@@ -615,10 +615,10 @@ function SkewerOrderPageInner({ params }: PageProps) {
                               <img
                                 src={row.imageUrl}
                                 alt=""
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-contain"
                               />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-gray-400">
+                              <div className="flex h-full w-full items-center justify-center text-neutral-500">
                                 <IconSkewerPlaceholder size={20} />
                               </div>
                             )}
@@ -781,7 +781,6 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       imageUrl: resolveSkewerMenuImageUrl(item),
                     }))}
                     qtys={qtys}
-                    seqById={seqById}
                     onSelect={openItemDetail}
                   />
                 ) : visibleItems.length === 0 ? (
@@ -802,16 +801,16 @@ function SkewerOrderPageInner({ params }: PageProps) {
                           <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
                             {seq}
                           </span>
-                          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-neutral-900">
                             {displayImage ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={displayImage}
                                 alt=""
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-contain"
                               />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-gray-400">
+                              <div className="flex h-full w-full items-center justify-center text-neutral-500">
                                 <IconSkewerPlaceholder size={28} />
                               </div>
                             )}

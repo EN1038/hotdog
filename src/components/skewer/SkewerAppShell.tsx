@@ -7,6 +7,7 @@ import { useCustomer } from "@/components/customer/CustomerProvider";
 import { CustomerLoginScreen } from "@/components/customer/CustomerLoginScreen";
 import { LoadingState } from "@/components/LoadingState";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
+import { syncActiveBrandFromApi } from "@/components/customer/OrderBrandingShell";
 import {
   IconHome,
   IconLogout,
@@ -99,6 +100,22 @@ export function useSkewerBranchMeta(branchId: string): SkewerBranchMeta {
           setBrandColor(
             typeof brand.color === "string" ? brand.color : null,
           );
+          syncActiveBrandFromApi({
+            code: typeof brand.code === "string" ? brand.code : null,
+            name: typeof brand.name === "string" ? brand.name : null,
+            nameTh: typeof brand.nameTh === "string" ? brand.nameTh : null,
+            nameEn: typeof brand.nameEn === "string" ? brand.nameEn : null,
+            logoUrl: typeof brand.logoUrl === "string" ? brand.logoUrl : null,
+            coverImageUrl:
+              typeof brand.coverImageUrl === "string"
+                ? brand.coverImageUrl
+                : null,
+            color: typeof brand.color === "string" ? brand.color : null,
+            contactPhone:
+              typeof brand.contactPhone === "string"
+                ? brand.contactPhone
+                : null,
+          });
         }
         setError(null);
       })

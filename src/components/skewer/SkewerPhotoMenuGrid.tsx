@@ -92,8 +92,9 @@ export function SkewerPhotoMenuGrid({
           <li key={item.id} className="min-w-0">
             <button
               type="button"
+              id={`skewer-menu-item-${item.id}`}
               onClick={() => onSelect(item.id)}
-              className="block w-full text-left outline-none ring-inset focus-visible:ring-2 focus-visible:ring-site-primary"
+              className="block w-full scroll-mt-24 text-left outline-none ring-inset focus-visible:ring-2 focus-visible:ring-site-primary"
             >
               <SkewerPhotoTileChrome
                 name={item.name}

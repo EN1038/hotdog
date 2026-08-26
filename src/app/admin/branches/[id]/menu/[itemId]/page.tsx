@@ -34,7 +34,11 @@ import {
 } from "@/lib/menu-pricing";
 import { serializeOptionGroup } from "@/lib/menu-option-groups";
 import type { MenuOptionData } from "@/lib/customer-types";
-import { resolveMenuDisplayImageUrl } from "@/lib/skewer-order";
+import {
+  resolveMenuDisplayImageUrl,
+  SKEWER_PHOTO_ASPECT,
+  SKEWER_PHOTO_ASPECT_CLASS,
+} from "@/lib/skewer-order";
 
 type MenuItemDetail = {
   id: string;
@@ -529,7 +533,7 @@ export default function MenuItemEditorPage() {
                 alt=""
                 className={`h-full w-full ${
                   branchOperatingMode === "SKEWER"
-                    ? "object-contain bg-site-primary-soft"
+                    ? "object-cover bg-site-primary-soft"
                     : "object-cover"
                 }`}
               />
@@ -662,11 +666,11 @@ export default function MenuItemEditorPage() {
                   }
                   shopCode={shopCode}
                   folder="Products"
-                  cropAspect={1}
-                  cropTitle="ครอปรูปสั่งเสียบไม้ (สี่เหลี่ยมจัตุรัส)"
-                  aspectClassName="aspect-square"
-                  objectFit="contain"
-                  hint="ครอปเป็นสี่เหลี่ยมจัตุรัสให้ตรงกับกริดหน้าสั่ง — รูปจะแสดงแบบไม่ตัดขอบ (contain)"
+                  cropAspect={SKEWER_PHOTO_ASPECT}
+                  cropTitle="ครอปรูปสั่งเสียบไม้ (แนวตั้ง 3:4)"
+                  aspectClassName={SKEWER_PHOTO_ASPECT_CLASS}
+                  objectFit="cover"
+                  hint="ครอปแนวตั้ง 3:4 ให้ตรงกับกริดหน้าสั่ง — รูปจะแสดงเต็มกรอบ"
                 />
                 {(form.skewerImageUrl || form.imageUrl) && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">

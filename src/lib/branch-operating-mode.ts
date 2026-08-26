@@ -31,7 +31,7 @@ export const BRANCH_OPERATING_MODE_META: Record<
   SKEWER: {
     id: "SKEWER",
     title: "เสียบไม้",
-    description: "สั่งไม้ขั้นต่ำ 12 · รอแอดมินยืนยัน · ไม่ใช้คิว",
+    description: "สั่งเสียบไม้ · รอแอดมินยืนยัน · ไม่ใช้คิว",
     selectedClass: "border-amber-700 bg-amber-700 text-white",
     badgeClass: "bg-orange-100 text-orange-900",
   },

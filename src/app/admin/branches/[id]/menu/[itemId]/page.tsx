@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { IconBack, IconDelivery, IconPackage, IconStore, IconSkewerPlaceholder } from "@/components/icons";
+import {
+  IconBack,
+  IconDelivery,
+  IconPackage,
+  IconStore,
+  IconSkewerPlaceholder,
+} from "@/components/icons";
 import {
   AdminLoadingState,
   adminInputClass,
@@ -21,6 +27,7 @@ import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
 import { useAdminBranchShell } from "@/components/admin/AdminBranchShellContext";
 import { branchAdminBasePath, shouldUseOwnerBranchShell } from "@/lib/branch-admin-path";
 import type { BranchOptionGroup } from "@/components/admin/BranchOptionLibrary";
+import { SkewerPhotoTileChrome } from "@/components/skewer/SkewerPhotoMenuGrid";
 import {
   resolveSellPrice,
   type MenuPricingFields,
@@ -520,7 +527,11 @@ export default function MenuItemEditorPage() {
               <img
                 src={thumb}
                 alt=""
-                className="h-full w-full object-cover"
+                className={`h-full w-full ${
+                  branchOperatingMode === "SKEWER"
+                    ? "object-contain bg-neutral-900"
+                    : "object-cover"
+                }`}
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-site-primary-soft">
@@ -642,18 +653,61 @@ export default function MenuItemEditorPage() {
                 shopCode={shopCode}
                 folder="Products"
               />
-              <ImageField
-                label="รูปสั่งเสียบไม้ (ถ้ามี)"
-                value={form.skewerImageUrl}
-                onChange={(url) =>
-                  setForm((f) => ({ ...f, skewerImageUrl: url }))
-                }
-                shopCode={shopCode}
-                folder="Products"
-              />
-              <p className="-mt-2 text-xs text-slate-500">
-                ใช้ในหน้าสั่งเสียบไม้แบบกริดรูป — ถ้าไม่ใส่จะใช้รูปเมนูแทน
-              </p>
+              <div className="space-y-2">
+                <ImageField
+                  label="รูปสั่งเสียบไม้ (ถ้ามี)"
+                  value={form.skewerImageUrl}
+                  onChange={(url) =>
+                    setForm((f) => ({ ...f, skewerImageUrl: url }))
+                  }
+                  shopCode={shopCode}
+                  folder="Products"
+                  cropAspect={1}
+                  cropTitle="ครอปรูปสั่งเสียบไม้ (สี่เหลี่ยมจัตุรัส)"
+                  aspectClassName="aspect-square"
+                  objectFit="contain"
+                  hint="ครอปเป็นสี่เหลี่ยมจัตุรัสให้ตรงกับกริดหน้าสั่ง — รูปจะแสดงแบบไม่ตัดขอบ (contain)"
+                />
+                {(form.skewerImageUrl || form.imageUrl) && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="mb-2 text-[11px] font-semibold text-slate-600">
+                      ตัวอย่างในกริดสั่งเสียบไม้
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="mb-1.5 text-center text-[10px] font-medium text-slate-500">
+                          ยังไม่เลือกจำนวน
+                        </p>
+                        <SkewerPhotoTileChrome
+                          name={form.name.trim() || "ชื่อเมนู"}
+                          imageUrl={
+                            form.skewerImageUrl.trim() ||
+                            form.imageUrl.trim() ||
+                            null
+                          }
+                          qty={0}
+                          className="rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-1.5 text-center text-[10px] font-medium text-slate-500">
+                          มีจำนวนแล้ว
+                        </p>
+                        <SkewerPhotoTileChrome
+                          name={form.name.trim() || "ชื่อเมนู"}
+                          imageUrl={
+                            form.skewerImageUrl.trim() ||
+                            form.imageUrl.trim() ||
+                            null
+                          }
+                          qty={12}
+                          className="rounded-md"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
                 <AdminToggle
                   checked={form.isHidden}

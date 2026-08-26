@@ -2647,7 +2647,11 @@ function BranchDetailContent() {
                         <img
                           src={thumb}
                           alt=""
-                          className="h-16 w-16 shrink-0 rounded-lg object-cover sm:h-20 sm:w-20"
+                          className={`h-16 w-16 shrink-0 rounded-lg sm:h-20 sm:w-20 ${
+                            branch?.operatingMode === "SKEWER"
+                              ? "object-contain bg-neutral-900"
+                              : "object-cover"
+                          }`}
                         />
                       ) : (
                         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-20 sm:w-20">

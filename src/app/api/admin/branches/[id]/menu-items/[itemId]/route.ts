@@ -107,6 +107,9 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.skewerImageUrl !== undefined && {
           skewerImageUrl: body.skewerImageUrl,
         }),
+        ...(body.quantityUnit !== undefined && {
+          quantityUnit: body.quantityUnit?.trim() || null,
+        }),
         ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
         ...(body.hideFromStaff !== undefined && {
           hideFromStaff: body.hideFromStaff,

@@ -5,11 +5,19 @@ import {
   queueBusinessDateFromKey,
 } from "@/lib/constants";
 
-export const SKEWER_MIN_QTY_PER_ITEM = 12;
+export const SKEWER_MIN_QTY_PER_ITEM = 1;
 
 /** Portrait frame for skewer menu photos (matches typical phone/menu shots ≈ 3:4). */
 export const SKEWER_PHOTO_ASPECT = 3 / 4;
 export const SKEWER_PHOTO_ASPECT_CLASS = "aspect-[3/4]";
+
+/** Display unit for skewer quantities; empty → ไม้. */
+export function resolveSkewerQtyUnit(item: {
+  quantityUnit?: string | null;
+}): string {
+  const unit = item.quantityUnit?.trim();
+  return unit || "ไม้";
+}
 
 /** Prefer skewer-specific photo; fall back to normal menu image. */
 export function resolveSkewerMenuImageUrl(item: {

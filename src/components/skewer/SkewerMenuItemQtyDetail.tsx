@@ -29,7 +29,7 @@ export function SkewerMenuItemQtyDetail({
         ย้อนกลับ
       </button>
 
-      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-900">
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-site-primary-soft">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -38,7 +38,7 @@ export function SkewerMenuItemQtyDetail({
             className="h-full w-full object-contain"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-neutral-500">
+          <div className="flex h-full w-full items-center justify-center text-gray-400">
             <IconSkewerPlaceholder size={64} />
           </div>
         )}

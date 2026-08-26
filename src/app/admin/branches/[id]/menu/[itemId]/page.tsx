@@ -48,6 +48,7 @@ type MenuItemDetail = {
   categoryId: string | null;
   category: { id: string; name: string; sortOrder: number } | null;
   imageUrl: string | null;
+  skewerImageUrl: string | null;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: number;
@@ -80,6 +81,7 @@ type FormState = {
   description: string;
   categoryId: string;
   imageUrl: string;
+  skewerImageUrl: string;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: string;
@@ -106,6 +108,7 @@ const EMPTY_ITEM: MenuItemDetail = {
   categoryId: null,
   category: null,
   imageUrl: null,
+  skewerImageUrl: null,
   isHidden: false,
   isOutOfStock: false,
   sortOrder: 0,
@@ -132,6 +135,7 @@ const EMPTY_FORM: FormState = {
   description: "",
   categoryId: "",
   imageUrl: "",
+  skewerImageUrl: "",
   isHidden: false,
   isOutOfStock: false,
   sortOrder: "0",
@@ -221,6 +225,7 @@ export default function MenuItemEditorPage() {
       description: data.description ?? "",
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
+      skewerImageUrl: data.skewerImageUrl ?? "",
       isHidden,
       isOutOfStock,
       sortOrder: String(data.sortOrder ?? 0),
@@ -398,6 +403,7 @@ export default function MenuItemEditorPage() {
         description: form.description.trim() || null,
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
+        skewerImageUrl: form.skewerImageUrl || null,
         isHidden: form.isHidden,
         isOutOfStock: form.isHidden ? false : form.isOutOfStock,
         sortOrder: (() => {
@@ -624,6 +630,18 @@ export default function MenuItemEditorPage() {
                 shopCode={shopCode}
                 folder="Products"
               />
+              <ImageField
+                label="รูปสั่งเสียบไม้ (ถ้ามี)"
+                value={form.skewerImageUrl}
+                onChange={(url) =>
+                  setForm((f) => ({ ...f, skewerImageUrl: url }))
+                }
+                shopCode={shopCode}
+                folder="Products"
+              />
+              <p className="-mt-2 text-xs text-slate-500">
+                ใช้ในหน้าสั่งเสียบไม้แบบกริดรูป — ถ้าไม่ใส่จะใช้รูปเมนูแทน
+              </p>
               <div className="flex flex-wrap gap-2">
                 <AdminToggle
                   checked={form.isHidden}

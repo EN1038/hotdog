@@ -43,16 +43,16 @@ export function SkewerPhotoTileChrome({
 
       {showQty ? (
         <div
-          className="absolute left-1/2 top-[42%] z-[1] flex aspect-square w-[48%] min-w-[4.25rem] max-w-[6.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[2.5px] border-site-primary bg-white px-1 shadow-md"
+          className="absolute left-1/2 top-[40%] z-[1] flex aspect-square w-[62%] min-w-[5.25rem] max-w-[8.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[3px] border-site-primary bg-white px-1.5 shadow-md"
           aria-label={`สั่งแล้ว ${qty} ไม้`}
         >
-          <span className="text-[9px] font-semibold leading-none text-site-primary sm:text-[10px]">
+          <span className="text-[11px] font-bold leading-none text-site-primary sm:text-xs">
             สั่งแล้ว
           </span>
-          <span className="mt-0.5 text-[1.35rem] font-black tabular-nums leading-none text-site-primary sm:text-2xl">
+          <span className="mt-1 text-[1.85rem] font-black tabular-nums leading-none text-site-primary sm:text-[2.15rem]">
             {qty}
           </span>
-          <span className="mt-0.5 text-[9px] font-semibold leading-none text-site-primary sm:text-[10px]">
+          <span className="mt-1 text-[11px] font-bold leading-none text-site-primary sm:text-xs">
             ไม้
           </span>
         </div>

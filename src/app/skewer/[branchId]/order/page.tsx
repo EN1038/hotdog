@@ -615,7 +615,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                               <img
                                 src={row.imageUrl}
                                 alt=""
-                                className="h-full w-full object-contain"
+                                className="h-full w-full object-cover"
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-gray-400">
@@ -807,7 +807,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                               <img
                                 src={displayImage}
                                 alt=""
-                                className="h-full w-full object-contain"
+                                className="h-full w-full object-cover"
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-gray-400">

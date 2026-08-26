@@ -2474,7 +2474,7 @@ function BranchDetailContent() {
                         alt=""
                         className={`h-20 w-20 shrink-0 rounded-lg sm:h-24 sm:w-24 ${
                           branch?.operatingMode === "SKEWER"
-                            ? "object-contain bg-site-primary-soft"
+                            ? "object-cover bg-site-primary-soft"
                             : "object-cover"
                         }`}
                       />

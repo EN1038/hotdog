@@ -1,10 +1,20 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { IconBack, IconSkewerPlaceholder } from "@/components/icons";
 import {
   SKEWER_MIN_QTY_PER_ITEM,
   SKEWER_PHOTO_ASPECT_CLASS,
 } from "@/lib/skewer-order";
+
+function normalizeDraftQty(raw: string): number {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return 0;
+  const n = Number.parseInt(digits, 10);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n < SKEWER_MIN_QTY_PER_ITEM) return SKEWER_MIN_QTY_PER_ITEM;
+  return n;
+}
 
 export function SkewerMenuItemQtyDetail({
   name,
@@ -19,8 +29,23 @@ export function SkewerMenuItemQtyDetail({
   draftQty: number;
   onDraftChange: (next: number) => void;
   onBack: () => void;
-  onConfirm: () => void;
+  onConfirm: (qty: number) => void;
 }) {
+  const [qtyText, setQtyText] = useState(() => String(draftQty || 0));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setQtyText(String(draftQty || 0));
+  }, [draftQty, editing]);
+
+  function commitQtyText(raw: string): number {
+    const next = normalizeDraftQty(raw);
+    onDraftChange(next);
+    setQtyText(String(next));
+    setEditing(false);
+    return next;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <button
@@ -71,9 +96,31 @@ export function SkewerMenuItemQtyDetail({
         >
           −
         </button>
-        <span className="min-w-[4rem] text-center text-3xl font-black tabular-nums text-gray-900">
-          {draftQty || "0"}
-        </span>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          aria-label="จำนวนไม้"
+          value={qtyText}
+          onFocus={(e) => {
+            setEditing(true);
+            e.target.select();
+          }}
+          onChange={(e) => {
+            const next = e.target.value.replace(/\D/g, "");
+            setQtyText(next);
+          }}
+          onBlur={() => {
+            commitQtyText(qtyText);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className="min-w-[4.5rem] max-w-[7rem] border-0 bg-transparent p-0 text-center text-3xl font-black tabular-nums text-gray-900 outline-none ring-0 focus:rounded-lg focus:ring-2 focus:ring-site-primary/40"
+        />
         <button
           type="button"
           className="flex h-12 w-12 items-center justify-center rounded-full bg-site-primary text-2xl leading-none text-white"
@@ -92,7 +139,8 @@ export function SkewerMenuItemQtyDetail({
 
       <button
         type="button"
-        onClick={onConfirm}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onConfirm(commitQtyText(qtyText))}
         className="w-full rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white"
       >
         ยืนยัน

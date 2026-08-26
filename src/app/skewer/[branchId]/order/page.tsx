@@ -348,9 +348,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
     setDetailItemId(null);
   }
 
-  function confirmItemDetail() {
+  function confirmItemDetail(qty: number) {
     if (!detailItemId) return;
-    setQty(detailItemId, detailDraftQty);
+    setQty(detailItemId, qty);
     setDetailItemId(null);
   }
 

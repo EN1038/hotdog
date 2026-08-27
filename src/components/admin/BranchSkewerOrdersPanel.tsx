@@ -11,6 +11,7 @@ import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import {
   SKEWER_ORDER_STATUS_LABELS,
+  resolveSkewerQtyUnit,
 } from "@/lib/skewer-order";
 import { bangkokDateKey } from "@/lib/constants";
 
@@ -19,6 +20,7 @@ type SkewerItem = {
   itemName: string;
   requestedQuantity: number;
   confirmedQuantity: number | null;
+  quantityUnit?: string | null;
 };
 
 type SkewerOrderRow = {
@@ -40,6 +42,10 @@ type SkewerOrderRow = {
 };
 
 type Props = { branchId: string };
+
+function itemUnit(item: SkewerItem) {
+  return resolveSkewerQtyUnit({ quantityUnit: item.quantityUnit });
+}
 
 function statusTone(status: SkewerOrderStatus) {
   if (status === "PENDING_CONFIRM") return "bg-amber-50 text-amber-900 border-amber-200";
@@ -136,7 +142,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
       if (n > item.requestedQuantity) {
         toast.error(
           "จำนวนเกินที่สั่ง",
-          `${item.itemName} สั่ง ${item.requestedQuantity} ไม้`,
+          `${item.itemName} สั่ง ${item.requestedQuantity} ${itemUnit(item)}`,
         );
         return;
       }
@@ -144,7 +150,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
 
     const ok = await confirm({
       title: "ยืนยันออเดอร์นี้?",
-      message: `ลูกค้า ${selected.customerPhone} · วันที่ต้องการ ${formatDateLabel(selected.requestedDate)} — หลังยืนยันลูกค้าจะเห็นจำนวนที่ได้ในประวัติ`,
+      message: `ลูกค้า ${selected.customerPhone} · วันที่ต้องการ ${formatDateLabel(selected.requestedDate)} — หลังยืนยันระบบจะส่ง SMS แจ้งลูกค้า และลูกค้าจะเห็นจำนวนที่ได้ในประวัติ (ดูผลส่งได้ที่ ประวัติ SMS)`,
       confirmLabel: "ยืนยัน",
       tone: "primary",
     });
@@ -182,7 +188,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
     if (!selected || selected.status !== "PENDING_CONFIRM") return;
     const ok = await confirm({
       title: "ยกเลิกออเดอร์นี้?",
-      message: `#${selected.orderNumber} · ${selected.customerPhone}`,
+      message: `#${selected.orderNumber} · ${selected.customerPhone} — ระบบจะส่ง SMS แจ้งลูกค้าด้วย (ดูผลส่งได้ที่ ประวัติ SMS)`,
       confirmLabel: "ยกเลิกออเดอร์",
       tone: "danger",
     });
@@ -352,8 +358,10 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-sm font-semibold text-gray-900">รายการไม้</p>
-                  {selected.items.map((item) => (
+                  <p className="text-sm font-semibold text-gray-900">รายการ</p>
+                  {selected.items.map((item) => {
+                    const unit = itemUnit(item);
+                    return (
                     <div
                       key={item.id}
                       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 py-2.5"
@@ -361,9 +369,9 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                       <div className="min-w-0">
                         <p className="font-medium text-gray-900">{item.itemName}</p>
                         <p className="text-xs text-gray-500">
-                          สั่ง {item.requestedQuantity} ไม้
+                          สั่ง {item.requestedQuantity} {unit}
                           {item.confirmedQuantity != null
-                            ? ` · ได้ ${item.confirmedQuantity} ไม้`
+                            ? ` · ได้ ${item.confirmedQuantity} ${unit}`
                             : ""}
                         </p>
                       </div>
@@ -382,11 +390,12 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                               }))
                             }
                           />
-                          <span className="text-sm text-gray-500">ไม้</span>
+                          <span className="text-sm text-gray-500">{unit}</span>
                         </div>
                       ) : null}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {selected.status === "PENDING_CONFIRM" && (

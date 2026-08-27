@@ -7,18 +7,59 @@ import {
   isBangkokDateKey,
   queueBusinessDateFromKey,
 } from "@/lib/constants";
-import { requestedDateToKey } from "@/lib/skewer-order";
+import { requestedDateToKey, resolveSkewerQtyUnit } from "@/lib/skewer-order";
+import {
+  notifyCustomerSkewerOrderCancelled,
+  notifyCustomerSkewerOrderConfirmed,
+} from "@/lib/skewer-order-sms";
 import { logAdminActivity } from "@/lib/admin-activity";
 
 type Params = { params: Promise<{ id: string }> };
 
-function serialize(order: {
-  requestedDate: Date;
-  [key: string]: unknown;
+const skewerItemInclude = {
+  orderBy: { itemName: "asc" as const },
+  include: {
+    branchMenuItem: { select: { quantityUnit: true } },
+  },
+};
+
+function serializeItem(item: {
+  id: string;
+  itemName: string;
+  requestedQuantity: number;
+  confirmedQuantity: number | null;
+  branchMenuItemId?: string | null;
+  branchMenuItem?: { quantityUnit: string | null } | null;
 }) {
   return {
-    ...order,
+    id: item.id,
+    itemName: item.itemName,
+    requestedQuantity: item.requestedQuantity,
+    confirmedQuantity: item.confirmedQuantity,
+    quantityUnit: resolveSkewerQtyUnit({
+      quantityUnit: item.branchMenuItem?.quantityUnit,
+    }),
+  };
+}
+
+function serialize(order: {
+  requestedDate: Date;
+  items?: Array<{
+    id: string;
+    itemName: string;
+    requestedQuantity: number;
+    confirmedQuantity: number | null;
+    branchMenuItem?: { quantityUnit: string | null } | null;
+  }>;
+  [key: string]: unknown;
+}) {
+  const { items, ...rest } = order;
+  return {
+    ...rest,
     requestedDate: requestedDateToKey(order.requestedDate),
+    ...(items
+      ? { items: items.map((item) => serializeItem(item)) }
+      : {}),
   };
 }
 
@@ -54,7 +95,7 @@ export async function GET(request: Request, { params }: Params) {
           : {}),
       },
       include: {
-        items: { orderBy: { itemName: "asc" } },
+        items: skewerItemInclude,
       },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
       take: 200,
@@ -100,7 +141,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: branchId },
-      select: { operatingMode: true, name: true },
+      select: { operatingMode: true, name: true, brandId: true },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
     if (branch.operatingMode !== BranchOperatingMode.SKEWER) {
@@ -126,7 +167,7 @@ export async function PATCH(request: Request, { params }: Params) {
           cancelledAt: new Date(),
           cancelReason: body.cancelReason?.trim() || null,
         },
-        include: { items: { orderBy: { itemName: "asc" } } },
+        include: { items: skewerItemInclude },
       });
 
       await logAdminActivity(session, {
@@ -137,6 +178,11 @@ export async function PATCH(request: Request, { params }: Params) {
         entityType: "skewer_order",
         entityId: updated.id,
         entityName: updated.orderNumber,
+      });
+
+      void notifyCustomerSkewerOrderCancelled(updated, {
+        brandId: branch.brandId,
+        triggeredByAdminId: session.adminId,
       });
 
       return jsonOk(serialize(updated));
@@ -162,7 +208,7 @@ export async function PATCH(request: Request, { params }: Params) {
       if (!row) return jsonError("รายการไม่ตรงกับออเดอร์");
       if (line.confirmedQuantity > row.requestedQuantity) {
         return jsonError(
-          `"${row.itemName}" ยืนยันได้ไม่เกิน ${row.requestedQuantity} ไม้`,
+          `"${row.itemName}" ยืนยันได้ไม่เกิน ${row.requestedQuantity}`,
         );
       }
     }
@@ -182,7 +228,7 @@ export async function PATCH(request: Request, { params }: Params) {
           confirmedByAdminId: session.adminId!,
           adminNote: body.adminNote?.trim() || null,
         },
-        include: { items: { orderBy: { itemName: "asc" } } },
+        include: { items: skewerItemInclude },
       });
     });
 
@@ -194,6 +240,11 @@ export async function PATCH(request: Request, { params }: Params) {
       entityType: "skewer_order",
       entityId: updated.id,
       entityName: updated.orderNumber,
+    });
+
+    void notifyCustomerSkewerOrderConfirmed(updated, {
+      brandId: branch.brandId,
+      triggeredByAdminId: session.adminId,
     });
 
     return jsonOk(serialize(updated));

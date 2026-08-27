@@ -10,7 +10,10 @@ import {
 import { LoadingState } from "@/components/LoadingState";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
-import { SKEWER_ORDER_STATUS_LABELS } from "@/lib/skewer-order";
+import {
+  SKEWER_ORDER_STATUS_LABELS,
+  resolveSkewerQtyUnit,
+} from "@/lib/skewer-order";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -25,6 +28,7 @@ type OrderItem = {
   requestedQuantity: number;
   confirmedQuantity: number | null;
   imageUrl: string | null;
+  quantityUnit?: string | null;
 };
 
 type OrderDetail = {
@@ -47,6 +51,8 @@ type MenuItem = {
   id: string;
   name: string;
   imageUrl: string | null;
+  skewerImageUrl?: string | null;
+  quantityUnit?: string | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
   category: { id: string; name: string; sortOrder: number } | null;
@@ -61,6 +67,7 @@ type DisplayRow = {
   categoryName: string | null;
   requestedQuantity: number;
   confirmedQuantity: number | null;
+  quantityUnit: string;
   ordered: boolean;
   seq: number;
 };
@@ -248,6 +255,9 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         categoryName: menu.category?.name ?? null,
         requestedQuantity: ordered?.requestedQuantity ?? 0,
         confirmedQuantity: ordered?.confirmedQuantity ?? null,
+        quantityUnit: resolveSkewerQtyUnit({
+          quantityUnit: ordered?.quantityUnit ?? menu.quantityUnit,
+        }),
         ordered: Boolean(ordered),
         seq: seqById.get(menu.id) ?? 9999,
       };
@@ -269,6 +279,9 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         categoryName: null,
         requestedQuantity: item.requestedQuantity,
         confirmedQuantity: item.confirmedQuantity,
+        quantityUnit: resolveSkewerQtyUnit({
+          quantityUnit: item.quantityUnit,
+        }),
         ordered: true,
         seq: 9999,
       });
@@ -403,7 +416,9 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
       visibleRows.forEach((item) => {
         const qty = rowDisplayQty(order, item);
         const mark = item.ordered ? "" : " (ไม่ได้สั่ง)";
-        lines.push(`${item.seq}. ${item.name}: ${qty}${mark}`);
+        lines.push(
+          `${item.seq}. ${item.name}: ${qty} ${item.quantityUnit}${mark}`,
+        );
       });
     }
     return lines.join("\n");
@@ -716,14 +731,14 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                             >
                               {item.ordered
                                 ? order.status === "CONFIRMED"
-                                  ? `สั่ง ${item.requestedQuantity} ไม้${
+                                  ? `สั่ง ${item.requestedQuantity} ${item.quantityUnit}${
                                       same
                                         ? " · ได้เท่าที่สั่ง"
                                         : less
                                           ? " · น้อยกว่าที่สั่ง"
                                           : ""
                                     }`
-                                  : "ไม้"
+                                  : item.quantityUnit
                                 : "ไม่ได้สั่ง"}
                             </p>
                           </div>

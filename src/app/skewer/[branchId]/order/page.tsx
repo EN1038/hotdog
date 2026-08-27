@@ -47,7 +47,6 @@ import {
 } from "@/lib/staff-menu-order";
 import { isRegularMenuItem } from "@/lib/staff-key-order";
 import { compareThaiText } from "@/lib/thai-sort";
-import { hasMapPin } from "@/lib/geo";
 
 type MenuItem = {
   id: string;
@@ -363,42 +362,6 @@ function SkewerOrderPageInner({ params }: PageProps) {
     supplyItemCount: orderSplitSummary.supplyItemCount,
   });
 
-  const orderSummaryRows = useMemo(() => {
-    return selectedLines
-      .map((line) => {
-        const item = menuItems.find((m) => m.id === line.id);
-        if (!item) return null;
-        return {
-          id: line.id,
-          name: line.name,
-          quantity: line.quantity,
-          imageUrl: resolveSkewerMenuImageUrl(item),
-          qtyUnit: resolveSkewerQtyUnit(item),
-          quantityUnit: item.quantityUnit,
-          sticksPerUnit: line.sticksPerUnit,
-          countsAsSticks: line.countsAsSticks,
-          skewerCategoryRole: line.skewerCategoryRole,
-        };
-      })
-      .filter(Boolean) as {
-      id: string;
-      name: string;
-      quantity: number;
-      imageUrl: string | null;
-      qtyUnit: string;
-      quantityUnit: string | null | undefined;
-      sticksPerUnit: number;
-      countsAsSticks: boolean;
-      skewerCategoryRole: "SKEWER_SALE" | "SKEWER_SUPPLY";
-    }[];
-  }, [selectedLines, menuItems]);
-
-  const { saleLines: selectedSaleLines, supplyLines: selectedSupplyLines } =
-    useMemo(
-      () => splitLinesBySkewerRole(orderSummaryRows),
-      [orderSummaryRows],
-    );
-
   const { saleLines: reviewSaleRows, supplyLines: reviewSupplyRows } = useMemo(
     () => splitLinesBySkewerRole(reviewRows),
     [reviewRows],
@@ -472,50 +435,6 @@ function SkewerOrderPageInner({ params }: PageProps) {
             {row.quantity}
           </p>
           <p className="mt-0.5 text-[10px] font-semibold opacity-70">สั่ง</p>
-        </div>
-      </li>
-    );
-  }
-
-  function renderSummaryRow(row: (typeof orderSummaryRows)[number]) {
-    return (
-      <li
-        key={row.id}
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
-      >
-        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft">
-          {row.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={row.imageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-gray-400">
-              <IconSkewerPlaceholder size={22} />
-            </div>
-          )}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-gray-900">
-            {row.name}
-          </p>
-          <p className="truncate text-xs text-gray-500">
-            {formatSkewerQtyLabel(row.quantity, {
-              quantityUnit: row.quantityUnit,
-              sticksPerUnit: row.sticksPerUnit,
-              countsAsSticks: row.countsAsSticks,
-            })}
-          </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-base font-black tabular-nums text-gray-900">
-            {row.quantity}
-          </p>
-          <p className="text-[10px] font-semibold text-gray-500">
-            {row.qtyUnit}
-          </p>
         </div>
       </li>
     );
@@ -695,14 +614,6 @@ function SkewerOrderPageInner({ params }: PageProps) {
       fail(
         "กรุณากรอกที่อยู่จัดส่งหรือจุดนัดรับให้ชัดเจน (อย่างน้อย 5 ตัวอักษร)",
         "skewer-address-field",
-      );
-      return false;
-    }
-    if (!hasMapPin(mapValue)) {
-      setShowAddressSearch(true);
-      fail(
-        "กรุณาปักหมุดจุดส่งบนแผนที่ — กด “ค้นหาที่อยู่ / แผนที่” แล้วปักหมุดหรือกดตำแหน่งปัจจุบัน",
-        "skewer-map-field",
       );
       return false;
     }
@@ -1160,55 +1071,6 @@ function SkewerOrderPageInner({ params }: PageProps) {
             )}
           </section>
 
-          {!detailOpen && selectedLines.length > 0 ? (
-            <section
-              id="skewer-order-summary"
-              tabIndex={-1}
-              className="rounded-2xl border border-gray-200 bg-white p-4"
-            >
-              <div className="mb-3 flex items-end justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold text-gray-900">
-                    สรุปรายการที่สั่ง
-                  </h2>
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    {splitSummaryLabel}
-                  </p>
-                </div>
-                {orderSplitSummary.sale.stickTotal > 0 ? (
-                  <p className="shrink-0 text-right">
-                    <span className="block text-[11px] font-medium text-gray-500">
-                      รวมไม้
-                    </span>
-                    <span className="text-xl font-black tabular-nums text-site-primary">
-                      {orderSplitSummary.sale.stickTotal} ไม้
-                    </span>
-                  </p>
-                ) : null}
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <p className="mb-2 text-xs font-semibold text-gray-700">
-                    {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
-                  </p>
-                  <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                    {selectedSaleLines.map((row) => renderSummaryRow(row))}
-                  </ul>
-                </div>
-                {selectedSupplyLines.length > 0 ? (
-                  <div>
-                    <p className="mb-2 text-xs font-semibold text-gray-700">
-                      {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
-                    </p>
-                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                      {selectedSupplyLines.map((row) => renderSummaryRow(row))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-
           {!detailOpen ? (
           <section
             id="skewer-delivery"
@@ -1307,6 +1169,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
                 onBlur={() => void tryGeocodeAddress()}
                 placeholder="บ้านเลขที่ ถนน แขวง/ตำบล อำเภอ จังหวัด"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                กรอกที่อยู่ให้ครบก็สั่งได้ — แผนที่เป็นตัวเลือกเสริม
+              </p>
             </div>
             {showAddressSearch ||
             highlightId === "skewer-map-field" ? (

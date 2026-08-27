@@ -683,8 +683,12 @@ model BranchMenuItem {
   imageUrl                     String?
   /// Optional photo for skewer customer order grid; falls back to imageUrl
   skewerImageUrl               String?
-  /// Optional qty unit for skewer orders (e.g. กรัม / ซอง); null → ไม้
+  /// Optional qty unit for skewer orders (e.g. กรัม / ซอง / ชุด); null → ไม้
   quantityUnit                 String?
+  /// For SKEWER mode: 1 display unit = this many sticks (default 1)
+  sticksPerUnit                Int                          @default(1)
+  /// When false (e.g. ขวด), qty is not converted into stick totals
+  countsAsSticks               Boolean                      @default(true)
   isHidden                     Boolean                      @default(false)
   /// Hidden from staff keyed-order menu (still visible to customers unless isHidden)
   hideFromStaff                Boolean                      @default(false)

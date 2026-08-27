@@ -3,17 +3,16 @@
 import { useEffect, useState } from "react";
 import { IconBack, IconSkewerPlaceholder } from "@/components/icons";
 import {
-  SKEWER_MIN_QTY_PER_ITEM,
+  normalizeSkewerOrderQty,
   SKEWER_PHOTO_ASPECT_CLASS,
 } from "@/lib/skewer-order";
 
-function normalizeDraftQty(raw: string): number {
+function normalizeDraftQty(raw: string, minQty: number): number {
   const digits = raw.replace(/\D/g, "");
   if (!digits) return 0;
   const n = Number.parseInt(digits, 10);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  if (n < SKEWER_MIN_QTY_PER_ITEM) return SKEWER_MIN_QTY_PER_ITEM;
-  return n;
+  return normalizeSkewerOrderQty(n, { skewerMinQty: minQty });
 }
 
 export function SkewerMenuItemQtyDetail({
@@ -22,6 +21,7 @@ export function SkewerMenuItemQtyDetail({
   qtyUnit = "ไม้",
   sticksPerUnit = 1,
   countsAsSticks = true,
+  minQty = 1,
   draftQty,
   onDraftChange,
   onBack,
@@ -32,6 +32,7 @@ export function SkewerMenuItemQtyDetail({
   qtyUnit?: string;
   sticksPerUnit?: number;
   countsAsSticks?: boolean;
+  minQty?: number;
   draftQty: number;
   onDraftChange: (next: number) => void;
   onBack: () => void;
@@ -45,17 +46,28 @@ export function SkewerMenuItemQtyDetail({
     countsAsSticks !== false && draftQty > 0 && per > 1
       ? `เทียบ ${draftQty * per} ไม้`
       : null;
+  const minHint =
+    minQty > 1 ? `ขั้นต่ำ ${minQty} ${unit}` : null;
 
   useEffect(() => {
     if (!editing) setQtyText(String(draftQty || 0));
   }, [draftQty, editing]);
 
   function commitQtyText(raw: string): number {
-    const next = normalizeDraftQty(raw);
+    const next = normalizeDraftQty(raw, minQty);
     onDraftChange(next);
     setQtyText(String(next));
     setEditing(false);
     return next;
+  }
+
+  function bump(delta: number) {
+    const current = draftQty;
+    if (delta > 0) {
+      onDraftChange(current <= 0 ? minQty : current + delta);
+      return;
+    }
+    onDraftChange(current <= minQty ? 0 : current + delta);
   }
 
   return (
@@ -96,9 +108,7 @@ export function SkewerMenuItemQtyDetail({
           type="button"
           className="flex h-12 w-12 items-center justify-center rounded-full border border-gray-200 text-2xl leading-none text-gray-700 disabled:opacity-40"
           disabled={draftQty <= 0}
-          onClick={() =>
-            onDraftChange(Math.max(0, draftQty - 1))
-          }
+          onClick={() => bump(-1)}
           aria-label="ลดจำนวน"
         >
           −
@@ -130,6 +140,11 @@ export function SkewerMenuItemQtyDetail({
             className="w-full border-0 bg-transparent p-0 text-center text-3xl font-black tabular-nums text-gray-900 outline-none ring-0 focus:rounded-lg focus:ring-2 focus:ring-site-primary/40"
           />
           <span className="text-xs font-semibold text-gray-500">{unit}</span>
+          {minHint ? (
+            <span className="mt-0.5 text-[11px] font-medium text-amber-700">
+              {minHint}
+            </span>
+          ) : null}
           {stickEquiv ? (
             <span className="mt-0.5 text-[11px] font-medium text-gray-400">
               {stickEquiv}
@@ -139,7 +154,7 @@ export function SkewerMenuItemQtyDetail({
         <button
           type="button"
           className="flex h-12 w-12 items-center justify-center rounded-full bg-site-primary text-2xl leading-none text-white"
-          onClick={() => onDraftChange(draftQty + 1)}
+          onClick={() => bump(1)}
           aria-label="เพิ่มจำนวน"
         >
           +

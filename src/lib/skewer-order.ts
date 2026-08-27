@@ -7,6 +7,25 @@ import {
 
 export const SKEWER_MIN_QTY_PER_ITEM = 1;
 
+/** Per-menu minimum qty in SKEWER mode; always ≥ 1. */
+export function resolveSkewerMinQty(item: {
+  skewerMinQty?: number | null;
+}): number {
+  const n = item.skewerMinQty;
+  if (typeof n !== "number" || !Number.isFinite(n)) return 1;
+  return Math.max(1, Math.floor(n));
+}
+
+/** Clamp qty to 0 or ≥ item minimum. */
+export function normalizeSkewerOrderQty(
+  qty: number,
+  item: { skewerMinQty?: number | null },
+): number {
+  if (qty <= 0) return 0;
+  const min = resolveSkewerMinQty(item);
+  return qty < min ? min : qty;
+}
+
 /** Portrait frame for skewer menu photos (matches typical phone/menu shots ≈ 3:4). */
 export const SKEWER_PHOTO_ASPECT = 3 / 4;
 export const SKEWER_PHOTO_ASPECT_CLASS = "aspect-[3/4]";

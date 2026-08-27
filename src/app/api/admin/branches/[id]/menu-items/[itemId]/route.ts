@@ -116,6 +116,9 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.countsAsSticks !== undefined && {
           countsAsSticks: body.countsAsSticks,
         }),
+        ...(body.skewerMinQty !== undefined && {
+          skewerMinQty: body.skewerMinQty,
+        }),
         ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
         ...(body.hideFromStaff !== undefined && {
           hideFromStaff: body.hideFromStaff,

@@ -689,6 +689,8 @@ model BranchMenuItem {
   sticksPerUnit                Int                          @default(1)
   /// When false (e.g. ขวด), qty is not converted into stick totals
   countsAsSticks               Boolean                      @default(true)
+  /// Minimum order qty per line in SKEWER mode (default 1)
+  skewerMinQty                 Int                          @default(1)
   isHidden                     Boolean                      @default(false)
   /// Hidden from staff keyed-order menu (still visible to customers unless isHidden)
   hideFromStaff                Boolean                      @default(false)

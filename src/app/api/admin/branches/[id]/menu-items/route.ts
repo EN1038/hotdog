@@ -101,6 +101,7 @@ export async function POST(request: Request, { params }: Params) {
         quantityUnit: body.quantityUnit?.trim() || null,
         sticksPerUnit: body.sticksPerUnit ?? 1,
         countsAsSticks: body.countsAsSticks ?? true,
+        skewerMinQty: body.skewerMinQty ?? 1,
         isHidden: body.isHidden ?? false,
         hideFromStaff: body.hideFromStaff ?? false,
         isOutOfStock: body.isOutOfStock ?? false,

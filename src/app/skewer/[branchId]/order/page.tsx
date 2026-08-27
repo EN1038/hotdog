@@ -30,7 +30,9 @@ import {
   SKEWER_MIN_QTY_PER_ITEM,
   formatSkewerDualSummary,
   formatSkewerQtyLabel,
+  normalizeSkewerOrderQty,
   resolveSkewerMenuImageUrl,
+  resolveSkewerMinQty,
   resolveSkewerQtyUnit,
   resolveSticksPerUnit,
   resolveCountsAsSticks,
@@ -53,6 +55,7 @@ type MenuItem = {
   quantityUnit?: string | null;
   sticksPerUnit?: number | null;
   countsAsSticks?: boolean | null;
+  skewerMinQty?: number | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
   category: {
@@ -181,7 +184,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
         continue;
       }
       const qty = item.confirmedQuantity ?? item.requestedQuantity;
-      if (qty >= SKEWER_MIN_QTY_PER_ITEM) {
+      const menuItem = menuItems.find((m) => m.id === item.branchMenuItemId);
+      const minQty = menuItem ? resolveSkewerMinQty(menuItem) : SKEWER_MIN_QTY_PER_ITEM;
+      if (qty >= minQty) {
         nextQtys[item.branchMenuItemId] = qty;
       }
     }
@@ -267,10 +272,11 @@ function SkewerOrderPageInner({ params }: PageProps) {
 
   const selectedLines = useMemo(() => {
     return Object.entries(qtys)
-      .filter(([, q]) => q >= SKEWER_MIN_QTY_PER_ITEM)
       .map(([id, quantity]) => {
         const item = menuItems.find((m) => m.id === id);
         if (!item) return null;
+        const minQty = resolveSkewerMinQty(item);
+        if (quantity < minQty) return null;
         return {
           id,
           name: item.name,
@@ -295,7 +301,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
   const reviewRows = useMemo(() => {
     return catalogSorted.map((item) => {
       const quantity = qtys[item.id] ?? 0;
-      const ordered = quantity >= SKEWER_MIN_QTY_PER_ITEM;
+      const minQty = resolveSkewerMinQty(item);
+      const ordered = quantity >= minQty;
       return {
         id: item.id,
         name: item.name,
@@ -352,12 +359,26 @@ function SkewerOrderPageInner({ params }: PageProps) {
 
   function setQty(id: string, next: number) {
     clearValidation();
+    const item = menuItems.find((m) => m.id === id);
+    const normalized = item ? normalizeSkewerOrderQty(next, item) : next <= 0 ? 0 : next;
     setQtys((prev) => {
       const copy = { ...prev };
-      if (next <= 0) delete copy[id];
-      else copy[id] = next;
+      if (normalized <= 0) delete copy[id];
+      else copy[id] = normalized;
       return copy;
     });
+  }
+
+  function bumpQty(id: string, delta: number) {
+    const item = menuItems.find((m) => m.id === id);
+    if (!item) return;
+    const current = qtys[id] ?? 0;
+    const min = resolveSkewerMinQty(item);
+    if (delta > 0) {
+      setQty(id, current <= 0 ? min : current + delta);
+      return;
+    }
+    setQty(id, current <= min ? 0 : current + delta);
   }
 
   function changeMenuView(next: SkewerMenuViewMode) {
@@ -454,6 +475,19 @@ function SkewerOrderPageInner({ params }: PageProps) {
         "skewer-menu-section",
       );
       return false;
+    }
+    for (const line of selectedLines) {
+      const item = menuItems.find((m) => m.id === line.id);
+      if (!item) continue;
+      const minQty = resolveSkewerMinQty(item);
+      const unit = resolveSkewerQtyUnit(item);
+      if (line.quantity < minQty) {
+        fail(
+          `${line.name} ต้องสั่งขั้นต่ำ ${minQty} ${unit}`,
+          `skewer-menu-item-${line.id}`,
+        );
+        return false;
+      }
     }
     if (!requestedDate) {
       fail(
@@ -767,6 +801,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                 qtyUnit={resolveSkewerQtyUnit(detailItem)}
                 sticksPerUnit={resolveSticksPerUnit(detailItem)}
                 countsAsSticks={resolveCountsAsSticks(detailItem)}
+                minQty={resolveSkewerMinQty(detailItem)}
                 draftQty={detailDraftQty}
                 onDraftChange={setDetailDraftQty}
                 onBack={closeItemDetail}
@@ -855,9 +890,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       const qty = qtys[item.id] ?? 0;
                       const seq = seqById.get(item.id) ?? 0;
                       const displayImage = resolveSkewerMenuImageUrl(item);
-                      const qtyUnit = resolveSkewerQtyUnit(item);
-                      const sticksPer = resolveSticksPerUnit(item);
-                      const countsAsSticks = resolveCountsAsSticks(item);
+                      const minQty = resolveSkewerMinQty(item);
                       return (
                         <li
                           key={item.id}
@@ -889,7 +922,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             <p className="truncate text-xs text-gray-500">
                               {qty > 0
                                 ? formatSkewerQtyLabel(qty, item)
-                                : item.category?.name || qtyUnit}
+                                : minQty > 1
+                                  ? `ขั้นต่ำ ${minQty} ${resolveSkewerQtyUnit(item)}`
+                                  : item.category?.name || resolveSkewerQtyUnit(item)}
                             </p>
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5">
@@ -897,27 +932,17 @@ function SkewerOrderPageInner({ params }: PageProps) {
                               type="button"
                               className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-lg leading-none text-gray-700 disabled:opacity-40"
                               disabled={qty <= 0}
-                              onClick={() =>
-                                setQty(item.id, Math.max(0, qty - 1))
-                              }
+                              onClick={() => bumpQty(item.id, -1)}
                             >
                               −
                             </button>
                             <span className="min-w-[2rem] text-center text-sm font-bold tabular-nums">
                               {qty || "0"}
                             </span>
-                            <span className="w-8 shrink-0 text-center text-[10px] leading-tight text-gray-500">
-                              {qtyUnit}
-                              {countsAsSticks && sticksPer > 1 ? (
-                                <span className="block text-[9px] text-gray-400">
-                                  ×{sticksPer}
-                                </span>
-                              ) : null}
-                            </span>
                             <button
                               type="button"
                               className="flex h-8 w-8 items-center justify-center rounded-full bg-site-primary text-lg leading-none text-white"
-                              onClick={() => setQty(item.id, qty + 1)}
+                              onClick={() => bumpQty(item.id, 1)}
                             >
                               +
                             </button>

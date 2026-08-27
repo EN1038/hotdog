@@ -26,7 +26,16 @@ import {
 } from "@/components/staff/StaffOrderSummary";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
-import { SKEWER_MIN_QTY_PER_ITEM, resolveSkewerMenuImageUrl, resolveSkewerQtyUnit } from "@/lib/skewer-order";
+import {
+  SKEWER_MIN_QTY_PER_ITEM,
+  formatSkewerDualSummary,
+  formatSkewerQtyLabel,
+  resolveSkewerMenuImageUrl,
+  resolveSkewerQtyUnit,
+  resolveSticksPerUnit,
+  resolveCountsAsSticks,
+  summarizeSkewerLines,
+} from "@/lib/skewer-order";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -42,6 +51,8 @@ type MenuItem = {
   imageUrl: string | null;
   skewerImageUrl?: string | null;
   quantityUnit?: string | null;
+  sticksPerUnit?: number | null;
+  countsAsSticks?: boolean | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
   category: {
@@ -264,6 +275,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
           id,
           name: item.name,
           quantity,
+          sticksPerUnit: resolveSticksPerUnit(item),
+          countsAsSticks: resolveCountsAsSticks(item),
           seq: seqById.get(id) ?? 9999,
         };
       })
@@ -272,6 +285,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
       id: string;
       name: string;
       quantity: number;
+      sticksPerUnit: number;
+      countsAsSticks: boolean;
       seq: number;
     }[];
   }, [qtys, menuItems, seqById]);
@@ -286,6 +301,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
         name: item.name,
         imageUrl: resolveSkewerMenuImageUrl(item),
         qtyUnit: resolveSkewerQtyUnit(item),
+        sticksPerUnit: resolveSticksPerUnit(item),
+        countsAsSticks: resolveCountsAsSticks(item),
         seq: seqById.get(item.id) ?? 0,
         quantity: ordered ? quantity : 0,
         ordered,
@@ -293,7 +310,18 @@ function SkewerOrderPageInner({ params }: PageProps) {
     });
   }, [catalogSorted, qtys, seqById]);
 
-  const totalSkewers = selectedLines.reduce((s, l) => s + l.quantity, 0);
+  const orderSummary = useMemo(
+    () =>
+      summarizeSkewerLines(
+        selectedLines.map((l) => ({
+          quantity: l.quantity,
+          sticksPerUnit: l.sticksPerUnit,
+          countsAsSticks: l.countsAsSticks,
+        })),
+      ),
+    [selectedLines],
+  );
+  const dualSummaryLabel = formatSkewerDualSummary(orderSummary);
   const detailItem = detailItemId
     ? (visibleItems.find((m) => m.id === detailItemId) ??
       catalogSorted.find((m) => m.id === detailItemId) ??
@@ -542,7 +570,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
               >
                 {selectedLines.length === 0
                   ? "ตรวจสอบคำสั่ง"
-                  : `ตรวจสอบคำสั่ง · ${selectedLines.length} รายการ · ${totalSkewers} ชิ้น`}
+                  : `ตรวจสอบคำสั่ง · ${dualSummaryLabel}`}
               </button>
             )
           }
@@ -614,7 +642,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       </p>
                       <p className="text-xs text-gray-500">
                         สั่ง {selectedLines.length}/{reviewRows.length} ·{" "}
-                        {totalSkewers} ชิ้น
+                        {dualSummaryLabel}
                       </p>
                     </div>
                     <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
@@ -665,7 +693,13 @@ function SkewerOrderPageInner({ params }: PageProps) {
                                 row.ordered ? "text-gray-500" : "text-gray-300"
                               }`}
                             >
-                              {row.ordered ? row.qtyUnit : "ไม่ได้สั่ง"}
+                              {row.ordered
+                                ? formatSkewerQtyLabel(row.quantity, {
+                                    quantityUnit: row.qtyUnit,
+                                    sticksPerUnit: row.sticksPerUnit,
+                                    countsAsSticks: row.countsAsSticks,
+                                  })
+                                : "ไม่ได้สั่ง"}
                             </p>
                           </div>
                           <div
@@ -731,6 +765,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
                 name={detailItem.name}
                 imageUrl={resolveSkewerMenuImageUrl(detailItem)}
                 qtyUnit={resolveSkewerQtyUnit(detailItem)}
+                sticksPerUnit={resolveSticksPerUnit(detailItem)}
+                countsAsSticks={resolveCountsAsSticks(detailItem)}
                 draftQty={detailDraftQty}
                 onDraftChange={setDetailDraftQty}
                 onBack={closeItemDetail}
@@ -759,11 +795,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       รวมที่เลือก
                     </p>
                     <p className="text-lg font-black tabular-nums text-site-primary">
-                      {totalSkewers}{" "}
-                      <span className="text-sm font-semibold">ชิ้นรวม</span>
-                      <span className="ml-2 text-xs font-medium text-gray-500">
-                        · {selectedLines.length} รายการ
-                      </span>
+                      {dualSummaryLabel}
                     </p>
                   </div>
                 ) : null}
@@ -807,6 +839,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       name: item.name,
                       imageUrl: resolveSkewerMenuImageUrl(item),
                       qtyUnit: resolveSkewerQtyUnit(item),
+                      sticksPerUnit: resolveSticksPerUnit(item),
+                      countsAsSticks: resolveCountsAsSticks(item),
                     }))}
                     qtys={qtys}
                     onSelect={openItemDetail}
@@ -822,6 +856,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       const seq = seqById.get(item.id) ?? 0;
                       const displayImage = resolveSkewerMenuImageUrl(item);
                       const qtyUnit = resolveSkewerQtyUnit(item);
+                      const sticksPer = resolveSticksPerUnit(item);
+                      const countsAsSticks = resolveCountsAsSticks(item);
                       return (
                         <li
                           key={item.id}
@@ -850,11 +886,11 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             <p className="truncate text-sm font-semibold text-gray-900">
                               {item.name}
                             </p>
-                            {item.category ? (
-                              <p className="truncate text-xs text-gray-500">
-                                {item.category.name}
-                              </p>
-                            ) : null}
+                            <p className="truncate text-xs text-gray-500">
+                              {qty > 0
+                                ? formatSkewerQtyLabel(qty, item)
+                                : item.category?.name || qtyUnit}
+                            </p>
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5">
                             <button
@@ -870,8 +906,13 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             <span className="min-w-[2rem] text-center text-sm font-bold tabular-nums">
                               {qty || "0"}
                             </span>
-                            <span className="w-8 shrink-0 text-xs text-gray-500">
+                            <span className="w-8 shrink-0 text-center text-[10px] leading-tight text-gray-500">
                               {qtyUnit}
+                              {countsAsSticks && sticksPer > 1 ? (
+                                <span className="block text-[9px] text-gray-400">
+                                  ×{sticksPer}
+                                </span>
+                              ) : null}
                             </span>
                             <button
                               type="button"

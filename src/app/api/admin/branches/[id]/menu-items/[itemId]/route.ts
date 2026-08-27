@@ -110,6 +110,12 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.quantityUnit !== undefined && {
           quantityUnit: body.quantityUnit?.trim() || null,
         }),
+        ...(body.sticksPerUnit !== undefined && {
+          sticksPerUnit: body.sticksPerUnit,
+        }),
+        ...(body.countsAsSticks !== undefined && {
+          countsAsSticks: body.countsAsSticks,
+        }),
         ...(body.isHidden !== undefined && { isHidden: body.isHidden }),
         ...(body.hideFromStaff !== undefined && {
           hideFromStaff: body.hideFromStaff,

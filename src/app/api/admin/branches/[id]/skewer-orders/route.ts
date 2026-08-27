@@ -7,7 +7,12 @@ import {
   isBangkokDateKey,
   queueBusinessDateFromKey,
 } from "@/lib/constants";
-import { requestedDateToKey, resolveSkewerQtyUnit } from "@/lib/skewer-order";
+import {
+  requestedDateToKey,
+  resolveSkewerMenuImageUrl,
+  resolveSkewerQtyUnit,
+  resolveSticksPerUnit,
+} from "@/lib/skewer-order";
 import {
   notifyCustomerSkewerOrderCancelled,
   notifyCustomerSkewerOrderConfirmed,
@@ -19,7 +24,15 @@ type Params = { params: Promise<{ id: string }> };
 const skewerItemInclude = {
   orderBy: { itemName: "asc" as const },
   include: {
-    branchMenuItem: { select: { quantityUnit: true } },
+    branchMenuItem: {
+      select: {
+        quantityUnit: true,
+        sticksPerUnit: true,
+        countsAsSticks: true,
+        imageUrl: true,
+        skewerImageUrl: true,
+      },
+    },
   },
 };
 
@@ -29,7 +42,13 @@ function serializeItem(item: {
   requestedQuantity: number;
   confirmedQuantity: number | null;
   branchMenuItemId?: string | null;
-  branchMenuItem?: { quantityUnit: string | null } | null;
+  branchMenuItem?: {
+    quantityUnit: string | null;
+    sticksPerUnit: number;
+    countsAsSticks: boolean;
+    imageUrl: string | null;
+    skewerImageUrl: string | null;
+  } | null;
 }) {
   return {
     id: item.id,
@@ -38,6 +57,14 @@ function serializeItem(item: {
     confirmedQuantity: item.confirmedQuantity,
     quantityUnit: resolveSkewerQtyUnit({
       quantityUnit: item.branchMenuItem?.quantityUnit,
+    }),
+    sticksPerUnit: resolveSticksPerUnit({
+      sticksPerUnit: item.branchMenuItem?.sticksPerUnit,
+    }),
+    countsAsSticks: item.branchMenuItem?.countsAsSticks !== false,
+    imageUrl: resolveSkewerMenuImageUrl({
+      imageUrl: item.branchMenuItem?.imageUrl,
+      skewerImageUrl: item.branchMenuItem?.skewerImageUrl,
     }),
   };
 }
@@ -49,7 +76,13 @@ function serialize(order: {
     itemName: string;
     requestedQuantity: number;
     confirmedQuantity: number | null;
-    branchMenuItem?: { quantityUnit: string | null } | null;
+    branchMenuItem?: {
+      quantityUnit: string | null;
+      sticksPerUnit: number;
+      countsAsSticks: boolean;
+      imageUrl: string | null;
+      skewerImageUrl: string | null;
+    } | null;
   }>;
   [key: string]: unknown;
 }) {

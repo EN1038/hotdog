@@ -19,6 +19,84 @@ export function resolveSkewerQtyUnit(item: {
   return unit || "ไม้";
 }
 
+/** How many sticks (ไม้) equal one display unit. Always ≥ 1 when counting as sticks. */
+export function resolveSticksPerUnit(item: {
+  sticksPerUnit?: number | null;
+}): number {
+  const n = item.sticksPerUnit;
+  if (typeof n !== "number" || !Number.isFinite(n)) return 1;
+  return Math.max(1, Math.floor(n));
+}
+
+/** Whether this menu line contributes to stick (ไม้) totals. Default true. */
+export function resolveCountsAsSticks(item: {
+  countsAsSticks?: boolean | null;
+}): boolean {
+  return item.countsAsSticks !== false;
+}
+
+export function toStickEquivalent(
+  qty: number,
+  item: {
+    sticksPerUnit?: number | null;
+    countsAsSticks?: boolean | null;
+  },
+): number {
+  if (!resolveCountsAsSticks(item)) return 0;
+  return qty * resolveSticksPerUnit(item);
+}
+
+/** e.g. `2 ชุด` or `2 ชุด (= 24 ไม้)` when counts as sticks and sticksPerUnit > 1. */
+export function formatSkewerQtyLabel(
+  qty: number,
+  item: {
+    quantityUnit?: string | null;
+    sticksPerUnit?: number | null;
+    countsAsSticks?: boolean | null;
+  },
+  opts?: { showStickEquiv?: boolean },
+): string {
+  const unit = resolveSkewerQtyUnit(item);
+  const base = `${qty} ${unit}`;
+  if (!resolveCountsAsSticks(item)) return base;
+  const per = resolveSticksPerUnit(item);
+  const showEquiv = opts?.showStickEquiv !== false && per > 1;
+  if (!showEquiv) return base;
+  return `${base} (= ${toStickEquivalent(qty, item)} ไม้)`;
+}
+
+export function summarizeSkewerLines(
+  lines: Array<{
+    quantity: number;
+    ordered?: boolean;
+    sticksPerUnit?: number | null;
+    countsAsSticks?: boolean | null;
+  }>,
+): { itemCount: number; unitTotal: number; stickTotal: number } {
+  let itemCount = 0;
+  let unitTotal = 0;
+  let stickTotal = 0;
+  for (const line of lines) {
+    if (line.ordered === false) continue;
+    if (line.quantity <= 0) continue;
+    itemCount += 1;
+    unitTotal += line.quantity;
+    stickTotal += toStickEquivalent(line.quantity, line);
+  }
+  return { itemCount, unitTotal, stickTotal };
+}
+
+/** Footer / summary: `3 รายการ · เทียบ 48 ไม้` (omit stick part when 0). */
+export function formatSkewerDualSummary(summary: {
+  itemCount: number;
+  stickTotal: number;
+}): string {
+  if (summary.stickTotal <= 0) {
+    return `${summary.itemCount} รายการ`;
+  }
+  return `${summary.itemCount} รายการ · เทียบ ${summary.stickTotal} ไม้`;
+}
+
 /** Prefer skewer-specific photo; fall back to normal menu image. */
 export function resolveSkewerMenuImageUrl(item: {
   imageUrl?: string | null;

@@ -124,12 +124,40 @@ async function prepareImagesForCapture(
   };
 }
 
+function applyCaptureFontVars(node: HTMLElement): () => void {
+  const html = document.documentElement;
+  const body = document.body;
+  const prev: Array<[string, string]> = [];
+
+  const copyVar = (name: string) => {
+    const value = getComputedStyle(html).getPropertyValue(name).trim();
+    if (!value) return;
+    prev.push([name, node.style.getPropertyValue(name)]);
+    node.style.setProperty(name, value);
+  };
+  copyVar("--font-prompt");
+  copyVar("--font-sans");
+
+  const prevFamily = node.style.fontFamily;
+  const family = getComputedStyle(body).fontFamily;
+  if (family) node.style.fontFamily = family;
+
+  return () => {
+    node.style.fontFamily = prevFamily;
+    for (const [name, value] of prev) {
+      if (value) node.style.setProperty(name, value);
+      else node.style.removeProperty(name);
+    }
+  };
+}
+
 /** Capture a DOM node to PNG data URL (html-to-image). */
 export async function captureElementToPng(
   node: HTMLElement,
 ): Promise<string> {
-  const { toPng } = await import("html-to-image");
-  const restore = await prepareImagesForCapture(node);
+  const { toPng, getFontEmbedCSS } = await import("html-to-image");
+  const restoreImages = await prepareImagesForCapture(node);
+  const restoreFonts = applyCaptureFontVars(node);
   try {
     // Wait for inlined data-URL images to decode before rasterizing
     await Promise.all(
@@ -141,16 +169,29 @@ export async function captureElementToPng(
         });
       }),
     );
-    // Images are already data URLs — avoid cacheBust (appends ?t= and can
-    // re-trigger remote fetches for any leftover http src).
+
+    let fontEmbedCSS = "";
+    try {
+      fontEmbedCSS = await getFontEmbedCSS(node, {
+        cacheBust: false,
+        preferredFontFormat: "woff2",
+      });
+    } catch {
+      fontEmbedCSS = "";
+    }
+
+    const fontFamily = getComputedStyle(document.body).fontFamily;
     return await toPng(node, {
       cacheBust: false,
       pixelRatio: 2,
       backgroundColor: "#ffffff",
-      skipFonts: true,
+      skipFonts: false,
+      ...(fontEmbedCSS ? { fontEmbedCSS } : {}),
+      style: fontFamily ? { fontFamily } : undefined,
     });
   } finally {
-    restore();
+    restoreFonts();
+    restoreImages();
   }
 }
 

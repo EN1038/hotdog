@@ -148,12 +148,16 @@ export async function taximailSendOtp(phone: string): Promise<TaximailOtpSendRes
 export async function taximailSendSms(opts: {
   to: string;
   text: string;
+  from?: string;
 }): Promise<TaximailSmsSendResult> {
   const text = opts.text.trim();
   if (!text) throw new Error("ข้อความ SMS ว่าง");
 
   const messageId = generateSmsMessageId();
-  const from = process.env.TAXIMAIL_SMS_FROM?.trim() || "TXSMS";
+  const from =
+    opts.from?.trim() ||
+    process.env.TAXIMAIL_SMS_FROM?.trim() ||
+    "SkillSale";
   const group = process.env.TAXIMAIL_SMS_GROUP?.trim() || "Default";
 
   const res = await fetch(`${TAXIMAIL_BASE}/sms`, {

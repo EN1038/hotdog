@@ -11,6 +11,7 @@ import {
   nextSkewerOrderNumber,
   parseRequestedDateKey,
   requestedDateToKey,
+  resolveSkewerMinQty,
   SKEWER_MIN_QTY_PER_ITEM,
 } from "@/lib/skewer-order";
 import { assertBrandWriteAllowed } from "@/lib/brand-plan";
@@ -177,6 +178,7 @@ export async function POST(request: Request) {
       select: {
         id: true,
         name: true,
+        skewerMinQty: true,
         category: { select: { stockExempt: true } },
         optionGroupLinks: { select: { group: { select: { mode: true } } } },
       },
@@ -193,6 +195,17 @@ export async function POST(request: Request) {
       return jsonError("โปรโมชั่นไม่ใช่รายการสั่งไม้ — เลือกเมนูขายเป็นชิ้น");
     }
     const menuById = new Map(menuItems.map((m) => [m.id, m]));
+
+    for (const item of body.items) {
+      const menu = menuById.get(item.branchMenuItemId);
+      if (!menu) continue;
+      const minQty = resolveSkewerMinQty(menu);
+      if (item.quantity < minQty) {
+        return jsonError(
+          `${menu.name} ต้องสั่งขั้นต่ำ ${minQty} หน่วย`,
+        );
+      }
+    }
 
     const lat = body.latitude ?? null;
     const lng = body.longitude ?? null;

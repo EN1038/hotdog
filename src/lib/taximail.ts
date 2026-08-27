@@ -144,11 +144,18 @@ export async function taximailSendOtp(phone: string): Promise<TaximailOtpSendRes
   };
 }
 
-/** Transactional SMS (not OTP). Uses free-text body. */
+/**
+ * Transactional SMS (not OTP). Uses free-text body.
+ *
+ * Default `generateLink: false` — Thai carriers treat third-party short links
+ * as spam; keep the brand domain (`order.skillsale.co`) in the message body.
+ */
 export async function taximailSendSms(opts: {
   to: string;
   text: string;
   from?: string;
+  /** Wrap URLs via Taximail shortener (avoid for branded domains). */
+  generateLink?: boolean;
 }): Promise<TaximailSmsSendResult> {
   const text = opts.text.trim();
   if (!text) throw new Error("ข้อความ SMS ว่าง");
@@ -173,7 +180,7 @@ export async function taximailSendSms(opts: {
       message_id: messageId,
       transactional_group_name: group,
       report_webhook: true,
-      generate_link: true,
+      generate_link: opts.generateLink === true,
     }),
   });
 

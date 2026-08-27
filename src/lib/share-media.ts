@@ -13,14 +13,85 @@ export function downloadDataUrl(
   a.remove();
 }
 
+function safeShareFilename(filename: string): string {
+  const base = filename.includes(".")
+    ? filename
+    : `${filename}.png`;
+  // Some browsers reject Web Share File names with Thai / spaces
+  return base.replace(/[^\w.\-]+/g, "_").replace(/^_+|_+$/g, "") || "share.png";
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) throw new Error("invalid data url");
+  const header = dataUrl.slice(0, comma);
+  const data = dataUrl.slice(comma + 1);
+  const mime = /data:([^;]+)/.exec(header)?.[1] || "image/png";
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
 async function dataUrlToFile(
   dataUrl: string,
   filename: string,
 ): Promise<File> {
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  const name = filename.includes(".") ? filename : `${filename}.png`;
+  const blob = dataUrlToBlob(dataUrl);
+  const name = safeShareFilename(filename);
   return new File([blob], name, { type: blob.type || "image/png" });
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Inline <img> as data URLs (or hide if CORS blocks) so html-to-image
+ * does not taint the canvas. Returns a restore function.
+ */
+async function prepareImagesForCapture(
+  root: HTMLElement,
+): Promise<() => void> {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  const restores: Array<() => void> = [];
+
+  await Promise.all(
+    imgs.map(async (img) => {
+      const src = img.currentSrc || img.getAttribute("src") || "";
+      if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
+
+      const prevSrc = img.getAttribute("src");
+      const prevDisplay = img.style.display;
+
+      try {
+        const res = await fetch(src, { mode: "cors", credentials: "omit" });
+        if (!res.ok) throw new Error(`image ${res.status}`);
+        const dataUrl = await blobToDataUrl(await res.blob());
+        img.setAttribute("src", dataUrl);
+        restores.push(() => {
+          if (prevSrc != null) img.setAttribute("src", prevSrc);
+          else img.removeAttribute("src");
+        });
+      } catch {
+        img.style.display = "none";
+        restores.push(() => {
+          img.style.display = prevDisplay;
+        });
+      }
+    }),
+  );
+
+  return () => {
+    for (const restore of restores) restore();
+  };
 }
 
 /** Capture a DOM node to PNG data URL (html-to-image). */
@@ -28,11 +99,18 @@ export async function captureElementToPng(
   node: HTMLElement,
 ): Promise<string> {
   const { toPng } = await import("html-to-image");
-  return toPng(node, {
-    cacheBust: true,
-    pixelRatio: 2,
-    backgroundColor: "#ffffff",
-  });
+  const restore = await prepareImagesForCapture(node);
+  try {
+    return await toPng(node, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+      // Prefer CORS when library fetches resources itself
+      fetchRequestInit: { mode: "cors", credentials: "omit" },
+    });
+  } finally {
+    restore();
+  }
 }
 
 /** Save a captured/element PNG data URL to the device. */
@@ -59,11 +137,13 @@ export async function sharePngDataUrl(
 ): Promise<{ ok: boolean; mode: "share" | "download" | "none"; error?: string }> {
   try {
     const file = await dataUrlToFile(dataUrl, filename);
-    if (
+    const canShareFiles =
       typeof navigator !== "undefined" &&
       typeof navigator.share === "function" &&
-      (!navigator.canShare || navigator.canShare({ files: [file] }))
-    ) {
+      typeof navigator.canShare === "function" &&
+      navigator.canShare({ files: [file] });
+
+    if (canShareFiles) {
       try {
         await navigator.share({
           files: [file],
@@ -75,16 +155,24 @@ export async function sharePngDataUrl(
         if (e instanceof Error && e.name === "AbortError") {
           return { ok: false, mode: "none", error: "cancelled" };
         }
+        // NotAllowed / unsupported — fall through to download
       }
     }
+
+    // Desktop browsers often lack file sharing; save image instead
     downloadDataUrl(dataUrl, filename);
     return { ok: true, mode: "download" };
   } catch (e) {
-    return {
-      ok: false,
-      mode: "none",
-      error: e instanceof Error ? e.message : "แชร์รูปไม่สำเร็จ",
-    };
+    try {
+      downloadDataUrl(dataUrl, filename);
+      return { ok: true, mode: "download" };
+    } catch {
+      return {
+        ok: false,
+        mode: "none",
+        error: e instanceof Error ? e.message : "แชร์รูปไม่สำเร็จ",
+      };
+    }
   }
 }
 

@@ -11,7 +11,7 @@ export type SkewerCategoryRoleValue = "SKEWER_SALE" | "SKEWER_SUPPLY";
 
 export const SKEWER_CATEGORY_ROLE_LABELS: Record<SkewerCategoryRoleValue, string> = {
   SKEWER_SALE: "รายการขาย",
-  SKEWER_SUPPLY: "ของเพิ่ม / สิ้นเปลือง",
+  SKEWER_SUPPLY: "ของสิ้นเปลือง",
 };
 
 export function isSkewerSupplyRole(
@@ -67,7 +67,7 @@ export function summarizeSkewerSplit(
   return { sale, supplyItemCount, supplyUnitTotal };
 }
 
-/** e.g. `48 ไม้ · 2 รายการของเพิ่ม` */
+/** e.g. `48 ไม้ · 2 ของสิ้นเปลือง` */
 export function formatSkewerSplitSummary(summary: {
   sale: { itemCount: number; stickTotal: number };
   supplyItemCount: number;
@@ -79,7 +79,7 @@ export function formatSkewerSplitSummary(summary: {
     parts.push(`${summary.sale.itemCount} รายการขาย`);
   }
   if (summary.supplyItemCount > 0) {
-    parts.push(`${summary.supplyItemCount} รายการของเพิ่ม`);
+    parts.push(`${summary.supplyItemCount} ของสิ้นเปลือง`);
   }
   if (parts.length === 0) return "0 รายการ";
   return parts.join(" · ");

@@ -49,7 +49,7 @@ async function main() {
   );
 
   console.log(
-    `SKEWER menu items: ${candidates.length} · รายการขาย: ${regular.length} · ของเพิ่ม/สิ้นเปลือง: ${other.length}`,
+    `SKEWER menu items: ${candidates.length} · รายการขาย: ${regular.length} · ของสิ้นเปลือง: ${other.length}`,
   );
   console.log(`Regular items to update → ไม้ + min 12: ${regularToUpdate.length}`);
   for (const row of regularToUpdate.slice(0, 30)) {

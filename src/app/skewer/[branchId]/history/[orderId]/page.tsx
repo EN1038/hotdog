@@ -713,7 +713,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                     {summary.supplyItemCount > 0 ? (
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-[11px] font-medium text-slate-500">
-                          ของเพิ่ม
+                          ของสิ้นเปลือง
                         </span>
                         <span className="text-sm font-extrabold tabular-nums text-emerald-700">
                           {summary.supplyItemCount}{" "}

@@ -2,7 +2,6 @@
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { toPng } from "html-to-image";
 import {
   SkewerAppShell,
   useSkewerBranchMeta,
@@ -11,6 +10,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { ZoomableImage } from "@/components/ZoomableImage";
 import { bangkokDateKey } from "@/lib/constants";
+import { captureElementToPng } from "@/lib/share-media";
 import {
   SKEWER_ORDER_STATUS_LABELS,
   SKEWER_CATEGORY_ROLE_LABELS,
@@ -391,11 +391,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
   async function capturePng(): Promise<string> {
     const node = captureRef.current;
     if (!node) throw new Error("ไม่พบเนื้อหาออเดอร์");
-    return toPng(node, {
-      cacheBust: true,
-      pixelRatio: 2,
-      backgroundColor: "#ffffff",
-    });
+    return captureElementToPng(node);
   }
 
   async function handleSaveImage() {

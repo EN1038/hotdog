@@ -1,6 +1,11 @@
 import { SmsSendPurpose, SmsSendStatus } from "@prisma/client";
+import { appAbsoluteUrlOrNull } from "@/lib/app-url";
 import { normalizePhone } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import {
+  ensureSkewerOrderPublicShareToken,
+  skewerOrderPublicSharePath,
+} from "@/lib/skewer-order-public-share";
 import {
   isTaximailSmsConfigured,
   taximailSendSms,
@@ -19,12 +24,35 @@ export type SkewerOrderSmsOpts = {
   triggeredByAdminId?: string | null;
 };
 
-function confirmedBody(orderNumber: string) {
-  return `ออเดอร์ #${orderNumber} ยืนยันแล้ว ดูรายละเอียดในแอป`;
+async function resolvePublicShareUrl(
+  order: SkewerOrderSmsTarget,
+): Promise<string | null> {
+  try {
+    const token = await ensureSkewerOrderPublicShareToken(order.id);
+    return appAbsoluteUrlOrNull(skewerOrderPublicSharePath(token));
+  } catch (error) {
+    console.error("[skewer-sms] could not create public share link", {
+      orderId: order.id,
+      error,
+    });
+    return null;
+  }
 }
 
-function cancelledBody(orderNumber: string) {
-  return `ออเดอร์ #${orderNumber} ถูกยกเลิกแล้ว ดูรายละเอียดในแอป`;
+async function confirmedBody(order: SkewerOrderSmsTarget) {
+  const url = await resolvePublicShareUrl(order);
+  if (url) {
+    return `ออเดอร์ #${order.orderNumber} ยืนยันแล้ว ดูรายละเอียด: ${url}`;
+  }
+  return `ออเดอร์ #${order.orderNumber} ยืนยันแล้ว ดูรายละเอียดบนเว็บ`;
+}
+
+async function cancelledBody(order: SkewerOrderSmsTarget) {
+  const url = await resolvePublicShareUrl(order);
+  if (url) {
+    return `ออเดอร์ #${order.orderNumber} ถูกยกเลิกแล้ว ดูรายละเอียด: ${url}`;
+  }
+  return `ออเดอร์ #${order.orderNumber} ถูกยกเลิกแล้ว ดูรายละเอียดบนเว็บ`;
 }
 
 async function writeSmsLog(data: {
@@ -135,7 +163,7 @@ export async function notifyCustomerSkewerOrderConfirmed(
     await notifySkewerOrderSms(
       order,
       SmsSendPurpose.SKEWER_ORDER_CONFIRMED,
-      confirmedBody(order.orderNumber),
+      await confirmedBody(order),
       opts,
     );
   } catch (error) {
@@ -151,7 +179,7 @@ export async function notifyCustomerSkewerOrderCancelled(
     await notifySkewerOrderSms(
       order,
       SmsSendPurpose.SKEWER_ORDER_CANCELLED,
-      cancelledBody(order.orderNumber),
+      await cancelledBody(order),
       opts,
     );
   } catch (error) {

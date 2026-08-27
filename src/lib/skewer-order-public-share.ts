@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
+import { toPublicDisplayImageUrl } from "@/lib/share-media";
 import {
   formatSkewerSplitSummary,
   resolveSkewerMenuImageUrl,
@@ -10,13 +11,14 @@ import {
 } from "@/lib/skewer-order";
 import type { SkewerOrderStatus } from "@prisma/client";
 
-/** Cryptographically unguessable public skewer receipt token. */
+/** Cryptographically unguessable public skewer receipt token (~12 chars). */
 export function generateSkewerOrderPublicShareToken(): string {
-  return randomBytes(18).toString("base64url");
+  return randomBytes(9).toString("base64url");
 }
 
+/** Short public path for SMS (legacy `/share/s/...` still redirects). */
 export function skewerOrderPublicSharePath(token: string): string {
-  return `/share/s/${encodeURIComponent(token)}`;
+  return `/s/${encodeURIComponent(token)}`;
 }
 
 /**
@@ -138,10 +140,12 @@ export async function loadPublicSkewerOrderReceipt(
       sticksPerUnit: fields.sticksPerUnit,
       countsAsSticks: fields.countsAsSticks,
       skewerCategoryRole: fields.skewerCategoryRole,
-      imageUrl: resolveSkewerMenuImageUrl({
-        imageUrl: item.branchMenuItem?.imageUrl,
-        skewerImageUrl: item.branchMenuItem?.skewerImageUrl,
-      }),
+      imageUrl: toPublicDisplayImageUrl(
+        resolveSkewerMenuImageUrl({
+          imageUrl: item.branchMenuItem?.imageUrl,
+          skewerImageUrl: item.branchMenuItem?.skewerImageUrl,
+        }),
+      ),
     };
   });
 

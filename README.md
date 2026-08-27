@@ -62,7 +62,7 @@ JWT_SECRET="change-me-to-a-long-random-string"
 TAXIMAIL_API_KEY=...
 TAXIMAIL_SECRET_KEY=...
 TAXIMAIL_OTP_TEMPLATE_KEY=SkillSaleOTP
-# optional: TAXIMAIL_SMS_FROM=TXSMS
+# optional: TAXIMAIL_SMS_FROM=SkillSale
 # optional: TAXIMAIL_SMS_GROUP=Default
 ```
 

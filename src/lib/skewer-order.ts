@@ -7,6 +7,84 @@ import {
 
 export const SKEWER_MIN_QTY_PER_ITEM = 1;
 
+export type SkewerCategoryRoleValue = "SKEWER_SALE" | "SKEWER_SUPPLY";
+
+export const SKEWER_CATEGORY_ROLE_LABELS: Record<SkewerCategoryRoleValue, string> = {
+  SKEWER_SALE: "รายการขาย",
+  SKEWER_SUPPLY: "ของเพิ่ม / สิ้นเปลือง",
+};
+
+export function isSkewerSupplyRole(
+  role?: string | null,
+): boolean {
+  return role === "SKEWER_SUPPLY";
+}
+
+export function resolveSkewerCategoryRole(item: {
+  skewerCategoryRole?: string | null;
+  category?: { skewerCategoryRole?: string | null } | null;
+}): SkewerCategoryRoleValue {
+  const raw = item.skewerCategoryRole ?? item.category?.skewerCategoryRole;
+  return raw === "SKEWER_SUPPLY" ? "SKEWER_SUPPLY" : "SKEWER_SALE";
+}
+
+export function splitSkewerByRole<T extends { skewerCategoryRole?: string | null }>(
+  items: T[],
+): { saleItems: T[]; supplyItems: T[] } {
+  const saleItems: T[] = [];
+  const supplyItems: T[] = [];
+  for (const item of items) {
+    if (isSkewerSupplyRole(item.skewerCategoryRole)) supplyItems.push(item);
+    else saleItems.push(item);
+  }
+  return { saleItems, supplyItems };
+}
+
+export function summarizeSkewerSplit(
+  lines: Array<{
+    quantity: number;
+    ordered?: boolean;
+    sticksPerUnit?: number | null;
+    countsAsSticks?: boolean | null;
+    skewerCategoryRole?: string | null;
+  }>,
+): {
+  sale: { itemCount: number; unitTotal: number; stickTotal: number };
+  supplyItemCount: number;
+  supplyUnitTotal: number;
+} {
+  const saleLines = lines.filter((l) => !isSkewerSupplyRole(l.skewerCategoryRole));
+  const supplyLines = lines.filter((l) => isSkewerSupplyRole(l.skewerCategoryRole));
+  const sale = summarizeSkewerLines(saleLines);
+  let supplyItemCount = 0;
+  let supplyUnitTotal = 0;
+  for (const line of supplyLines) {
+    if (line.ordered === false) continue;
+    if (line.quantity <= 0) continue;
+    supplyItemCount += 1;
+    supplyUnitTotal += line.quantity;
+  }
+  return { sale, supplyItemCount, supplyUnitTotal };
+}
+
+/** e.g. `48 ไม้ · 2 รายการของเพิ่ม` */
+export function formatSkewerSplitSummary(summary: {
+  sale: { itemCount: number; stickTotal: number };
+  supplyItemCount: number;
+}): string {
+  const parts: string[] = [];
+  if (summary.sale.stickTotal > 0) {
+    parts.push(`${summary.sale.stickTotal} ไม้`);
+  } else if (summary.sale.itemCount > 0) {
+    parts.push(`${summary.sale.itemCount} รายการขาย`);
+  }
+  if (summary.supplyItemCount > 0) {
+    parts.push(`${summary.supplyItemCount} รายการของเพิ่ม`);
+  }
+  if (parts.length === 0) return "0 รายการ";
+  return parts.join(" · ");
+}
+
 /** Per-menu minimum qty in SKEWER mode; always ≥ 1. */
 export function resolveSkewerMinQty(item: {
   skewerMinQty?: number | null;
@@ -125,6 +203,36 @@ export function resolveSkewerMenuImageUrl(item: {
   if (skewer) return skewer;
   const normal = item.imageUrl?.trim();
   return normal || null;
+}
+
+/** Unit fields for a skewer order line — prefer snapshot stored on the order item. */
+export function resolveSkewerOrderItemFields(item: {
+  quantityUnit?: string | null;
+  sticksPerUnit?: number | null;
+  countsAsSticks?: boolean | null;
+  skewerCategoryRole?: string | null;
+  branchMenuItem?: {
+    quantityUnit?: string | null;
+    sticksPerUnit?: number | null;
+    countsAsSticks?: boolean | null;
+    category?: { skewerCategoryRole?: string | null } | null;
+  } | null;
+}) {
+  const menu = item.branchMenuItem;
+  return {
+    quantityUnit: item.quantityUnit ?? menu?.quantityUnit ?? null,
+    sticksPerUnit: resolveSticksPerUnit({
+      sticksPerUnit: item.sticksPerUnit ?? menu?.sticksPerUnit,
+    }),
+    countsAsSticks:
+      item.countsAsSticks === false
+        ? false
+        : menu?.countsAsSticks !== false,
+    skewerCategoryRole: resolveSkewerCategoryRole({
+      skewerCategoryRole: item.skewerCategoryRole,
+      category: menu?.category,
+    }),
+  };
 }
 
 /** Pick the menu thumbnail that matches the branch operating mode. */

@@ -10,8 +10,8 @@ import {
 import {
   requestedDateToKey,
   resolveSkewerMenuImageUrl,
+  resolveSkewerOrderItemFields,
   resolveSkewerQtyUnit,
-  resolveSticksPerUnit,
 } from "@/lib/skewer-order";
 import {
   notifyCustomerSkewerOrderCancelled,
@@ -31,6 +31,7 @@ const skewerItemInclude = {
         countsAsSticks: true,
         imageUrl: true,
         skewerImageUrl: true,
+        category: { select: { skewerCategoryRole: true } },
       },
     },
   },
@@ -41,6 +42,10 @@ function serializeItem(item: {
   itemName: string;
   requestedQuantity: number;
   confirmedQuantity: number | null;
+  quantityUnit?: string | null;
+  sticksPerUnit?: number | null;
+  countsAsSticks?: boolean | null;
+  skewerCategoryRole?: string | null;
   branchMenuItemId?: string | null;
   branchMenuItem?: {
     quantityUnit: string | null;
@@ -48,20 +53,19 @@ function serializeItem(item: {
     countsAsSticks: boolean;
     imageUrl: string | null;
     skewerImageUrl: string | null;
+    category?: { skewerCategoryRole: string } | null;
   } | null;
 }) {
+  const unitFields = resolveSkewerOrderItemFields(item);
   return {
     id: item.id,
     itemName: item.itemName,
     requestedQuantity: item.requestedQuantity,
     confirmedQuantity: item.confirmedQuantity,
-    quantityUnit: resolveSkewerQtyUnit({
-      quantityUnit: item.branchMenuItem?.quantityUnit,
-    }),
-    sticksPerUnit: resolveSticksPerUnit({
-      sticksPerUnit: item.branchMenuItem?.sticksPerUnit,
-    }),
-    countsAsSticks: item.branchMenuItem?.countsAsSticks !== false,
+    quantityUnit: resolveSkewerQtyUnit({ quantityUnit: unitFields.quantityUnit }),
+    sticksPerUnit: unitFields.sticksPerUnit,
+    countsAsSticks: unitFields.countsAsSticks,
+    skewerCategoryRole: unitFields.skewerCategoryRole,
     imageUrl: resolveSkewerMenuImageUrl({
       imageUrl: item.branchMenuItem?.imageUrl,
       skewerImageUrl: item.branchMenuItem?.skewerImageUrl,

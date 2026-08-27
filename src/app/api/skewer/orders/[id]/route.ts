@@ -1,7 +1,7 @@
 import { requireCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requestedDateToKey } from "@/lib/skewer-order";
+import { requestedDateToKey, resolveSkewerOrderItemFields } from "@/lib/skewer-order";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -24,6 +24,7 @@ export async function GET(_request: Request, { params }: Params) {
                 quantityUnit: true,
                 sticksPerUnit: true,
                 countsAsSticks: true,
+                category: { select: { skewerCategoryRole: true } },
               },
             },
           },
@@ -35,20 +36,24 @@ export async function GET(_request: Request, { params }: Params) {
     return jsonOk({
       ...order,
       requestedDate: requestedDateToKey(order.requestedDate),
-      items: order.items.map((item) => ({
-        id: item.id,
-        branchMenuItemId: item.branchMenuItemId,
-        itemName: item.itemName,
-        requestedQuantity: item.requestedQuantity,
-        confirmedQuantity: item.confirmedQuantity,
-        quantityUnit: item.branchMenuItem?.quantityUnit ?? null,
-        sticksPerUnit: item.branchMenuItem?.sticksPerUnit ?? 1,
-        countsAsSticks: item.branchMenuItem?.countsAsSticks !== false,
-        imageUrl:
-          item.branchMenuItem?.skewerImageUrl?.trim() ||
-          item.branchMenuItem?.imageUrl ||
-          null,
-      })),
+      items: order.items.map((item) => {
+        const unitFields = resolveSkewerOrderItemFields(item);
+        return {
+          id: item.id,
+          branchMenuItemId: item.branchMenuItemId,
+          itemName: item.itemName,
+          requestedQuantity: item.requestedQuantity,
+          confirmedQuantity: item.confirmedQuantity,
+          quantityUnit: unitFields.quantityUnit,
+          sticksPerUnit: unitFields.sticksPerUnit,
+          countsAsSticks: unitFields.countsAsSticks,
+          skewerCategoryRole: unitFields.skewerCategoryRole,
+          imageUrl:
+            item.branchMenuItem?.skewerImageUrl?.trim() ||
+            item.branchMenuItem?.imageUrl ||
+            null,
+        };
+      }),
     });
   } catch (error) {
     return handleApiError(error);

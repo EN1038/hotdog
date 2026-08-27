@@ -146,7 +146,7 @@ export function BranchCategoryLibrary({ branchId, skewerMode }: Props) {
       await load();
       toast.success(
         role === "SKEWER_SUPPLY"
-          ? "ตั้งเป็นของเพิ่ม / สิ้นเปลืองแล้ว"
+          ? "ตั้งเป็นของสิ้นเปลืองแล้ว"
           : "ตั้งเป็นรายการขายแล้ว",
         `หมวด “${category.name}” จะแสดงในกลุ่ม${SKEWER_CATEGORY_ROLE_LABELS[role]}`,
       );
@@ -320,7 +320,7 @@ export function BranchCategoryLibrary({ branchId, skewerMode }: Props) {
           {skewerMode ? (
             <>
               {" "}
-              สำหรับเสียบไม้: ตั้ง “ของเพิ่ม / สิ้นเปลือง” สำหรับน้ำจิ้ม ผงหมาล่า
+              สำหรับเสียบไม้: ตั้ง “ของสิ้นเปลือง” สำหรับน้ำจิ้ม ผงหมาล่า
               ฯลฯ — จะแสดงหลังรายการขายตอนสรุปออเดอร์
             </>
           ) : (
@@ -435,7 +435,7 @@ export function BranchCategoryLibrary({ branchId, skewerMode }: Props) {
                       {skewerMode &&
                       cat.skewerCategoryRole === "SKEWER_SUPPLY" ? (
                         <span className="ml-1.5 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
-                          ของเพิ่ม / สิ้นเปลือง
+                          ของสิ้นเปลือง
                         </span>
                       ) : null}
                     </p>

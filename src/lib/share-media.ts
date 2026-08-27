@@ -53,9 +53,50 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+/** Soft gray tile used when a menu photo cannot be inlined. */
+const CAPTURE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112"><rect width="112" height="112" fill="#f3f4f6"/><path d="M28 72l16-20 12 14 16-22 20 28H28z" fill="#d1d5db"/><circle cx="42" cy="40" r="8" fill="#d1d5db"/></svg>`,
+  );
+
+function isProbablyRemoteHttpUrl(src: string): boolean {
+  return /^https?:\/\//i.test(src);
+}
+
+function sameOriginProxyUrl(absoluteImageUrl: string): string {
+  return `/api/media/proxy?url=${encodeURIComponent(absoluteImageUrl)}`;
+}
+
+async function fetchImageAsDataUrl(src: string): Promise<string | null> {
+  const attempts: string[] = [];
+  if (isProbablyRemoteHttpUrl(src)) {
+    // Prefer same-origin proxy — Spaces typically has no CORS for the app origin
+    attempts.push(sameOriginProxyUrl(src));
+  }
+  attempts.push(src);
+
+  for (const url of attempts) {
+    try {
+      const res = await fetch(url, {
+        credentials: url.startsWith("/") ? "same-origin" : "omit",
+      });
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      if (!blob.type.startsWith("image/") && blob.type !== "application/octet-stream") {
+        continue;
+      }
+      return await blobToDataUrl(blob);
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+
 /**
- * Inline <img> as data URLs (or hide if CORS blocks) so html-to-image
- * does not taint the canvas. Returns a restore function.
+ * Replace remote <img> with data URLs (via same-origin proxy) so html-to-image
+ * never hits Spaces CORS. Falls back to a placeholder tile. Returns restore fn.
  */
 async function prepareImagesForCapture(
   root: HTMLElement,
@@ -69,23 +110,12 @@ async function prepareImagesForCapture(
       if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
 
       const prevSrc = img.getAttribute("src");
-      const prevDisplay = img.style.display;
-
-      try {
-        const res = await fetch(src, { mode: "cors", credentials: "omit" });
-        if (!res.ok) throw new Error(`image ${res.status}`);
-        const dataUrl = await blobToDataUrl(await res.blob());
-        img.setAttribute("src", dataUrl);
-        restores.push(() => {
-          if (prevSrc != null) img.setAttribute("src", prevSrc);
-          else img.removeAttribute("src");
-        });
-      } catch {
-        img.style.display = "none";
-        restores.push(() => {
-          img.style.display = prevDisplay;
-        });
-      }
+      const dataUrl = await fetchImageAsDataUrl(src);
+      img.setAttribute("src", dataUrl || CAPTURE_IMAGE_PLACEHOLDER);
+      restores.push(() => {
+        if (prevSrc != null) img.setAttribute("src", prevSrc);
+        else img.removeAttribute("src");
+      });
     }),
   );
 
@@ -101,12 +131,23 @@ export async function captureElementToPng(
   const { toPng } = await import("html-to-image");
   const restore = await prepareImagesForCapture(node);
   try {
+    // Wait for inlined data-URL images to decode before rasterizing
+    await Promise.all(
+      Array.from(node.querySelectorAll("img")).map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          img.addEventListener("load", () => resolve(), { once: true });
+          img.addEventListener("error", () => resolve(), { once: true });
+        });
+      }),
+    );
+    // Images are already data URLs — avoid cacheBust (appends ?t= and can
+    // re-trigger remote fetches for any leftover http src).
     return await toPng(node, {
-      cacheBust: true,
+      cacheBust: false,
       pixelRatio: 2,
       backgroundColor: "#ffffff",
-      // Prefer CORS when library fetches resources itself
-      fetchRequestInit: { mode: "cors", credentials: "omit" },
+      skipFonts: true,
     });
   } finally {
     restore();
@@ -210,12 +251,11 @@ async function imageUrlToFile(
   filename: string,
 ): Promise<File | null> {
   try {
-    const res = await fetch(url, { mode: "cors", credentials: "omit" });
-    if (!res.ok) return null;
-    const blob = await res.blob();
+    const dataUrl = await fetchImageAsDataUrl(url);
+    if (!dataUrl) return null;
+    const blob = dataUrlToBlob(dataUrl);
     const type = blob.type || "image/jpeg";
-    const name =
-      filename.includes(".") ? filename : `${filename}.jpg`;
+    const name = filename.includes(".") ? filename : `${filename}.jpg`;
     return new File([blob], name, { type });
   } catch {
     return null;

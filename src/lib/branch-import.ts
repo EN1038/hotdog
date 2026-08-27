@@ -176,6 +176,7 @@ export async function importBranchCatalog(opts: {
           name: src.name,
           sortOrder: src.sortOrder,
           stockExempt: src.stockExempt,
+          skewerCategoryRole: src.skewerCategoryRole,
         },
       });
       categoryByName.set(dest.name, dest);

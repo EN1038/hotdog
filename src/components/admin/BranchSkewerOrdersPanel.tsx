@@ -13,12 +13,14 @@ import { ZoomableImage } from "@/components/ZoomableImage";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import {
   SKEWER_ORDER_STATUS_LABELS,
-  formatSkewerDualSummary,
+  SKEWER_CATEGORY_ROLE_LABELS,
+  formatSkewerSplitSummary,
   formatSkewerQtyLabel,
   resolveSkewerQtyUnit,
   resolveSticksPerUnit,
-  summarizeSkewerLines,
+  summarizeSkewerSplit,
 } from "@/lib/skewer-order";
+import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import { bangkokDateKey } from "@/lib/constants";
 import {
   captureElementToPng,
@@ -34,6 +36,7 @@ type SkewerItem = {
   quantityUnit?: string | null;
   sticksPerUnit?: number | null;
   countsAsSticks?: boolean | null;
+  skewerCategoryRole?: string | null;
   imageUrl?: string | null;
 };
 
@@ -469,82 +472,116 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-sm font-semibold text-gray-900">รายการ</p>
-                    {selected.items.length > 0 ? (
-                      <p className="text-xs text-gray-500">
-                        {formatSkewerDualSummary(
-                          summarizeSkewerLines(
-                            selected.items.map((i) => ({
-                              quantity: i.requestedQuantity,
-                              sticksPerUnit: i.sticksPerUnit,
-                              countsAsSticks: i.countsAsSticks,
-                            })),
-                          ),
-                        )}
-                      </p>
-                    ) : null}
-                  </div>
-                  {selected.items.map((item) => {
-                    const unit = itemUnit(item);
-                    return (
-                    <div
-                      key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 py-2.5"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
-                          {item.imageUrl ? (
-                            <ZoomableImage
-                              src={item.imageUrl}
-                              alt={item.itemName}
-                              className="h-14 w-14 object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-gray-400">
-                              <IconSkewerPlaceholder size={28} />
-                            </div>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900">{item.itemName}</p>
-                          <p className="text-xs text-gray-500">
-                            สั่ง {itemQtyLabel(item.requestedQuantity, item)}
-                            {item.confirmedQuantity != null
-                              ? ` · ได้ ${itemQtyLabel(item.confirmedQuantity, item)}`
-                              : ""}
-                          </p>
-                        </div>
-                      </div>
-                      {selected.status === "PENDING_CONFIRM" ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={item.requestedQuantity}
-                            className={`${adminInputClass} w-24`}
-                            value={qtyDraft[item.id] ?? ""}
-                            onChange={(e) =>
-                              setQtyDraft((prev) => ({
-                                ...prev,
-                                [item.id]: e.target.value,
-                              }))
-                            }
-                          />
-                          <span className="text-sm text-gray-500">
-                            {unit}
-                            {item.countsAsSticks !== false &&
-                            itemSticksPer(item) > 1 ? (
-                              <span className="block text-[10px] text-gray-400">
-                                1{unit}={itemSticksPer(item)}ไม้
-                              </span>
-                            ) : null}
-                          </span>
-                        </div>
-                      ) : null}
-                    </div>
+                  {(() => {
+                    const split = summarizeSkewerSplit(
+                      selected.items.map((i) => ({
+                        quantity: i.requestedQuantity,
+                        sticksPerUnit: i.sticksPerUnit,
+                        countsAsSticks: i.countsAsSticks,
+                        skewerCategoryRole: i.skewerCategoryRole,
+                      })),
                     );
-                  })}
+                    const { saleLines, supplyLines } = splitLinesBySkewerRole(
+                      selected.items,
+                    );
+                    const renderItem = (item: SkewerItem) => {
+                      const unit = itemUnit(item);
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 py-2.5"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                              {item.imageUrl ? (
+                                <ZoomableImage
+                                  src={item.imageUrl}
+                                  alt={item.itemName}
+                                  className="h-14 w-14 object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                  <IconSkewerPlaceholder size={28} />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900">
+                                {item.itemName}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                สั่ง {itemQtyLabel(item.requestedQuantity, item)}
+                                {item.confirmedQuantity != null
+                                  ? ` · ได้ ${itemQtyLabel(item.confirmedQuantity, item)}`
+                                  : ""}
+                              </p>
+                            </div>
+                          </div>
+                          {selected.status === "PENDING_CONFIRM" ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                max={item.requestedQuantity}
+                                className={`${adminInputClass} w-24`}
+                                value={qtyDraft[item.id] ?? ""}
+                                onChange={(e) =>
+                                  setQtyDraft((prev) => ({
+                                    ...prev,
+                                    [item.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                              <span className="text-sm text-gray-500">
+                                {unit}
+                                {item.countsAsSticks !== false &&
+                                itemSticksPer(item) > 1 ? (
+                                  <span className="block text-[10px] text-gray-400">
+                                    1{unit}={itemSticksPer(item)}ไม้
+                                  </span>
+                                ) : null}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    };
+                    return (
+                      <>
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-900">
+                            รายการ
+                          </p>
+                          {selected.items.length > 0 ? (
+                            <p className="text-xs text-gray-500">
+                              {formatSkewerSplitSummary({
+                                sale: split.sale,
+                                supplyItemCount: split.supplyItemCount,
+                              })}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div>
+                          <p className="mb-2 text-xs font-semibold text-gray-700">
+                            {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
+                          </p>
+                          <div className="space-y-2">
+                            {saleLines.map(renderItem)}
+                          </div>
+                        </div>
+                        {supplyLines.length > 0 ? (
+                          <div>
+                            <p className="mb-2 text-xs font-semibold text-gray-700">
+                              {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
+                            </p>
+                            <div className="space-y-2">
+                              {supplyLines.map(renderItem)}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                 </div>
                 </div>
 

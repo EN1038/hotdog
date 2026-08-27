@@ -2754,7 +2754,10 @@ function BranchDetailContent() {
 
         {activeTab === "categories" && (
           <div className={`${panelClass} pb-4`}>
-            <BranchCategoryLibrary branchId={id} />
+            <BranchCategoryLibrary
+              branchId={id}
+              skewerMode={branch?.operatingMode === "SKEWER"}
+            />
           </div>
         )}
 

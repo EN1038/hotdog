@@ -55,11 +55,11 @@ export default function PublicSkewerOrderSharePage() {
       );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(body.error ?? "α╣äα╕íα╣êα╕₧α╕Üα╣âα╕Üα╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣îα╣Çα╕¬α╕╡α╕óα╕Üα╣äα╕íα╣ë");
+        throw new Error(body.error ?? "ไม่พบใบออเดอร์เสียบไม้");
       }
       setData(body as PublicSkewerOrderReceipt);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "α╣éα╕½α╕Ñα╕öα╣äα╕íα╣êα╕¬α╕│α╣Çα╕úα╣çα╕ê");
+      setError(e instanceof Error ? e.message : "โหลดไม่สำเร็จ");
       setData(null);
     } finally {
       setLoading(false);
@@ -92,9 +92,9 @@ export default function PublicSkewerOrderSharePage() {
         dataUrl,
         `skewer-${data.orderNumber}`,
       );
-      flash(r.ok ? "α╕Üα╕▒α╕Öα╕ùα╕╢α╕üα╕úα╕╣α╕¢α╣üα╕Ñα╣ëα╕º" : r.error ?? "α╕Üα╕▒α╕Öα╕ùα╕╢α╕üα╣äα╕íα╣êα╕¬α╕│α╣Çα╕úα╣çα╕ê");
+      flash(r.ok ? "บันทึกรูปแล้ว" : r.error ?? "บันทึกไม่สำเร็จ");
     } catch (e) {
-      flash(e instanceof Error ? e.message : "α╕Üα╕▒α╕Öα╕ùα╕╢α╕üα╕úα╕╣α╕¢α╣äα╕íα╣êα╕¬α╕│α╣Çα╕úα╣çα╕ê");
+      flash(e instanceof Error ? e.message : "บันทึกรูปไม่สำเร็จ");
     } finally {
       setExportBusy(null);
     }
@@ -110,18 +110,18 @@ export default function PublicSkewerOrderSharePage() {
       const r = await sharePngDataUrl(
         dataUrl,
         `skewer-${data.orderNumber}`,
-        `α╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣îα╣Çα╕¬α╕╡α╕óα╕Üα╣äα╕íα╣ë #${data.orderNumber}`,
+        `ออเดอร์เสียบไม้ #${data.orderNumber}`,
       );
       if (r.error === "cancelled") return;
       flash(
         r.mode === "share"
-          ? "α╣üα╕èα╕úα╣îα╕úα╕╣α╕¢α╣üα╕Ñα╣ëα╕º"
+          ? "แชร์รูปแล้ว"
           : r.ok
-            ? "α╕Üα╕▒α╕Öα╕ùα╕╢α╕üα╕úα╕╣α╕¢α╣üα╕ùα╕Ö (α╣Çα╕äα╕úα╕╖α╣êα╕¡α╕çα╕Öα╕╡α╣ëα╕óα╕▒α╕çα╣üα╕èα╕úα╣îα╕úα╕╣α╕¢α╣äα╕íα╣êα╣äα╕öα╣ë)"
-            : r.error ?? "α╣üα╕èα╕úα╣îα╣äα╕íα╣êα╕¬α╕│α╣Çα╕úα╣çα╕ê",
+            ? "บันทึกรูปแทน (เครื่องนี้ยังแชร์รูปไม่ได้)"
+            : r.error ?? "แชร์ไม่สำเร็จ",
       );
     } catch (e) {
-      flash(e instanceof Error ? e.message : "α╣üα╕èα╕úα╣îα╕úα╕╣α╕¢α╣äα╕íα╣êα╕¬α╕│α╣Çα╕úα╣çα╕ê");
+      flash(e instanceof Error ? e.message : "แชร์รูปไม่สำเร็จ");
     } finally {
       setExportBusy(null);
     }
@@ -134,32 +134,32 @@ export default function PublicSkewerOrderSharePage() {
       const url = pageUrl || absoluteUrlFromPath(`/s/${data.token}`);
       const r = await sharePublicLink({
         url,
-        title: `α╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣îα╣Çα╕¬α╕╡α╕óα╕Üα╣äα╕íα╣ë #${data.orderNumber}`,
-        text: `α╕öα╕╣α╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣î #${data.orderNumber} ┬╖ ${data.summaryLabel}`,
+        title: `ออเดอร์เสียบไม้ #${data.orderNumber}`,
+        text: `ดูออเดอร์ #${data.orderNumber} · ${data.summaryLabel}`,
       });
       if (r.error === "cancelled") return;
       flash(
         r.mode === "share"
-          ? "α╣üα╕èα╕úα╣îα╕Ñα╕┤α╕çα╕üα╣îα╣üα╕Ñα╣ëα╕º"
+          ? "แชร์ลิงก์แล้ว"
           : r.mode === "copy"
-            ? "α╕äα╕▒α╕öα╕Ñα╕¡α╕üα╕Ñα╕┤α╕çα╕üα╣îα╣üα╕Ñα╣ëα╕º"
-            : r.error ?? "α╣üα╕èα╕úα╣îα╣äα╕íα╣êα╕¬α╕│α╣Çα╕úα╣çα╕ê",
+            ? "คัดลอกลิงก์แล้ว"
+            : r.error ?? "แชร์ไม่สำเร็จ",
       );
     } finally {
       setExportBusy(null);
     }
   }
 
-  if (loading) return <LoadingState label="α╕üα╕│α╕Ñα╕▒α╕çα╣éα╕½α╕Ñα╕öα╣âα╕Üα╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣î" />;
+  if (loading) return <LoadingState label="กำลังโหลดใบออเดอร์" />;
 
   if (error || !data) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <p className="text-lg font-semibold text-gray-900">
-          {error ?? "α╣äα╕íα╣êα╕₧α╕Üα╣âα╕Üα╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣î"}
+          {error ?? "ไม่พบใบออเดอร์"}
         </p>
         <p className="mt-2 text-sm text-gray-500">
-          α╕Ñα╕┤α╕çα╕üα╣îα╕¡α╕▓α╕êα╣äα╕íα╣êα╕ûα╕╣α╕üα╕òα╣ëα╕¡α╕ç ΓÇö α╕òα╕┤α╕öα╕òα╣êα╕¡α╕úα╣ëα╕▓α╕Öα╣Çα╕₧α╕╖α╣êα╕¡α╕éα╕¡α╕Ñα╕┤α╕çα╕üα╣îα╣âα╕½α╕íα╣ê
+          ลิงก์อาจไม่ถูกต้อง — ติดต่อร้านเพื่อขอลิงก์ใหม่
         </p>
       </div>
     );
@@ -210,14 +210,14 @@ export default function PublicSkewerOrderSharePage() {
             {item.itemName}
           </p>
           <p className="truncate text-xs text-gray-500">
-            α╕¬α╕▒α╣êα╕ç{" "}
+            สั่ง{" "}
             {formatSkewerQtyLabel(item.requestedQuantity, {
               quantityUnit: item.quantityUnit,
               sticksPerUnit: item.sticksPerUnit,
               countsAsSticks: item.countsAsSticks,
             })}
             {showConfirmed && item.confirmedQuantity != null
-              ? ` ┬╖ α╣äα╕öα╣ë ${formatSkewerQtyLabel(item.confirmedQuantity, {
+              ? ` · ได้ ${formatSkewerQtyLabel(item.confirmedQuantity, {
                   quantityUnit: item.quantityUnit,
                   sticksPerUnit: item.sticksPerUnit,
                   countsAsSticks: item.countsAsSticks,
@@ -243,7 +243,7 @@ export default function PublicSkewerOrderSharePage() {
         <div className="mb-3 flex items-start justify-between gap-2">
           <header className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-              α╣âα╕Üα╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣îα╣Çα╕¬α╕╡α╕óα╕Üα╣äα╕íα╣ë (α╕¬α╕▓α╕ÿα╕▓α╕úα╕ôα╕░)
+              ใบออเดอร์เสียบไม้ (สาธารณะ)
             </p>
             <h1 className="mt-1 text-xl font-bold text-gray-900">
               {data.branch.brandName ?? data.branch.name}
@@ -258,7 +258,7 @@ export default function PublicSkewerOrderSharePage() {
                 disabled={exportBusy != null}
                 onClick={() => void handleSaveImage()}
               >
-                {exportBusy === "save" ? "ΓÇª" : "α╕Üα╕▒α╕Öα╕ùα╕╢α╕üα╕úα╕╣α╕¢"}
+                {exportBusy === "save" ? "…" : "บันทึกรูป"}
               </button>
               <button
                 type="button"
@@ -266,7 +266,7 @@ export default function PublicSkewerOrderSharePage() {
                 disabled={exportBusy != null}
                 onClick={() => void handleShareImage()}
               >
-                {exportBusy === "share" ? "ΓÇª" : "α╣üα╕èα╕úα╣îα╕úα╕╣α╕¢"}
+                {exportBusy === "share" ? "…" : "แชร์รูป"}
               </button>
               <button
                 type="button"
@@ -274,7 +274,7 @@ export default function PublicSkewerOrderSharePage() {
                 disabled={exportBusy != null}
                 onClick={() => void handleShareLink()}
               >
-                {exportBusy === "link" ? "ΓÇª" : "α╣üα╕èα╕úα╣îα╕Ñα╕┤α╕çα╕üα╣î"}
+                {exportBusy === "link" ? "…" : "แชร์ลิงก์"}
               </button>
             </div>
             {toast ? (
@@ -290,22 +290,22 @@ export default function PublicSkewerOrderSharePage() {
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
             <div className="min-w-0">
               <p className="text-xs font-medium text-gray-500">
-                #{data.orderNumber} ┬╖ {data.statusLabel}
+                #{data.orderNumber} · {data.statusLabel}
               </p>
               <p className="mt-1 text-sm font-semibold text-gray-900">
-                α╕òα╣ëα╕¡α╕çα╕üα╕▓α╕ú {formatDateLabel(data.requestedDate)}
+                ต้องการ {formatDateLabel(data.requestedDate)}
               </p>
               {(data.customerName || data.customerPhoneMasked) && (
                 <p className="mt-0.5 text-xs text-gray-600">
                   {[data.customerName, data.customerPhoneMasked]
                     .filter(Boolean)
-                    .join(" ┬╖ ")}
+                    .join(" · ")}
                 </p>
               )}
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-right">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800/70">
-                α╕úα╕ºα╕íα╕¡α╕¡α╣Çα╕öα╕¡α╕úα╣î
+                รวมออเดอร์
               </p>
               <p className="text-base font-black tabular-nums text-amber-950">
                 {data.summaryLabel}
@@ -314,11 +314,11 @@ export default function PublicSkewerOrderSharePage() {
           </div>
 
           <div className="space-y-1.5 text-sm text-gray-700">
-            <p className="whitespace-pre-wrap">α╕ùα╕╡α╣êα╕¡α╕óα╕╣α╣ê: {data.addressText}</p>
-            {data.note ? <p>α╣éα╕Öα╣ëα╕òα╕Ñα╕╣α╕üα╕äα╣ëα╕▓: {data.note}</p> : null}
+            <p className="whitespace-pre-wrap">ที่อยู่: {data.addressText}</p>
+            {data.note ? <p>โน้ตลูกค้า: {data.note}</p> : null}
             {data.status === "CANCELLED" && data.cancelReason ? (
               <p className="rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-700">
-                α╣Çα╕½α╕òα╕╕α╕£α╕Ñα╕óα╕üα╣Çα╕Ñα╕┤α╕ü: {data.cancelReason}
+                เหตุผลยกเลิก: {data.cancelReason}
               </p>
             ) : null}
           </div>

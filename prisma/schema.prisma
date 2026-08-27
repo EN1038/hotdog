@@ -994,6 +994,8 @@ model SkewerOrder {
   confirmedByAdminId   String?
   cancelReason         String?
   cancelledAt          DateTime?
+  /// Unguessable token for public share page (/share/s/…)
+  publicShareToken     String?           @unique
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
   branch               Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)

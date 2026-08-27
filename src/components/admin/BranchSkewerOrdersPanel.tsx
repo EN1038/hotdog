@@ -185,15 +185,16 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
         setExportMsg("แชร์รูปแล้ว");
         toast.success("แชร์รูปแล้ว");
       } else if (result.ok) {
-        setExportMsg("อุปกรณ์นี้แชร์ไม่ได้ — บันทึกรูปแทนแล้ว");
-        toast.success("บันทึกรูปแล้ว");
+        setExportMsg("บันทึกรูปแล้ว — แชร์จากแกลเลอรีได้");
+        toast.success("บันทึกรูปแล้ว", "เครื่องนี้แชร์ตรงไม่ได้ — บันทึกไว้ให้แล้ว");
       } else {
-        setExportMsg("แชร์รูปไม่สำเร็จ");
-        toast.error("แชร์รูปไม่สำเร็จ");
+        setExportMsg(result.error || "แชร์รูปไม่สำเร็จ");
+        toast.error("แชร์รูปไม่สำเร็จ", result.error);
       }
-    } catch {
-      setExportMsg("แชร์รูปไม่สำเร็จ");
-      toast.error("แชร์รูปไม่สำเร็จ");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "แชร์รูปไม่สำเร็จ";
+      setExportMsg(msg);
+      toast.error("แชร์รูปไม่สำเร็จ", msg);
     } finally {
       setExportBusy(null);
     }
@@ -548,17 +549,22 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                     };
                     return (
                       <>
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-sm font-semibold text-gray-900">
                             รายการ
                           </p>
                           {selected.items.length > 0 ? (
-                            <p className="text-xs text-gray-500">
-                              {formatSkewerSplitSummary({
-                                sale: split.sale,
-                                supplyItemCount: split.supplyItemCount,
-                              })}
-                            </p>
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-right shadow-sm">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800/70">
+                                รวมออเดอร์
+                              </p>
+                              <p className="text-base font-black tabular-nums leading-tight text-amber-950 sm:text-lg">
+                                {formatSkewerSplitSummary({
+                                  sale: split.sale,
+                                  supplyItemCount: split.supplyItemCount,
+                                })}
+                              </p>
+                            </div>
                           ) : null}
                         </div>
                         <div>

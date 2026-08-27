@@ -142,6 +142,11 @@ const NAV_GROUPS: NavGroup[] = [
         label: "ประวัติการใช้งาน",
         icon: IconReceipt,
       },
+      {
+        href: "/admin/sms-logs",
+        label: "ประวัติ SMS",
+        icon: IconReceipt,
+      },
     ],
   },
   {

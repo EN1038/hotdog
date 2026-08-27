@@ -137,6 +137,17 @@ enum SkewerOrderStatus {
   CANCELLED
 }
 
+enum SmsSendPurpose {
+  SKEWER_ORDER_CONFIRMED
+  SKEWER_ORDER_CANCELLED
+}
+
+enum SmsSendStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
 enum StockLocationType {
   WAREHOUSE
   BRANCH
@@ -255,6 +266,7 @@ model Admin {
   tableSessionLines      TableSessionLine[] @relation("TableSessionLineCreatedByAdmin")
   primaryOfBrands        Brand[]            @relation("BrandPrimaryAdmin")
   brandInvoicesCreated   BrandInvoice[]     @relation("BrandInvoiceCreatedBy")
+  triggeredSmsLogs       SmsSendLog[]       @relation("SmsSendTriggeredByAdmin")
 
   @@index([lineLinkCode])
 }
@@ -321,6 +333,7 @@ model Brand {
   kitchenProductions   KitchenProduction[]
   branchStockRequests  BranchStockRequest[]
   invoices             BrandInvoice[]
+  smsSendLogs          SmsSendLog[]
 
   @@index([primaryAdminId])
 }
@@ -544,6 +557,7 @@ model Branch {
   branchNonMenuItems           BranchNonMenuItem[]
   expenses                     BranchExpense[]
   stockRequests                BranchStockRequest[]
+  smsSendLogs                  SmsSendLog[]
 
   @@unique([brandId, code])
   @@index([alertSoundId])
@@ -973,9 +987,40 @@ model SkewerOrder {
   customer             Customer          @relation(fields: [customerId], references: [id])
   confirmedByAdmin     Admin?            @relation("SkewerOrderConfirmedByAdmin", fields: [confirmedByAdminId], references: [id], onDelete: SetNull)
   items                SkewerOrderItem[]
+  smsSendLogs          SmsSendLog[]
 
   @@index([branchId, status, createdAt])
   @@index([customerId, createdAt])
+}
+
+/// Audit trail for outbound SMS (Taximail transactional, etc.)
+model SmsSendLog {
+  id                 String         @id @default(cuid())
+  createdAt          DateTime       @default(now())
+  purpose            SmsSendPurpose
+  status             SmsSendStatus
+  toPhone            String         @default("")
+  toMsisdn           String         @default("")
+  body               String
+  provider           String         @default("taximail")
+  providerMessageId  String?
+  errorMessage       String?
+  brandId            String?
+  branchId           String?
+  skewerOrderId      String?
+  orderNumber        String?
+  triggeredByAdminId String?
+  brand              Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  branch             Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  skewerOrder        SkewerOrder?   @relation(fields: [skewerOrderId], references: [id], onDelete: SetNull)
+  triggeredByAdmin   Admin?         @relation("SmsSendTriggeredByAdmin", fields: [triggeredByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([branchId, createdAt])
+  @@index([brandId, createdAt])
+  @@index([purpose, createdAt])
+  @@index([status, createdAt])
+  @@index([skewerOrderId])
 }
 
 model SkewerOrderItem {

@@ -821,6 +821,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       const qty = qtys[item.id] ?? 0;
                       const seq = seqById.get(item.id) ?? 0;
                       const displayImage = resolveSkewerMenuImageUrl(item);
+                      const qtyUnit = resolveSkewerQtyUnit(item);
                       return (
                         <li
                           key={item.id}
@@ -868,6 +869,9 @@ function SkewerOrderPageInner({ params }: PageProps) {
                             </button>
                             <span className="min-w-[2rem] text-center text-sm font-bold tabular-nums">
                               {qty || "0"}
+                            </span>
+                            <span className="w-8 shrink-0 text-xs text-gray-500">
+                              {qtyUnit}
                             </span>
                             <button
                               type="button"

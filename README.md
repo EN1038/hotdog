@@ -56,13 +56,17 @@ JWT_SECRET="change-me-to-a-long-random-string"
 `SkillSale/Orders/{รหัสร้าน}/Products/` สำหรับรูปเมนู (และ `Branch` / `Staff` สำหรับรูปสาขา/พนักงาน)  
 ถ้ายังไม่ตั้ง S3 จะเก็บลง `public/uploads` ชั่วคราวเหมือนเดิม
 
-สำหรับ OTP ล็อกอินลูกค้า (Taximail) ใส่ใน `.env.local`:
+สำหรับ OTP ล็อกอินลูกค้า และ SMS แจ้งยืนยัน/ยกเลิกออเดอร์เสียบไม้ (Taximail) ใส่ใน `.env.local`:
 
 ```env
 TAXIMAIL_API_KEY=...
 TAXIMAIL_SECRET_KEY=...
 TAXIMAIL_OTP_TEMPLATE_KEY=SkillSaleOTP
+# optional: TAXIMAIL_SMS_FROM=TXSMS
+# optional: TAXIMAIL_SMS_GROUP=Default
 ```
+
+ประวัติการส่ง SMS ดูได้ที่ Admin → **ประวัติ SMS** (`/admin/sms-logs`)
 
 ### 3. สร้างฐานข้อมูล
 

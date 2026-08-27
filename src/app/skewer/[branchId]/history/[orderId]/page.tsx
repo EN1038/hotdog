@@ -13,14 +13,17 @@ import { ZoomableImage } from "@/components/ZoomableImage";
 import { bangkokDateKey } from "@/lib/constants";
 import {
   SKEWER_ORDER_STATUS_LABELS,
-  formatSkewerDualSummary,
+  SKEWER_CATEGORY_ROLE_LABELS,
+  formatSkewerSplitSummary,
   formatSkewerQtyLabel,
+  resolveSkewerCategoryRole,
   resolveSkewerMenuImageUrl,
   resolveSkewerQtyUnit,
   resolveSticksPerUnit,
   resolveCountsAsSticks,
-  summarizeSkewerLines,
+  summarizeSkewerSplit,
 } from "@/lib/skewer-order";
+import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -38,6 +41,7 @@ type OrderItem = {
   quantityUnit?: string | null;
   sticksPerUnit?: number | null;
   countsAsSticks?: boolean | null;
+  skewerCategoryRole?: string | null;
 };
 
 type OrderDetail = {
@@ -66,7 +70,12 @@ type MenuItem = {
   countsAsSticks?: boolean | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
-  category: { id: string; name: string; sortOrder: number } | null;
+  category: {
+    id: string;
+    name: string;
+    sortOrder: number;
+    skewerCategoryRole?: string | null;
+  } | null;
 };
 
 type DisplayRow = {
@@ -81,6 +90,7 @@ type DisplayRow = {
   quantityUnit: string;
   sticksPerUnit: number;
   countsAsSticks: boolean;
+  skewerCategoryRole: "SKEWER_SALE" | "SKEWER_SUPPLY";
   ordered: boolean;
   seq: number;
 };
@@ -280,6 +290,10 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         countsAsSticks: resolveCountsAsSticks({
           countsAsSticks: ordered?.countsAsSticks ?? menu.countsAsSticks,
         }),
+        skewerCategoryRole: resolveSkewerCategoryRole({
+          skewerCategoryRole: ordered?.skewerCategoryRole,
+          category: menu.category,
+        }),
         ordered: Boolean(ordered),
         seq: seqById.get(menu.id) ?? 9999,
       };
@@ -310,6 +324,9 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         countsAsSticks: resolveCountsAsSticks({
           countsAsSticks: item.countsAsSticks,
         }),
+        skewerCategoryRole: resolveSkewerCategoryRole({
+          skewerCategoryRole: item.skewerCategoryRole,
+        }),
         ordered: true,
         seq: 9999,
       });
@@ -325,32 +342,43 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
 
   const summary = useMemo(() => {
     if (!order) return null;
-    const requested = summarizeSkewerLines(
+    const requestedSplit = summarizeSkewerSplit(
       order.items.map((i) => ({
         quantity: i.requestedQuantity,
         sticksPerUnit: i.sticksPerUnit,
         countsAsSticks: i.countsAsSticks,
+        skewerCategoryRole: i.skewerCategoryRole,
       })),
     );
-    const confirmed = summarizeSkewerLines(
+    const confirmedSplit = summarizeSkewerSplit(
       order.items.map((i) => ({
         quantity: i.confirmedQuantity ?? 0,
         sticksPerUnit: i.sticksPerUnit,
         countsAsSticks: i.countsAsSticks,
+        skewerCategoryRole: i.skewerCategoryRole,
         ordered: i.confirmedQuantity != null && i.confirmedQuantity > 0,
       })),
     );
     return {
-      itemCount: requested.itemCount,
-      requestedStickTotal: requested.stickTotal,
-      confirmedStickTotal: confirmed.stickTotal,
-      dualRequested: formatSkewerDualSummary(requested),
-      dualConfirmed: formatSkewerDualSummary({
-        itemCount: confirmed.itemCount || requested.itemCount,
-        stickTotal: confirmed.stickTotal,
+      requestedSplit,
+      confirmedSplit,
+      splitRequested: formatSkewerSplitSummary({
+        sale: requestedSplit.sale,
+        supplyItemCount: requestedSplit.supplyItemCount,
       }),
+      splitConfirmed: formatSkewerSplitSummary({
+        sale: confirmedSplit.sale,
+        supplyItemCount: confirmedSplit.supplyItemCount,
+      }),
+      requestedStickTotal: requestedSplit.sale.stickTotal,
+      confirmedStickTotal: confirmedSplit.sale.stickTotal,
+      saleItemCount: requestedSplit.sale.itemCount,
+      supplyItemCount: requestedSplit.supplyItemCount,
     };
   }, [order]);
+
+  const { saleLines: visibleSaleRows, supplyLines: visibleSupplyRows } =
+    useMemo(() => splitLinesBySkewerRole(visibleRows), [visibleRows]);
 
   const brandName = meta.brandName || "";
   const branchLabel = formatBranchLabel(meta.name);
@@ -441,9 +469,9 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     );
     lines.push(`ต้องการ ${formatDateLabel(order.requestedDate)}`);
     lines.push("");
-    lines.push(`จำนวนที่สั่ง: ${summary.dualRequested}`);
+    lines.push(`จำนวนที่สั่ง: ${summary.splitRequested}`);
     if (order.status === "CONFIRMED") {
-      lines.push(`จำนวนที่ได้: ${summary.dualConfirmed}`);
+      lines.push(`จำนวนที่ได้: ${summary.splitConfirmed}`);
     }
     lines.push(`ที่อยู่: ${order.addressText}`);
     if (order.note) lines.push(`โน้ต: ${order.note}`);
@@ -452,19 +480,25 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
       if (cat) lines.push(`หมวด ${cat.name}`);
     }
     lines.push("");
-    lines.push("รายการ:");
-    if (visibleRows.length === 0) {
-      lines.push("- ไม่มีรายการ");
-    } else {
-      visibleRows.forEach((item) => {
+    const appendRows = (title: string, rows: DisplayRow[]) => {
+      if (rows.length === 0) return;
+      lines.push(title);
+      rows.forEach((item) => {
         const qty = rowDisplayQty(order, item);
         const mark = item.ordered ? "" : " (ไม่ได้สั่ง)";
         lines.push(
           `${item.seq}. ${item.name}: ${formatSkewerQtyLabel(qty, item)}${mark}`,
         );
       });
+      lines.push("");
+    };
+    const { saleLines, supplyLines } = splitLinesBySkewerRole(visibleRows);
+    appendRows(SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE + ":", saleLines);
+    appendRows(SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY + ":", supplyLines);
+    if (saleLines.length === 0 && supplyLines.length === 0) {
+      lines.push("- ไม่มีรายการ");
     }
-    return lines.join("\n");
+    return lines.join("\n").replace(/\n\n$/, "");
   }
 
   async function handleCopyText() {
@@ -479,6 +513,101 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     } finally {
       setExportBusy(null);
     }
+  }
+
+  function renderHistoryRow(item: DisplayRow) {
+    if (!order) return null;
+    const confirmed = item.confirmedQuantity;
+    const displayQty = rowDisplayQty(order, item);
+    const less =
+      order.status === "CONFIRMED" &&
+      item.ordered &&
+      confirmed != null &&
+      confirmed < item.requestedQuantity;
+    const same =
+      order.status === "CONFIRMED" &&
+      item.ordered &&
+      confirmed != null &&
+      confirmed === item.requestedQuantity;
+    return (
+      <li
+        key={item.key}
+        className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 ${
+          item.ordered ? "" : "opacity-40"
+        }`}
+      >
+        <span
+          className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
+            item.ordered ? "text-gray-500" : "text-gray-300"
+          }`}
+        >
+          {item.seq}
+        </span>
+        <div
+          className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft ${
+            item.ordered ? "" : "grayscale"
+          }`}
+        >
+          {item.imageUrl ? (
+            <ZoomableImage
+              src={item.imageUrl}
+              alt={item.name}
+              className="h-14 w-14 object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-gray-400">
+              <IconSkewerPlaceholder size={28} />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p
+            className={`truncate text-sm leading-tight ${
+              item.ordered
+                ? "font-bold text-gray-900"
+                : "font-medium text-gray-400"
+            }`}
+          >
+            {item.name}
+          </p>
+          <p
+            className={`mt-0.5 text-xs ${
+              item.ordered ? "text-gray-500" : "text-gray-300"
+            }`}
+          >
+            {item.ordered
+              ? order.status === "CONFIRMED"
+                ? `สั่ง ${formatSkewerQtyLabel(item.requestedQuantity, item)}${
+                    same
+                      ? " · ได้เท่าที่สั่ง"
+                      : less
+                        ? " · น้อยกว่าที่สั่ง"
+                        : ""
+                  }`
+                : formatSkewerQtyLabel(item.requestedQuantity, item)
+              : "ไม่ได้สั่ง"}
+          </p>
+        </div>
+        <div
+          className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
+            !item.ordered
+              ? "bg-gray-50 text-gray-300"
+              : less
+                ? "bg-amber-50 text-amber-700"
+                : order.status === "CONFIRMED"
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "bg-slate-100 text-slate-900"
+          }`}
+        >
+          <p className="text-lg font-black tabular-nums leading-none">
+            {displayQty}
+          </p>
+          <p className="mt-0.5 text-[10px] font-semibold opacity-70">
+            {order.status === "CONFIRMED" && item.ordered ? "ได้" : "สั่ง"}
+          </p>
+        </div>
+      </li>
+    );
   }
 
   return (
@@ -561,12 +690,12 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                     จำนวนที่สั่ง
                   </p>
                   <p className="mt-0.5 text-xs font-semibold text-emerald-800/70">
-                    เทียบไม้
+                    {summary.splitRequested}
                   </p>
                   <div className="mt-2.5 space-y-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-[11px] font-medium text-slate-500">
-                        เทียบไม้
+                        รวมไม้
                       </span>
                       <span className="text-lg font-black tabular-nums leading-none text-slate-900">
                         {summary.requestedStickTotal}
@@ -574,13 +703,24 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                     </div>
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-[11px] font-medium text-slate-500">
-                        รายการ
+                        รายการขาย
                       </span>
                       <span className="text-sm font-extrabold tabular-nums text-emerald-700">
-                        {summary.itemCount}{" "}
+                        {summary.saleItemCount}{" "}
                         <span className="text-[10px] font-bold">ชนิด</span>
                       </span>
                     </div>
+                    {summary.supplyItemCount > 0 ? (
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">
+                          ของเพิ่ม
+                        </span>
+                        <span className="text-sm font-extrabold tabular-nums text-emerald-700">
+                          {summary.supplyItemCount}{" "}
+                          <span className="text-[10px] font-bold">รายการ</span>
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -645,7 +785,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                           รายการ
                         </span>
                         <span className="text-sm font-extrabold tabular-nums text-rose-700">
-                          {summary.itemCount}{" "}
+                          {summary.saleItemCount}{" "}
                           <span className="text-[10px] font-bold">ชนิด</span>
                         </span>
                       </div>
@@ -673,7 +813,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                           รายการ
                         </span>
                         <span className="text-sm font-extrabold tabular-nums text-amber-700">
-                          {summary.itemCount}{" "}
+                          {summary.saleItemCount}{" "}
                           <span className="text-[10px] font-bold">ชนิด</span>
                         </span>
                       </div>
@@ -704,10 +844,10 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
               <div className="rounded-2xl border border-gray-200 bg-white p-3">
                 <div className="mb-1 flex items-baseline justify-between gap-2 px-0.5">
                   <h2 className="text-sm font-semibold text-gray-900">
-                    รายการไม้
+                    สรุปรายการ
                   </h2>
                   <p className="text-xs text-gray-500">
-                    {visibleRows.length} / {displayRows.length} รายการ
+                    {summary.splitRequested}
                   </p>
                 </div>
                 {visibleRows.length === 0 ? (
@@ -715,106 +855,28 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                     ไม่พบเมนูในหมวดนี้
                   </p>
                 ) : (
-                  <ul className="divide-y divide-gray-100">
-                    {visibleRows.map((item) => {
-                      const confirmed = item.confirmedQuantity;
-                      const displayQty = rowDisplayQty(order, item);
-                      const less =
-                        order.status === "CONFIRMED" &&
-                        item.ordered &&
-                        confirmed != null &&
-                        confirmed < item.requestedQuantity;
-                      const same =
-                        order.status === "CONFIRMED" &&
-                        item.ordered &&
-                        confirmed != null &&
-                        confirmed === item.requestedQuantity;
-                      return (
-                        <li
-                          key={item.key}
-                          className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 ${
-                            item.ordered ? "" : "opacity-40"
-                          }`}
-                        >
-                          <span
-                            className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
-                              item.ordered ? "text-gray-500" : "text-gray-300"
-                            }`}
-                          >
-                            {item.seq}
-                          </span>
-                          <div
-                            className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft ${
-                              item.ordered ? "" : "grayscale"
-                            }`}
-                          >
-                            {item.imageUrl ? (
-                              <ZoomableImage
-                                src={item.imageUrl}
-                                alt={item.name}
-                                className="h-14 w-14 object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-gray-400">
-                                <IconSkewerPlaceholder size={28} />
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p
-                              className={`truncate text-sm leading-tight ${
-                                item.ordered
-                                  ? "font-bold text-gray-900"
-                                  : "font-medium text-gray-400"
-                              }`}
-                            >
-                              {item.name}
-                            </p>
-                            <p
-                              className={`mt-0.5 text-xs ${
-                                item.ordered ? "text-gray-500" : "text-gray-300"
-                              }`}
-                            >
-                              {item.ordered
-                                ? order.status === "CONFIRMED"
-                                  ? `สั่ง ${formatSkewerQtyLabel(item.requestedQuantity, item)}${
-                                      same
-                                        ? " · ได้เท่าที่สั่ง"
-                                        : less
-                                          ? " · น้อยกว่าที่สั่ง"
-                                          : ""
-                                    }`
-                                  : formatSkewerQtyLabel(
-                                      item.requestedQuantity,
-                                      item,
-                                    )
-                                : "ไม่ได้สั่ง"}
-                            </p>
-                          </div>
-                          <div
-                            className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
-                              !item.ordered
-                                ? "bg-gray-50 text-gray-300"
-                                : less
-                                  ? "bg-amber-50 text-amber-700"
-                                  : order.status === "CONFIRMED"
-                                    ? "bg-emerald-50 text-emerald-800"
-                                    : "bg-slate-100 text-slate-900"
-                            }`}
-                          >
-                            <p className="text-lg font-black tabular-nums leading-none">
-                              {displayQty}
-                            </p>
-                            <p className="mt-0.5 text-[10px] font-semibold opacity-70">
-                              {order.status === "CONFIRMED" && item.ordered
-                                ? "ได้"
-                                : "สั่ง"}
-                            </p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="mb-2 px-0.5 text-xs font-semibold text-gray-700">
+                        {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
+                      </p>
+                      <ul className="divide-y divide-gray-100">
+                        {visibleSaleRows.map((item) => renderHistoryRow(item))}
+                      </ul>
+                    </div>
+                    {visibleSupplyRows.length > 0 ? (
+                      <div>
+                        <p className="mb-2 px-0.5 text-xs font-semibold text-gray-700">
+                          {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
+                        </p>
+                        <ul className="divide-y divide-gray-100">
+                          {visibleSupplyRows.map((item) =>
+                            renderHistoryRow(item),
+                          )}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </div>
             </div>

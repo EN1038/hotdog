@@ -28,16 +28,19 @@ import { IconSkewerPlaceholder } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
 import {
   SKEWER_MIN_QTY_PER_ITEM,
-  formatSkewerDualSummary,
+  SKEWER_CATEGORY_ROLE_LABELS,
   formatSkewerQtyLabel,
+  formatSkewerSplitSummary,
   normalizeSkewerOrderQty,
+  resolveSkewerCategoryRole,
   resolveSkewerMenuImageUrl,
   resolveSkewerMinQty,
   resolveSkewerQtyUnit,
   resolveSticksPerUnit,
   resolveCountsAsSticks,
-  summarizeSkewerLines,
+  summarizeSkewerSplit,
 } from "@/lib/skewer-order";
+import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -63,6 +66,7 @@ type MenuItem = {
     name: string;
     sortOrder: number;
     stockExempt?: boolean | null;
+    skewerCategoryRole?: string | null;
   } | null;
   optionGroups?: Array<{ mode?: "MANUAL" | "FROM_MENU" }> | null;
 };
@@ -283,6 +287,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
           quantity,
           sticksPerUnit: resolveSticksPerUnit(item),
           countsAsSticks: resolveCountsAsSticks(item),
+          skewerCategoryRole: resolveSkewerCategoryRole({ category: item.category }),
           seq: seqById.get(id) ?? 9999,
         };
       })
@@ -293,6 +298,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
       quantity: number;
       sticksPerUnit: number;
       countsAsSticks: boolean;
+      skewerCategoryRole: "SKEWER_SALE" | "SKEWER_SUPPLY";
       seq: number;
     }[];
   }, [qtys, menuItems, seqById]);
@@ -310,6 +316,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
         qtyUnit: resolveSkewerQtyUnit(item),
         sticksPerUnit: resolveSticksPerUnit(item),
         countsAsSticks: resolveCountsAsSticks(item),
+        skewerCategoryRole: resolveSkewerCategoryRole({ category: item.category }),
         seq: seqById.get(item.id) ?? 0,
         quantity: ordered ? quantity : 0,
         ordered,
@@ -317,18 +324,22 @@ function SkewerOrderPageInner({ params }: PageProps) {
     });
   }, [catalogSorted, qtys, seqById]);
 
-  const orderSummary = useMemo(
+  const orderSplitSummary = useMemo(
     () =>
-      summarizeSkewerLines(
+      summarizeSkewerSplit(
         selectedLines.map((l) => ({
           quantity: l.quantity,
           sticksPerUnit: l.sticksPerUnit,
           countsAsSticks: l.countsAsSticks,
+          skewerCategoryRole: l.skewerCategoryRole,
         })),
       ),
     [selectedLines],
   );
-  const dualSummaryLabel = formatSkewerDualSummary(orderSummary);
+  const splitSummaryLabel = formatSkewerSplitSummary({
+    sale: orderSplitSummary.sale,
+    supplyItemCount: orderSplitSummary.supplyItemCount,
+  });
 
   const orderSummaryRows = useMemo(() => {
     return selectedLines
@@ -344,6 +355,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
           quantityUnit: item.quantityUnit,
           sticksPerUnit: line.sticksPerUnit,
           countsAsSticks: line.countsAsSticks,
+          skewerCategoryRole: line.skewerCategoryRole,
         };
       })
       .filter(Boolean) as {
@@ -355,8 +367,138 @@ function SkewerOrderPageInner({ params }: PageProps) {
       quantityUnit: string | null | undefined;
       sticksPerUnit: number;
       countsAsSticks: boolean;
+      skewerCategoryRole: "SKEWER_SALE" | "SKEWER_SUPPLY";
     }[];
   }, [selectedLines, menuItems]);
+
+  const { saleLines: selectedSaleLines, supplyLines: selectedSupplyLines } =
+    useMemo(
+      () => splitLinesBySkewerRole(orderSummaryRows),
+      [orderSummaryRows],
+    );
+
+  const { saleLines: reviewSaleRows, supplyLines: reviewSupplyRows } = useMemo(
+    () => splitLinesBySkewerRole(reviewRows),
+    [reviewRows],
+  );
+
+  function renderReviewRow(row: (typeof reviewRows)[number]) {
+    return (
+      <li
+        key={row.id}
+        className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 ${
+          row.ordered ? "" : "opacity-40"
+        }`}
+      >
+        <span
+          className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
+            row.ordered ? "text-gray-500" : "text-gray-300"
+          }`}
+        >
+          {row.seq}
+        </span>
+        <div
+          className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft ${
+            row.ordered ? "" : "grayscale"
+          }`}
+        >
+          {row.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={row.imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-gray-400">
+              <IconSkewerPlaceholder size={20} />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p
+            className={`truncate text-sm leading-tight ${
+              row.ordered
+                ? "font-bold text-gray-900"
+                : "font-medium text-gray-400"
+            }`}
+          >
+            {row.name}
+          </p>
+          <p
+            className={`mt-0.5 text-[11px] ${
+              row.ordered ? "text-gray-500" : "text-gray-300"
+            }`}
+          >
+            {row.ordered
+              ? formatSkewerQtyLabel(row.quantity, {
+                  quantityUnit: row.qtyUnit,
+                  sticksPerUnit: row.sticksPerUnit,
+                  countsAsSticks: row.countsAsSticks,
+                })
+              : "ไม่ได้สั่ง"}
+          </p>
+        </div>
+        <div
+          className={`min-w-[3.75rem] rounded-xl px-2.5 py-1.5 text-center ${
+            row.ordered
+              ? "bg-slate-100 text-slate-900"
+              : "bg-gray-50 text-gray-300"
+          }`}
+        >
+          <p className="text-base font-black tabular-nums leading-none">
+            {row.quantity}
+          </p>
+          <p className="mt-0.5 text-[10px] font-semibold opacity-70">สั่ง</p>
+        </div>
+      </li>
+    );
+  }
+
+  function renderSummaryRow(row: (typeof orderSummaryRows)[number]) {
+    return (
+      <li
+        key={row.id}
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
+      >
+        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft">
+          {row.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={row.imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-gray-400">
+              <IconSkewerPlaceholder size={22} />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-gray-900">
+            {row.name}
+          </p>
+          <p className="truncate text-xs text-gray-500">
+            {formatSkewerQtyLabel(row.quantity, {
+              quantityUnit: row.quantityUnit,
+              sticksPerUnit: row.sticksPerUnit,
+              countsAsSticks: row.countsAsSticks,
+            })}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-base font-black tabular-nums text-gray-900">
+            {row.quantity}
+          </p>
+          <p className="text-[10px] font-semibold text-gray-500">
+            {row.qtyUnit}
+          </p>
+        </div>
+      </li>
+    );
+  }
+
   const detailItem = detailItemId
     ? (visibleItems.find((m) => m.id === detailItemId) ??
       catalogSorted.find((m) => m.id === detailItemId) ??
@@ -632,7 +774,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
               >
                 {selectedLines.length === 0
                   ? "ตรวจสอบคำสั่ง"
-                  : `ตรวจสอบคำสั่ง · ${dualSummaryLabel}`}
+                  : `ตรวจสอบคำสั่ง · ${splitSummaryLabel}`}
               </button>
             )
           }
@@ -700,87 +842,30 @@ function SkewerOrderPageInner({ params }: PageProps) {
                   <div>
                     <div className="mb-2 flex items-baseline justify-between gap-2">
                       <p className="text-sm font-semibold text-gray-900">
-                        รายการที่สั่ง
+                        สรุปรายการ
                       </p>
-                      <p className="text-xs text-gray-500">
-                        สั่ง {selectedLines.length}/{reviewRows.length} ·{" "}
-                        {dualSummaryLabel}
-                      </p>
+                      <p className="text-xs text-gray-500">{splitSummaryLabel}</p>
                     </div>
-                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                      {reviewRows.map((row) => (
-                        <li
-                          key={row.id}
-                          className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 ${
-                            row.ordered ? "" : "opacity-40"
-                          }`}
-                        >
-                          <span
-                            className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
-                              row.ordered ? "text-gray-500" : "text-gray-300"
-                            }`}
-                          >
-                            {row.seq}
-                          </span>
-                          <div
-                            className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft ${
-                              row.ordered ? "" : "grayscale"
-                            }`}
-                          >
-                            {row.imageUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={row.imageUrl}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-gray-400">
-                                <IconSkewerPlaceholder size={20} />
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p
-                              className={`truncate text-sm leading-tight ${
-                                row.ordered
-                                  ? "font-bold text-gray-900"
-                                  : "font-medium text-gray-400"
-                              }`}
-                            >
-                              {row.name}
-                            </p>
-                            <p
-                              className={`mt-0.5 text-[11px] ${
-                                row.ordered ? "text-gray-500" : "text-gray-300"
-                              }`}
-                            >
-                              {row.ordered
-                                ? formatSkewerQtyLabel(row.quantity, {
-                                    quantityUnit: row.qtyUnit,
-                                    sticksPerUnit: row.sticksPerUnit,
-                                    countsAsSticks: row.countsAsSticks,
-                                  })
-                                : "ไม่ได้สั่ง"}
-                            </p>
-                          </div>
-                          <div
-                            className={`min-w-[3.75rem] rounded-xl px-2.5 py-1.5 text-center ${
-                              row.ordered
-                                ? "bg-slate-100 text-slate-900"
-                                : "bg-gray-50 text-gray-300"
-                            }`}
-                          >
-                            <p className="text-base font-black tabular-nums leading-none">
-                              {row.quantity}
-                            </p>
-                            <p className="mt-0.5 text-[10px] font-semibold opacity-70">
-                              สั่ง
-                            </p>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="mb-2 text-xs font-semibold text-gray-700">
+                          {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
+                        </p>
+                        <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                          {reviewSaleRows.map((row) => renderReviewRow(row))}
+                        </ul>
+                      </div>
+                      {reviewSupplyRows.length > 0 ? (
+                        <div>
+                          <p className="mb-2 text-xs font-semibold text-gray-700">
+                            {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
+                          </p>
+                          <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                            {reviewSupplyRows.map((row) => renderReviewRow(row))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 border-t border-gray-100 px-5 py-4">
@@ -858,7 +943,7 @@ function SkewerOrderPageInner({ params }: PageProps) {
                       รวมที่เลือก
                     </p>
                     <p className="text-lg font-black tabular-nums text-site-primary">
-                      {dualSummaryLabel}
+                      {splitSummaryLabel}
                     </p>
                   </div>
                 ) : null}
@@ -996,63 +1081,40 @@ function SkewerOrderPageInner({ params }: PageProps) {
                     สรุปรายการที่สั่ง
                   </h2>
                   <p className="mt-0.5 text-xs text-gray-500">
-                    {selectedLines.length} รายการ · {dualSummaryLabel}
+                    {splitSummaryLabel}
                   </p>
                 </div>
-                {orderSummary.stickTotal > 0 ? (
+                {orderSplitSummary.sale.stickTotal > 0 ? (
                   <p className="shrink-0 text-right">
                     <span className="block text-[11px] font-medium text-gray-500">
-                      รวม
+                      รวมไม้
                     </span>
                     <span className="text-xl font-black tabular-nums text-site-primary">
-                      {orderSummary.stickTotal} ไม้
+                      {orderSplitSummary.sale.stickTotal} ไม้
                     </span>
                   </p>
                 ) : null}
               </div>
-              <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                {orderSummaryRows.map((row) => (
-                  <li
-                    key={row.id}
-                    className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
-                  >
-                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft">
-                      {row.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={row.imageUrl}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-gray-400">
-                          <IconSkewerPlaceholder size={22} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-900">
-                        {row.name}
-                      </p>
-                      <p className="truncate text-xs text-gray-500">
-                        {formatSkewerQtyLabel(row.quantity, {
-                          quantityUnit: row.quantityUnit,
-                          sticksPerUnit: row.sticksPerUnit,
-                          countsAsSticks: row.countsAsSticks,
-                        })}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-base font-black tabular-nums text-gray-900">
-                        {row.quantity}
-                      </p>
-                      <p className="text-[10px] font-semibold text-gray-500">
-                        {row.qtyUnit}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-gray-700">
+                    {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
+                  </p>
+                  <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                    {selectedSaleLines.map((row) => renderSummaryRow(row))}
+                  </ul>
+                </div>
+                {selectedSupplyLines.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold text-gray-700">
+                      {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
+                    </p>
+                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                      {selectedSupplyLines.map((row) => renderSummaryRow(row))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
             </section>
           ) : null}
 

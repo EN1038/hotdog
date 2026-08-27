@@ -47,6 +47,7 @@ export async function GET(request: Request) {
                 name: true,
                 sortOrder: true,
                 stockExempt: true,
+                skewerCategoryRole: true,
               },
             },
             ...menuItemOptionGroupInclude,

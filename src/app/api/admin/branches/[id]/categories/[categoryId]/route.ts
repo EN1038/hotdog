@@ -13,6 +13,7 @@ const patchSchema = z.object({
   name: z.string().trim().min(1).optional(),
   sortOrder: z.number().int().optional(),
   stockExempt: z.boolean().optional(),
+  skewerCategoryRole: z.enum(["SKEWER_SALE", "SKEWER_SUPPLY"]).optional(),
 });
 
 export async function GET(_request: Request, { params }: Params) {
@@ -62,6 +63,9 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
         ...(body.stockExempt !== undefined && { stockExempt: body.stockExempt }),
+        ...(body.skewerCategoryRole !== undefined && {
+          skewerCategoryRole: body.skewerCategoryRole,
+        }),
       },
       include: { _count: { select: { menuItems: true } } },
     });
@@ -69,9 +73,12 @@ export async function PATCH(request: Request, { params }: Params) {
     const ctx = await getBranchActivityContext(branchId);
     await logAdminActivity(session, {
       action: "category.update",
-      summary: body.stockExempt !== undefined
-        ? `${body.stockExempt ? "ยกเว้นสต็อก" : "ติดตามสต็อก"}หมวด ${category.name}`
-        : `แก้ไขหมวดหมู่ ${category.name}`,
+      summary:
+        body.skewerCategoryRole !== undefined
+          ? `ตั้งหมวด ${category.name} เป็น ${body.skewerCategoryRole === "SKEWER_SUPPLY" ? "ของเพิ่ม/สิ้นเปลือง" : "รายการขาย"}`
+          : body.stockExempt !== undefined
+            ? `${body.stockExempt ? "ยกเว้นสต็อก" : "ติดตามสต็อก"}หมวด ${category.name}`
+            : `แก้ไขหมวดหมู่ ${category.name}`,
       brandId: ctx?.brandId ?? null,
       brandName: ctx?.brand?.name ?? null,
       branchId,

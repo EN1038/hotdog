@@ -773,6 +773,11 @@ model BranchMenuItemStockHistory {
   @@index([branchId, type, createdAt])
 }
 
+enum SkewerCategoryRole {
+  SKEWER_SALE
+  SKEWER_SUPPLY
+}
+
 model MenuCategory {
   id          String           @id @default(cuid())
   branchId    String
@@ -780,6 +785,8 @@ model MenuCategory {
   sortOrder   Int              @default(0)
   /// When true, menu items in this category are not gated by BranchMenuItemStock
   stockExempt Boolean          @default(false)
+  /// SKEWER mode: sale sticks vs supply/consumables (น้ำจิ้ม ฯลฯ)
+  skewerCategoryRole SkewerCategoryRole @default(SKEWER_SALE)
   createdAt   DateTime         @default(now())
   branch      Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
   menuItems   BranchMenuItem[]
@@ -1036,7 +1043,13 @@ model SkewerOrderItem {
   itemName           String
   requestedQuantity  Int
   confirmedQuantity  Int?
-  skewerOrder        SkewerOrder     @relation(fields: [skewerOrderId], references: [id], onDelete: Cascade)
+  /// Snapshot from menu at order time (display/validation unit)
+  quantityUnit       String?
+  sticksPerUnit      Int                 @default(1)
+  countsAsSticks     Boolean             @default(true)
+  /// Snapshot: sale vs supply line
+  skewerCategoryRole SkewerCategoryRole  @default(SKEWER_SALE)
+  skewerOrder        SkewerOrder         @relation(fields: [skewerOrderId], references: [id], onDelete: Cascade)
   branchMenuItem     BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
 
   @@index([skewerOrderId])

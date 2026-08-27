@@ -64,6 +64,7 @@ type MenuItemDetail = {
   quantityUnit: string | null;
   sticksPerUnit?: number | null;
   countsAsSticks?: boolean | null;
+  skewerMinQty?: number | null;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: number;
@@ -97,9 +98,9 @@ type FormState = {
   categoryId: string;
   imageUrl: string;
   skewerImageUrl: string;
-  quantityUnit: string;
+  skewerUnitMode: "stick" | "set";
   sticksPerUnit: string;
-  countsAsSticks: boolean;
+  skewerMinQty: string;
   isHidden: boolean;
   isOutOfStock: boolean;
   sortOrder: string;
@@ -130,6 +131,7 @@ const EMPTY_ITEM: MenuItemDetail = {
   quantityUnit: null,
   sticksPerUnit: 1,
   countsAsSticks: true,
+  skewerMinQty: 1,
   isHidden: false,
   isOutOfStock: false,
   sortOrder: 0,
@@ -157,9 +159,9 @@ const EMPTY_FORM: FormState = {
   categoryId: "",
   imageUrl: "",
   skewerImageUrl: "",
-  quantityUnit: "",
-  sticksPerUnit: "1",
-  countsAsSticks: true,
+  skewerUnitMode: "stick",
+  sticksPerUnit: "12",
+  skewerMinQty: "1",
   isHidden: false,
   isOutOfStock: false,
   sortOrder: "0",
@@ -253,13 +255,18 @@ export default function MenuItemEditorPage() {
       categoryId: data.categoryId ?? "",
       imageUrl: data.imageUrl ?? "",
       skewerImageUrl: data.skewerImageUrl ?? "",
-      quantityUnit: data.quantityUnit ?? "",
+      skewerUnitMode:
+        data.quantityUnit?.trim() === "ชุด" ? "set" : "stick",
       sticksPerUnit: String(
         data.sticksPerUnit != null && data.sticksPerUnit >= 1
           ? data.sticksPerUnit
+          : 12,
+      ),
+      skewerMinQty: String(
+        data.skewerMinQty != null && data.skewerMinQty >= 1
+          ? data.skewerMinQty
           : 1,
       ),
-      countsAsSticks: data.countsAsSticks !== false,
       isHidden,
       isOutOfStock,
       sortOrder: String(data.sortOrder ?? 0),
@@ -440,12 +447,22 @@ export default function MenuItemEditorPage() {
         categoryId: form.categoryId || null,
         imageUrl: form.imageUrl || null,
         skewerImageUrl: form.skewerImageUrl || null,
-        quantityUnit: form.quantityUnit.trim() || null,
-        sticksPerUnit: (() => {
-          const n = Number.parseInt(form.sticksPerUnit, 10);
-          return Number.isFinite(n) && n >= 1 ? n : 1;
-        })(),
-        countsAsSticks: form.countsAsSticks,
+        ...(branchOperatingMode === "SKEWER"
+          ? {
+              quantityUnit:
+                form.skewerUnitMode === "set" ? "ชุด" : null,
+              sticksPerUnit: (() => {
+                if (form.skewerUnitMode !== "set") return 1;
+                const n = Number.parseInt(form.sticksPerUnit, 10);
+                return Number.isFinite(n) && n >= 1 ? n : 12;
+              })(),
+              countsAsSticks: true,
+              skewerMinQty: (() => {
+                const n = Number.parseInt(form.skewerMinQty, 10);
+                return Number.isFinite(n) && n >= 1 ? n : 1;
+              })(),
+            }
+          : {}),
         isHidden: form.isHidden,
         isOutOfStock: form.isHidden ? false : form.isOutOfStock,
         sortOrder: (() => {
@@ -663,46 +680,31 @@ export default function MenuItemEditorPage() {
                 <div className="space-y-3">
                   <div>
                     <label className={adminLabelClass}>
-                      หน่วยจำนวน (โหมดเสียบไม้)
+                      หน่วยสั่ง (โหมดเสียบไม้)
                     </label>
-                    <input
-                      className={adminInputClass}
-                      value={form.quantityUnit}
+                    <select
+                      className={adminSelectClass}
+                      value={form.skewerUnitMode}
                       onChange={(e) =>
                         setForm((f) => ({
                           ...f,
-                          quantityUnit: e.target.value,
+                          skewerUnitMode:
+                            e.target.value === "set" ? "set" : "stick",
                         }))
                       }
-                      placeholder="เช่น ไม้, ชุด, ขวด, กรัม"
-                      maxLength={40}
-                    />
+                    >
+                      <option value="stick">ไม้ (ทีละไม้)</option>
+                      <option value="set">ชุด (เทียบเป็นไม้)</option>
+                    </select>
                     <p className="mt-1 text-xs text-slate-500">
-                      แสดงคู่จำนวนในหน้าสั่งเสียบไม้ — ว่าง = ไม้
+                      ค่าเริ่มต้นคือไม้ — เลือกชุดเมื่อขายเป็นชุด เช่น 1 ชุด =
+                      12 ไม้
                     </p>
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900">
-                        นับเป็นไม้
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        เปิดถ้าเป็นไม้/ชุดที่เทียบไม้ได้ — ปิดถ้าเป็นขวด กรัม
-                        ฯลฯ ที่ไม่ควรรวมใน “เทียบไม้”
-                      </p>
-                    </div>
-                    <AdminToggle
-                      label="นับเป็นไม้"
-                      checked={form.countsAsSticks}
-                      onChange={(next) =>
-                        setForm((f) => ({ ...f, countsAsSticks: next }))
-                      }
-                    />
-                  </div>
-                  {form.countsAsSticks ? (
+                  {form.skewerUnitMode === "set" ? (
                     <div>
                       <label className={adminLabelClass}>
-                        1 {form.quantityUnit.trim() || "ไม้"} เท่ากับกี่ไม้
+                        1 ชุด เท่ากับกี่ไม้
                       </label>
                       <input
                         type="number"
@@ -717,12 +719,29 @@ export default function MenuItemEditorPage() {
                           }))
                         }
                       />
-                      <p className="mt-1 text-xs text-slate-500">
-                        ใช้สรุปเทียบไม้รวม — ถ้าหน่วยเป็นไม้ให้ใส่ 1 (เช่น 1 ชุด
-                        = 12 ไม้)
-                      </p>
                     </div>
                   ) : null}
+                  <div>
+                    <label className={adminLabelClass}>
+                      จำนวนขั้นต่ำต่อรายการ
+                    </label>
+                    <input
+                      type="number"
+                      className={adminInputClass}
+                      min={1}
+                      max={9999}
+                      value={form.skewerMinQty}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          skewerMinQty: e.target.value,
+                        }))
+                      }
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      ลูกค้าต้องสั่งอย่างน้อยเท่านี้ต่อเมนู (เช่น 5 ไม้)
+                    </p>
+                  </div>
                 </div>
               ) : null}
               <div>

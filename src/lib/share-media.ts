@@ -64,8 +64,55 @@ function isProbablyRemoteHttpUrl(src: string): boolean {
   return /^https?:\/\//i.test(src);
 }
 
-function sameOriginProxyUrl(absoluteImageUrl: string): string {
+/** Same-origin proxy so Spaces images load (and capture) without CORS/hotlink issues. */
+export function sameOriginMediaProxyUrl(absoluteImageUrl: string): string {
   return `/api/media/proxy?url=${encodeURIComponent(absoluteImageUrl)}`;
+}
+
+function sameOriginProxyUrl(absoluteImageUrl: string): string {
+  return sameOriginMediaProxyUrl(absoluteImageUrl);
+}
+
+/**
+ * Rewrite remote Spaces/CDN image URLs through `/api/media/proxy`.
+ * Leaves relative, data:, and blob: URLs unchanged.
+ */
+export function toPublicDisplayImageUrl(
+  src: string | null | undefined,
+): string | null {
+  const url = src?.trim();
+  if (!url) return null;
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    url.startsWith("/")
+  ) {
+    return url;
+  }
+  if (!isProbablyRemoteHttpUrl(url)) return url;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    const isSpaces =
+      host === "digitaloceanspaces.com" ||
+      host.endsWith(".digitaloceanspaces.com");
+    let isPublicHost = false;
+    try {
+      const publicHost = process.env.NEXT_PUBLIC_S3_PUBLIC_URL
+        ? new URL(process.env.NEXT_PUBLIC_S3_PUBLIC_URL).hostname.toLowerCase()
+        : process.env.S3_PUBLIC_URL
+          ? new URL(process.env.S3_PUBLIC_URL).hostname.toLowerCase()
+          : "";
+      isPublicHost = Boolean(publicHost && host === publicHost);
+    } catch {
+      /* ignore */
+    }
+    if (isSpaces || isPublicHost) {
+      return sameOriginMediaProxyUrl(url);
+    }
+  } catch {
+    /* ignore */
+  }
+  return url;
 }
 
 async function fetchImageAsDataUrl(src: string): Promise<string | null> {

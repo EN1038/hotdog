@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SkewerOrderStatus } from "@prisma/client";
 import {
   adminInputClass,
@@ -9,11 +9,22 @@ import {
 import { DateInput } from "@/components/DateInput";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { ZoomableImage } from "@/components/ZoomableImage";
+import { IconSkewerPlaceholder } from "@/components/icons";
 import {
   SKEWER_ORDER_STATUS_LABELS,
+  formatSkewerDualSummary,
+  formatSkewerQtyLabel,
   resolveSkewerQtyUnit,
+  resolveSticksPerUnit,
+  summarizeSkewerLines,
 } from "@/lib/skewer-order";
 import { bangkokDateKey } from "@/lib/constants";
+import {
+  captureElementToPng,
+  downloadPngDataUrl,
+  sharePngDataUrl,
+} from "@/lib/share-media";
 
 type SkewerItem = {
   id: string;
@@ -21,6 +32,9 @@ type SkewerItem = {
   requestedQuantity: number;
   confirmedQuantity: number | null;
   quantityUnit?: string | null;
+  sticksPerUnit?: number | null;
+  countsAsSticks?: boolean | null;
+  imageUrl?: string | null;
 };
 
 type SkewerOrderRow = {
@@ -45,6 +59,18 @@ type Props = { branchId: string };
 
 function itemUnit(item: SkewerItem) {
   return resolveSkewerQtyUnit({ quantityUnit: item.quantityUnit });
+}
+
+function itemSticksPer(item: SkewerItem) {
+  return resolveSticksPerUnit({ sticksPerUnit: item.sticksPerUnit });
+}
+
+function itemQtyLabel(qty: number, item: SkewerItem) {
+  return formatSkewerQtyLabel(qty, {
+    quantityUnit: item.quantityUnit,
+    sticksPerUnit: item.sticksPerUnit,
+    countsAsSticks: item.countsAsSticks,
+  });
 }
 
 function statusTone(status: SkewerOrderStatus) {
@@ -78,6 +104,9 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
   const [adminNote, setAdminNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exportBusy, setExportBusy] = useState<"save" | "share" | null>(null);
+  const [exportMsg, setExportMsg] = useState("");
+  const captureRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,10 +140,67 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
     [orders, selectedId],
   );
 
+  async function handleSaveImage() {
+    if (!selected || exportBusy) return;
+    const node = captureRef.current;
+    if (!node) return;
+    setExportBusy("save");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureElementToPng(node);
+      const result = await downloadPngDataUrl(
+        dataUrl,
+        `ออเดอร์ไม้_${selected.orderNumber}_${bangkokDateKey()}.png`,
+      );
+      setExportMsg(result.ok ? "บันทึกรูปแล้ว" : "บันทึกรูปไม่สำเร็จ");
+      if (result.ok) toast.success("บันทึกรูปแล้ว");
+      else toast.error("บันทึกรูปไม่สำเร็จ");
+    } catch {
+      setExportMsg("บันทึกรูปไม่สำเร็จ");
+      toast.error("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleShareImage() {
+    if (!selected || exportBusy) return;
+    const node = captureRef.current;
+    if (!node) return;
+    setExportBusy("share");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureElementToPng(node);
+      const filename = `ออเดอร์ไม้_${selected.orderNumber}_${bangkokDateKey()}.png`;
+      const title = `ออเดอร์เสียบไม้ #${selected.orderNumber}`;
+      const result = await sharePngDataUrl(dataUrl, filename, title);
+      if (result.error === "cancelled") {
+        setExportMsg("");
+        return;
+      }
+      if (result.mode === "share") {
+        setExportMsg("แชร์รูปแล้ว");
+        toast.success("แชร์รูปแล้ว");
+      } else if (result.ok) {
+        setExportMsg("อุปกรณ์นี้แชร์ไม่ได้ — บันทึกรูปแทนแล้ว");
+        toast.success("บันทึกรูปแล้ว");
+      } else {
+        setExportMsg("แชร์รูปไม่สำเร็จ");
+        toast.error("แชร์รูปไม่สำเร็จ");
+      }
+    } catch {
+      setExportMsg("แชร์รูปไม่สำเร็จ");
+      toast.error("แชร์รูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
   useEffect(() => {
     if (!selected) {
       setQtyDraft({});
       setAdminNote("");
+      setExportMsg("");
       return;
     }
     const next: Record<string, string> = {};
@@ -321,6 +407,31 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
               <p className="text-sm text-gray-500">เลือกออเดอร์ทางซ้ายเพื่อดูรายละเอียด</p>
             ) : (
               <div className="space-y-5">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!!exportBusy}
+                    onClick={() => void handleSaveImage()}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {exportBusy === "save" ? "กำลังบันทึก…" : "บันทึกรูป"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!exportBusy}
+                    onClick={() => void handleShareImage()}
+                    className="rounded-xl border border-green-600 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800 hover:bg-green-100 disabled:opacity-60"
+                  >
+                    {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
+                  </button>
+                  {exportMsg ? (
+                    <span className="self-center text-xs text-gray-600">
+                      {exportMsg}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div ref={captureRef} className="space-y-5 bg-white">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
                     #{selected.orderNumber}
@@ -358,7 +469,22 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-sm font-semibold text-gray-900">รายการ</p>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-900">รายการ</p>
+                    {selected.items.length > 0 ? (
+                      <p className="text-xs text-gray-500">
+                        {formatSkewerDualSummary(
+                          summarizeSkewerLines(
+                            selected.items.map((i) => ({
+                              quantity: i.requestedQuantity,
+                              sticksPerUnit: i.sticksPerUnit,
+                              countsAsSticks: i.countsAsSticks,
+                            })),
+                          ),
+                        )}
+                      </p>
+                    ) : null}
+                  </div>
                   {selected.items.map((item) => {
                     const unit = itemUnit(item);
                     return (
@@ -366,14 +492,29 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                       key={item.id}
                       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 py-2.5"
                     >
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900">{item.itemName}</p>
-                        <p className="text-xs text-gray-500">
-                          สั่ง {item.requestedQuantity} {unit}
-                          {item.confirmedQuantity != null
-                            ? ` · ได้ ${item.confirmedQuantity} ${unit}`
-                            : ""}
-                        </p>
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-site-primary-soft">
+                          {item.imageUrl ? (
+                            <ZoomableImage
+                              src={item.imageUrl}
+                              alt={item.itemName}
+                              className="h-14 w-14 object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-gray-400">
+                              <IconSkewerPlaceholder size={28} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900">{item.itemName}</p>
+                          <p className="text-xs text-gray-500">
+                            สั่ง {itemQtyLabel(item.requestedQuantity, item)}
+                            {item.confirmedQuantity != null
+                              ? ` · ได้ ${itemQtyLabel(item.confirmedQuantity, item)}`
+                              : ""}
+                          </p>
+                        </div>
                       </div>
                       {selected.status === "PENDING_CONFIRM" ? (
                         <div className="flex items-center gap-2">
@@ -390,12 +531,21 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                               }))
                             }
                           />
-                          <span className="text-sm text-gray-500">{unit}</span>
+                          <span className="text-sm text-gray-500">
+                            {unit}
+                            {item.countsAsSticks !== false &&
+                            itemSticksPer(item) > 1 ? (
+                              <span className="block text-[10px] text-gray-400">
+                                1{unit}={itemSticksPer(item)}ไม้
+                              </span>
+                            ) : null}
+                          </span>
                         </div>
                       ) : null}
                     </div>
                     );
                   })}
+                </div>
                 </div>
 
                 {selected.status === "PENDING_CONFIRM" && (

@@ -20,6 +20,8 @@ export function SkewerMenuItemQtyDetail({
   name,
   imageUrl,
   qtyUnit = "ไม้",
+  sticksPerUnit = 1,
+  countsAsSticks = true,
   draftQty,
   onDraftChange,
   onBack,
@@ -28,6 +30,8 @@ export function SkewerMenuItemQtyDetail({
   name: string;
   imageUrl: string | null;
   qtyUnit?: string;
+  sticksPerUnit?: number;
+  countsAsSticks?: boolean;
   draftQty: number;
   onDraftChange: (next: number) => void;
   onBack: () => void;
@@ -36,6 +40,11 @@ export function SkewerMenuItemQtyDetail({
   const [qtyText, setQtyText] = useState(() => String(draftQty || 0));
   const [editing, setEditing] = useState(false);
   const unit = qtyUnit.trim() || "ไม้";
+  const per = Math.max(1, Math.floor(sticksPerUnit || 1));
+  const stickEquiv =
+    countsAsSticks !== false && draftQty > 0 && per > 1
+      ? `เทียบ ${draftQty * per} ไม้`
+      : null;
 
   useEffect(() => {
     if (!editing) setQtyText(String(draftQty || 0));
@@ -121,6 +130,11 @@ export function SkewerMenuItemQtyDetail({
             className="w-full border-0 bg-transparent p-0 text-center text-3xl font-black tabular-nums text-gray-900 outline-none ring-0 focus:rounded-lg focus:ring-2 focus:ring-site-primary/40"
           />
           <span className="text-xs font-semibold text-gray-500">{unit}</span>
+          {stickEquiv ? (
+            <span className="mt-0.5 text-[11px] font-medium text-gray-400">
+              {stickEquiv}
+            </span>
+          ) : null}
         </div>
         <button
           type="button"

@@ -9,10 +9,17 @@ import {
 } from "@/components/skewer/SkewerAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { IconSkewerPlaceholder } from "@/components/icons";
+import { ZoomableImage } from "@/components/ZoomableImage";
 import { bangkokDateKey } from "@/lib/constants";
 import {
   SKEWER_ORDER_STATUS_LABELS,
+  formatSkewerDualSummary,
+  formatSkewerQtyLabel,
+  resolveSkewerMenuImageUrl,
   resolveSkewerQtyUnit,
+  resolveSticksPerUnit,
+  resolveCountsAsSticks,
+  summarizeSkewerLines,
 } from "@/lib/skewer-order";
 import {
   assignStableMenuSequence,
@@ -29,6 +36,8 @@ type OrderItem = {
   confirmedQuantity: number | null;
   imageUrl: string | null;
   quantityUnit?: string | null;
+  sticksPerUnit?: number | null;
+  countsAsSticks?: boolean | null;
 };
 
 type OrderDetail = {
@@ -53,6 +62,8 @@ type MenuItem = {
   imageUrl: string | null;
   skewerImageUrl?: string | null;
   quantityUnit?: string | null;
+  sticksPerUnit?: number | null;
+  countsAsSticks?: boolean | null;
   isOutOfStock: boolean;
   sortOrder?: number | null;
   category: { id: string; name: string; sortOrder: number } | null;
@@ -68,6 +79,8 @@ type DisplayRow = {
   requestedQuantity: number;
   confirmedQuantity: number | null;
   quantityUnit: string;
+  sticksPerUnit: number;
+  countsAsSticks: boolean;
   ordered: boolean;
   seq: number;
 };
@@ -250,13 +263,22 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         key: menu.id,
         menuId: menu.id,
         name: menu.name,
-        imageUrl: ordered?.imageUrl || menu.imageUrl,
+        imageUrl:
+          ordered?.imageUrl ||
+          resolveSkewerMenuImageUrl(menu) ||
+          menu.imageUrl,
         categoryId: menu.category?.id ?? null,
         categoryName: menu.category?.name ?? null,
         requestedQuantity: ordered?.requestedQuantity ?? 0,
         confirmedQuantity: ordered?.confirmedQuantity ?? null,
         quantityUnit: resolveSkewerQtyUnit({
           quantityUnit: ordered?.quantityUnit ?? menu.quantityUnit,
+        }),
+        sticksPerUnit: resolveSticksPerUnit({
+          sticksPerUnit: ordered?.sticksPerUnit ?? menu.sticksPerUnit,
+        }),
+        countsAsSticks: resolveCountsAsSticks({
+          countsAsSticks: ordered?.countsAsSticks ?? menu.countsAsSticks,
         }),
         ordered: Boolean(ordered),
         seq: seqById.get(menu.id) ?? 9999,
@@ -282,6 +304,12 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         quantityUnit: resolveSkewerQtyUnit({
           quantityUnit: item.quantityUnit,
         }),
+        sticksPerUnit: resolveSticksPerUnit({
+          sticksPerUnit: item.sticksPerUnit,
+        }),
+        countsAsSticks: resolveCountsAsSticks({
+          countsAsSticks: item.countsAsSticks,
+        }),
         ordered: true,
         seq: 9999,
       });
@@ -297,16 +325,31 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
 
   const summary = useMemo(() => {
     if (!order) return null;
-    const itemCount = order.items.length;
-    const requestedTotal = order.items.reduce(
-      (sum, i) => sum + i.requestedQuantity,
-      0,
+    const requested = summarizeSkewerLines(
+      order.items.map((i) => ({
+        quantity: i.requestedQuantity,
+        sticksPerUnit: i.sticksPerUnit,
+        countsAsSticks: i.countsAsSticks,
+      })),
     );
-    const confirmedTotal = order.items.reduce(
-      (sum, i) => sum + (i.confirmedQuantity ?? 0),
-      0,
+    const confirmed = summarizeSkewerLines(
+      order.items.map((i) => ({
+        quantity: i.confirmedQuantity ?? 0,
+        sticksPerUnit: i.sticksPerUnit,
+        countsAsSticks: i.countsAsSticks,
+        ordered: i.confirmedQuantity != null && i.confirmedQuantity > 0,
+      })),
     );
-    return { itemCount, requestedTotal, confirmedTotal };
+    return {
+      itemCount: requested.itemCount,
+      requestedStickTotal: requested.stickTotal,
+      confirmedStickTotal: confirmed.stickTotal,
+      dualRequested: formatSkewerDualSummary(requested),
+      dualConfirmed: formatSkewerDualSummary({
+        itemCount: confirmed.itemCount || requested.itemCount,
+        stickTotal: confirmed.stickTotal,
+      }),
+    };
   }, [order]);
 
   const brandName = meta.brandName || "";
@@ -398,9 +441,9 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     );
     lines.push(`ต้องการ ${formatDateLabel(order.requestedDate)}`);
     lines.push("");
-    lines.push(`จำนวนที่สั่ง: ${summary.requestedTotal} ไม้ · ${summary.itemCount} ชนิด`);
+    lines.push(`จำนวนที่สั่ง: ${summary.dualRequested}`);
     if (order.status === "CONFIRMED") {
-      lines.push(`จำนวนที่ได้: ${summary.confirmedTotal} ไม้`);
+      lines.push(`จำนวนที่ได้: ${summary.dualConfirmed}`);
     }
     lines.push(`ที่อยู่: ${order.addressText}`);
     if (order.note) lines.push(`โน้ต: ${order.note}`);
@@ -417,7 +460,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
         const qty = rowDisplayQty(order, item);
         const mark = item.ordered ? "" : " (ไม่ได้สั่ง)";
         lines.push(
-          `${item.seq}. ${item.name}: ${qty} ${item.quantityUnit}${mark}`,
+          `${item.seq}. ${item.name}: ${formatSkewerQtyLabel(qty, item)}${mark}`,
         );
       });
     }
@@ -518,15 +561,15 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                     จำนวนที่สั่ง
                   </p>
                   <p className="mt-0.5 text-xs font-semibold text-emerald-800/70">
-                    รวมไม้
+                    เทียบไม้
                   </p>
                   <div className="mt-2.5 space-y-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-[11px] font-medium text-slate-500">
-                        รวม
+                        เทียบไม้
                       </span>
                       <span className="text-lg font-black tabular-nums leading-none text-slate-900">
-                        {summary.requestedTotal}
+                        {summary.requestedStickTotal}
                       </span>
                     </div>
                     <div className="flex items-baseline justify-between gap-2">
@@ -555,7 +598,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                           รวม
                         </span>
                         <span className="text-lg font-black tabular-nums leading-none text-slate-900">
-                          {summary.confirmedTotal}
+                          {summary.confirmedStickTotal}
                         </span>
                       </div>
                       <div className="flex items-baseline justify-between gap-2">
@@ -564,14 +607,18 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                         </span>
                         <span
                           className={`text-sm font-extrabold tabular-nums ${
-                            summary.confirmedTotal < summary.requestedTotal
+                            summary.confirmedStickTotal <
+                            summary.requestedStickTotal
                               ? "text-amber-700"
                               : "text-sky-700"
                           }`}
                         >
-                          {summary.confirmedTotal - summary.requestedTotal === 0
+                          {summary.confirmedStickTotal -
+                            summary.requestedStickTotal ===
+                          0
                             ? "เท่ากัน"
-                            : summary.confirmedTotal - summary.requestedTotal}
+                            : summary.confirmedStickTotal -
+                              summary.requestedStickTotal}
                         </span>
                       </div>
                     </div>
@@ -618,7 +665,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                           สั่งไว้
                         </span>
                         <span className="text-lg font-black tabular-nums leading-none text-slate-900">
-                          {summary.requestedTotal}
+                          {summary.requestedStickTotal}
                         </span>
                       </div>
                       <div className="flex items-baseline justify-between gap-2">
@@ -702,11 +749,10 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                             }`}
                           >
                             {item.imageUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
+                              <ZoomableImage
                                 src={item.imageUrl}
-                                alt=""
-                                className="h-full w-full object-cover"
+                                alt={item.name}
+                                className="h-14 w-14 object-cover"
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-gray-400">
@@ -731,14 +777,17 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                             >
                               {item.ordered
                                 ? order.status === "CONFIRMED"
-                                  ? `สั่ง ${item.requestedQuantity} ${item.quantityUnit}${
+                                  ? `สั่ง ${formatSkewerQtyLabel(item.requestedQuantity, item)}${
                                       same
                                         ? " · ได้เท่าที่สั่ง"
                                         : less
                                           ? " · น้อยกว่าที่สั่ง"
                                           : ""
                                     }`
-                                  : item.quantityUnit
+                                  : formatSkewerQtyLabel(
+                                      item.requestedQuantity,
+                                      item,
+                                    )
                                 : "ไม่ได้สั่ง"}
                             </p>
                           </div>

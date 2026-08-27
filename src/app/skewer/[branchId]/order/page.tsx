@@ -329,6 +329,34 @@ function SkewerOrderPageInner({ params }: PageProps) {
     [selectedLines],
   );
   const dualSummaryLabel = formatSkewerDualSummary(orderSummary);
+
+  const orderSummaryRows = useMemo(() => {
+    return selectedLines
+      .map((line) => {
+        const item = menuItems.find((m) => m.id === line.id);
+        if (!item) return null;
+        return {
+          id: line.id,
+          name: line.name,
+          quantity: line.quantity,
+          imageUrl: resolveSkewerMenuImageUrl(item),
+          qtyUnit: resolveSkewerQtyUnit(item),
+          quantityUnit: item.quantityUnit,
+          sticksPerUnit: line.sticksPerUnit,
+          countsAsSticks: line.countsAsSticks,
+        };
+      })
+      .filter(Boolean) as {
+      id: string;
+      name: string;
+      quantity: number;
+      imageUrl: string | null;
+      qtyUnit: string;
+      quantityUnit: string | null | undefined;
+      sticksPerUnit: number;
+      countsAsSticks: boolean;
+    }[];
+  }, [selectedLines, menuItems]);
   const detailItem = detailItemId
     ? (visibleItems.find((m) => m.id === detailItemId) ??
       catalogSorted.find((m) => m.id === detailItemId) ??
@@ -955,6 +983,78 @@ function SkewerOrderPageInner({ params }: PageProps) {
               </>
             )}
           </section>
+
+          {!detailOpen && selectedLines.length > 0 ? (
+            <section
+              id="skewer-order-summary"
+              tabIndex={-1}
+              className="rounded-2xl border border-gray-200 bg-white p-4"
+            >
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    สรุปรายการที่สั่ง
+                  </h2>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {selectedLines.length} รายการ · {dualSummaryLabel}
+                  </p>
+                </div>
+                {orderSummary.stickTotal > 0 ? (
+                  <p className="shrink-0 text-right">
+                    <span className="block text-[11px] font-medium text-gray-500">
+                      รวม
+                    </span>
+                    <span className="text-xl font-black tabular-nums text-site-primary">
+                      {orderSummary.stickTotal} ไม้
+                    </span>
+                  </p>
+                ) : null}
+              </div>
+              <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                {orderSummaryRows.map((row) => (
+                  <li
+                    key={row.id}
+                    className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
+                  >
+                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-site-primary-soft">
+                      {row.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={row.imageUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-gray-400">
+                          <IconSkewerPlaceholder size={22} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-900">
+                        {row.name}
+                      </p>
+                      <p className="truncate text-xs text-gray-500">
+                        {formatSkewerQtyLabel(row.quantity, {
+                          quantityUnit: row.quantityUnit,
+                          sticksPerUnit: row.sticksPerUnit,
+                          countsAsSticks: row.countsAsSticks,
+                        })}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-base font-black tabular-nums text-gray-900">
+                        {row.quantity}
+                      </p>
+                      <p className="text-[10px] font-semibold text-gray-500">
+                        {row.qtyUnit}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           {!detailOpen ? (
           <section

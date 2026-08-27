@@ -274,6 +274,28 @@ function SkewerOrderPageInner({ params }: PageProps) {
     return orderable.filter((m) => m.category?.id === categoryFilter);
   }, [catalogSorted, categoryFilter]);
 
+  const { saleItems: visibleSaleItems, supplyItems: visibleSupplyItems } =
+    useMemo(() => {
+      const saleItems: MenuItem[] = [];
+      const supplyItems: MenuItem[] = [];
+      for (const item of visibleItems) {
+        if (
+          resolveSkewerCategoryRole({ category: item.category }) ===
+          "SKEWER_SUPPLY"
+        ) {
+          supplyItems.push(item);
+        } else {
+          saleItems.push(item);
+        }
+      }
+      return { saleItems, supplyItems };
+    }, [visibleItems]);
+
+  const showMenuRoleSections =
+    categoryFilter === "ALL" &&
+    visibleSaleItems.length > 0 &&
+    visibleSupplyItems.length > 0;
+
   const selectedLines = useMemo(() => {
     return Object.entries(qtys)
       .map(([id, quantity]) => {
@@ -981,25 +1003,64 @@ function SkewerOrderPageInner({ params }: PageProps) {
                 ) : null}
 
                 {menuView === "grid" ? (
-                  <SkewerPhotoMenuGrid
-                    items={visibleItems.map((item) => ({
-                      id: item.id,
-                      name: item.name,
-                      imageUrl: resolveSkewerMenuImageUrl(item),
-                      qtyUnit: resolveSkewerQtyUnit(item),
-                      sticksPerUnit: resolveSticksPerUnit(item),
-                      countsAsSticks: resolveCountsAsSticks(item),
-                    }))}
-                    qtys={qtys}
-                    onSelect={openItemDetail}
-                  />
+                  showMenuRoleSections ? (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="mb-2 text-xs font-semibold text-gray-700">
+                          {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
+                        </p>
+                        <SkewerPhotoMenuGrid
+                          items={visibleSaleItems.map((item) => ({
+                            id: item.id,
+                            name: item.name,
+                            imageUrl: resolveSkewerMenuImageUrl(item),
+                            qtyUnit: resolveSkewerQtyUnit(item),
+                            sticksPerUnit: resolveSticksPerUnit(item),
+                            countsAsSticks: resolveCountsAsSticks(item),
+                          }))}
+                          qtys={qtys}
+                          onSelect={openItemDetail}
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-2 text-xs font-semibold text-gray-700">
+                          {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
+                        </p>
+                        <SkewerPhotoMenuGrid
+                          items={visibleSupplyItems.map((item) => ({
+                            id: item.id,
+                            name: item.name,
+                            imageUrl: resolveSkewerMenuImageUrl(item),
+                            qtyUnit: resolveSkewerQtyUnit(item),
+                            sticksPerUnit: resolveSticksPerUnit(item),
+                            countsAsSticks: resolveCountsAsSticks(item),
+                          }))}
+                          qtys={qtys}
+                          onSelect={openItemDetail}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <SkewerPhotoMenuGrid
+                      items={visibleItems.map((item) => ({
+                        id: item.id,
+                        name: item.name,
+                        imageUrl: resolveSkewerMenuImageUrl(item),
+                        qtyUnit: resolveSkewerQtyUnit(item),
+                        sticksPerUnit: resolveSticksPerUnit(item),
+                        countsAsSticks: resolveCountsAsSticks(item),
+                      }))}
+                      qtys={qtys}
+                      onSelect={openItemDetail}
+                    />
+                  )
                 ) : visibleItems.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
                     ไม่พบเมนู
                   </p>
                 ) : (
-                  <ul className="divide-y divide-gray-100">
-                    {visibleItems.map((item) => {
+                  (() => {
+                    const renderMenuRow = (item: MenuItem) => {
                       const qty = qtys[item.id] ?? 0;
                       const seq = seqById.get(item.id) ?? 0;
                       const displayImage = resolveSkewerMenuImageUrl(item);
@@ -1037,7 +1098,8 @@ function SkewerOrderPageInner({ params }: PageProps) {
                                 ? formatSkewerQtyLabel(qty, item)
                                 : minQty > 1
                                   ? `ขั้นต่ำ ${minQty} ${resolveSkewerQtyUnit(item)}`
-                                  : item.category?.name || resolveSkewerQtyUnit(item)}
+                                  : item.category?.name ||
+                                    resolveSkewerQtyUnit(item)}
                             </p>
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5">
@@ -1062,8 +1124,37 @@ function SkewerOrderPageInner({ params }: PageProps) {
                           </div>
                         </li>
                       );
-                    })}
-                  </ul>
+                    };
+
+                    if (!showMenuRoleSections) {
+                      return (
+                        <ul className="divide-y divide-gray-100">
+                          {visibleItems.map(renderMenuRow)}
+                        </ul>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="mb-2 text-xs font-semibold text-gray-700">
+                            {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
+                          </p>
+                          <ul className="divide-y divide-gray-100">
+                            {visibleSaleItems.map(renderMenuRow)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="mb-2 text-xs font-semibold text-gray-700">
+                            {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
+                          </p>
+                          <ul className="divide-y divide-gray-100">
+                            {visibleSupplyItems.map(renderMenuRow)}
+                          </ul>
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </>
             )}

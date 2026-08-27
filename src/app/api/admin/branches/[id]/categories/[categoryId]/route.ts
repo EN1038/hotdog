@@ -75,7 +75,7 @@ export async function PATCH(request: Request, { params }: Params) {
       action: "category.update",
       summary:
         body.skewerCategoryRole !== undefined
-          ? `ตั้งหมวด ${category.name} เป็น ${body.skewerCategoryRole === "SKEWER_SUPPLY" ? "ของเพิ่ม/สิ้นเปลือง" : "รายการขาย"}`
+          ? `ตั้งหมวด ${category.name} เป็น ${body.skewerCategoryRole === "SKEWER_SUPPLY" ? "ของสิ้นเปลือง" : "รายการขาย"}`
           : body.stockExempt !== undefined
             ? `${body.stockExempt ? "ยกเว้นสต็อก" : "ติดตามสต็อก"}หมวด ${category.name}`
             : `แก้ไขหมวดหมู่ ${category.name}`,

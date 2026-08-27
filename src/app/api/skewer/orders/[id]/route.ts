@@ -18,7 +18,13 @@ export async function GET(_request: Request, { params }: Params) {
           orderBy: { itemName: "asc" },
           include: {
             branchMenuItem: {
-              select: { imageUrl: true, skewerImageUrl: true, quantityUnit: true },
+              select: {
+                imageUrl: true,
+                skewerImageUrl: true,
+                quantityUnit: true,
+                sticksPerUnit: true,
+                countsAsSticks: true,
+              },
             },
           },
         },
@@ -36,6 +42,8 @@ export async function GET(_request: Request, { params }: Params) {
         requestedQuantity: item.requestedQuantity,
         confirmedQuantity: item.confirmedQuantity,
         quantityUnit: item.branchMenuItem?.quantityUnit ?? null,
+        sticksPerUnit: item.branchMenuItem?.sticksPerUnit ?? 1,
+        countsAsSticks: item.branchMenuItem?.countsAsSticks !== false,
         imageUrl:
           item.branchMenuItem?.skewerImageUrl?.trim() ||
           item.branchMenuItem?.imageUrl ||

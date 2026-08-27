@@ -1,7 +1,7 @@
 /**
  * Reset SKEWER menu units and set min qty:
- * - Non-"อื่นๆ": quantityUnit=null, sticksPerUnit=1, countsAsSticks=true, skewerMinQty=12
- * - "อื่นๆ": keep unit fields, skewerMinQty=1
+ * - Non-supply (SKEWER_SALE): quantityUnit=null, sticksPerUnit=1, countsAsSticks=true, skewerMinQty=12
+ * - Supply (SKEWER_SUPPLY): keep unit fields, skewerMinQty=1
  *
  *   npx tsx scripts/backfill-skewer-reset-to-sticks.ts
  *   npx tsx scripts/backfill-skewer-reset-to-sticks.ts --apply
@@ -14,7 +14,6 @@ import { BranchOperatingMode } from "@prisma/client";
 import { prisma } from "../src/lib/db";
 
 const APPLY = process.argv.includes("--apply");
-const OTHER_CATEGORY = "อื่นๆ";
 
 async function main() {
   const candidates = await prisma.branchMenuItem.findMany({
@@ -29,16 +28,16 @@ async function main() {
       countsAsSticks: true,
       skewerMinQty: true,
       branch: { select: { name: true } },
-      category: { select: { name: true } },
+      category: { select: { name: true, skewerCategoryRole: true } },
     },
     orderBy: [{ branchId: "asc" }, { name: "asc" }],
   });
 
   const regular = candidates.filter(
-    (row) => row.category?.name?.trim() !== OTHER_CATEGORY,
+    (row) => row.category?.skewerCategoryRole !== "SKEWER_SUPPLY",
   );
   const other = candidates.filter(
-    (row) => row.category?.name?.trim() === OTHER_CATEGORY,
+    (row) => row.category?.skewerCategoryRole === "SKEWER_SUPPLY",
   );
 
   const regularToUpdate = regular.filter(
@@ -50,7 +49,7 @@ async function main() {
   );
 
   console.log(
-    `SKEWER menu items: ${candidates.length} · regular (not อื่นๆ): ${regular.length} · อื่นๆ: ${other.length}`,
+    `SKEWER menu items: ${candidates.length} · รายการขาย: ${regular.length} · ของเพิ่ม/สิ้นเปลือง: ${other.length}`,
   );
   console.log(`Regular items to update → ไม้ + min 12: ${regularToUpdate.length}`);
   for (const row of regularToUpdate.slice(0, 30)) {

@@ -179,7 +179,10 @@ export async function POST(request: Request) {
         id: true,
         name: true,
         skewerMinQty: true,
-        category: { select: { stockExempt: true } },
+        quantityUnit: true,
+        sticksPerUnit: true,
+        countsAsSticks: true,
+        category: { select: { stockExempt: true, skewerCategoryRole: true } },
         optionGroupLinks: { select: { group: { select: { mode: true } } } },
       },
     });
@@ -236,11 +239,19 @@ export async function POST(request: Request) {
             longitude: lng,
             note: body.note?.trim() || null,
             items: {
-              create: body.items.map((item) => ({
-                branchMenuItemId: item.branchMenuItemId,
-                itemName: menuById.get(item.branchMenuItemId)!.name,
-                requestedQuantity: item.quantity,
-              })),
+              create: body.items.map((item) => {
+                const menu = menuById.get(item.branchMenuItemId)!;
+                return {
+                  branchMenuItemId: item.branchMenuItemId,
+                  itemName: menu.name,
+                  requestedQuantity: item.quantity,
+                  quantityUnit: menu.quantityUnit,
+                  sticksPerUnit: menu.sticksPerUnit ?? 1,
+                  countsAsSticks: menu.countsAsSticks !== false,
+                  skewerCategoryRole:
+                    menu.category?.skewerCategoryRole ?? "SKEWER_SALE",
+                };
+              }),
             },
           },
           include: {

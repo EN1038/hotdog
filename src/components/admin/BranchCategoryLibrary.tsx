@@ -11,18 +11,23 @@ import {
 } from "@/components/admin/AdminShell";
 import { AdminUsageDeleteModal } from "@/components/admin/AdminUsageDeleteModal";
 import { useToast } from "@/components/admin/Toast";
+import {
+  SKEWER_CATEGORY_ROLE_LABELS,
+  type SkewerCategoryRoleValue,
+} from "@/lib/skewer-order";
 
 type BranchCategory = {
   id: string;
   name: string;
   sortOrder: number;
   stockExempt?: boolean;
+  skewerCategoryRole?: SkewerCategoryRoleValue;
   _count?: { menuItems: number };
 };
 
-type Props = { branchId: string };
+type Props = { branchId: string; skewerMode?: boolean };
 
-export function BranchCategoryLibrary({ branchId }: Props) {
+export function BranchCategoryLibrary({ branchId, skewerMode }: Props) {
   const toast = useToast();
   const [categories, setCategories] = useState<BranchCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,6 +118,38 @@ export function BranchCategoryLibrary({ branchId }: Props) {
       setName("");
       await load();
       toast.success("สร้างหมวดแล้ว");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function setSkewerCategoryRole(
+    category: BranchCategory,
+    role: SkewerCategoryRoleValue,
+  ) {
+    if (category.skewerCategoryRole === role) return;
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/categories/${category.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skewerCategoryRole: role }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("บันทึกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      await load();
+      toast.success(
+        role === "SKEWER_SUPPLY"
+          ? "ตั้งเป็นของเพิ่ม / สิ้นเปลืองแล้ว"
+          : "ตั้งเป็นรายการขายแล้ว",
+        `หมวด “${category.name}” จะแสดงในกลุ่ม${SKEWER_CATEGORY_ROLE_LABELS[role]}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -280,7 +317,15 @@ export function BranchCategoryLibrary({ branchId }: Props) {
         <h3 className="text-base font-semibold text-slate-900">หมวดหมู่เมนู</h3>
         <p className="mt-0.5 text-sm text-slate-600">
           หมวดของสาขานี้เท่านั้น — ใช้จัดกลุ่มเมนูและแท็บฝั่งลูกค้า
-          กด “ยกเว้นสต็อก” สำหรับหมวดโปรโมชั่นที่ไม่ต้องรับเข้าสต็อก
+          {skewerMode ? (
+            <>
+              {" "}
+              สำหรับเสียบไม้: ตั้ง “ของเพิ่ม / สิ้นเปลือง” สำหรับน้ำจิ้ม ผงหมาล่า
+              ฯลฯ — จะแสดงหลังรายการขายตอนสรุปออเดอร์
+            </>
+          ) : (
+            <> กด “ยกเว้นสต็อก” สำหรับหมวดโปรโมชั่นที่ไม่ต้องรับเข้าสต็อก</>
+          )}
         </p>
       </div>
 
@@ -387,10 +432,37 @@ export function BranchCategoryLibrary({ branchId }: Props) {
                           ยกเว้นสต็อก
                         </span>
                       ) : null}
+                      {skewerMode &&
+                      cat.skewerCategoryRole === "SKEWER_SUPPLY" ? (
+                        <span className="ml-1.5 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
+                          ของเพิ่ม / สิ้นเปลือง
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  {skewerMode ? (
+                    <select
+                      className={`min-h-10 col-span-2 sm:col-span-1 ${adminInputClass}`}
+                      disabled={Boolean(draggingId) || saving}
+                      value={cat.skewerCategoryRole ?? "SKEWER_SALE"}
+                      onChange={(e) =>
+                        void setSkewerCategoryRole(
+                          cat,
+                          e.target.value as SkewerCategoryRoleValue,
+                        )
+                      }
+                      aria-label={`ประเภทหมวด ${cat.name}`}
+                    >
+                      <option value="SKEWER_SALE">
+                        {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SALE}
+                      </option>
+                      <option value="SKEWER_SUPPLY">
+                        {SKEWER_CATEGORY_ROLE_LABELS.SKEWER_SUPPLY}
+                      </option>
+                    </select>
+                  ) : null}
                   <button
                     type="button"
                     className={`min-h-10 ${cat.stockExempt ? btnDark : btnOutline}`}

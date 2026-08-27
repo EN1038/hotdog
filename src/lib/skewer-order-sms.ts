@@ -42,17 +42,17 @@ async function resolvePublicShareUrl(
 async function confirmedBody(order: SkewerOrderSmsTarget) {
   const url = await resolvePublicShareUrl(order);
   if (url) {
-    return `SkillSale ออเดอร์ #${order.orderNumber} ยืนยันแล้ว ${url}`;
+    return `ออเดอร์ #${order.orderNumber} ยืนยันแล้ว ${url}`;
   }
-  return `SkillSale ออเดอร์ #${order.orderNumber} ยืนยันแล้ว ดูรายละเอียดบนเว็บ`;
+  return `ออเดอร์ #${order.orderNumber} ยืนยันแล้ว ดูรายละเอียดบนเว็บ`;
 }
 
 async function cancelledBody(order: SkewerOrderSmsTarget) {
   const url = await resolvePublicShareUrl(order);
   if (url) {
-    return `SkillSale ออเดอร์ #${order.orderNumber} ถูกยกเลิกแล้ว ${url}`;
+    return `ออเดอร์ #${order.orderNumber} ถูกยกเลิกแล้ว ${url}`;
   }
-  return `SkillSale ออเดอร์ #${order.orderNumber} ถูกยกเลิกแล้ว ดูรายละเอียดบนเว็บ`;
+  return `ออเดอร์ #${order.orderNumber} ถูกยกเลิกแล้ว ดูรายละเอียดบนเว็บ`;
 }
 
 async function writeSmsLog(data: {

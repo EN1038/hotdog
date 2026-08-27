@@ -17,7 +17,9 @@ export async function GET(_request: Request, { params }: Params) {
         items: {
           orderBy: { itemName: "asc" },
           include: {
-            branchMenuItem: { select: { imageUrl: true } },
+            branchMenuItem: {
+              select: { imageUrl: true, skewerImageUrl: true, quantityUnit: true },
+            },
           },
         },
       },
@@ -33,7 +35,11 @@ export async function GET(_request: Request, { params }: Params) {
         itemName: item.itemName,
         requestedQuantity: item.requestedQuantity,
         confirmedQuantity: item.confirmedQuantity,
-        imageUrl: item.branchMenuItem?.imageUrl ?? null,
+        quantityUnit: item.branchMenuItem?.quantityUnit ?? null,
+        imageUrl:
+          item.branchMenuItem?.skewerImageUrl?.trim() ||
+          item.branchMenuItem?.imageUrl ||
+          null,
       })),
     });
   } catch (error) {

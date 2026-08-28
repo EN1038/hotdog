@@ -51,6 +51,7 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."BranchShift" ADD COLUMN IF NOT EXISTS "closingCash" DECIMAL(10,2)`,
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "paymentSlipUrl" TEXT`,
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "publicShareToken" TEXT`,
+        `ALTER TABLE "${schema}"."SkewerOrder" ADD COLUMN IF NOT EXISTS "publicShareToken" TEXT`,
         `DROP INDEX IF EXISTS "${schema}"."Staff_phone_key"`,
         `DROP INDEX IF EXISTS "Staff_phone_key"`,
         `DROP INDEX IF EXISTS "${schema}"."Staff_lineUserId_key"`,
@@ -180,6 +181,16 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         const msg = e instanceof Error ? e.message : String(e);
         if (!/already exists|duplicate/i.test(msg)) {
           console.error("[schema-compat] publicShareToken index", msg);
+        }
+      }
+      try {
+        await prisma.$executeRawUnsafe(
+          `CREATE UNIQUE INDEX IF NOT EXISTS "SkewerOrder_publicShareToken_key" ON "${schema}"."SkewerOrder"("publicShareToken")`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error("[schema-compat] SkewerOrder publicShareToken index", msg);
         }
       }
       try {

@@ -23,9 +23,11 @@ import {
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import { bangkokDateKey } from "@/lib/constants";
 import {
+  absoluteUrlFromPath,
   captureElementToPng,
   downloadPngDataUrl,
   sharePngDataUrl,
+  sharePublicLink,
 } from "@/lib/share-media";
 
 type SkewerItem = {
@@ -55,6 +57,7 @@ type SkewerOrderRow = {
   cancelReason: string | null;
   confirmedAt: string | null;
   createdAt: string;
+  publicSharePath?: string | null;
   items: SkewerItem[];
 };
 
@@ -95,6 +98,13 @@ function formatDateLabel(ymd: string) {
   }
 }
 
+function itemEffectiveQty(order: SkewerOrderRow, item: SkewerItem) {
+  if (order.status === "CONFIRMED") {
+    return item.confirmedQuantity ?? 0;
+  }
+  return item.requestedQuantity;
+}
+
 export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const toast = useToast();
   const { confirm } = useConfirm();
@@ -107,32 +117,47 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
   const [adminNote, setAdminNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [exportBusy, setExportBusy] = useState<"save" | "share" | null>(null);
+  const [exportBusy, setExportBusy] = useState<
+    "save" | "share" | "link" | "view" | null
+  >(null);
   const [exportMsg, setExportMsg] = useState("");
+  const [publicShareUrl, setPublicShareUrl] = useState<string | null>(null);
   const captureRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (statusFilter && statusFilter !== "ALL") {
-        params.set("status", statusFilter);
+  const load = useCallback(
+    async (opts?: { status?: string; date?: string; keepSelectedId?: string }) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        const status = opts?.status ?? statusFilter;
+        const date = opts?.date ?? dateFilter;
+        if (status && status !== "ALL") {
+          params.set("status", status);
+        }
+        if (date) params.set("date", date);
+        const res = await fetch(
+          `/api/admin/branches/${branchId}/skewer-orders?${params}`,
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error("โหลดออเดอร์ไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+          return;
+        }
+        const nextOrders = Array.isArray(data.orders)
+          ? (data.orders as SkewerOrderRow[])
+          : [];
+        setOrders(nextOrders);
+        setPendingCount(Number(data.pendingCount) || 0);
+        const keepId = opts?.keepSelectedId;
+        if (keepId && nextOrders.some((o) => o.id === keepId)) {
+          setSelectedId(keepId);
+        }
+      } finally {
+        setLoading(false);
       }
-      if (dateFilter) params.set("date", dateFilter);
-      const res = await fetch(
-        `/api/admin/branches/${branchId}/skewer-orders?${params}`,
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error("โหลดออเดอร์ไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
-        return;
-      }
-      setOrders(Array.isArray(data.orders) ? data.orders : []);
-      setPendingCount(Number(data.pendingCount) || 0);
-    } finally {
-      setLoading(false);
-    }
-  }, [branchId, statusFilter, dateFilter, toast]);
+    },
+    [branchId, statusFilter, dateFilter, toast],
+  );
 
   useEffect(() => {
     load();
@@ -161,6 +186,74 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
     } catch {
       setExportMsg("บันทึกรูปไม่สำเร็จ");
       toast.error("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function ensurePublicShareUrl(): Promise<string> {
+    if (publicShareUrl) return publicShareUrl;
+    if (!selected) throw new Error("ไม่พบออเดอร์");
+    const res = await fetch(
+      `/api/admin/branches/${branchId}/skewer-orders/${selected.id}/share`,
+      { method: "POST" },
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.error ?? "สร้างลิงก์สาธารณะไม่สำเร็จ");
+    }
+    const url = absoluteUrlFromPath(String(body.path ?? ""));
+    setPublicShareUrl(url);
+    return url;
+  }
+
+  async function handleSharePublicLink() {
+    if (!selected || exportBusy) return;
+    setExportBusy("link");
+    setExportMsg("");
+    try {
+      const url = await ensurePublicShareUrl();
+      const r = await sharePublicLink({
+        url,
+        title: `ออเดอร์เสียบไม้ #${selected.orderNumber}`,
+        text: `ดูรายการออเดอร์ #${selected.orderNumber}`,
+      });
+      if (r.error === "cancelled") return;
+      setExportMsg(
+        r.mode === "share"
+          ? "แชร์ลิงก์แล้ว"
+          : r.mode === "copy"
+            ? "คัดลอกลิงก์แล้ว"
+            : r.error ?? "แชร์ไม่สำเร็จ",
+      );
+      if (r.mode === "share" || r.mode === "copy") {
+        toast.success(r.mode === "share" ? "แชร์ลิงก์แล้ว" : "คัดลอกลิงก์แล้ว");
+      } else if (r.error) {
+        toast.error("แชร์ลิงก์ไม่สำเร็จ", r.error);
+      }
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "สร้างลิงก์ไม่สำเร็จ";
+      setExportMsg(msg);
+      toast.error("แชร์ลิงก์ไม่สำเร็จ", msg);
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleOpenPublicView() {
+    if (!selected || exportBusy) return;
+    setExportBusy("view");
+    setExportMsg("");
+    try {
+      const url = await ensurePublicShareUrl();
+      window.open(url, "_blank", "noopener,noreferrer");
+      setExportMsg("เปิดหน้าสาธารณะแล้ว");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "เปิดหน้าสาธารณะไม่สำเร็จ";
+      setExportMsg(msg);
+      toast.error("เปิดหน้าสาธารณะไม่สำเร็จ", msg);
     } finally {
       setExportBusy(null);
     }
@@ -205,7 +298,13 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
       setQtyDraft({});
       setAdminNote("");
       setExportMsg("");
+      setPublicShareUrl(null);
       return;
+    }
+    if (selected.publicSharePath) {
+      setPublicShareUrl(absoluteUrlFromPath(selected.publicSharePath));
+    } else {
+      setPublicShareUrl(null);
     }
     const next: Record<string, string> = {};
     for (const item of selected.items) {
@@ -266,9 +365,10 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
         toast.error("ยืนยันไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
         return;
       }
-      toast.success("ยืนยันออเดอร์แล้ว");
-      setSelectedId(null);
-      await load();
+      toast.success("ยืนยันออเดอร์แล้ว — ดู/แชร์รายการได้ด้านขวา");
+      const confirmedId = selected.id;
+      setStatusFilter("CONFIRMED");
+      await load({ status: "CONFIRMED", keepSelectedId: confirmedId });
     } finally {
       setSaving(false);
     }
@@ -318,7 +418,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
             <div>
               <h3 className="font-semibold text-gray-900">ออเดอร์เสียบไม้</h3>
               <p className="mt-0.5 text-sm text-gray-600">
-                ดูเบอร์ลูกค้า วันที่ต้องการ และยืนยันจำนวนไม้ที่ได้จริงหลังโทรคุย
+                ดูเบอร์ลูกค้า วันที่ต้องการ ยืนยันจำนวน — หลังยืนยันแล้วเลือกสถานะ「ยืนยันแล้ว」เพื่อดู/แชร์รายการ
               </p>
             </div>
             {pendingCount > 0 && (
@@ -333,7 +433,10 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
               <select
                 className={adminInputClass}
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setSelectedId(null);
+                }}
               >
                 <option value="PENDING_CONFIRM">รอยืนยัน</option>
                 <option value="CONFIRMED">ยืนยันแล้ว</option>
@@ -411,33 +514,78 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
               <p className="text-sm text-gray-500">เลือกออเดอร์ทางซ้ายเพื่อดูรายละเอียด</p>
             ) : (
               <div className="space-y-5">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={!!exportBusy}
-                    onClick={() => void handleSaveImage()}
-                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    {exportBusy === "save" ? "กำลังบันทึก…" : "บันทึกรูป"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!exportBusy}
-                    onClick={() => void handleShareImage()}
-                    className="rounded-xl border border-green-600 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800 hover:bg-green-100 disabled:opacity-60"
-                  >
-                    {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
-                  </button>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!!exportBusy}
+                      onClick={() => void handleOpenPublicView()}
+                      className="rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900 hover:bg-sky-100 disabled:opacity-60"
+                    >
+                      {exportBusy === "view" ? "กำลังเปิด…" : "ดูหน้าสาธารณะ"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!exportBusy}
+                      onClick={() => void handleSharePublicLink()}
+                      className="rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100 disabled:opacity-60"
+                    >
+                      {exportBusy === "link" ? "…" : "แชร์ลิงก์"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!exportBusy}
+                      onClick={() => void handleSaveImage()}
+                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      {exportBusy === "save" ? "กำลังบันทึก…" : "บันทึกรูป"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!exportBusy}
+                      onClick={() => void handleShareImage()}
+                      className="rounded-xl border border-green-600 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800 hover:bg-green-100 disabled:opacity-60"
+                    >
+                      {exportBusy === "share" ? "กำลังแชร์…" : "แชร์รูป"}
+                    </button>
+                  </div>
+                  {publicShareUrl ? (
+                    <p className="break-all text-xs text-gray-500">
+                      ลิงก์สาธารณะ:{" "}
+                      <a
+                        href={publicShareUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-violet-700 underline"
+                      >
+                        {publicShareUrl}
+                      </a>
+                    </p>
+                  ) : null}
                   {exportMsg ? (
-                    <span className="self-center text-xs text-gray-600">
-                      {exportMsg}
-                    </span>
+                    <p className="text-xs text-gray-600">{exportMsg}</p>
                   ) : null}
                 </div>
 
                 <div ref={captureRef} className="space-y-5 bg-white">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusTone(selected.status)}`}
+                    >
+                      {SKEWER_ORDER_STATUS_LABELS[selected.status]}
+                    </span>
+                    {selected.confirmedAt ? (
+                      <span className="text-xs text-gray-500">
+                        ยืนยันเมื่อ{" "}
+                        {new Date(selected.confirmedAt).toLocaleString("th-TH", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-400">
                     #{selected.orderNumber}
                   </p>
                   <h4 className="mt-1 text-lg font-semibold text-gray-900">
@@ -476,10 +624,11 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                   {(() => {
                     const split = summarizeSkewerSplit(
                       selected.items.map((i) => ({
-                        quantity: i.requestedQuantity,
+                        quantity: itemEffectiveQty(selected, i),
                         sticksPerUnit: i.sticksPerUnit,
                         countsAsSticks: i.countsAsSticks,
                         skewerCategoryRole: i.skewerCategoryRole,
+                        ordered: itemEffectiveQty(selected, i) > 0,
                       })),
                     );
                     const { saleLines, supplyLines } = splitLinesBySkewerRole(
@@ -487,6 +636,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                     );
                     const renderItem = (item: SkewerItem) => {
                       const unit = itemUnit(item);
+                      const effectiveQty = itemEffectiveQty(selected, item);
                       return (
                         <div
                           key={item.id}
@@ -543,6 +693,16 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                                 ) : null}
                               </span>
                             </div>
+                          ) : selected.status === "CONFIRMED" ? (
+                            <div className="text-right">
+                              <p className="text-lg font-bold tabular-nums text-emerald-800">
+                                {effectiveQty.toLocaleString("th-TH")}
+                              </p>
+                              <p className="text-xs text-gray-500">{unit}</p>
+                              <p className="text-[10px] font-medium text-emerald-700">
+                                ได้จริง
+                              </p>
+                            </div>
                           ) : null}
                         </div>
                       );
@@ -552,6 +712,11 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-sm font-semibold text-gray-900">
                             รายการ
+                            {selected.status === "CONFIRMED" ? (
+                              <span className="ml-2 text-xs font-normal text-emerald-700">
+                                (จำนวนที่ยืนยันแล้ว)
+                              </span>
+                            ) : null}
                           </p>
                           {selected.items.length > 0 ? (
                             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-right shadow-sm">

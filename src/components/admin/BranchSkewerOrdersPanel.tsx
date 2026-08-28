@@ -10,7 +10,8 @@ import { DateInput } from "@/components/DateInput";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { ZoomableImage } from "@/components/ZoomableImage";
-import { IconSkewerPlaceholder } from "@/components/icons";
+import { IconChevronRight, IconSkewerPlaceholder } from "@/components/icons";
+import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
 import {
   SKEWER_ORDER_STATUS_LABELS,
   SKEWER_CATEGORY_ROLE_LABELS,
@@ -108,6 +109,7 @@ function itemEffectiveQty(order: SkewerOrderRow, item: SkewerItem) {
 export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const toast = useToast();
   const { confirm } = useConfirm();
+  const { isMobileLayout } = useAdminMobileLayout();
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("PENDING_CONFIRM");
   const [dateFilter, setDateFilter] = useState("");
@@ -167,6 +169,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
     () => orders.find((o) => o.id === selectedId) ?? null,
     [orders, selectedId],
   );
+  const showMobileDetail = isMobileLayout && selected != null;
 
   async function handleSaveImage() {
     if (!selected || exportBusy) return;
@@ -466,13 +469,23 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
         </div>
 
         <div className="grid gap-0 lg:grid-cols-5">
-          <div className="lg:col-span-2 border-b border-gray-100 lg:border-b-0 lg:border-r">
+          <div
+            className={`lg:col-span-2 border-b border-gray-100 lg:border-b-0 lg:border-r ${
+              showMobileDetail ? "hidden lg:block" : ""
+            }`}
+          >
             {loading ? (
               <p className="p-5 text-sm text-gray-500">กำลังโหลด…</p>
             ) : orders.length === 0 ? (
               <p className="p-5 text-sm text-gray-500">ยังไม่มีออเดอร์ตามตัวกรอง</p>
             ) : (
-              <ul className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
+              <>
+                {isMobileLayout ? (
+                  <p className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-600">
+                    แตะรายการเพื่อดูรายละเอียดและแชร์
+                  </p>
+                ) : null}
+              <ul className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto lg:max-h-[70vh]">
                 {orders.map((order) => {
                   const active = order.id === selectedId;
                   return (
@@ -480,16 +493,17 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                       <button
                         type="button"
                         onClick={() => setSelectedId(order.id)}
-                        className={`w-full px-4 py-3 text-left transition ${
-                          active ? "bg-amber-50" : "hover:bg-gray-50"
+                        className={`flex w-full items-center gap-2 px-4 py-3 text-left transition ${
+                          active ? "bg-amber-50" : "hover:bg-gray-50 active:bg-amber-50"
                         }`}
                       >
+                        <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold text-gray-900">
                             {order.customerPhone || "—"}
                           </p>
                           <span
-                            className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusTone(order.status)}`}
+                            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusTone(order.status)}`}
                           >
                             {SKEWER_ORDER_STATUS_LABELS[order.status]}
                           </span>
@@ -501,19 +515,38 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                           #{order.orderNumber}
                           {order.customerName ? ` · ${order.customerName}` : ""}
                         </p>
+                        </div>
+                        <IconChevronRight
+                          size={18}
+                          className={`shrink-0 text-gray-400 lg:hidden ${active ? "text-amber-700" : ""}`}
+                        />
                       </button>
                     </li>
                   );
                 })}
               </ul>
+              </>
             )}
           </div>
 
-          <div className="lg:col-span-3 p-5">
+          <div
+            className={`lg:col-span-3 p-5 ${
+              isMobileLayout && !selected ? "hidden lg:block" : ""
+            }`}
+          >
             {!selected ? (
               <p className="text-sm text-gray-500">เลือกออเดอร์ทางซ้ายเพื่อดูรายละเอียด</p>
             ) : (
               <div className="space-y-5">
+                {isMobileLayout ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(null)}
+                    className="flex items-center gap-1 text-sm font-semibold text-gray-700 hover:text-gray-900"
+                  >
+                    <span aria-hidden>←</span> กลับรายการ
+                  </button>
+                ) : null}
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
                     <button

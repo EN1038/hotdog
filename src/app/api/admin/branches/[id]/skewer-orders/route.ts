@@ -18,6 +18,8 @@ import {
   notifyCustomerSkewerOrderConfirmed,
 } from "@/lib/skewer-order-sms";
 import { logAdminActivity } from "@/lib/admin-activity";
+import { skewerOrderPublicSharePath } from "@/lib/skewer-order-public-share";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -75,6 +77,7 @@ function serializeItem(item: {
 
 function serialize(order: {
   requestedDate: Date;
+  publicShareToken?: string | null;
   items?: Array<{
     id: string;
     itemName: string;
@@ -90,10 +93,13 @@ function serialize(order: {
   }>;
   [key: string]: unknown;
 }) {
-  const { items, ...rest } = order;
+  const { items, publicShareToken, ...rest } = order;
   return {
     ...rest,
     requestedDate: requestedDateToKey(order.requestedDate),
+    publicSharePath: publicShareToken
+      ? skewerOrderPublicSharePath(publicShareToken)
+      : null,
     ...(items
       ? { items: items.map((item) => serializeItem(item)) }
       : {}),
@@ -102,6 +108,7 @@ function serialize(order: {
 
 export async function GET(request: Request, { params }: Params) {
   try {
+    await ensureProdSchemaCompat();
     const { id: branchId } = await params;
     await requireBranchAccess(branchId);
 

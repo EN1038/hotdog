@@ -134,6 +134,7 @@ enum TableSessionLineKind {
 enum SkewerOrderStatus {
   PENDING_CONFIRM
   CONFIRMED
+  DELIVERED
   CANCELLED
 }
 
@@ -994,6 +995,14 @@ model SkewerOrder {
   confirmedByAdminId   String?
   cancelReason         String?
   cancelledAt          DateTime?
+  /// When admin marks shipment complete
+  deliveredAt          DateTime?
+  /// Calendar date the order was delivered (Bangkok date)
+  deliveredOn          DateTime?          @db.Date
+  /// Free-text shipping details (tracking no., carrier, etc.)
+  deliveryInfo         String?
+  /// Shipping fee in baht (optional)
+  shippingCostBaht     Decimal?          @db.Decimal(10, 2)
   /// Unguessable token for public share page (/share/s/…)
   publicShareToken     String?           @unique
   createdAt            DateTime          @default(now())
@@ -1051,6 +1060,8 @@ model SkewerOrderItem {
   countsAsSticks     Boolean             @default(true)
   /// Snapshot: sale vs supply line
   skewerCategoryRole SkewerCategoryRole  @default(SKEWER_SALE)
+  /// Unit price in baht for billing (defaults from menu at confirm)
+  unitPriceBaht      Decimal?            @db.Decimal(10, 2)
   skewerOrder        SkewerOrder         @relation(fields: [skewerOrderId], references: [id], onDelete: Cascade)
   branchMenuItem     BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
 

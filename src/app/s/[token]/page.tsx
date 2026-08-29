@@ -7,9 +7,12 @@ import { IconSkewerPlaceholder } from "@/components/icons";
 import {
   SKEWER_CATEGORY_ROLE_LABELS,
   formatSkewerQtyLabel,
+  skewerOrderUsesConfirmedQty,
 } from "@/lib/skewer-order";
 import type { PublicSkewerOrderReceipt } from "@/lib/skewer-order-public-share";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
+import { SkewerOrderShareExtras } from "@/components/skewer/SkewerOrderShareExtras";
+import { formatPrice } from "@/lib/constants";
 import {
   absoluteUrlFromPath,
   captureElementToPng,
@@ -135,7 +138,9 @@ export default function PublicSkewerOrderSharePage() {
       const r = await sharePublicLink({
         url,
         title: `ออเดอร์เสียบไม้ #${data.orderNumber}`,
-        text: `ดูออเดอร์ #${data.orderNumber} · ${data.summaryLabel}`,
+        text: data.grandTotalBaht != null
+          ? `ดูออเดอร์ #${data.orderNumber} · รวม ${data.grandTotalBaht.toLocaleString("th-TH")} บาท`
+          : `ดูออเดอร์ #${data.orderNumber} · ${data.summaryLabel}`,
       });
       if (r.error === "cancelled") return;
       flash(
@@ -166,7 +171,7 @@ export default function PublicSkewerOrderSharePage() {
   }
 
   const { saleLines, supplyLines } = splitLinesBySkewerRole(data.items);
-  const showConfirmed = data.status === "CONFIRMED";
+  const showConfirmed = skewerOrderUsesConfirmedQty(data.status);
 
   function renderItem(
     item: PublicSkewerOrderReceipt["items"][number],
@@ -175,6 +180,7 @@ export default function PublicSkewerOrderSharePage() {
     const displayQty = showConfirmed
       ? (item.confirmedQuantity ?? 0)
       : item.requestedQuantity;
+    const showPrice = item.unitPriceBaht != null && item.unitPriceBaht >= 0;
     return (
       <li
         key={`${item.skewerCategoryRole}-${item.itemName}-${index}`}
@@ -223,6 +229,9 @@ export default function PublicSkewerOrderSharePage() {
                   countsAsSticks: item.countsAsSticks,
                 })}`
               : ""}
+            {showPrice
+              ? ` · ${formatPrice(item.unitPriceBaht!)} บาท/${item.quantityUnit}`
+              : ""}
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -232,6 +241,11 @@ export default function PublicSkewerOrderSharePage() {
           <p className="text-[10px] font-semibold text-gray-500">
             {item.quantityUnit}
           </p>
+          {showPrice && item.lineSubtotalBaht != null ? (
+            <p className="text-xs font-bold tabular-nums text-violet-900">
+              {formatPrice(item.lineSubtotalBaht)} บาท
+            </p>
+          ) : null}
         </div>
       </li>
     );
@@ -345,6 +359,16 @@ export default function PublicSkewerOrderSharePage() {
               </div>
             ) : null}
           </div>
+
+          <SkewerOrderShareExtras
+            itemsSubtotalBaht={data.itemsSubtotalBaht}
+            shippingCostBaht={data.shippingCostBaht}
+            grandTotalBaht={data.grandTotalBaht}
+            deliveredOn={data.deliveredOn}
+            deliveryInfo={data.deliveryInfo}
+            adminNote={data.adminNote}
+            showBilling={data.hasBilling}
+          />
         </div>
 
         {pageUrl ? (

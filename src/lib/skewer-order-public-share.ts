@@ -6,6 +6,8 @@ import {
   resolveSkewerMenuImageUrl,
   resolveSkewerOrderItemFields,
   resolveSkewerQtyUnit,
+  skewerLineSubtotalBaht,
+  skewerOrderUsesConfirmedQty,
   summarizeSkewerSplit,
   SKEWER_ORDER_STATUS_LABELS,
 } from "@/lib/skewer-order";
@@ -60,6 +62,13 @@ export type PublicSkewerOrderReceipt = {
   adminNote: string | null;
   cancelReason: string | null;
   confirmedAt: string | null;
+  deliveredAt: string | null;
+  deliveredOn: string | null;
+  deliveryInfo: string | null;
+  shippingCostBaht: number | null;
+  itemsSubtotalBaht: number | null;
+  grandTotalBaht: number | null;
+  hasBilling: boolean;
   createdAt: string;
   customerName: string | null;
   customerPhoneMasked: string | null;
@@ -80,6 +89,8 @@ export type PublicSkewerOrderReceipt = {
     countsAsSticks: boolean;
     skewerCategoryRole: "SKEWER_SALE" | "SKEWER_SUPPLY";
     imageUrl: string | null;
+    unitPriceBaht: number | null;
+    lineSubtotalBaht: number | null;
   }>;
 };
 
@@ -130,6 +141,17 @@ export async function loadPublicSkewerOrderReceipt(
 
   const items = order.items.map((item) => {
     const fields = resolveSkewerOrderItemFields(item);
+    const qty = skewerOrderUsesConfirmedQty(order.status)
+      ? item.confirmedQuantity ?? 0
+      : item.requestedQuantity;
+    const unitPriceRaw =
+      item.unitPriceBaht != null ? Number(item.unitPriceBaht) : null;
+    const unitPriceBaht =
+      unitPriceRaw != null && Number.isFinite(unitPriceRaw) ? unitPriceRaw : null;
+    const lineSubtotalBaht =
+      unitPriceBaht != null
+        ? skewerLineSubtotalBaht(qty, unitPriceBaht)
+        : null;
     return {
       itemName: item.itemName,
       requestedQuantity: item.requestedQuantity,
@@ -146,11 +168,13 @@ export async function loadPublicSkewerOrderReceipt(
           skewerImageUrl: item.branchMenuItem?.skewerImageUrl,
         }),
       ),
+      unitPriceBaht,
+      lineSubtotalBaht,
     };
   });
 
   const qtyForSummary = (item: (typeof items)[number]) => {
-    if (order.status === "CONFIRMED") {
+    if (skewerOrderUsesConfirmedQty(order.status)) {
       return item.confirmedQuantity ?? 0;
     }
     return item.requestedQuantity;
@@ -171,6 +195,20 @@ export async function loadPublicSkewerOrderReceipt(
     order.branch.brand?.name?.trim() ||
     null;
 
+  const shippingCostBaht =
+    order.shippingCostBaht != null ? Number(order.shippingCostBaht) : null;
+  const itemsSubtotalBaht = Math.round(
+    items.reduce((sum, item) => sum + (item.lineSubtotalBaht ?? 0), 0) * 100,
+  ) / 100;
+  const hasBilling =
+    items.some((item) => item.unitPriceBaht != null) ||
+    (shippingCostBaht != null && shippingCostBaht > 0);
+  const grandTotalBaht = hasBilling
+    ? Math.round(
+        (itemsSubtotalBaht + (shippingCostBaht ?? 0)) * 100,
+      ) / 100
+    : null;
+
   return {
     token: order.publicShareToken,
     orderNumber: order.orderNumber,
@@ -182,6 +220,15 @@ export async function loadPublicSkewerOrderReceipt(
     adminNote: order.adminNote,
     cancelReason: order.cancelReason,
     confirmedAt: order.confirmedAt?.toISOString() ?? null,
+    deliveredAt: order.deliveredAt?.toISOString() ?? null,
+    deliveredOn: order.deliveredOn
+      ? requestedDateToKey(order.deliveredOn)
+      : null,
+    deliveryInfo: order.deliveryInfo,
+    shippingCostBaht,
+    itemsSubtotalBaht: hasBilling ? itemsSubtotalBaht : null,
+    grandTotalBaht,
+    hasBilling,
     createdAt: order.createdAt.toISOString(),
     customerName: order.customerName?.trim() || null,
     customerPhoneMasked: maskPhone(order.customerPhone),

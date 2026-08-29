@@ -22,6 +22,7 @@ import {
   resolveSticksPerUnit,
   resolveCountsAsSticks,
   summarizeSkewerSplit,
+  skewerOrderUsesConfirmedQty,
 } from "@/lib/skewer-order";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import {
@@ -173,7 +174,7 @@ function rowDisplayQty(
   order: OrderDetail,
   item: DisplayRow,
 ): number {
-  if (order.status === "CONFIRMED") {
+  if (skewerOrderUsesConfirmedQty(order.status)) {
     return item.ordered ? (item.confirmedQuantity ?? 0) : 0;
   }
   return item.requestedQuantity;
@@ -466,7 +467,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     lines.push(`ต้องการ ${formatDateLabel(order.requestedDate)}`);
     lines.push("");
     lines.push(`จำนวนที่สั่ง: ${summary.splitRequested}`);
-    if (order.status === "CONFIRMED") {
+    if (skewerOrderUsesConfirmedQty(order.status)) {
       lines.push(`จำนวนที่ได้: ${summary.splitConfirmed}`);
     }
     lines.push(`ที่อยู่: ${order.addressText}`);
@@ -516,12 +517,12 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     const confirmed = item.confirmedQuantity;
     const displayQty = rowDisplayQty(order, item);
     const less =
-      order.status === "CONFIRMED" &&
+      skewerOrderUsesConfirmedQty(order.status) &&
       item.ordered &&
       confirmed != null &&
       confirmed < item.requestedQuantity;
     const same =
-      order.status === "CONFIRMED" &&
+      skewerOrderUsesConfirmedQty(order.status) &&
       item.ordered &&
       confirmed != null &&
       confirmed === item.requestedQuantity;
@@ -572,7 +573,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
             }`}
           >
             {item.ordered
-              ? order.status === "CONFIRMED"
+              ? skewerOrderUsesConfirmedQty(order.status)
                 ? `สั่ง ${formatSkewerQtyLabel(item.requestedQuantity, item)}${
                     same
                       ? " · ได้เท่าที่สั่ง"
@@ -590,7 +591,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
               ? "bg-gray-50 text-gray-300"
               : less
                 ? "bg-amber-50 text-amber-700"
-                : order.status === "CONFIRMED"
+                : skewerOrderUsesConfirmedQty(order.status)
                   ? "bg-emerald-50 text-emerald-800"
                   : "bg-slate-100 text-slate-900"
           }`}
@@ -599,7 +600,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
             {displayQty}
           </p>
           <p className="mt-0.5 text-[10px] font-semibold opacity-70">
-            {order.status === "CONFIRMED" && item.ordered ? "ได้" : "สั่ง"}
+            {skewerOrderUsesConfirmedQty(order.status) && item.ordered ? "ได้" : "สั่ง"}
           </p>
         </div>
       </li>
@@ -720,7 +721,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                {order.status === "CONFIRMED" ? (
+                {skewerOrderUsesConfirmedQty(order.status) ? (
                   <div className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-3.5 py-3 shadow-sm">
                     <p className="text-[11px] font-bold tracking-wide text-sky-700/80">
                       จำนวนที่ได้
@@ -909,7 +910,7 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
               ) : null}
             </div>
 
-            {order.status === "CONFIRMED" ? (
+            {skewerOrderUsesConfirmedQty(order.status) ? (
               <Link
                 href={`/skewer/${branchId}/order?reorder=${order.id}`}
                 className="flex w-full items-center justify-center rounded-xl bg-site-primary px-4 py-3.5 text-base font-bold text-white"

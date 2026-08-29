@@ -41,8 +41,11 @@ export function useOwnerViewHomeSoftRedirect(
 /** Compact control — pick auto / mobile / desktop and navigate home */
 export function OwnerViewSwitchButton({
   variant = "light",
+  /** Platform admin stays on /admin — only toggles layout, no /owner redirect */
+  skipOwnerRouteSwitch = false,
 }: {
   variant?: "light" | "onPrimary" | "admin";
+  skipOwnerRouteSwitch?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -61,14 +64,16 @@ export function OwnerViewSwitchButton({
       typeof window !== "undefined" ? window.location.pathname : "";
     const search =
       typeof window !== "undefined" ? window.location.search : "";
-    const branchCounterpart = counterpartBranchAdminPath(path, search);
-    if (branchCounterpart && (next === "mobile" || next === "desktop")) {
-      router.replace(branchCounterpart);
-      return;
-    }
-    const isShellHome = path === "/admin" || path === "/owner";
-    if (isShellHome) {
-      router.replace(ownerViewHomePath(view));
+    if (!skipOwnerRouteSwitch) {
+      const branchCounterpart = counterpartBranchAdminPath(path, search);
+      if (branchCounterpart && (next === "mobile" || next === "desktop")) {
+        router.replace(branchCounterpart);
+        return;
+      }
+      const isShellHome = path === "/admin" || path === "/owner";
+      if (isShellHome) {
+        router.replace(ownerViewHomePath(view));
+      }
     }
   }
 
@@ -89,7 +94,7 @@ export function OwnerViewSwitchButton({
         aria-haspopup="listbox"
       >
         มุมมอง ·{" "}
-        {pref === "auto" ? "อัตโนมัติ" : pref === "mobile" ? "มือถือ" : "เต็ม"}
+        {pref === "auto" ? "อัตโนมัติ" : pref === "mobile" ? "มือถือ" : "เว็บไซต์"}
       </button>
       {open ? (
         <>

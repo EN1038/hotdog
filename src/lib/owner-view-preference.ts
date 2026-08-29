@@ -91,5 +91,5 @@ export async function assignOwnerViewHome() {
 export const OWNER_VIEW_LABELS: Record<OwnerViewPreference, string> = {
   auto: "อัตโนมัติตามหน้าจอ",
   mobile: "มุมมองมือถือ",
-  desktop: "มุมมองเต็ม (เว็บ)",
+  desktop: "มุมมองเว็บไซต์",
 };

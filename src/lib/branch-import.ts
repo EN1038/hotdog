@@ -21,6 +21,9 @@ export type BranchImportResult = {
     created: number;
     updated: number;
   };
+  menuItemIdMap: Map<string, string>;
+  locationIdMap: Map<string, string>;
+  nonMenuItemIdMap: Map<string, string>;
 };
 
 function nonMenuKey(stockType: string, name: string) {
@@ -103,6 +106,12 @@ export async function importBranchCatalog(opts: {
   overwriteMenu?: boolean;
   includeLocations?: boolean;
   includeNonMenuItems?: boolean;
+  /** Remap brand-level SKU ids when cloning to another brand */
+  brandProductIdMap?: Map<string, string>;
+  /** Keep source isOutOfStock flags (default resets to false) */
+  preserveOutOfStock?: boolean;
+  /** Keep source non-menu quantities (default resets to 0) */
+  preserveNonMenuQuantities?: boolean;
 }): Promise<BranchImportResult> {
   const {
     sourceBranchId,
@@ -110,6 +119,9 @@ export async function importBranchCatalog(opts: {
     overwriteMenu = false,
     includeLocations = false,
     includeNonMenuItems = false,
+    brandProductIdMap,
+    preserveOutOfStock = false,
+    preserveNonMenuQuantities = false,
   } = opts;
 
   if (sourceBranchId === targetBranchId) {
@@ -192,11 +204,14 @@ export async function importBranchCatalog(opts: {
   }
 
   const menuItemIdMap = new Map<string, string>();
+  const locationIdMap = new Map<string, string>();
+  const nonMenuItemIdMap = new Map<string, string>();
   let menuItemsCreated = 0;
   for (const item of sourceItems) {
     const created = await prisma.branchMenuItem.create({
       data: {
         branchId: targetBranchId,
+        itemCode: item.itemCode,
         name: item.name,
         price: item.price,
         pickupPrice: item.pickupPrice ?? item.price,
@@ -210,6 +225,7 @@ export async function importBranchCatalog(opts: {
         promoContinuous: item.promoContinuous,
         promoStartsAt: item.promoStartsAt,
         promoEndsAt: item.promoEndsAt,
+        defaultShelfLifeDays: item.defaultShelfLifeDays,
         description: item.description,
         categoryId: item.categoryId
           ? (categoryIdMap.get(item.categoryId) ?? null)
@@ -222,8 +238,7 @@ export async function importBranchCatalog(opts: {
         skewerMinQty: item.skewerMinQty ?? 1,
         isHidden: item.isHidden,
         hideFromStaff: item.hideFromStaff,
-        // Fresh import: never inherit sold-out flag
-        isOutOfStock: false,
+        isOutOfStock: preserveOutOfStock ? item.isOutOfStock : false,
         sellPiece: item.sellPiece,
         sellByWeight: item.sellByWeight,
         pricePerKg: item.pricePerKg,
@@ -231,7 +246,9 @@ export async function importBranchCatalog(opts: {
         sellGrill: item.sellGrill,
         sellFry: item.sellFry,
         sellShabu: item.sellShabu,
-        brandProductId: item.brandProductId,
+        brandProductId: item.brandProductId
+          ? (brandProductIdMap?.get(item.brandProductId) ?? item.brandProductId)
+          : null,
         sortOrder: item.sortOrder,
       },
     });
@@ -297,7 +314,7 @@ export async function importBranchCatalog(opts: {
     const locNames = new Set(existingLocs.map((l) => l.name));
     for (const loc of sourceLocations) {
       if (locNames.has(loc.name)) continue;
-      await prisma.deliveryLocation.create({
+      const created = await prisma.deliveryLocation.create({
         data: {
           branchId: targetBranchId,
           name: loc.name,
@@ -308,6 +325,7 @@ export async function importBranchCatalog(opts: {
           longitude: loc.longitude,
         },
       });
+      locationIdMap.set(loc.id, created.id);
       locNames.add(loc.name);
       locationsCreated += 1;
     }
@@ -330,17 +348,19 @@ export async function importBranchCatalog(opts: {
         const created = await prisma.branchNonMenuItem.create({
           data: {
             branchId: targetBranchId,
+            itemCode: src.itemCode,
             name: src.name,
             description: src.description,
             unit: src.unit,
             price: src.price,
             imageUrl: src.imageUrl,
             stockType: src.stockType,
-            quantity: 0,
+            quantity: preserveNonMenuQuantities ? src.quantity : 0,
             showOnKeyOrder: src.showOnKeyOrder,
             keyOrderSortOrder: src.keyOrderSortOrder,
           },
         });
+        nonMenuItemIdMap.set(src.id, created.id);
         targetByKey.set(key, created);
         nonMenuCreated += 1;
         continue;
@@ -349,14 +369,17 @@ export async function importBranchCatalog(opts: {
       await prisma.branchNonMenuItem.update({
         where: { id: existing.id },
         data: {
+          itemCode: src.itemCode,
           description: src.description,
           unit: src.unit,
           price: src.price,
           imageUrl: src.imageUrl,
+          quantity: preserveNonMenuQuantities ? src.quantity : existing.quantity,
           showOnKeyOrder: src.showOnKeyOrder,
           keyOrderSortOrder: src.keyOrderSortOrder,
         },
       });
+      nonMenuItemIdMap.set(src.id, existing.id);
       nonMenuUpdated += 1;
     }
   }
@@ -422,6 +445,9 @@ export async function importBranchCatalog(opts: {
       created: nonMenuCreated,
       updated: nonMenuUpdated,
     },
+    menuItemIdMap,
+    locationIdMap,
+    nonMenuItemIdMap,
   };
 }
 

@@ -29,6 +29,7 @@ const ZOD_FIELD_LABELS: Record<string, string> = {
   password: "รหัสผ่าน",
   phone: "เบอร์โทร",
   branchCode: "รหัสสาขา",
+  itemCode: "รหัสสินค้า",
   color: "สี",
 };
 

@@ -12,6 +12,7 @@ import {
   BESTSELLER_MIN_QTY,
   BESTSELLER_TOP_N,
 } from "@/lib/menu-bestsellers";
+import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -90,6 +91,7 @@ export async function GET(request: Request, { params }: Params) {
       select: {
         id: true,
         name: true,
+        itemCode: true,
         imageUrl: true,
         isHidden: true,
         isOutOfStock: true,
@@ -177,6 +179,10 @@ export async function GET(request: Request, { params }: Params) {
         return {
           id: m.id,
           name: m.name,
+          productCode: resolveMenuItemProductCode({
+            id: m.id,
+            itemCode: m.itemCode,
+          }),
           imageUrl: m.imageUrl,
           isHidden: m.isHidden,
           isOutOfStock: m.isOutOfStock,

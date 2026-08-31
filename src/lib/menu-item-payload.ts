@@ -7,6 +7,28 @@ const optionalPositivePrice = z
   .nullable()
   .optional();
 
+/** Branch-scoped printable product / barcode code */
+export const menuItemCodeSchema = z
+  .union([
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(
+        /^[A-Za-z0-9._-]+$/,
+        "ใช้ได้เฉพาะตัวอักษร ตัวเลข และ . _ -",
+      ),
+    z.literal(""),
+    z.null(),
+  ])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    if (!value) return null;
+    return value;
+  });
+
 export const menuChannelPriceSchema = z.object({
   price: z.number().positive(),
   pickupPrice: optionalPositivePrice,
@@ -42,6 +64,8 @@ export const menuItemCreateSchema = z
     sellShabu: z.boolean().optional(),
     /** Default shelf life days when receiving fresh sale stock */
     defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
+    /** Printable product / barcode code (unique per branch when set) */
+    itemCode: menuItemCodeSchema,
   })
   .merge(menuChannelPriceSchema);
 
@@ -76,6 +100,7 @@ export const menuItemPatchSchema = z
     sellFry: z.boolean().optional(),
     sellShabu: z.boolean().optional(),
     defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
+    itemCode: menuItemCodeSchema,
   })
   .merge(menuChannelPriceSchema.partial());
 

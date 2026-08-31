@@ -21,6 +21,10 @@ import { ImageField } from "@/components/admin/ImageField";
 import { BranchStockCountsView } from "@/components/admin/BranchStockCountsView";
 import { BranchStockMovementsView } from "@/components/admin/BranchStockMovementsView";
 import { BranchStockUsageView } from "@/components/admin/BranchStockUsageView";
+import { BranchParStockPanel } from "@/components/admin/BranchParStockPanel";
+import { BranchTomorrowPlanPanel } from "@/components/admin/BranchTomorrowPlanPanel";
+import { BranchTomorrowPlanRecordsPanel } from "@/components/admin/BranchTomorrowPlanRecordsPanel";
+import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import {
   STOCK_OUTBOUND_PURPOSE_LABEL,
   type StockOutboundPurpose,
@@ -31,6 +35,7 @@ type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 type Product = {
   id: string;
   name: string;
+  productCode?: string | null;
   unit: string;
   stockType: StockType;
   category?: string | null;
@@ -92,12 +97,33 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   const [movementNote, setMovementNote] = useState("");
 
   const [activeTab, setActiveTab] = useState<
-    "manage" | "counts" | "movements" | "usage"
-  >(viewParam === "movements" ? "movements" : "manage");
+    | "manage"
+    | "par-stock"
+    | "tomorrow"
+    | "tomorrow-plans"
+    | "counts"
+    | "movements"
+    | "usage"
+  >(
+    viewParam === "movements"
+      ? "movements"
+      : viewParam === "recommend" || viewParam === "par-stock"
+        ? "par-stock"
+        : viewParam === "tomorrow"
+          ? "tomorrow"
+          : viewParam === "tomorrow-plans"
+            ? "tomorrow-plans"
+            : "manage",
+  );
   const [pendingCountBadge, setPendingCountBadge] = useState(0);
+  const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
 
   useEffect(() => {
     if (viewParam === "movements") setActiveTab("movements");
+    if (viewParam === "recommend" || viewParam === "par-stock")
+      setActiveTab("par-stock");
+    if (viewParam === "tomorrow") setActiveTab("tomorrow");
+    if (viewParam === "tomorrow-plans") setActiveTab("tomorrow-plans");
   }, [viewParam]);
 
   // Dropdown for "สร้างรายการใหม่"
@@ -174,6 +200,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
       if (res.ok) {
         const json = (await res.json()) as StockPayload;
         setData(json);
+        setInventoryRefreshKey((k) => k + 1);
       } else {
         const body = await res.json().catch(() => ({}));
         setLoadError(body.error || "โหลดข้อมูลสต๊อกไม่สำเร็จ");
@@ -609,6 +636,8 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           {(
             [
               { id: "manage" as const, label: "จัดการสต๊อก" },
+              { id: "par-stock" as const, label: "แนะนำ Par Stock" },
+              { id: "tomorrow-plans" as const, label: "แผนผลิต-เติม" },
               { id: "counts" as const, label: "สรุปยอด / Convert" },
               { id: "movements" as const, label: "ประวัติเคลื่อนไหว" },
               { id: "usage" as const, label: "การใช้ / ต้นทุน" },
@@ -617,9 +646,18 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                if (tab.id === "par-stock" || tab.id === "tomorrow-plans") {
+                  setInventoryRefreshKey((k) => k + 1);
+                }
+              }}
               className={`relative flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-bold border-b-2 transition-colors sm:px-5 ${
-                activeTab === tab.id
+                (
+                  tab.id === "tomorrow-plans"
+                    ? activeTab === "tomorrow" || activeTab === "tomorrow-plans"
+                    : activeTab === tab.id
+                )
                   ? "border-site-primary text-site-primary"
                   : "border-transparent text-slate-500 hover:text-slate-800"
               }`}
@@ -639,6 +677,31 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
         <BranchStockCountsView
           branchId={branchId}
           onPendingChange={setPendingCountBadge}
+        />
+      ) : activeTab === "par-stock" ? (
+        <BranchParStockPanel
+          branchId={branchId}
+          refreshKey={inventoryRefreshKey}
+          onInventoryMutated={() => setInventoryRefreshKey((k) => k + 1)}
+        />
+      ) : activeTab === "tomorrow" ? (
+        <BranchTomorrowPlanPanel
+          branchId={branchId}
+          refreshKey={inventoryRefreshKey}
+          onInventoryMutated={() => setInventoryRefreshKey((k) => k + 1)}
+          onBackToList={() => {
+            setActiveTab("tomorrow-plans");
+            setInventoryRefreshKey((k) => k + 1);
+          }}
+        />
+      ) : activeTab === "tomorrow-plans" ? (
+        <BranchTomorrowPlanRecordsPanel
+          branchId={branchId}
+          refreshKey={inventoryRefreshKey}
+          onCreatePlan={() => {
+            setActiveTab("tomorrow");
+            setInventoryRefreshKey((k) => k + 1);
+          }}
         />
       ) : activeTab === "movements" ? (
         <BranchStockMovementsView
@@ -914,6 +977,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
                       <tr>
                         <th className="px-4 py-3 font-semibold w-12">#</th>
+                        <th className="px-4 py-3 font-semibold w-16">รหัส</th>
                         <th className="px-4 py-3 font-semibold">รายการ</th>
                         <th className="px-4 py-3 font-semibold">หมวดหมู่</th>
                         <th className="px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
@@ -925,7 +989,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                       {visibleItems.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="px-4 py-10 text-center text-sm text-slate-500"
                           >
                             {manageQ.trim()
@@ -943,8 +1007,15 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                         const unitPrice = Number(item.price ?? 0);
                         return (
                           <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-3 text-sm font-bold tabular-nums text-slate-400">
-                              {seq}
+                            <td className="px-4 py-3 text-sm font-bold tabular-nums text-slate-400 align-top">
+                              {seq || "—"}
+                            </td>
+                            <td className="px-4 py-3 text-sm align-top">
+                              {item.productCode ? (
+                                <MenuItemCodeBadge code={item.productCode} />
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
@@ -1277,6 +1348,14 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-900 leading-tight">
+                              {item.productCode ? (
+                                <>
+                                  <MenuItemCodeBadge
+                                    code={item.productCode}
+                                    className="mr-1.5 align-middle text-[10px]"
+                                  />
+                                </>
+                              ) : null}
                               {item.name}
                             </p>
                             <p className="mt-0.5 text-xs text-slate-500">

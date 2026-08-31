@@ -39,10 +39,16 @@ import {
   SKEWER_PHOTO_ASPECT,
   SKEWER_PHOTO_ASPECT_CLASS,
 } from "@/lib/skewer-order";
+import {
+  isManualMenuItemCode,
+  resolveMenuItemProductCode,
+} from "@/lib/inventory/inventory-menu-code";
+import { ProductLabelPrintButton } from "@/components/admin/ProductLabelPrintButton";
 
 type MenuItemDetail = {
   id: string;
   name: string;
+  itemCode?: string | null;
   price: string;
   pickupPrice?: string | null;
   storefrontPrice?: string | null;
@@ -69,6 +75,7 @@ type MenuItemDetail = {
   isOutOfStock: boolean;
   sortOrder: number;
   defaultShelfLifeDays?: number | null;
+  brandProduct?: { sku?: string | null; barcode?: string | null } | null;
   optionGroups: BranchOptionGroup[];
   optionGroupIds?: string[];
 };
@@ -81,6 +88,7 @@ type MenuCategoryOption = {
 
 type FormState = {
   name: string;
+  itemCode: string;
   price: string;
   pickupPrice: string;
   storefrontPrice: string;
@@ -110,6 +118,7 @@ type FormState = {
 const EMPTY_ITEM: MenuItemDetail = {
   id: "new",
   name: "",
+  itemCode: null,
   price: "",
   pickupPrice: null,
   storefrontPrice: null,
@@ -136,12 +145,14 @@ const EMPTY_ITEM: MenuItemDetail = {
   isOutOfStock: false,
   sortOrder: 0,
   defaultShelfLifeDays: null,
+  brandProduct: null,
   optionGroups: [],
   optionGroupIds: [],
 };
 
 const EMPTY_FORM: FormState = {
   name: "",
+  itemCode: "",
   price: "",
   pickupPrice: "",
   storefrontPrice: "",
@@ -218,6 +229,7 @@ export default function MenuItemEditorPage() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [shopCode, setShopCode] = useState<string | null>(null);
+  const [branchName, setBranchName] = useState<string | null>(null);
   const [branchOperatingMode, setBranchOperatingMode] = useState<string | null>(
     null,
   );
@@ -230,6 +242,7 @@ export default function MenuItemEditorPage() {
     const isOutOfStock = isHidden ? false : data.isOutOfStock;
     setForm({
       name: data.name,
+      itemCode: data.itemCode ?? "",
       price: data.price != null ? String(data.price) : "",
       pickupPrice:
         data.pickupPrice != null && String(data.pickupPrice) !== String(data.price)
@@ -297,11 +310,13 @@ export default function MenuItemEditorPage() {
     const res = await fetch(`/api/admin/branches/${branchId}`);
     if (!res.ok) return;
     const data = (await res.json()) as {
+      name?: string | null;
       code?: string | null;
       operatingMode?: string | null;
       brand?: { code?: string | null } | null;
     };
     setShopCode(data.code?.trim() || data.brand?.code?.trim() || null);
+    setBranchName(data.name?.trim() || null);
     setBranchOperatingMode(data.operatingMode ?? null);
   }
 
@@ -402,6 +417,19 @@ export default function MenuItemEditorPage() {
     };
   }, [form]);
 
+  const previewProductCode = useMemo(() => {
+    const manual = form.itemCode.trim();
+    if (manual) return manual;
+    if (!item || item.id === "new") return "";
+    return resolveMenuItemProductCode({
+      id: item.id,
+      itemCode: null,
+      brandProduct: item.brandProduct ?? null,
+    });
+  }, [form.itemCode, item]);
+
+  const usesManualItemCode = Boolean(form.itemCode.trim());
+
   async function saveItem() {
     if (!form.name.trim()) {
       toast.error("กรอกชื่อเมนู");
@@ -428,6 +456,7 @@ export default function MenuItemEditorPage() {
     try {
       const payload = {
         name: form.name.trim(),
+        itemCode: form.itemCode.trim() || null,
         price: deliveryPrice,
         pickupPrice: optionalPricePayload(form.pickupPrice),
         storefrontPrice: optionalPricePayload(form.storefrontPrice),
@@ -1024,6 +1053,55 @@ export default function MenuItemEditorPage() {
                   }
                 />
               </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <h3 className="mb-1 font-semibold text-gray-900">
+              รหัสสินค้า / บาร์โค้ด
+            </h3>
+            <p className="mb-3 text-sm text-gray-500">
+              ใช้สำหรับสแกนและพิมพ์ป้าย — ต้องไม่ซ้ำกันภายในสาขา
+            </p>
+            <label className={adminLabelClass}>รหัสสินค้า (ตั้งเอง)</label>
+            <input
+              className={adminInputClass}
+              value={form.itemCode}
+              placeholder="เช่น M001 · ว่าง = ใช้ SKU/barcode จากสต๊อกแบรนด์"
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  itemCode: e.target.value,
+                }))
+              }
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-500">รหัสที่จะพิมพ์:</span>
+              {previewProductCode ? (
+                <code className="rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-gray-800">
+                  {previewProductCode}
+                </code>
+              ) : (
+                <span className="text-xs text-gray-400">— ยังไม่มี —</span>
+              )}
+              {!usesManualItemCode && previewProductCode ? (
+                <span className="text-[11px] text-amber-700">
+                  (จาก SKU/barcode/ID — แนะนำตั้งรหัสเอง)
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ProductLabelPrintButton
+                code={previewProductCode}
+                name={form.name.trim() || item.name || "เมนู"}
+                branchName={branchName}
+                disabled={!previewProductCode}
+              />
+              {!isCreate && item.id !== "new" && isManualMenuItemCode(item) ? (
+                <span className="self-center text-xs text-emerald-700">
+                  บันทึกรหัสแล้ว
+                </span>
+              ) : null}
             </div>
           </section>
 

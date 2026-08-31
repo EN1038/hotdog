@@ -268,6 +268,10 @@ model Admin {
   primaryOfBrands        Brand[]            @relation("BrandPrimaryAdmin")
   brandInvoicesCreated   BrandInvoice[]     @relation("BrandInvoiceCreatedBy")
   triggeredSmsLogs       SmsSendLog[]       @relation("SmsSendTriggeredByAdmin")
+  parStockUpdates        BranchMenuItemParStock[]
+  parStockHistoryUpdates BranchMenuItemParStockHistory[]
+  tomorrowPlanConfirms   BranchTomorrowPlanLine[]
+  tomorrowPlans          BranchTomorrowPlan[]
 
   @@index([lineLinkCode])
 }
@@ -555,6 +559,10 @@ model Branch {
   stockCounts                  StockCount[]
   branchMenuItemStocks         BranchMenuItemStock[]
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
+  branchMenuItemParStocks      BranchMenuItemParStock[]
+  branchMenuItemParStockHistories BranchMenuItemParStockHistory[]
+  tomorrowPlanLines            BranchTomorrowPlanLine[]
+  tomorrowPlans                BranchTomorrowPlan[]
   branchNonMenuItems           BranchNonMenuItem[]
   expenses                     BranchExpense[]
   stockRequests                BranchStockRequest[]
@@ -661,6 +669,8 @@ model StaffAuthSession {
 model BranchMenuItem {
   id                           String                       @id @default(cuid())
   branchId                     String
+  /// Printable product / barcode code (unique per branch when set)
+  itemCode                     String?
   name                         String
   /// Delivery channel price (base)
   price                        Decimal                      @db.Decimal(10, 2)
@@ -725,8 +735,113 @@ model BranchMenuItem {
   tableSessionLines            TableSessionLine[]
   stock                        BranchMenuItemStock?
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
+  parStock                     BranchMenuItemParStock?
+  parStockHistories            BranchMenuItemParStockHistory[]
+  tomorrowPlanLines            BranchTomorrowPlanLine[]
 
   @@index([brandProductId])
+  @@unique([branchId, itemCode])
+}
+
+enum BranchMenuItemParStockSource {
+  MANUAL
+  RECOMMENDED
+}
+
+/// Branch × MenuItem par stock target (setting only — does not mutate physical stock).
+model BranchMenuItemParStock {
+  id                String                       @id @default(cuid())
+  branchId          String
+  menuItemId        String                       @unique
+  parStock          Int                          @default(0)
+  source            BranchMenuItemParStockSource @default(MANUAL)
+  coverageDays      Int?
+  /// Safety buffer percentage (e.g. 20 = 20%)
+  safetyPct         Int?
+  avgDailySales     Decimal?                     @db.Decimal(10, 2)
+  recommendedValue  Int?
+  analysisFrom      DateTime?                    @db.Date
+  analysisTo        DateTime?                    @db.Date
+  updatedAt         DateTime                     @updatedAt
+  updatedByAdminId  String?
+
+  branch         Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  menuItem       BranchMenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  updatedByAdmin Admin?         @relation(fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, menuItemId])
+  @@index([branchId])
+}
+
+model BranchMenuItemParStockHistory {
+  id               String                       @id @default(cuid())
+  branchId         String
+  menuItemId       String
+  oldParStock      Int
+  newParStock      Int
+  source           BranchMenuItemParStockSource
+  /// Human reason or JSON string metadata for recommendation context
+  reason           String?
+  metadata         Json?
+  updatedByAdminId String?
+  createdAt        DateTime                     @default(now())
+
+  branch         Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  menuItem       BranchMenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  updatedByAdmin Admin?         @relation(fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, menuItemId, createdAt])
+  @@index([menuItemId])
+}
+
+/// Confirmed production/refill plan for a branch on a Bangkok date.
+enum BranchTomorrowPlanStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model BranchTomorrowPlan {
+  id                 String                    @id @default(cuid())
+  branchId           String
+  planDate           String
+  status             BranchTomorrowPlanStatus  @default(CONFIRMED)
+  note               String?
+  confirmedAt        DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  confirmedByAdminId String?
+
+  branch           Branch                   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  confirmedByAdmin Admin?                   @relation(fields: [confirmedByAdminId], references: [id], onDelete: SetNull)
+  lines            BranchTomorrowPlanLine[]
+
+  @@unique([branchId, planDate])
+  @@index([branchId, status])
+  @@index([planDate])
+}
+
+/// Confirmed production/refill qty for a branch menu item on a plan date (Bangkok YYYY-MM-DD).
+model BranchTomorrowPlanLine {
+  id                 String   @id @default(cuid())
+  planId             String?
+  branchId           String
+  menuItemId         String
+  planDate           String
+  confirmedQty       Int
+  suggestedQty       Int
+  parStock           Int      @default(0)
+  availableStock     Int      @default(0)
+  confirmedAt        DateTime @updatedAt
+  confirmedByAdminId String?
+
+  plan             BranchTomorrowPlan? @relation(fields: [planId], references: [id], onDelete: Cascade)
+  branch           Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  menuItem         BranchMenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  confirmedByAdmin Admin?              @relation(fields: [confirmedByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, menuItemId, planDate])
+  @@index([branchId, planDate])
+  @@index([menuItemId])
+  @@index([planId])
 }
 
 model BranchMenuItemStock {
@@ -1524,6 +1639,7 @@ model BranchNonMenuItem {
   id          String   @id @default(cuid())
   branchId    String
   name        String
+  itemCode    String?
   description String?
   unit        String   @default("ชิ้น")
   price       Decimal? @db.Decimal(10, 2)
@@ -1541,6 +1657,7 @@ model BranchNonMenuItem {
   histories   BranchNonMenuItemHistory[]
   orderLines  OrderConsumableLine[]
 
+  @@unique([branchId, itemCode])
   @@index([branchId])
   @@index([branchId, showOnKeyOrder])
 }

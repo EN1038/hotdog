@@ -22,6 +22,7 @@ import {
   encodeMovementImages,
   MAX_STOCK_MOVEMENT_IMAGES,
 } from "@/lib/stock-movement-images";
+import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
 
 const WASTE_HISTORY_TYPES = BRANCH_WASTE_HISTORY_TYPES;
 
@@ -194,6 +195,7 @@ export async function GET() {
     const menuItemSelectBase = {
       id: true,
       name: true,
+      itemCode: true,
       price: true,
       sortOrder: true,
       imageUrl: true,
@@ -213,6 +215,7 @@ export async function GET() {
     let menuItems: Array<{
       id: string;
       name: string;
+      itemCode?: string | null;
       price: unknown;
       sortOrder: number;
       imageUrl: string | null;
@@ -254,6 +257,7 @@ export async function GET() {
       select: {
         id: true,
         name: true,
+        itemCode: true,
         unit: true,
         stockType: true,
         quantity: true,
@@ -278,9 +282,15 @@ export async function GET() {
       const price = Number(item.price ?? 0);
       priceByProductId.set(item.id, price);
 
+      const productCode = resolveMenuItemProductCode({
+        id: item.id,
+        itemCode: item.itemCode,
+      });
+
       products.push({
         id: item.id,
         name: item.name,
+        productCode,
         unit: "รายการ",
         stockType: "SALE_ITEM",
         category: item.category?.name ?? "เมนู",
@@ -299,6 +309,7 @@ export async function GET() {
         product: {
           id: item.id,
           name: item.name,
+          productCode,
           unit: "รายการ",
           stockType: "SALE_ITEM",
           category: item.category?.name ?? "เมนู",
@@ -316,9 +327,15 @@ export async function GET() {
       const price = Number(item.price ?? 0);
       priceByProductId.set(item.id, price);
 
+      const productCode = resolveMenuItemProductCode({
+        id: item.id,
+        itemCode: item.itemCode,
+      });
+
       products.push({
         id: item.id,
         name: item.name,
+        productCode,
         unit: item.unit,
         stockType: item.stockType,
         category: typeLabel,
@@ -336,6 +353,7 @@ export async function GET() {
         product: {
           id: item.id,
           name: item.name,
+          productCode,
           unit: item.unit,
           stockType: item.stockType,
           category: typeLabel,

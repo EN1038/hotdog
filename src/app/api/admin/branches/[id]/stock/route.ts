@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { setBranchStockEnabled, StockError } from "@/lib/stock";
+import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -92,9 +93,15 @@ export async function GET(_request: Request, { params }: Params) {
       );
       if (isPromo || item.category?.stockExempt) continue;
 
+      const productCode = resolveMenuItemProductCode({
+        id: item.id,
+        itemCode: item.itemCode,
+      });
+
       products.push({
         id: item.id,
         name: item.name,
+        productCode,
         unit: "ชิ้น",
         stockType: "SALE_ITEM",
         category: item.category?.name ?? "เมนู",
@@ -112,6 +119,7 @@ export async function GET(_request: Request, { params }: Params) {
         product: {
           id: item.id,
           name: item.name,
+          productCode,
           unit: "ชิ้น",
           stockType: "SALE_ITEM",
           category: item.category?.name ?? "เมนู",
@@ -125,9 +133,14 @@ export async function GET(_request: Request, { params }: Params) {
     // Map Non-Menu Items
     for (const item of nonMenuItems) {
       const typeLabel = item.stockType === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์";
+      const productCode = resolveMenuItemProductCode({
+        id: item.id,
+        itemCode: item.itemCode,
+      });
       products.push({
         id: item.id,
         name: item.name,
+        productCode,
         unit: item.unit,
         stockType: item.stockType,
         category: typeLabel,
@@ -148,6 +161,7 @@ export async function GET(_request: Request, { params }: Params) {
         product: {
           id: item.id,
           name: item.name,
+          productCode,
           unit: item.unit,
           stockType: item.stockType,
           category: typeLabel,

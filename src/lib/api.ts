@@ -29,6 +29,7 @@ const ZOD_FIELD_LABELS: Record<string, string> = {
   password: "รหัสผ่าน",
   phone: "เบอร์โทร",
   branchCode: "รหัสสาขา",
+  itemCode: "รหัสสินค้า",
   color: "สี",
 };
 
@@ -97,7 +98,13 @@ export function handleApiError(error: unknown) {
         ? "ระบบอัปเดตแล้ว — รีเฟรชหน้านี้หรือปิดแอปแล้วเปิดใหม่"
         : raw.includes("imageUrl")
           ? "ระบบยังอัปเดตรูปไม่ครบ — ลองใหม่หรือแจ้งแอดมิน"
-          : raw.includes("status") ||
+          : raw.includes("unitPriceBaht") ||
+              raw.includes("deliveryInfo") ||
+              raw.includes("shippingCostBaht") ||
+              raw.includes("deliveredAt") ||
+              raw.includes("deliveredOn")
+            ? "ระบบอัปเดตแล้ว — รีสตาร์ท dev server แล้วรีเฟรชหน้านี้"
+            : raw.includes("status") ||
               raw.includes("trialEndsAt") ||
               raw.includes("BrandPlan") ||
               raw.includes("cancelledAt")

@@ -1,0 +1,18 @@
+name: Verify npm ci (Linux)
+
+on:
+  push:
+    branches: [deploy, master]
+  workflow_dispatch:
+
+jobs:
+  npm-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npx prisma generate

@@ -20,6 +20,7 @@ import {
 } from "@/lib/staff-key-order";
 import { PROMO_SCHEDULE_STATUS_LABEL } from "@/lib/promo-schedule";
 import { assignStableMenuSequence } from "@/lib/staff-menu-order";
+import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
 
 export default function StaffPromoKeyOrderIndexPage() {
   const router = useRouter();
@@ -148,6 +149,14 @@ export default function StaffPromoKeyOrderIndexPage() {
                   </span>
                   <span className="min-w-0 flex-1 text-left">
                     <span className="block text-[18px] font-black leading-snug">
+                      {item.itemCode?.trim() ? (
+                        <span className="mr-2 rounded bg-white/25 px-2 py-0.5 text-[13px] font-black tabular-nums">
+                          {resolveMenuItemProductCode({
+                            id: item.id,
+                            itemCode: item.itemCode,
+                          })}
+                        </span>
+                      ) : null}
                       {item.name}
                     </span>
                     <span className="mt-1 block text-[14px] font-medium text-white/90">

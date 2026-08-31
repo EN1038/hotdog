@@ -11,17 +11,24 @@ type ShareExportMenuProps = {
   disabled?: boolean;
   /** Compact round icon only (default). */
   className?: string;
+  /** If set, render a labeled button instead of the round icon. */
+  label?: string;
+  sheetTitle?: string;
+  sheetHint?: string;
   onShareImage: () => void | Promise<void>;
   onSaveImage: () => void | Promise<void>;
   onCopyText: () => void | Promise<void>;
 };
 
-/** Single share icon → bottom sheet to pick share / save / copy. */
+/** Single share control → sheet to pick share image / save image / copy text. */
 export function ShareExportMenu({
   busy = null,
   message = "",
   disabled = false,
   className = "",
+  label,
+  sheetTitle = "แชร์สรุปยอด",
+  sheetHint = "เลือกสิ่งที่ต้องการทำ",
   onShareImage,
   onSaveImage,
   onCopyText,
@@ -55,16 +62,33 @@ export function ShareExportMenu({
         type="button"
         disabled={disabled || !!busy}
         onClick={() => setOpen(true)}
-        className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm active:bg-slate-50 disabled:opacity-50 ${className}`}
-        aria-label="แชร์สรุปยอด"
-        title="แชร์สรุปยอด"
+        className={
+          label
+            ? className ||
+              "relative flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm active:bg-slate-50 disabled:opacity-50"
+            : `relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm active:bg-slate-50 disabled:opacity-50 ${className}`
+        }
+        aria-label={label || "แชร์สรุปยอด"}
+        title={label || "แชร์สรุปยอด"}
       >
-        <IconShare size={20} />
-        {busy ? (
-          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/80 text-[11px] font-bold text-slate-600">
-            …
-          </span>
-        ) : null}
+        {label ? (
+          busy === "save"
+            ? "กำลังบันทึก…"
+            : busy === "copy"
+              ? "กำลังคัดลอก…"
+              : busy
+                ? "กำลังแชร์…"
+                : label
+        ) : (
+          <>
+            <IconShare size={20} />
+            {busy ? (
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/80 text-[11px] font-bold text-slate-600">
+                …
+              </span>
+            ) : null}
+          </>
+        )}
       </button>
 
       {message && !open ? (
@@ -88,10 +112,10 @@ export function ShareExportMenu({
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
                 <p className="text-[15px] font-extrabold text-slate-900">
-                  แชร์สรุปยอด
+                  {sheetTitle}
                 </p>
                 <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-                  เลือกสิ่งที่ต้องการทำ
+                  {sheetHint}
                 </p>
               </div>
               <button

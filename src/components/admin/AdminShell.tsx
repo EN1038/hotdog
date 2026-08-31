@@ -745,9 +745,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {!isPlatformAdmin ? (
-              <OwnerViewSwitchButton variant="admin" />
-            ) : null}
+            <OwnerViewSwitchButton
+              variant="admin"
+              skipOwnerRouteSwitch={isPlatformAdmin}
+            />
             {session?.username ? (
               <div className="hidden items-center gap-2 sm:flex">
                 <RoleBadge isPlatformAdmin={isPlatformAdmin} />

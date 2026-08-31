@@ -330,9 +330,10 @@ export async function getTomorrowPlanDetail(input: {
     } catch (error) {
       console.error("[tomorrow-plans] header by id failed", error);
       try {
-        header = await headerDb.findFirst({
+        const plain = await headerDb.findFirst({
           where: { id: input.planId, branchId: input.branchId },
         });
+        header = plain ? { ...plain, confirmedByAdmin: null } : null;
       } catch (plainError) {
         console.error("[tomorrow-plans] header by id (plain) failed", plainError);
       }

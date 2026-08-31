@@ -38,6 +38,7 @@ import {
   type StockDocumentKind,
 } from "@/lib/stock-document-no-format";
 import { MAX_STOCK_MOVEMENT_IMAGES } from "@/lib/stock-movement-images";
+import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -86,6 +87,7 @@ type StockQtyValue = {
 type Product = {
   id: string;
   name: string;
+  productCode?: string | null;
   unit: string;
   stockType: StockType;
   category?: string | null;
@@ -103,21 +105,28 @@ function StockItemName({
   name,
   unit,
   stockType,
+  productCode,
 }: {
   name: string;
   unit?: string | null;
   stockType?: StockType | null;
+  productCode?: string | null;
 }) {
   const showUnit =
     (stockType === "CONSUMABLE" || stockType === "EQUIPMENT") &&
     Boolean(unit?.trim());
   return (
-    <p className="truncate text-sm font-bold text-gray-900 leading-tight">
-      {name}
-      {showUnit ? (
-        <span className="font-bold text-red-600"> ({unit!.trim()})</span>
+    <div className="min-w-0">
+      {productCode ? (
+        <MenuItemCodeBadge code={productCode} className="mb-0.5 text-[10px]" />
       ) : null}
-    </p>
+      <p className="truncate text-sm font-bold text-gray-900 leading-tight">
+        {name}
+        {showUnit ? (
+          <span className="font-bold text-red-600"> ({unit!.trim()})</span>
+        ) : null}
+      </p>
+    </div>
   );
 }
 
@@ -133,7 +142,7 @@ type Pending = {
   note: string | null;
   createdAt: string;
   kind?: string;
-  product: { id: string; name: string; unit: string; stockType?: StockType };
+  product: { id: string; name: string; productCode?: string | null; unit: string; stockType?: StockType };
   sourceBranch?: { id: string; name: string } | null;
 };
 
@@ -1635,6 +1644,14 @@ function StaffStockContent() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-base font-extrabold text-slate-900">
+                              {row.product.productCode ? (
+                                <>
+                                  <MenuItemCodeBadge
+                                    code={row.product.productCode}
+                                    className="mr-1.5 align-middle text-xs"
+                                  />
+                                </>
+                              ) : null}
                               {row.product.name}
                             </p>
                             <p className="mt-1 text-sm font-semibold text-teal-700">
@@ -1839,6 +1856,7 @@ function StaffStockContent() {
                                       >
                                         <StockItemName
                                           name={item.name}
+                                          productCode={item.productCode}
                                           unit={item.unit}
                                           stockType={item.stockType}
                                         />
@@ -2868,6 +2886,7 @@ function StaffStockContent() {
                                         <div className="min-w-0">
                                           <StockItemName
                                             name={item.name}
+                                            productCode={item.productCode}
                                             unit={item.unit}
                                             stockType={item.stockType}
                                           />
@@ -3011,6 +3030,7 @@ function StaffStockContent() {
                                     <div className="min-w-0">
                                       <StockItemName
                                         name={item.name}
+                                        productCode={item.productCode}
                                         unit={item.unit}
                                         stockType={item.stockType}
                                       />

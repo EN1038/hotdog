@@ -50,6 +50,8 @@ import { BranchSkewerOrdersPanel } from "@/components/admin/BranchSkewerOrdersPa
 import { BranchShiftsPanel } from "@/components/admin/BranchShiftsPanel";
 import { BranchStockPanel } from "@/components/admin/BranchStockPanel";
 import { BranchExpensesPanel } from "@/components/admin/BranchExpensesPanel";
+import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
+import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
 import { AdminCloseStoreModal } from "@/components/admin/AdminCloseStoreModal";
 import { AdminToggle } from "@/components/admin/AdminToggle";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
@@ -180,6 +182,7 @@ type BranchDetail = {
   }[];
   menuItems: {
     id: string;
+    itemCode?: string | null;
     name: string;
     price: string;
     pickupPrice?: string | null;
@@ -298,7 +301,6 @@ const SKEWER_HIDDEN_TABS = new Set<TabId>([
   "bbq-sessions",
   "bbq-bills",
   "shifts",
-  "stock",
   "expenses",
   "staff",
   "locations",
@@ -316,7 +318,6 @@ const BBQ_WEIGH_HIDDEN_TABS = new Set<TabId>([
   "orders",
   "skewer-orders",
   "shifts",
-  "stock",
   "expenses",
   "locations",
   "options",
@@ -330,6 +331,8 @@ const WAREHOUSE_HIDDEN_TABS = new Set<TabId>([
   "bbq-sessions",
   "bbq-bills",
   "shifts",
+  "stock",
+  "expenses",
   "menu",
   "categories",
   "options",
@@ -2661,6 +2664,14 @@ function BranchDetailContent() {
                     })()}
                     <div className="min-w-0 flex-1">
                       <p className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900">
+                        {m.itemCode?.trim() ? (
+                          <MenuItemCodeBadge
+                            code={resolveMenuItemProductCode({
+                              id: m.id,
+                              itemCode: m.itemCode,
+                            })}
+                          />
+                        ) : null}
                         <span>{m.name}</span>
                         <MenuBestSellerTag show={m.isBestSeller} />
                       </p>

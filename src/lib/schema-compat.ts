@@ -33,6 +33,10 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "sellFry" BOOLEAN NOT NULL DEFAULT false`,
         `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "sellShabu" BOOLEAN NOT NULL DEFAULT false`,
         `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "defaultShelfLifeDays" INTEGER`,
+        `ALTER TABLE "${schema}"."BranchMenuItem" ADD COLUMN IF NOT EXISTS "itemCode" TEXT`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BranchMenuItem_branchId_itemCode_key" ON "${schema}"."BranchMenuItem"("branchId", "itemCode")`,
+        `ALTER TABLE "${schema}"."BranchNonMenuItem" ADD COLUMN IF NOT EXISTS "itemCode" TEXT`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BranchNonMenuItem_branchId_itemCode_key" ON "${schema}"."BranchNonMenuItem"("branchId", "itemCode")`,
         `ALTER TABLE "${schema}"."BrandProduct" ADD COLUMN IF NOT EXISTS "defaultShelfLifeDays" INTEGER DEFAULT 5`,
         `UPDATE "${schema}"."BrandProduct" SET "defaultShelfLifeDays" = 5 WHERE "defaultShelfLifeDays" IS NULL`,
         `ALTER TABLE "${schema}"."BranchMenuItemStockHistory" ADD COLUMN IF NOT EXISTS "receivedAt" TIMESTAMP(3)`,
@@ -52,6 +56,11 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "paymentSlipUrl" TEXT`,
         `ALTER TABLE "${schema}"."Order" ADD COLUMN IF NOT EXISTS "publicShareToken" TEXT`,
         `ALTER TABLE "${schema}"."SkewerOrder" ADD COLUMN IF NOT EXISTS "publicShareToken" TEXT`,
+        `ALTER TABLE "${schema}"."SkewerOrder" ADD COLUMN IF NOT EXISTS "deliveredAt" TIMESTAMP(3)`,
+        `ALTER TABLE "${schema}"."SkewerOrder" ADD COLUMN IF NOT EXISTS "deliveredOn" DATE`,
+        `ALTER TABLE "${schema}"."SkewerOrder" ADD COLUMN IF NOT EXISTS "deliveryInfo" TEXT`,
+        `ALTER TABLE "${schema}"."SkewerOrder" ADD COLUMN IF NOT EXISTS "shippingCostBaht" DECIMAL(10,2)`,
+        `ALTER TABLE "${schema}"."SkewerOrderItem" ADD COLUMN IF NOT EXISTS "unitPriceBaht" DECIMAL(10,2)`,
         `DROP INDEX IF EXISTS "${schema}"."Staff_phone_key"`,
         `DROP INDEX IF EXISTS "Staff_phone_key"`,
         `DROP INDEX IF EXISTS "${schema}"."Staff_lineUserId_key"`,
@@ -67,6 +76,15 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `CREATE UNIQUE INDEX IF NOT EXISTS "StaffAuthSession_phone_deviceId_key" ON "${schema}"."StaffAuthSession"("phone", "deviceId")`,
         `CREATE INDEX IF NOT EXISTS "StaffAuthSession_phone_idx" ON "${schema}"."StaffAuthSession"("phone")`,
         `CREATE INDEX IF NOT EXISTS "StaffAuthSession_expiresAt_idx" ON "${schema}"."StaffAuthSession"("expiresAt")`,
+        `CREATE TABLE IF NOT EXISTS "${schema}"."BranchTomorrowPlanLine" ("id" TEXT NOT NULL, "branchId" TEXT NOT NULL, "menuItemId" TEXT NOT NULL, "planDate" TEXT NOT NULL, "confirmedQty" INTEGER NOT NULL, "suggestedQty" INTEGER NOT NULL, "parStock" INTEGER NOT NULL DEFAULT 0, "availableStock" INTEGER NOT NULL DEFAULT 0, "confirmedAt" TIMESTAMP(3) NOT NULL, "confirmedByAdminId" TEXT, CONSTRAINT "BranchTomorrowPlanLine_pkey" PRIMARY KEY ("id"))`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BranchTomorrowPlanLine_branchId_menuItemId_planDate_key" ON "${schema}"."BranchTomorrowPlanLine"("branchId", "menuItemId", "planDate")`,
+        `CREATE INDEX IF NOT EXISTS "BranchTomorrowPlanLine_branchId_planDate_idx" ON "${schema}"."BranchTomorrowPlanLine"("branchId", "planDate")`,
+        `CREATE INDEX IF NOT EXISTS "BranchTomorrowPlanLine_menuItemId_idx" ON "${schema}"."BranchTomorrowPlanLine"("menuItemId")`,
+        `DO $$ BEGIN CREATE TYPE "BranchTomorrowPlanStatus" AS ENUM ('CONFIRMED', 'CANCELLED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+        `CREATE TABLE IF NOT EXISTS "${schema}"."BranchTomorrowPlan" ("id" TEXT NOT NULL, "branchId" TEXT NOT NULL, "planDate" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'CONFIRMED', "note" TEXT, "confirmedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "confirmedByAdminId" TEXT, CONSTRAINT "BranchTomorrowPlan_pkey" PRIMARY KEY ("id"))`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BranchTomorrowPlan_branchId_planDate_key" ON "${schema}"."BranchTomorrowPlan"("branchId", "planDate")`,
+        `ALTER TABLE "${schema}"."BranchTomorrowPlanLine" ADD COLUMN IF NOT EXISTS "planId" TEXT`,
+        `CREATE INDEX IF NOT EXISTS "BranchTomorrowPlanLine_planId_idx" ON "${schema}"."BranchTomorrowPlanLine"("planId")`,
       ];
       const enumSql = [
         `DO $$ BEGIN CREATE TYPE "BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED', 'DELETED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
@@ -80,6 +98,8 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `DO $$ BEGIN CREATE TYPE "${schema}"."BrandInvoiceStatus" AS ENUM ('DRAFT', 'ISSUED', 'PAID', 'VOID'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
         `DO $$ BEGIN ALTER TYPE "BrandStatus" ADD VALUE IF NOT EXISTS 'DELETED'; EXCEPTION WHEN others THEN NULL; END $$`,
         `DO $$ BEGIN ALTER TYPE "${schema}"."BrandStatus" ADD VALUE IF NOT EXISTS 'DELETED'; EXCEPTION WHEN others THEN NULL; END $$`,
+        `DO $$ BEGIN ALTER TYPE "SkewerOrderStatus" ADD VALUE IF NOT EXISTS 'DELIVERED'; EXCEPTION WHEN others THEN NULL; END $$`,
+        `DO $$ BEGIN ALTER TYPE "${schema}"."SkewerOrderStatus" ADD VALUE IF NOT EXISTS 'DELIVERED'; EXCEPTION WHEN others THEN NULL; END $$`,
       ];
       for (const sql of enumSql) {
         try {

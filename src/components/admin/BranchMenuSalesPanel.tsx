@@ -5,6 +5,7 @@ import Link from "next/link";
 import { adminInputClass, adminLabelClass } from "@/components/admin/AdminShell";
 import { DateInput } from "@/components/DateInput";
 import { MenuSalesLineChart } from "@/components/admin/MenuSalesLineChart";
+import { MenuItemNameWithCode } from "@/components/MenuItemCodeDisplay";
 import {
   bangkokDateKey,
   bangkokMonthRangeToToday,
@@ -13,6 +14,7 @@ import {
 type SalesItem = {
   id: string;
   name: string;
+  productCode?: string;
   imageUrl: string | null;
   isHidden: boolean;
   isOutOfStock: boolean;
@@ -286,6 +288,11 @@ export function BranchMenuSalesPanel({
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
+                        {item.productCode ? (
+                          <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-gray-700">
+                            {item.productCode}
+                          </span>
+                        ) : null}
                         <Link
                           href={`/admin/branches/${branchId}/menu/${item.id}`}
                           className="truncate text-sm font-medium text-slate-900 hover:text-site-primary"
@@ -323,6 +330,7 @@ export function BranchMenuSalesPanel({
                         href={`/admin/branches/${branchId}/menu/${item.id}`}
                         className="truncate hover:text-site-primary"
                       >
+                        {item.productCode ? `[${item.productCode}] ` : ""}
                         {item.name}
                         {item.isHidden ? " (ซ่อน)" : ""}
                         {item.isOutOfStock ? " (หมด)" : ""}

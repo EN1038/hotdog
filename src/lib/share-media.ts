@@ -447,6 +447,35 @@ export async function sharePublicLink(input: {
   };
 }
 
+/** Share plain text via Web Share; fall back to clipboard. */
+export async function sharePlainText(input: {
+  title: string;
+  text: string;
+}): Promise<{ ok: boolean; mode: "share" | "copy" | "none"; error?: string }> {
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.share === "function"
+  ) {
+    try {
+      await navigator.share({
+        title: input.title,
+        text: input.text,
+      });
+      return { ok: true, mode: "share" };
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        return { ok: false, mode: "none", error: "cancelled" };
+      }
+    }
+  }
+  const copied = await copyTextToClipboard(input.text);
+  return {
+    ok: copied,
+    mode: copied ? "copy" : "none",
+    error: copied ? undefined : "คัดลอกข้อความไม่สำเร็จ",
+  };
+}
+
 export function absoluteUrlFromPath(path: string): string {
   if (typeof window === "undefined") return path;
   return new URL(path, window.location.origin).toString();

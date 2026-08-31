@@ -17,11 +17,15 @@ import {
   SKEWER_CATEGORY_ROLE_LABELS,
   formatSkewerSplitSummary,
   formatSkewerQtyLabel,
+  parseSkewerUnitPriceInput,
   resolveSkewerQtyUnit,
   resolveSticksPerUnit,
+  skewerLineSubtotalBaht,
   summarizeSkewerSplit,
 } from "@/lib/skewer-order";
+import { formatPrice } from "@/lib/constants";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
+import { SkewerOrderShareExtras } from "@/components/skewer/SkewerOrderShareExtras";
 import { bangkokDateKey } from "@/lib/constants";
 import {
   absoluteUrlFromPath,
@@ -36,6 +40,9 @@ type SkewerItem = {
   itemName: string;
   requestedQuantity: number;
   confirmedQuantity: number | null;
+  unitPriceBaht?: number | null;
+  menuDefaultUnitPriceBaht?: number | null;
+  repeatCustomerUnitPriceBaht?: number | null;
   quantityUnit?: string | null;
   sticksPerUnit?: number | null;
   countsAsSticks?: boolean | null;
@@ -57,12 +64,35 @@ type SkewerOrderRow = {
   adminNote: string | null;
   cancelReason: string | null;
   confirmedAt: string | null;
+  deliveredAt: string | null;
+  deliveredOn: string | null;
+  deliveryInfo: string | null;
+  shippingCostBaht: number | null;
   createdAt: string;
   publicSharePath?: string | null;
   items: SkewerItem[];
 };
 
 type Props = { branchId: string };
+
+function itemDefaultUnitPrice(item: SkewerItem) {
+  if (item.unitPriceBaht != null && Number.isFinite(item.unitPriceBaht)) {
+    return item.unitPriceBaht;
+  }
+  if (
+    item.repeatCustomerUnitPriceBaht != null &&
+    Number.isFinite(item.repeatCustomerUnitPriceBaht)
+  ) {
+    return item.repeatCustomerUnitPriceBaht;
+  }
+  if (
+    item.menuDefaultUnitPriceBaht != null &&
+    Number.isFinite(item.menuDefaultUnitPriceBaht)
+  ) {
+    return item.menuDefaultUnitPriceBaht;
+  }
+  return 0;
+}
 
 function itemUnit(item: SkewerItem) {
   return resolveSkewerQtyUnit({ quantityUnit: item.quantityUnit });
@@ -83,6 +113,7 @@ function itemQtyLabel(qty: number, item: SkewerItem) {
 function statusTone(status: SkewerOrderStatus) {
   if (status === "PENDING_CONFIRM") return "bg-amber-50 text-amber-900 border-amber-200";
   if (status === "CONFIRMED") return "bg-emerald-50 text-emerald-900 border-emerald-200";
+  if (status === "DELIVERED") return "bg-sky-50 text-sky-900 border-sky-200";
   return "bg-gray-100 text-gray-600 border-gray-200";
 }
 
@@ -100,10 +131,51 @@ function formatDateLabel(ymd: string) {
 }
 
 function itemEffectiveQty(order: SkewerOrderRow, item: SkewerItem) {
-  if (order.status === "CONFIRMED") {
+  if (order.status === "CONFIRMED" || order.status === "DELIVERED") {
     return item.confirmedQuantity ?? 0;
   }
   return item.requestedQuantity;
+}
+
+function orderListQuantityLabel(order: SkewerOrderRow): string {
+  const split = summarizeSkewerSplit(
+    order.items.map((item) => {
+      const qty = itemEffectiveQty(order, item);
+      return {
+        quantity: qty,
+        sticksPerUnit: item.sticksPerUnit,
+        countsAsSticks: item.countsAsSticks,
+        skewerCategoryRole: item.skewerCategoryRole,
+        ordered: qty > 0,
+      };
+    }),
+  );
+  return formatSkewerSplitSummary(split);
+}
+
+function orderListBilling(order: SkewerOrderRow) {
+  let itemsSubtotal = 0;
+  let hasSavedItemPrice = false;
+  for (const item of order.items) {
+    const qty = itemEffectiveQty(order, item);
+    if (qty <= 0) continue;
+    if (item.unitPriceBaht != null && Number.isFinite(item.unitPriceBaht)) {
+      hasSavedItemPrice = true;
+    }
+    itemsSubtotal += skewerLineSubtotalBaht(qty, itemDefaultUnitPrice(item));
+  }
+  const shipping = order.shippingCostBaht ?? 0;
+  const itemsRounded = Math.round(itemsSubtotal * 100) / 100;
+  const grandTotal = Math.round((itemsRounded + shipping) * 100) / 100;
+  const hasSavedPricing =
+    hasSavedItemPrice ||
+    (order.shippingCostBaht != null && Number.isFinite(order.shippingCostBaht));
+  return {
+    grandTotal,
+    hasSavedPricing,
+    hasPriceHint: grandTotal > 0,
+    shipping,
+  };
 }
 
 export function BranchSkewerOrdersPanel({ branchId }: Props) {
@@ -117,7 +189,12 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const [pendingCount, setPendingCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
+  const [unitPriceDraft, setUnitPriceDraft] = useState<Record<string, string>>({});
   const [adminNote, setAdminNote] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [deliveryInfo, setDeliveryInfo] = useState("");
+  const [deliveredOn, setDeliveredOn] = useState(() => bangkokDateKey());
+  const [shippingCostBaht, setShippingCostBaht] = useState("");
   const [saving, setSaving] = useState(false);
   const [exportBusy, setExportBusy] = useState<
     "save" | "share" | "link" | "view" | null
@@ -299,7 +376,12 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
   useEffect(() => {
     if (!selected) {
       setQtyDraft({});
+      setUnitPriceDraft({});
       setAdminNote("");
+      setCancelReason("");
+      setDeliveryInfo("");
+      setDeliveredOn(bangkokDateKey());
+      setShippingCostBaht("");
       setExportMsg("");
       setPublicShareUrl(null);
       return;
@@ -310,14 +392,155 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
       setPublicShareUrl(null);
     }
     const next: Record<string, string> = {};
+    const nextPrices: Record<string, string> = {};
     for (const item of selected.items) {
       next[item.id] = String(
         item.confirmedQuantity ?? item.requestedQuantity,
       );
+      const saved = item.unitPriceBaht;
+      const fallback = itemDefaultUnitPrice({
+        ...item,
+        unitPriceBaht: null,
+      });
+      nextPrices[item.id] =
+        saved != null && Number.isFinite(saved)
+          ? String(saved)
+          : fallback > 0
+            ? String(fallback)
+            : "";
     }
     setQtyDraft(next);
+    setUnitPriceDraft(nextPrices);
     setAdminNote(selected.adminNote ?? "");
+    setCancelReason("");
+    setDeliveryInfo(selected.deliveryInfo ?? "");
+    setDeliveredOn(selected.deliveredOn ?? bangkokDateKey());
+    setShippingCostBaht(
+      selected.shippingCostBaht != null
+        ? String(selected.shippingCostBaht)
+        : "",
+    );
   }, [selected]);
+
+  async function cancelOrder(opts?: { requireReason?: boolean }) {
+    if (!selected) return;
+    if (selected.status === "DELIVERED") return;
+    if (
+      selected.status !== "PENDING_CONFIRM" &&
+      selected.status !== "CONFIRMED"
+    ) {
+      return;
+    }
+    const requireReason =
+      opts?.requireReason ?? selected.status === "CONFIRMED";
+    if (requireReason && !cancelReason.trim()) {
+      toast.error("กรุณาระบุเหตุผล", "ใส่เหตุผลการยกเลิกก่อนยืนยัน");
+      return;
+    }
+
+    const ok = await confirm({
+      title: "ยกเลิกออเดอร์นี้?",
+      message: `#${selected.orderNumber} · ${selected.customerPhone} — ระบบจะส่ง SMS แจ้งลูกค้าด้วย (ดูผลส่งได้ที่ ประวัติ SMS)`,
+      confirmLabel: "ยกเลิกออเดอร์",
+      tone: "danger",
+    });
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/skewer-orders`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "cancel",
+            orderId: selected.id,
+            cancelReason: cancelReason.trim() || undefined,
+          }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("ยกเลิกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      toast.success("ยกเลิกออเดอร์แล้ว");
+      setSelectedId(null);
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deliverOrder() {
+    if (!selected || selected.status !== "CONFIRMED") return;
+    for (const item of selected.items) {
+      const unitPrice = parseSkewerUnitPriceInput(unitPriceDraft[item.id] ?? "");
+      if (unitPrice == null) {
+        toast.error("ราคาไม่ถูกต้อง", `กรอกราคาต่อหน่วยสำหรับ ${item.itemName}`);
+        return;
+      }
+    }
+    const shippingRaw = shippingCostBaht.trim();
+    let shippingCost: number | null = null;
+    if (shippingRaw) {
+      const n = parseSkewerUnitPriceInput(shippingRaw);
+      if (n == null) {
+        toast.error("ราคาส่งไม่ถูกต้อง", "กรอกตัวเลข 0 หรือมากกว่า");
+        return;
+      }
+      shippingCost = n;
+    }
+
+    if (!deliveredOn.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(deliveredOn.trim())) {
+      toast.error("กรุณาเลือกวันที่ส่งสำเร็จ");
+      return;
+    }
+
+    const ok = await confirm({
+      title: "บันทึกส่งสำเร็จ?",
+      message: `#${selected.orderNumber} · ${selected.customerPhone} · วันที่ ${formatDateLabel(deliveredOn.trim())}`,
+      confirmLabel: "บันทึกส่งสำเร็จ",
+      tone: "primary",
+    });
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/skewer-orders`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "deliver",
+            orderId: selected.id,
+            deliveredOn: deliveredOn.trim(),
+            deliveryInfo: deliveryInfo.trim() || undefined,
+            shippingCostBaht: shippingCost,
+            items: selected.items.map((item) => ({
+              id: item.id,
+              unitPriceBaht: parseSkewerUnitPriceInput(
+                unitPriceDraft[item.id] ?? "",
+              )!,
+            })),
+          }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("บันทึกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      toast.success("บันทึกส่งสำเร็จแล้ว");
+      const deliveredId = selected.id;
+      setStatusFilter("DELIVERED");
+      await load({ status: "DELIVERED", keepSelectedId: deliveredId });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function confirmOrder() {
     if (!selected || selected.status !== "PENDING_CONFIRM") return;
@@ -377,15 +600,30 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
     }
   }
 
-  async function cancelOrder() {
-    if (!selected || selected.status !== "PENDING_CONFIRM") return;
-    const ok = await confirm({
-      title: "ยกเลิกออเดอร์นี้?",
-      message: `#${selected.orderNumber} · ${selected.customerPhone} — ระบบจะส่ง SMS แจ้งลูกค้าด้วย (ดูผลส่งได้ที่ ประวัติ SMS)`,
-      confirmLabel: "ยกเลิกออเดอร์",
-      tone: "danger",
+  async function savePricing() {
+    if (!selected || selected.status !== "CONFIRMED") return;
+    const items = selected.items.map((item) => {
+      const unitPrice = parseSkewerUnitPriceInput(unitPriceDraft[item.id] ?? "");
+      return { id: item.id, unitPrice };
     });
-    if (!ok) return;
+    for (const item of selected.items) {
+      const unitPrice = parseSkewerUnitPriceInput(unitPriceDraft[item.id] ?? "");
+      if (unitPrice == null) {
+        toast.error("ราคาไม่ถูกต้อง", `กรอกราคาต่อหน่วยสำหรับ ${item.itemName}`);
+        return;
+      }
+    }
+
+    const shippingRaw = shippingCostBaht.trim();
+    let shippingCost: number | null = null;
+    if (shippingRaw) {
+      const n = parseSkewerUnitPriceInput(shippingRaw);
+      if (n == null) {
+        toast.error("ราคาส่งไม่ถูกต้อง", "กรอกตัวเลข 0 หรือมากกว่า");
+        return;
+      }
+      shippingCost = n;
+    }
 
     setSaving(true);
     try {
@@ -395,22 +633,58 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "cancel",
+            action: "updatePricing",
             orderId: selected.id,
+            items: items.map((row) => ({
+              id: row.id,
+              unitPriceBaht: row.unitPrice!,
+            })),
+            shippingCostBaht: shippingCost,
           }),
         },
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error("ยกเลิกไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
+        toast.error("บันทึกราคาไม่สำเร็จ", data.error ?? "กรุณาลองใหม่");
         return;
       }
-      toast.success("ยกเลิกออเดอร์แล้ว");
-      setSelectedId(null);
-      await load();
+      toast.success("บันทึกราคาแล้ว");
+      await load({ keepSelectedId: selected.id });
     } finally {
       setSaving(false);
     }
+  }
+
+  const billingSummary = useMemo(() => {
+    if (
+      !selected ||
+      (selected.status !== "CONFIRMED" && selected.status !== "DELIVERED")
+    ) {
+      return null;
+    }
+    let itemsSubtotal = 0;
+    for (const item of selected.items) {
+      const qty = itemEffectiveQty(selected, item);
+      const raw = unitPriceDraft[item.id] ?? "";
+      const parsed = parseSkewerUnitPriceInput(raw);
+      const unitPrice =
+        parsed ?? itemDefaultUnitPrice(item);
+      itemsSubtotal += skewerLineSubtotalBaht(qty, unitPrice);
+    }
+    const shippingRaw = shippingCostBaht.trim();
+    const shipping = shippingRaw
+      ? parseSkewerUnitPriceInput(shippingRaw) ?? 0
+      : selected.shippingCostBaht ?? 0;
+    const itemsRounded = Math.round(itemsSubtotal * 100) / 100;
+    return {
+      itemsSubtotal: itemsRounded,
+      shipping,
+      grandTotal: Math.round((itemsRounded + shipping) * 100) / 100,
+    };
+  }, [selected, unitPriceDraft, shippingCostBaht]);
+
+  async function cancelPendingOrder() {
+    await cancelOrder({ requireReason: false });
   }
 
   return (
@@ -443,6 +717,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
               >
                 <option value="PENDING_CONFIRM">รอยืนยัน</option>
                 <option value="CONFIRMED">ยืนยันแล้ว</option>
+                <option value="DELIVERED">ส่งสำเร็จแล้ว</option>
                 <option value="CANCELLED">ยกเลิก</option>
                 <option value="ALL">ทั้งหมด</option>
               </select>
@@ -488,6 +763,8 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
               <ul className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto lg:max-h-[70vh]">
                 {orders.map((order) => {
                   const active = order.id === selectedId;
+                  const qtyLabel = orderListQuantityLabel(order);
+                  const billing = orderListBilling(order);
                   return (
                     <li key={order.id}>
                       <button
@@ -511,6 +788,26 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                         <p className="mt-0.5 text-sm text-gray-600">
                           ต้องการ {formatDateLabel(order.requestedDate)}
                         </p>
+                        <p className="mt-0.5 text-xs font-medium text-gray-800">
+                          รวม {qtyLabel}
+                        </p>
+                        {billing.hasPriceHint ? (
+                          <p className="mt-0.5 text-xs text-gray-700">
+                            {billing.hasSavedPricing ? "ราคา" : "ราคาประมาณ"}{" "}
+                            {formatPrice(billing.grandTotal)} บาท
+                            {billing.shipping > 0 ? " (รวมค่าส่ง)" : ""}
+                          </p>
+                        ) : order.status === "CONFIRMED" ||
+                          order.status === "DELIVERED" ? (
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            ยังไม่ระบุราคา
+                          </p>
+                        ) : null}
+                        {order.status === "DELIVERED" && order.deliveredOn ? (
+                          <p className="mt-0.5 text-xs text-sky-700">
+                            ส่งแล้ว {formatDateLabel(order.deliveredOn)}
+                          </p>
+                        ) : null}
                         <p className="mt-0.5 truncate text-xs text-gray-500">
                           #{order.orderNumber}
                           {order.customerName ? ` · ${order.customerName}` : ""}
@@ -612,6 +909,20 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                       <span className="text-xs text-gray-500">
                         ยืนยันเมื่อ{" "}
                         {new Date(selected.confirmedAt).toLocaleString("th-TH", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    ) : null}
+                    {selected.deliveredOn ? (
+                      <span className="text-xs text-gray-500">
+                        ส่งสำเร็จวันที่{" "}
+                        {formatDateLabel(selected.deliveredOn)}
+                      </span>
+                    ) : selected.deliveredAt ? (
+                      <span className="text-xs text-gray-500">
+                        บันทึกส่งเมื่อ{" "}
+                        {new Date(selected.deliveredAt).toLocaleString("th-TH", {
                           dateStyle: "medium",
                           timeStyle: "short",
                         })}
@@ -726,15 +1037,57 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                                 ) : null}
                               </span>
                             </div>
-                          ) : selected.status === "CONFIRMED" ? (
-                            <div className="text-right">
-                              <p className="text-lg font-bold tabular-nums text-emerald-800">
-                                {effectiveQty.toLocaleString("th-TH")}
-                              </p>
-                              <p className="text-xs text-gray-500">{unit}</p>
-                              <p className="text-[10px] font-medium text-emerald-700">
-                                ได้จริง
-                              </p>
+                          ) : selected.status === "CONFIRMED" ||
+                            selected.status === "DELIVERED" ? (
+                            <div className="flex flex-wrap items-end justify-end gap-3">
+                              <div className="text-right">
+                                <p className="text-lg font-bold tabular-nums text-emerald-800">
+                                  {effectiveQty.toLocaleString("th-TH")}
+                                </p>
+                                <p className="text-xs text-gray-500">{unit}</p>
+                                <p className="text-[10px] font-medium text-emerald-700">
+                                  ได้จริง
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <label className="block text-[10px] font-semibold text-gray-500">
+                                  ราคา/หน่วย (฿)
+                                </label>
+                                {selected.status === "CONFIRMED" ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    className={`${adminInputClass} mt-0.5 w-24 text-right`}
+                                    value={unitPriceDraft[item.id] ?? ""}
+                                    onChange={(e) =>
+                                      setUnitPriceDraft((prev) => ({
+                                        ...prev,
+                                        [item.id]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                ) : (
+                                  <p className="mt-1 text-sm font-semibold tabular-nums text-gray-900">
+                                    {formatPrice(itemDefaultUnitPrice(item))}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="min-w-[5.5rem] text-right">
+                                <p className="text-[10px] font-semibold text-gray-500">
+                                  รวม (฿)
+                                </p>
+                                <p className="text-base font-bold tabular-nums text-gray-900">
+                                  {formatPrice(
+                                    skewerLineSubtotalBaht(
+                                      effectiveQty,
+                                      parseSkewerUnitPriceInput(
+                                        unitPriceDraft[item.id] ?? "",
+                                      ) ?? itemDefaultUnitPrice(item),
+                                    ),
+                                  )}
+                                </p>
+                              </div>
                             </div>
                           ) : null}
                         </div>
@@ -745,7 +1098,8 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-sm font-semibold text-gray-900">
                             รายการ
-                            {selected.status === "CONFIRMED" ? (
+                            {selected.status === "CONFIRMED" ||
+                            selected.status === "DELIVERED" ? (
                               <span className="ml-2 text-xs font-normal text-emerald-700">
                                 (จำนวนที่ยืนยันแล้ว)
                               </span>
@@ -787,6 +1141,37 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                     );
                   })()}
                 </div>
+
+                {(selected.status === "CONFIRMED" ||
+                  selected.status === "DELIVERED") && (
+                  <SkewerOrderShareExtras
+                    itemsSubtotalBaht={billingSummary?.itemsSubtotal ?? null}
+                    shippingCostBaht={billingSummary?.shipping ?? null}
+                    grandTotalBaht={billingSummary?.grandTotal ?? null}
+                    deliveredOn={
+                      selected.status === "DELIVERED"
+                        ? selected.deliveredOn
+                        : deliveredOn
+                    }
+                    deliveryInfo={
+                      selected.status === "DELIVERED"
+                        ? selected.deliveryInfo
+                        : deliveryInfo
+                    }
+                    adminNote={selected.adminNote}
+                    showBilling={
+                      selected.items.some(
+                        (item) =>
+                          item.unitPriceBaht != null ||
+                          (unitPriceDraft[item.id]?.trim() ?? "").length > 0,
+                      ) ||
+                      Boolean(
+                        shippingCostBaht.trim() ||
+                          selected.shippingCostBaht != null,
+                      )
+                    }
+                  />
+                )}
                 </div>
 
                 {selected.status === "PENDING_CONFIRM" && (
@@ -813,7 +1198,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                       <button
                         type="button"
                         disabled={saving}
-                        onClick={cancelOrder}
+                        onClick={() => void cancelPendingOrder()}
                         className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
                       >
                         ยกเลิกออเดอร์
@@ -827,6 +1212,192 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                     โน้ตแอดมิน: {selected.adminNote}
                   </p>
                 )}
+
+                {selected.status === "CONFIRMED" && billingSummary ? (
+                  <div className="space-y-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-900">
+                        สรุปยอดเก็บเงิน
+                      </h5>
+                      <p className="mt-0.5 text-xs text-gray-600">
+                        ระบุราคาต่อหน่วยแล้วกดบันทึก — รวมค่าส่งด้วยถ้ามี
+                      </p>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-700">รวมสินค้า</span>
+                        <span className="font-semibold tabular-nums text-gray-900">
+                          {formatPrice(billingSummary.itemsSubtotal)} บาท
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-gray-700" htmlFor="skewer-shipping-cost">
+                          ค่าส่ง (บาท)
+                        </label>
+                        <input
+                          id="skewer-shipping-cost"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className={`${adminInputClass} w-32 text-right`}
+                          value={shippingCostBaht}
+                          onChange={(e) => setShippingCostBaht(e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3 border-t border-violet-200/80 pt-2">
+                        <span className="font-semibold text-gray-900">
+                          รวมทั้งสิ้น
+                        </span>
+                        <span className="text-lg font-black tabular-nums text-violet-950">
+                          {formatPrice(billingSummary.grandTotal)} บาท
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void savePricing()}
+                      className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+                    >
+                      บันทึกราคา
+                    </button>
+                  </div>
+                ) : null}
+
+                {selected.status === "DELIVERED" && billingSummary ? (
+                  <div className="rounded-2xl border border-violet-200 bg-violet-50/60 px-4 py-3 text-sm text-gray-800">
+                    <p className="font-semibold text-violet-950">สรุปยอด</p>
+                    <div className="mt-2 space-y-1">
+                      <p className="flex justify-between gap-3">
+                        <span>รวมสินค้า</span>
+                        <span className="font-semibold tabular-nums">
+                          {formatPrice(billingSummary.itemsSubtotal)} บาท
+                        </span>
+                      </p>
+                      {billingSummary.shipping > 0 ? (
+                        <p className="flex justify-between gap-3">
+                          <span>ค่าส่ง</span>
+                          <span className="font-semibold tabular-nums">
+                            {formatPrice(billingSummary.shipping)} บาท
+                          </span>
+                        </p>
+                      ) : null}
+                      <p className="flex justify-between gap-3 border-t border-violet-200/80 pt-2 font-semibold text-violet-950">
+                        <span>รวมทั้งสิ้น</span>
+                        <span className="text-base font-black tabular-nums">
+                          {formatPrice(billingSummary.grandTotal)} บาท
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {selected.status === "CONFIRMED" && (
+                  <div className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50/50 p-4">
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-900">
+                        บันทึกการส่ง
+                      </h5>
+                      <p className="mt-0.5 text-xs text-gray-600">
+                        เมื่อส่งของแล้ว กรอกข้อมูลการส่ง (ค่าส่งตั้งในสรุปยอดด้านบน)
+                      </p>
+                    </div>
+                    <div>
+                      <label className={adminLabelClass}>วันที่ส่งสำเร็จ</label>
+                      <DateInput
+                        className={adminInputClass}
+                        value={deliveredOn}
+                        onChange={setDeliveredOn}
+                        placeholder={bangkokDateKey()}
+                      />
+                    </div>
+                    <div>
+                      <label className={adminLabelClass}>
+                        ข้อมูลการส่ง (เลขพัสดุ / ช่องทาง ฯลฯ)
+                      </label>
+                      <textarea
+                        className={adminInputClass}
+                        rows={3}
+                        value={deliveryInfo}
+                        onChange={(e) => setDeliveryInfo(e.target.value)}
+                        placeholder="เช่น Kerry · TRK1234567890 · ส่งวันที่ 29 ส.ค."
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void deliverOrder()}
+                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+                    >
+                      บันทึกส่งสำเร็จแล้ว
+                    </button>
+                  </div>
+                )}
+
+                {selected.status === "CONFIRMED" && (
+                  <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50/40 p-4">
+                    <div>
+                      <label className={adminLabelClass}>เหตุผลการยกเลิก</label>
+                      <textarea
+                        className={adminInputClass}
+                        rows={2}
+                        value={cancelReason}
+                        onChange={(e) => setCancelReason(e.target.value)}
+                        placeholder="ระบุเหตุผล เช่น ลูกค้าเปลี่ยนใจ / ของไม่พอ"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void cancelOrder()}
+                      className="rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                    >
+                      ยกเลิกออเดอร์ (หลังยืนยัน)
+                    </button>
+                  </div>
+                )}
+
+                {selected.status === "DELIVERED" && (
+                  <div className="space-y-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-gray-800">
+                    {selected.deliveredOn ? (
+                      <p>
+                        <span className="font-semibold text-sky-900">
+                          วันที่ส่งสำเร็จ:{" "}
+                        </span>
+                        {formatDateLabel(selected.deliveredOn)}
+                      </p>
+                    ) : null}
+                    {selected.deliveryInfo ? (
+                      <p className="whitespace-pre-wrap">
+                        <span className="font-semibold text-sky-900">
+                          ข้อมูลการส่ง:{" "}
+                        </span>
+                        {selected.deliveryInfo}
+                      </p>
+                    ) : (
+                      <p className="text-gray-500">ไม่ได้ระบุข้อมูลการส่ง</p>
+                    )}
+                    {selected.shippingCostBaht != null ? (
+                      <p>
+                        <span className="font-semibold text-sky-900">
+                          ราคาส่ง:{" "}
+                        </span>
+                        {selected.shippingCostBaht.toLocaleString("th-TH", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        บาท
+                      </p>
+                    ) : null}
+                    {selected.adminNote ? (
+                      <p className="text-emerald-900">
+                        โน้ตแอดมิน: {selected.adminNote}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+
                 {selected.status === "CANCELLED" && selected.cancelReason && (
                   <p className="rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-700">
                     เหตุผลยกเลิก: {selected.cancelReason}

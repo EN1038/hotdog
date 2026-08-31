@@ -248,8 +248,50 @@ export function resolveMenuDisplayImageUrl(
 export const SKEWER_ORDER_STATUS_LABELS: Record<SkewerOrderStatus, string> = {
   PENDING_CONFIRM: "รอยืนยัน",
   CONFIRMED: "ยืนยันแล้ว",
+  DELIVERED: "ส่งสำเร็จแล้ว",
   CANCELLED: "ยกเลิก",
 };
+
+/** Orders past admin confirm use confirmedQuantity for display. */
+export function skewerOrderUsesConfirmedQty(status: SkewerOrderStatus): boolean {
+  return status === "CONFIRMED" || status === "DELIVERED";
+}
+
+type SkewerMenuPriceSource = {
+  price?: { toString(): string } | number | string | null;
+  storefrontPrice?: { toString(): string } | number | string | null;
+  pickupPrice?: { toString(): string } | number | string | null;
+};
+
+function toNonNegMoney(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Default skewer line unit price from menu channel prices. */
+export function resolveSkewerMenuUnitPrice(menu: SkewerMenuPriceSource): number {
+  return (
+    toNonNegMoney(menu.storefrontPrice) ??
+    toNonNegMoney(menu.pickupPrice) ??
+    toNonNegMoney(menu.price) ??
+    0
+  );
+}
+
+export function skewerLineSubtotalBaht(qty: number, unitPriceBaht: number): number {
+  if (!Number.isFinite(qty) || qty <= 0) return 0;
+  if (!Number.isFinite(unitPriceBaht) || unitPriceBaht < 0) return 0;
+  return Math.round(qty * unitPriceBaht * 100) / 100;
+}
+
+export function parseSkewerUnitPriceInput(raw: string): number | null {
+  const trimmed = raw.trim().replace(/,/g, "");
+  if (!trimmed) return null;
+  const n = Number.parseFloat(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
+}
 
 export function parseRequestedDateKey(value: string): Date | null {
   const key = value.trim().slice(0, 10);

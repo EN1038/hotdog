@@ -11,7 +11,7 @@ import { DateInput } from "@/components/DateInput";
 import { LoadingState } from "@/components/LoadingState";
 import { bangkokDateKey } from "@/lib/constants";
 import { addDaysToDateKey } from "@/lib/operating-day";
-import { SKEWER_ORDER_STATUS_LABELS } from "@/lib/skewer-order";
+import { SKEWER_ORDER_STATUS_LABELS, skewerOrderUsesConfirmedQty } from "@/lib/skewer-order";
 import {
   assignStableMenuSequence,
   sortMenuItemData,
@@ -60,6 +60,7 @@ function formatDateLabel(ymd: string) {
 function statusClass(status: SkewerOrderStatus) {
   if (status === "PENDING_CONFIRM") return "bg-amber-100 text-amber-900";
   if (status === "CONFIRMED") return "bg-emerald-100 text-emerald-900";
+  if (status === "DELIVERED") return "bg-sky-100 text-sky-900";
   return "bg-gray-100 text-gray-600";
 }
 
@@ -142,7 +143,7 @@ export default function SkewerHistoryPage({ params }: PageProps) {
     });
     return items
       .map((i) => {
-        if (order.status === "CONFIRMED") {
+        if (skewerOrderUsesConfirmedQty(order.status)) {
           return `${i.itemName} ×${i.confirmedQuantity ?? i.requestedQuantity}`;
         }
         return `${i.itemName} ×${i.requestedQuantity}`;
@@ -229,6 +230,9 @@ export default function SkewerHistoryPage({ params }: PageProps) {
               <option value="CONFIRMED">
                 {SKEWER_ORDER_STATUS_LABELS.CONFIRMED}
               </option>
+              <option value="DELIVERED">
+                {SKEWER_ORDER_STATUS_LABELS.DELIVERED}
+              </option>
               <option value="CANCELLED">
                 {SKEWER_ORDER_STATUS_LABELS.CANCELLED}
               </option>
@@ -280,7 +284,7 @@ export default function SkewerHistoryPage({ params }: PageProps) {
                     {formatOrderItemsLine(order)}
                   </p>
                 </Link>
-                {order.status === "CONFIRMED" ? (
+                {skewerOrderUsesConfirmedQty(order.status) ? (
                   <Link
                     href={`/skewer/${branchId}/order?reorder=${order.id}`}
                     className="mt-3 flex w-full items-center justify-center rounded-xl bg-site-primary px-3 py-2.5 text-sm font-bold text-white"

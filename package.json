@@ -10,10 +10,13 @@
     "build": "prisma generate && NODE_OPTIONS=--max-old-space-size=4096 next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:seed": "npx tsx prisma/seed.ts"
+    "db:seed": "npx tsx prisma/seed.ts",
+    "db:backfill-item-codes": "npx tsx prisma/backfill-menu-item-codes.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
@@ -26,6 +29,7 @@
     "dotenv": "^17.4.2",
     "html-to-image": "^1.11.13",
     "jose": "^6.2.3",
+    "jsbarcode": "^3.12.3",
     "leaflet": "^1.9.4",
     "next": "16.2.10",
     "pg": "^8.22.0",
@@ -47,6 +51,7 @@
     "eslint-config-next": "16.2.10",
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

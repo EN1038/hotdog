@@ -204,8 +204,9 @@ export function BrandOverviewPanel({
   >(null);
   const compareCaptureRef = useRef<HTMLDivElement | null>(null);
   const [compareCaptureStamp, setCompareCaptureStamp] = useState("");
-  /** รวมยอดสาขาทดลองในสรุป — ค่าเริ่มต้นปิด */
+  /** รวมยอดสาขาทดลองในสรุป — ค่าเริ่มต้นปิด (เปิดอัตโนมัติถ้าแบรนด์มีแต่สาขาทดลอง) */
   const [includeTest, setIncludeTest] = useState(false);
+  const includeTestAutoRef = useRef(false);
 
   const isHome = section === "home";
   const isSales = section === "sales";
@@ -268,6 +269,19 @@ export function BrandOverviewPanel({
       cancelled = true;
     };
   }, [brandId, from, to, includeTest]);
+
+  /** แบรนด์ที่มีแต่สาขาทดลอง (เช่น Demo) — เปิดรวมอัตโนมัติครั้งแรก */
+  useEffect(() => {
+    if (loading || includeTest || includeTestAutoRef.current) return;
+    if (
+      data?.hasTestBranch &&
+      data.branches.length === 0 &&
+      data.includeTest === false
+    ) {
+      includeTestAutoRef.current = true;
+      setIncludeTest(true);
+    }
+  }, [loading, data, includeTest]);
 
   useEffect(() => {
     setExpandedBranchId(null);

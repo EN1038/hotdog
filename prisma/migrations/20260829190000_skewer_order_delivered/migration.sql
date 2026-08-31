@@ -1,0 +1,7 @@
+-- AlterEnum
+ALTER TYPE "SkewerOrderStatus" ADD VALUE IF NOT EXISTS 'DELIVERED';
+
+-- AlterTable
+ALTER TABLE "SkewerOrder" ADD COLUMN IF NOT EXISTS "deliveredAt" TIMESTAMP(3);
+ALTER TABLE "SkewerOrder" ADD COLUMN IF NOT EXISTS "deliveryInfo" TEXT;
+ALTER TABLE "SkewerOrder" ADD COLUMN IF NOT EXISTS "shippingCostBaht" DECIMAL(10,2);

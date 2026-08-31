@@ -1,4 +1,4 @@
-import { BranchOperatingMode, SkewerOrderStatus } from "@prisma/client";
+import { BranchOperatingMode, Prisma, SkewerOrderStatus } from "@prisma/client";
 import { z } from "zod";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
@@ -10,6 +10,7 @@ import {
 import {
   requestedDateToKey,
   resolveSkewerMenuImageUrl,
+  resolveSkewerMenuUnitPrice,
   resolveSkewerOrderItemFields,
   resolveSkewerQtyUnit,
 } from "@/lib/skewer-order";
@@ -20,8 +21,50 @@ import {
 import { logAdminActivity } from "@/lib/admin-activity";
 import { skewerOrderPublicSharePath } from "@/lib/skewer-order-public-share";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+import {
+  loadLatestRepeatCustomerUnitPrices,
+  lookupRepeatSkewerUnitPrice,
+} from "@/lib/skewer-order-repeat-pricing";
 
 type Params = { params: Promise<{ id: string }> };
+
+const SKEWER_ORDER_TX = { maxWait: 10_000, timeout: 20_000 } as const;
+
+type PricingLine = { id: string; unitPriceBaht: number };
+
+function validatePricingLines(
+  existingItems: Array<{ id: string }>,
+  lines: PricingLine[],
+): string | null {
+  if (lines.length !== existingItems.length) {
+    return "กรุณาระบุราคาครบทุกรายการ";
+  }
+  const existingById = new Map(existingItems.map((i) => [i.id, i]));
+  for (const line of lines) {
+    if (!existingById.has(line.id)) {
+      return "รายการไม่ตรงกับออเดอร์";
+    }
+  }
+  return null;
+}
+
+async function applySkewerOrderItemPricing(
+  tx: Prisma.TransactionClient,
+  lines: PricingLine[],
+) {
+  await Promise.all(
+    lines.map((line) =>
+      tx.skewerOrderItem.update({
+        where: { id: line.id },
+        data: { unitPriceBaht: line.unitPriceBaht },
+      }),
+    ),
+  );
+}
+
+function resolveShippingCostBaht(value: number | null | undefined) {
+  return value != null && value >= 0 ? value : null;
+}
 
 const skewerItemInclude = {
   orderBy: { itemName: "asc" as const },
@@ -33,17 +76,22 @@ const skewerItemInclude = {
         countsAsSticks: true,
         imageUrl: true,
         skewerImageUrl: true,
+        price: true,
+        storefrontPrice: true,
+        pickupPrice: true,
         category: { select: { skewerCategoryRole: true } },
       },
     },
   },
 };
 
-function serializeItem(item: {
+function serializeItem(
+  item: {
   id: string;
   itemName: string;
   requestedQuantity: number;
   confirmedQuantity: number | null;
+  unitPriceBaht?: { toString(): string } | number | string | null;
   quantityUnit?: string | null;
   sticksPerUnit?: number | null;
   countsAsSticks?: boolean | null;
@@ -55,15 +103,43 @@ function serializeItem(item: {
     countsAsSticks: boolean;
     imageUrl: string | null;
     skewerImageUrl: string | null;
+    price?: { toString(): string } | number | string | null;
+    storefrontPrice?: { toString(): string } | number | string | null;
+    pickupPrice?: { toString(): string } | number | string | null;
     category?: { skewerCategoryRole: string } | null;
   } | null;
-}) {
+  },
+  opts?: {
+    customerId?: string;
+    repeatPrices?: Map<string, number>;
+  },
+) {
   const unitFields = resolveSkewerOrderItemFields(item);
+  const unitPriceRaw =
+    item.unitPriceBaht != null && item.unitPriceBaht !== ""
+      ? Number(item.unitPriceBaht)
+      : null;
+  const menuDefaultUnitPriceBaht = item.branchMenuItem
+    ? resolveSkewerMenuUnitPrice(item.branchMenuItem)
+    : null;
+  const repeatRaw =
+    opts?.customerId && opts.repeatPrices
+      ? lookupRepeatSkewerUnitPrice(
+          opts.repeatPrices,
+          opts.customerId,
+          item.branchMenuItemId ?? null,
+          item.itemName,
+        )
+      : null;
   return {
     id: item.id,
     itemName: item.itemName,
     requestedQuantity: item.requestedQuantity,
     confirmedQuantity: item.confirmedQuantity,
+    unitPriceBaht:
+      unitPriceRaw != null && Number.isFinite(unitPriceRaw) ? unitPriceRaw : null,
+    menuDefaultUnitPriceBaht,
+    repeatCustomerUnitPriceBaht: repeatRaw,
     quantityUnit: resolveSkewerQtyUnit({ quantityUnit: unitFields.quantityUnit }),
     sticksPerUnit: unitFields.sticksPerUnit,
     countsAsSticks: unitFields.countsAsSticks,
@@ -75,33 +151,64 @@ function serializeItem(item: {
   };
 }
 
-function serialize(order: {
+function serialize(
+  order: {
   requestedDate: Date;
+  customerId?: string;
   publicShareToken?: string | null;
+  shippingCostBaht?: { toString(): string } | number | string | null;
+  deliveredAt?: Date | null;
+  deliveredOn?: Date | null;
+  deliveryInfo?: string | null;
   items?: Array<{
     id: string;
     itemName: string;
     requestedQuantity: number;
     confirmedQuantity: number | null;
+    branchMenuItemId?: string | null;
+    unitPriceBaht?: { toString(): string } | number | string | null;
     branchMenuItem?: {
       quantityUnit: string | null;
       sticksPerUnit: number;
       countsAsSticks: boolean;
       imageUrl: string | null;
       skewerImageUrl: string | null;
+      price?: { toString(): string } | number | string | null;
+      storefrontPrice?: { toString(): string } | number | string | null;
+      pickupPrice?: { toString(): string } | number | string | null;
     } | null;
   }>;
   [key: string]: unknown;
-}) {
-  const { items, publicShareToken, ...rest } = order;
+  },
+  repeatPrices?: Map<string, number>,
+) {
+  const { items, publicShareToken, shippingCostBaht, ...rest } = order;
+  const shippingRaw =
+    shippingCostBaht != null && shippingCostBaht !== ""
+      ? Number(shippingCostBaht)
+      : null;
+  const itemOpts = order.customerId
+    ? { customerId: order.customerId, repeatPrices }
+    : undefined;
   return {
     ...rest,
     requestedDate: requestedDateToKey(order.requestedDate),
+    deliveredAt: order.deliveredAt?.toISOString() ?? null,
+    deliveredOn: order.deliveredOn
+      ? requestedDateToKey(order.deliveredOn)
+      : null,
+    deliveryInfo: order.deliveryInfo ?? null,
+    shippingCostBaht:
+      shippingRaw != null && Number.isFinite(shippingRaw) ? shippingRaw : null,
     publicSharePath: publicShareToken
       ? skewerOrderPublicSharePath(publicShareToken)
       : null,
     ...(items
-      ? { items: items.map((item) => serializeItem(item)) }
+      ? {
+          items: items.map((item) =>
+            serializeItem(item, itemOpts),
+          ),
+        }
       : {}),
   };
 }
@@ -149,9 +256,11 @@ export async function GET(request: Request, { params }: Params) {
       where: { branchId, status: SkewerOrderStatus.PENDING_CONFIRM },
     });
 
+    const repeatPrices = await loadLatestRepeatCustomerUnitPrices(branchId);
+
     return jsonOk({
       pendingCount,
-      orders: orders.map(serialize),
+      orders: orders.map((o) => serialize(o, repeatPrices)),
     });
   } catch (error) {
     return handleApiError(error);
@@ -175,10 +284,39 @@ const patchSchema = z.discriminatedUnion("action", [
     orderId: z.string().min(1),
     cancelReason: z.string().trim().max(300).optional(),
   }),
+  z.object({
+    action: z.literal("deliver"),
+    orderId: z.string().min(1),
+    deliveredOn: z.string().trim().min(1),
+    deliveryInfo: z.string().trim().max(1000).optional(),
+    shippingCostBaht: z.number().min(0).max(999_999).optional().nullable(),
+    items: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          unitPriceBaht: z.number().min(0).max(999_999),
+        }),
+      )
+      .optional(),
+  }),
+  z.object({
+    action: z.literal("updatePricing"),
+    orderId: z.string().min(1),
+    items: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          unitPriceBaht: z.number().min(0).max(999_999),
+        }),
+      )
+      .min(1),
+    shippingCostBaht: z.number().min(0).max(999_999).optional().nullable(),
+  }),
 ]);
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
+    await ensureProdSchemaCompat();
     const { id: branchId } = await params;
     const { session } = await requireBranchAccess(branchId);
     const body = patchSchema.parse(await request.json());
@@ -200,8 +338,14 @@ export async function PATCH(request: Request, { params }: Params) {
       if (existing.status === SkewerOrderStatus.CANCELLED) {
         return jsonError("ออเดอร์ถูกยกเลิกแล้ว");
       }
-      if (existing.status === SkewerOrderStatus.CONFIRMED) {
-        return jsonError("ออเดอร์ยืนยันแล้ว ยกเลิกไม่ได้จากหน้านี้");
+      if (existing.status === SkewerOrderStatus.DELIVERED) {
+        return jsonError("ออเดอร์ส่งสำเร็จแล้ว ยกเลิกไม่ได้");
+      }
+      if (
+        existing.status === SkewerOrderStatus.CONFIRMED &&
+        !body.cancelReason?.trim()
+      ) {
+        return jsonError("กรุณาระบุเหตุผลการยกเลิก");
       }
 
       const updated = await prisma.skewerOrder.update({
@@ -232,6 +376,89 @@ export async function PATCH(request: Request, { params }: Params) {
       return jsonOk(serialize(updated));
     }
 
+    if (body.action === "deliver") {
+      const existing = await prisma.skewerOrder.findFirst({
+        where: { id: body.orderId, branchId },
+        include: { items: true },
+      });
+      if (!existing) return jsonError("ไม่พบออเดอร์", 404);
+      if (existing.status !== SkewerOrderStatus.CONFIRMED) {
+        return jsonError("บันทึกส่งได้เฉพาะออเดอร์ที่ยืนยันแล้ว");
+      }
+      if (!isBangkokDateKey(body.deliveredOn)) {
+        return jsonError("รูปแบบวันที่ส่งสำเร็จไม่ถูกต้อง");
+      }
+      if (body.items?.length) {
+        const pricingErr = validatePricingLines(existing.items, body.items);
+        if (pricingErr) return jsonError(pricingErr);
+      }
+
+      const shippingCost = resolveShippingCostBaht(body.shippingCostBaht);
+      const updated = await prisma.$transaction(async (tx) => {
+        if (body.items?.length) {
+          await applySkewerOrderItemPricing(tx, body.items);
+        }
+        return tx.skewerOrder.update({
+          where: { id: existing.id },
+          data: {
+            status: SkewerOrderStatus.DELIVERED,
+            deliveredAt: new Date(),
+            deliveredOn: queueBusinessDateFromKey(body.deliveredOn),
+            deliveryInfo: body.deliveryInfo?.trim() || null,
+            shippingCostBaht: shippingCost,
+          },
+          include: { items: skewerItemInclude },
+        });
+      }, SKEWER_ORDER_TX);
+
+      await logAdminActivity(session, {
+        action: "branch.update",
+        summary: `บันทึกส่งสำเร็จออเดอร์เสียบไม้ #${updated.orderNumber} สาขา ${branch.name}`,
+        branchId,
+        branchName: branch.name,
+        entityType: "skewer_order",
+        entityId: updated.id,
+        entityName: updated.orderNumber,
+      });
+
+      return jsonOk(serialize(updated));
+    }
+
+    if (body.action === "updatePricing") {
+      const existing = await prisma.skewerOrder.findFirst({
+        where: { id: body.orderId, branchId },
+        include: { items: true },
+      });
+      if (!existing) return jsonError("ไม่พบออเดอร์", 404);
+      if (existing.status !== SkewerOrderStatus.CONFIRMED) {
+        return jsonError("แก้ราคาได้เฉพาะออเดอร์ที่ยืนยันแล้ว");
+      }
+      const pricingErr = validatePricingLines(existing.items, body.items);
+      if (pricingErr) return jsonError(pricingErr);
+
+      const shippingCost = resolveShippingCostBaht(body.shippingCostBaht);
+      const updated = await prisma.$transaction(async (tx) => {
+        await applySkewerOrderItemPricing(tx, body.items);
+        return tx.skewerOrder.update({
+          where: { id: existing.id },
+          data: { shippingCostBaht: shippingCost },
+          include: { items: skewerItemInclude },
+        });
+      }, SKEWER_ORDER_TX);
+
+      await logAdminActivity(session, {
+        action: "branch.update",
+        summary: `บันทึกราคาออเดอร์เสียบไม้ #${updated.orderNumber} สาขา ${branch.name}`,
+        branchId,
+        branchName: branch.name,
+        entityType: "skewer_order",
+        entityId: updated.id,
+        entityName: updated.orderNumber,
+      });
+
+      return jsonOk(serialize(updated));
+    }
+
     // confirm
     const existing = await prisma.skewerOrder.findFirst({
       where: { id: body.orderId, branchId },
@@ -241,6 +468,26 @@ export async function PATCH(request: Request, { params }: Params) {
     if (existing.status !== SkewerOrderStatus.PENDING_CONFIRM) {
       return jsonError("ออเดอร์นี้ยืนยันหรือยกเลิกไปแล้ว");
     }
+
+    const menuIds = [
+      ...new Set(
+        existing.items
+          .map((i) => i.branchMenuItemId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const menuRows =
+      menuIds.length > 0
+        ? await prisma.branchMenuItem.findMany({
+            where: { id: { in: menuIds } },
+            select: { id: true, price: true, storefrontPrice: true, pickupPrice: true },
+          })
+        : [];
+    const menuPriceById = new Map(
+      menuRows.map((m) => [m.id, resolveSkewerMenuUnitPrice(m)]),
+    );
+
+    const repeatPrices = await loadLatestRepeatCustomerUnitPrices(branchId);
 
     const existingById = new Map(existing.items.map((i) => [i.id, i]));
     if (body.items.length !== existing.items.length) {
@@ -258,12 +505,28 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      for (const line of body.items) {
-        await tx.skewerOrderItem.update({
-          where: { id: line.id },
-          data: { confirmedQuantity: line.confirmedQuantity },
-        });
-      }
+      await Promise.all(
+        body.items.map((line) => {
+          const row = existingById.get(line.id)!;
+          const repeatPrice = lookupRepeatSkewerUnitPrice(
+            repeatPrices,
+            existing.customerId,
+            row.branchMenuItemId,
+            row.itemName,
+          );
+          const menuPrice = row.branchMenuItemId
+            ? menuPriceById.get(row.branchMenuItemId) ?? 0
+            : 0;
+          const defaultUnitPrice = repeatPrice ?? menuPrice;
+          return tx.skewerOrderItem.update({
+            where: { id: line.id },
+            data: {
+              confirmedQuantity: line.confirmedQuantity,
+              unitPriceBaht: defaultUnitPrice,
+            },
+          });
+        }),
+      );
       return tx.skewerOrder.update({
         where: { id: existing.id },
         data: {
@@ -274,7 +537,7 @@ export async function PATCH(request: Request, { params }: Params) {
         },
         include: { items: skewerItemInclude },
       });
-    });
+    }, SKEWER_ORDER_TX);
 
     await logAdminActivity(session, {
       action: "branch.update",

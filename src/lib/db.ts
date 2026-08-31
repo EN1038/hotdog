@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /** Bump when Prisma schema/models change so Next.js HMR drops a stale client. */
-const PRISMA_CLIENT_VERSION = 46;
+const PRISMA_CLIENT_VERSION = 54;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -57,11 +57,14 @@ function getClient() {
 /**
  * Always resolve through getClient() so HMR / schema bumps drop a stale singleton.
  * (A plain `export const prisma = getClient()` freezes the first instance forever.)
+ *
+ * Use bracket access — Prisma 7 model delegates are getters on an inner Proxy.
+ * Reflect.get(..., receiver) can yield undefined (findMany on undefined).
  */
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
-  get(_target, prop, _receiver) {
-    const client = getClient();
-    const value = Reflect.get(client, prop, client);
-    return typeof value === "function" ? value.bind(client) : value;
+  get(_target, prop) {
+    const client = getClient() as unknown as Record<PropertyKey, unknown>;
+    const value = client[prop];
+    return typeof value === "function" ? value.bind(getClient()) : value;
   },
 });

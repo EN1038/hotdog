@@ -33,6 +33,8 @@ export type MenuOptionGroupData = {
 
 export type MenuItemData = {
   id: string;
+  /** Branch menu product code (e.g. 10001) */
+  itemCode?: string | null;
   name: string;
   price: string;
   pickupPrice?: string | null;

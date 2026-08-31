@@ -2,10 +2,12 @@
 
 import { useEffect, useId } from "react";
 import { formatPrice } from "@/lib/constants";
+import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 
 export type StaffOrderSummaryLine = {
   id: string;
   name: string;
+  productCode?: string | null;
   quantity: number;
   /** Unit sell price (before options) */
   unitPrice: number;
@@ -61,6 +63,12 @@ export function StaffOrderSummary({
             >
               <div className="min-w-0">
                 <p className="font-medium text-gray-900">
+                  {line.productCode ? (
+                    <MenuItemCodeBadge
+                      code={line.productCode}
+                      className="mr-1.5 align-middle text-[10px]"
+                    />
+                  ) : null}
                   {line.name}{" "}
                   <span className="font-normal text-gray-500">
                     ×{line.quantity}

@@ -23,6 +23,7 @@ const reorderSchema = z.object({
 
 const itemInclude = {
   category: { select: { id: true, name: true, sortOrder: true } },
+  brandProduct: { select: { sku: true, barcode: true } },
   ...menuItemOptionGroupInclude,
 } as const;
 
@@ -74,6 +75,19 @@ export async function POST(request: Request, { params }: Params) {
       }
     }
 
+    if (body.itemCode) {
+      const duplicate = await prisma.branchMenuItem.findFirst({
+        where: { branchId, itemCode: body.itemCode },
+        select: { name: true },
+      });
+      if (duplicate) {
+        return jsonError(
+          `รหัส "${body.itemCode}" ถูกใช้กับเมนู "${duplicate.name}" แล้ว`,
+          409,
+        );
+      }
+    }
+
     const item = await prisma.branchMenuItem.create({
       data: {
         branchId,
@@ -107,6 +121,7 @@ export async function POST(request: Request, { params }: Params) {
         isOutOfStock: body.isOutOfStock ?? false,
         sortOrder: body.sortOrder ?? 0,
         defaultShelfLifeDays: body.defaultShelfLifeDays ?? null,
+        itemCode: body.itemCode ?? null,
         ...(optionGroupIds.length
           ? {
               optionGroupLinks: {

@@ -225,6 +225,7 @@ export async function POST(request: Request) {
         const lotNumber = await generateLotNumber({
           branchId: branch.id,
           producedAt: lineProducedKey,
+          db: tx,
         });
 
         const nonMenu = await tx.branchNonMenuItem.findFirst({
@@ -258,6 +259,7 @@ export async function POST(request: Request) {
             branchId: branch.id,
             branchCode: branch.code ?? "",
             lotNumber,
+            db: tx,
           });
 
           const productCode =
@@ -350,6 +352,7 @@ export async function POST(request: Request) {
             branchId: branch.id,
             branchCode: branch.code ?? "",
             lotNumber,
+            db: tx,
           });
 
           const productCode = resolveMenuItemProductCode({
@@ -387,6 +390,7 @@ export async function POST(request: Request) {
             branchId: branch.id,
             branchCode: branch.code ?? "",
             lotNumber,
+            db: tx,
           });
           const productCode = resolveMenuItemProductCode({
             id: menuItem.id,

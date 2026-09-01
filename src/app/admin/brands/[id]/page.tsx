@@ -96,6 +96,12 @@ export default function BrandBranchesPage() {
             </Link>
           ) : null}
           <Link
+            href={`/admin/brands/${brand.id}/print-layouts/package-label`}
+            className={btnOutline}
+          >
+            แบบป้ายแพ็ก
+          </Link>
+          <Link
             href={`/admin/brands/${brand.id}/admins`}
             className={btnOutline}
           >

@@ -483,6 +483,12 @@ export default function BrandsPage() {
 
                 <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-5">
                   <Link
+                    href={`/admin/brands/${brand.id}/print-layouts/package-label`}
+                    className={btnOutline}
+                  >
+                    แบบป้ายแพ็ก
+                  </Link>
+                  <Link
                     href={`/admin/brands/${brand.id}/stock`}
                     className={btnOutline}
                   >

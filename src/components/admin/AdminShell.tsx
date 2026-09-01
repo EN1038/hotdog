@@ -16,6 +16,7 @@ import {
   IconHome,
   IconMoney,
   IconPackage,
+  IconPrinter,
   IconReceipt,
   IconStore,
   IconUser,
@@ -107,6 +108,17 @@ const NAV_GROUPS: NavGroup[] = [
         match: (pathname) => pathname === "/admin/brands",
         brandAdminOnly: true,
         icon: IconStore,
+      },
+      {
+        href: "/admin/print-layouts/package-label",
+        label: "แบบป้ายแพ็ก",
+        brandAdminOnly: true,
+        match: (pathname) =>
+          pathname === "/admin/print-layouts/package-label" ||
+          /^\/admin\/brands\/[^/]+\/print-layouts\/package-label$/.test(
+            pathname,
+          ),
+        icon: IconPrinter,
       },
       {
         href: "/admin/stock",

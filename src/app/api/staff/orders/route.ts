@@ -47,6 +47,7 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import { validateOrderDiscount } from "@/lib/order-discount";
 
 type OrderWithItems = {
   status: OrderStatus;
@@ -152,6 +153,9 @@ const createStaffOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1),
   /** Skip queue — mark COMPLETED immediately (walk-in / instant mode) */
   completeImmediately: z.boolean().optional(),
+  discountAmount: z.number().min(0).max(999_999).optional(),
+  discountReason: z.string().trim().max(40).optional(),
+  discountReasonNote: z.string().trim().max(120).optional(),
 });
 
 export async function GET(request: Request) {
@@ -656,6 +660,23 @@ export async function POST(request: Request) {
     const customerName = session.staffDisplayName;
     const customerPhone = session.staffPhone;
 
+    const itemsSubtotalPreview = orderItems.reduce(
+      (sum, item) =>
+        sum +
+        (Number(item.unitPrice) + Number(item.optionsPrice)) * item.quantity,
+      0,
+    );
+    const discountCheck = validateOrderDiscount({
+      itemsSubtotal: itemsSubtotalPreview,
+      deliveryFee: Number(deliveryFee),
+      discountAmount: body.discountAmount ?? 0,
+      discountReason: body.discountReason,
+      discountReasonNote: body.discountReasonNote,
+    });
+    if (!discountCheck.ok) {
+      return jsonError(discountCheck.error);
+    }
+
     const staffCustomer = await prisma.customer.upsert({
       where: { phone: customerPhone },
       create: {
@@ -722,7 +743,12 @@ export async function POST(request: Request) {
               cupCount: derivedCupCount,
               bagCount: derivedBagCount,
               deliveryFee: new Prisma.Decimal(deliveryFee),
-              discountAmount: new Prisma.Decimal(0),
+              discountAmount: new Prisma.Decimal(discountCheck.discountAmount),
+              discountReason: discountCheck.discountReason,
+              discountReasonNote:
+                discountCheck.discountReason === "other"
+                  ? body.discountReasonNote?.trim() || null
+                  : null,
               promoSummary: null,
               createdByStaffId: session.staffId,
               status: body.completeImmediately
@@ -819,7 +845,7 @@ export async function POST(request: Request) {
         optionsPrice: Number(item.optionsPrice),
       })),
       Number(deliveryFee),
-      0,
+      discountCheck.discountAmount,
     );
 
     return jsonOk(

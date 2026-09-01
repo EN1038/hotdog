@@ -1060,6 +1060,10 @@ model Order {
   salesChannel       SalesChannel      @default(STOREFRONT)
   deliveryFee        Decimal           @default(0) @db.Decimal(10, 2)
   discountAmount     Decimal           @default(0) @db.Decimal(10, 2)
+  /// Snapshot reason id for order-level discount (see ORDER_DISCOUNT_REASONS)
+  discountReason     String?
+  /// Free-text when discountReason = other
+  discountReasonNote String?
   status             OrderStatus       @default(WAITING_FOR_STORE_ACCEPTANCE)
   cancelledAt        DateTime?
   /// Why the order was cancelled (customer or staff)
@@ -1123,6 +1127,10 @@ model SkewerOrder {
   deliveryInfo         String?
   /// Shipping fee in baht (optional)
   shippingCostBaht     Decimal?          @db.Decimal(10, 2)
+  /// Order-level discount in baht (items + shipping − discount)
+  discountAmount       Decimal           @default(0) @db.Decimal(10, 2)
+  discountReason       String?
+  discountReasonNote   String?
   /// Unguessable token for public share page (/share/s/…)
   publicShareToken     String?           @unique
   createdAt            DateTime          @default(now())

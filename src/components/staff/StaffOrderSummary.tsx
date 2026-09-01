@@ -19,16 +19,19 @@ export type StaffOrderSummaryLine = {
 export function StaffOrderSummary({
   lines,
   deliveryFee = 0,
+  discountAmount = 0,
 }: {
   lines: StaffOrderSummaryLine[];
   deliveryFee?: number;
+  discountAmount?: number;
 }) {
   const itemsTotal = lines.reduce(
     (sum, line) =>
       sum + (line.unitPrice + line.optionsPrice) * line.quantity,
     0,
   );
-  const total = itemsTotal + Math.max(0, deliveryFee);
+  const discount = Math.max(0, Number(discountAmount) || 0);
+  const total = Math.max(0, itemsTotal + Math.max(0, deliveryFee) - discount);
   const pieceCount = lines.reduce((n, l) => n + l.quantity, 0);
 
   if (lines.length === 0) {
@@ -96,6 +99,12 @@ export function StaffOrderSummary({
           <div className="flex justify-between text-gray-600">
             <span>ค่าส่ง</span>
             <span className="tabular-nums">{formatPrice(deliveryFee)}฿</span>
+          </div>
+        ) : null}
+        {discount > 0 ? (
+          <div className="flex justify-between text-emerald-700">
+            <span>ส่วนลด</span>
+            <span className="tabular-nums">−{formatPrice(discount)}฿</span>
           </div>
         ) : null}
         <div className="flex justify-between text-base font-bold text-gray-900">

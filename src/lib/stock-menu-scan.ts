@@ -25,7 +25,7 @@ export async function lookupStockMenuScan(
     throw new Error("กรุณากรอกรหัสสินค้าหรือสแกน QR");
   }
   if (isStockLabelQrPayload(trimmed)) {
-    throw new Error("นี่คือ QR ป้ายแพ็ก — ใช้เมนูจ่ายออกแพ็ก");
+    throw new Error("นี่คือ QR ป้ายรายการ — ใช้เมนูจ่ายออกรายการ");
   }
 
   const query = buildMenuLookupQuery(trimmed);

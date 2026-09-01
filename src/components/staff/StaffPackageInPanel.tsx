@@ -15,7 +15,7 @@ import {
   planLotNumbersForRows,
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
-import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
+import { IconPrinter } from "@/components/icons";
 
 type MenuItem = {
   id: string;
@@ -110,7 +110,6 @@ type PackageInPrefill = {
 
 type Props = {
   onBack: () => void;
-  onHistory?: () => void;
   onSuccess?: (batchId: string) => void;
   prefillItem?: PackageInPrefill | null;
   onPrefillApplied?: () => void;
@@ -118,7 +117,6 @@ type Props = {
 
 export function StaffPackageInPanel({
   onBack,
-  onHistory,
   onSuccess,
   prefillItem,
   onPrefillApplied,
@@ -388,11 +386,17 @@ export function StaffPackageInPanel({
     );
   }
 
+  function openItemPicker(rowKey: string) {
+    setPickerRowKey(rowKey);
+    setMenuQ("");
+    setPickerOpen(true);
+  }
+
   async function submit() {
     if (busy) return;
     const validRows = rows.filter((r) => r.itemId && r.quantity > 0);
     if (validRows.length === 0) {
-      toast.error("กรุณาเลือกสินค้าอย่างน้อย 1 แพ็ก");
+      toast.error("กรุณาเลือกสินค้าอย่างน้อย 1 รายการ");
       return;
     }
 
@@ -429,7 +433,7 @@ export function StaffPackageInPanel({
 
       toast.success(
         "บันทึกสำเร็จ",
-        `${body.packageCount ?? validRows.length} แพ็ก${body.documentNo ? ` · ${body.documentNo}` : ""}`,
+        `${body.packageCount ?? validRows.length} รายการ${body.documentNo ? ` · ${body.documentNo}` : ""}`,
       );
 
       const batchId = String(body.batchId ?? "");
@@ -445,7 +449,7 @@ export function StaffPackageInPanel({
   }
 
   if (loading) {
-    return <LoadingState label="กำลังโหลดฟอร์มรับเข้าแพ็ก…" />;
+    return <LoadingState label="กำลังโหลดฟอร์มรับเข้ารายการ…" />;
   }
 
   if (!meta?.stockActive) {
@@ -469,32 +473,14 @@ export function StaffPackageInPanel({
           ← กลับ
         </button>
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-extrabold text-slate-900">รับเข้าแพ็ก</h2>
-          <p className="text-xs font-semibold text-slate-600">
-            แตะการ์ดเพื่อดู/แก้รายละเอียดแต่ละแพ็ก
-          </p>
+          <h2 className="text-lg font-extrabold leading-snug text-slate-900">
+            รับเข้าและพิมพ์บาร์โค้ด + QR
+          </h2>
         </div>
-        {onHistory ? (
-          <button
-            type="button"
-            onClick={onHistory}
-            className="rounded-xl bg-white px-3 py-2 text-[12px] font-bold text-indigo-700 shadow-sm"
-          >
-            ประวัติ
-          </button>
-        ) : null}
       </div>
 
-      <StaffPrinterStatusChip showBrowserHint requirePackagePrint className="mb-3" />
-
-      <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-        {meta.brandName ? (
-          <p className="text-[13px] font-bold text-slate-700">
-            แบรนด์ · {meta.brandName}
-          </p>
-        ) : null}
-
-        {meta.sourceBranches.length > 0 ? (
+      {meta.sourceBranches.length > 0 ? (
+        <div className="mb-3 rounded-2xl bg-white p-4 shadow-sm">
           <label className="block">
             <span className="mb-1 block text-[12px] font-semibold text-slate-600">
               สาขาต้นทาง
@@ -511,12 +497,12 @@ export function StaffPackageInPanel({
               ))}
             </select>
           </label>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-1 space-y-3">
         <p className="text-[14px] font-extrabold text-slate-900">
-          รายการแพ็ก ({rows.length})
+          รายการ ({rows.length})
         </p>
 
         {rows.map((row, index) => {
@@ -541,11 +527,7 @@ export function StaffPackageInPanel({
               }`}
             >
               <div className="flex items-stretch gap-0">
-                <button
-                  type="button"
-                  onClick={() => toggleExpanded(row.key)}
-                  className="min-w-0 flex-1 p-3 text-left active:bg-slate-50"
-                >
+                <div className="min-w-0 flex-1 p-3">
                   <div className="flex items-start gap-3">
                     {thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -562,28 +544,45 @@ export function StaffPackageInPanel({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[12px] font-bold text-teal-700">
-                          แพ็ก #{index + 1}
+                          รายการ #{index + 1}
                         </p>
                         <span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-bold text-white">
                           {formatPackageQtyLabel(row.quantity, unit)}
                         </span>
                       </div>
-                      <p className="mt-0.5 truncate text-[15px] font-extrabold text-slate-900">
-                        {displayName ?? "แตะเพื่อเลือกเมนู · ขยายแก้รายละเอียด"}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold leading-snug text-slate-500">
+                      <button
+                        type="button"
+                        onClick={() => openItemPicker(row.key)}
+                        className={`mt-1 flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition active:scale-[0.99] ${
+                          item
+                            ? "border-slate-200 bg-white"
+                            : "border-dashed border-site-primary/40 bg-teal-50/50"
+                        }`}
+                      >
+                        <span
+                          className={`min-w-0 flex-1 truncate text-[15px] font-extrabold ${
+                            displayName ? "text-slate-900" : "text-site-primary"
+                          }`}
+                        >
+                          {displayName ?? "เลือกรายการ"}
+                        </span>
+                        <span className="shrink-0 text-[12px] font-bold text-site-primary">
+                          {item ? "เปลี่ยน ›" : "เลือก ›"}
+                        </span>
+                      </button>
+                      <p className="mt-1.5 text-[11px] font-semibold leading-snug text-slate-500">
                         ผลิต {formatThaiDateKey(row.producedAt)} · รับ{" "}
                         {formatThaiDateKey(row.receivedAt)}
                       </p>
                       <p className="text-[11px] font-mono font-semibold text-slate-600">
                         {productCode} · LOT {lotPreview}
                         {row.printSticker
-                          ? ` · พิมพ์ ${row.stickerCopies} ป้าย`
+                          ? ` · พิมพ์ ${row.stickerCopies} ใบ`
                           : ""}
                       </p>
                     </div>
                   </div>
-                </button>
+                </div>
                 <div className="flex shrink-0 flex-col border-l border-slate-100">
                   <button
                     type="button"
@@ -620,38 +619,6 @@ export function StaffPackageInPanel({
 
               {row.expanded ? (
                 <div className="space-y-3 border-t border-slate-100 bg-slate-50/80 px-3 py-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPickerRowKey(row.key);
-                      setMenuQ("");
-                      setPickerOpen(true);
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white p-3 text-left"
-                  >
-                    {thumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={thumb}
-                        alt=""
-                        className="h-12 w-12 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-xl">
-                        🍢
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-bold text-site-primary">
-                        {item ? "เปลี่ยนรายการ" : "เลือกรายการ"}
-                      </p>
-                      <p className="truncate text-[14px] font-extrabold text-slate-900">
-                        {displayName ?? "แตะเพื่อเลือก"}
-                      </p>
-                    </div>
-                    <span className="text-slate-400">›</span>
-                  </button>
-
                   <div className="grid grid-cols-2 gap-3">
                     <label className="block">
                       <span className="mb-1 block text-[11px] font-semibold text-slate-600">
@@ -692,63 +659,67 @@ export function StaffPackageInPanel({
                     </div>
                   </div>
 
-                  <label className="block">
-                    <span className="mb-1 block text-[12px] font-semibold text-slate-600">
-                      จำนวนในแพ็กนี้ ({unit})
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={9999}
-                      value={row.quantity}
-                      onChange={(e) =>
-                        updateRow(row.key, {
-                          quantity: Math.max(1, Number(e.target.value) || 1),
-                        })
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[16px] font-extrabold"
-                    />
-                  </label>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <label className="flex cursor-pointer items-center gap-3">
+                  <div className="flex items-end gap-2">
+                    <label className="min-w-0 flex-1">
+                      <span className="mb-1 block text-[12px] font-semibold text-slate-600">
+                        จำนวนในรายการนี้ ({unit})
+                      </span>
                       <input
-                        type="checkbox"
-                        checked={row.printSticker}
+                        type="number"
+                        min={1}
+                        max={9999}
+                        value={row.quantity}
                         onChange={(e) =>
                           updateRow(row.key, {
-                            printSticker: e.target.checked,
+                            quantity: Math.max(1, Number(e.target.value) || 1),
                           })
                         }
-                        className="h-5 w-5 rounded border-slate-300 text-emerald-600"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[16px] font-extrabold"
                       />
-                      <span className="text-[13px] font-bold text-slate-800">
-                        พิมพ์ป้ายแพ็กนี้
-                      </span>
                     </label>
-                    {row.printSticker ? (
-                      <label className="mt-3 block">
-                        <span className="mb-1 block text-[11px] font-semibold text-slate-600">
-                          จำนวนป้ายที่พิมพ์
-                        </span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={99}
-                          value={row.stickerCopies}
-                          onChange={(e) =>
-                            updateRow(row.key, {
-                              stickerCopies: Math.max(
-                                1,
-                                Math.min(99, Number(e.target.value) || 1),
-                              ),
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[16px] font-extrabold"
-                        />
-                      </label>
-                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateRow(row.key, {
+                          printSticker: !row.printSticker,
+                        })
+                      }
+                      aria-label={
+                        row.printSticker ? "ปิดการพิมพ์" : "เปิดการพิมพ์"
+                      }
+                      aria-pressed={row.printSticker}
+                      className={`flex h-[46px] w-12 shrink-0 items-center justify-center rounded-xl border-2 transition active:scale-95 ${
+                        row.printSticker
+                          ? "border-emerald-500 bg-emerald-500 text-white shadow-sm"
+                          : "border-slate-200 bg-white text-slate-400"
+                      }`}
+                    >
+                      <IconPrinter size={22} aria-hidden />
+                    </button>
                   </div>
+
+                  {row.printSticker ? (
+                    <label className="block">
+                      <span className="mb-1 block text-[12px] font-semibold text-slate-600">
+                        จำนวนใบที่พิมพ์
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={row.stickerCopies}
+                        onChange={(e) =>
+                          updateRow(row.key, {
+                            stickerCopies: Math.max(
+                              1,
+                              Math.min(99, Number(e.target.value) || 1),
+                            ),
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[16px] font-extrabold"
+                      />
+                    </label>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -769,7 +740,7 @@ export function StaffPackageInPanel({
             className="flex min-h-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 px-3 text-emerald-700 active:bg-emerald-50"
           >
             <span className="text-[28px] font-light leading-none">+</span>
-            <span className="text-[12px] font-extrabold">เพิ่มแพ็ก</span>
+            <span className="text-[12px] font-extrabold">เพิ่มรายการ</span>
           </button>
         </div>
       </div>
@@ -783,7 +754,7 @@ export function StaffPackageInPanel({
         {busy
           ? "กำลังบันทึก…"
           : willPrintAny
-            ? "บันทึกและพิมพ์ป้าย"
+            ? "บันทึกและพิมพ์"
             : "บันทึก"}
       </button>
 

@@ -24,11 +24,10 @@ function PackageInContent() {
   return (
     <StaffPackageInPanel
       onBack={() => router.push("/staff/stock")}
-      onHistory={() => router.push("/staff/stock/package-in/history")}
       prefillItem={prefillItem}
       onSuccess={(batchId) => {
         router.push(
-          `/staff/stock/package-in/history?batchId=${encodeURIComponent(batchId)}&open=1`,
+          `/staff/stock?action=history&batchId=${encodeURIComponent(batchId)}`,
         );
       }}
     />

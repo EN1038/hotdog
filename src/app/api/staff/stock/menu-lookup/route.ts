@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 
     if (isStockLabelQrPayload(qr)) {
       return jsonError(
-        "นี่คือ QR ป้ายแพ็ก — ใช้เมนูจ่ายออกแพ็ก",
+        "นี่คือ QR ป้ายรายการ — ใช้เมนูจ่ายออกรายการ",
         400,
       );
     }

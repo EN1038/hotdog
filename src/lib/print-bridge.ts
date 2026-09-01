@@ -175,7 +175,7 @@ export function printPackageLabelsLegacyArray(
   } catch (e) {
     return {
       code: "-1",
-      message: e instanceof Error ? e.message : "พิมพ์ป้ายแพ็กไม่สำเร็จ",
+      message: e instanceof Error ? e.message : "พิมพ์ป้ายรายการไม่สำเร็จ",
     };
   }
 }
@@ -198,7 +198,7 @@ export function printPackageLabelsEnvelope(
     }
     return result;
   } catch (e) {
-    const message = e instanceof Error ? e.message : "พิมพ์ป้ายแพ็กไม่สำเร็จ";
+    const message = e instanceof Error ? e.message : "พิมพ์ป้ายรายการไม่สำเร็จ";
     if (isLegacyPackageLabelEnvelopeError(message)) {
       return printPackageLabelsLegacyArray(envelope.labels);
     }

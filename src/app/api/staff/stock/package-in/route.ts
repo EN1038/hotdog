@@ -21,6 +21,7 @@ import {
 } from "@/lib/stock-label";
 import { labelsToPrintInput } from "@/lib/stock-package-label-print";
 import { resolveMenuItemPackageUnit } from "@/lib/stock-package-unit";
+import { PACKAGE_IN_MOVEMENT_NOTE } from "@/lib/stock-movement-display";
 
 const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PACKAGE_IN_ATTEMPTS = 6;
@@ -261,7 +262,7 @@ export async function POST(request: Request) {
                 branchNonMenuItemId: nonMenu.id,
                 quantity: line.quantity,
                 type: "STOCK_IN",
-                note: "รับเข้าแพ็ก",
+                note: PACKAGE_IN_MOVEMENT_NOTE,
                 batchId,
                 documentNo,
                 createdByStaffId: session.staffId,
@@ -355,7 +356,7 @@ export async function POST(request: Request) {
               menuItemId: menuItem.id,
               quantity: line.quantity,
               type: "STOCK_IN",
-              note: "รับเข้าแพ็ก",
+              note: PACKAGE_IN_MOVEMENT_NOTE,
               batchId,
               documentNo,
               receivedAt,

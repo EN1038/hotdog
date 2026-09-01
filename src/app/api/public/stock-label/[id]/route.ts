@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await context.params;
     const label = await loadPublicStockLabel(id.trim());
-    if (!label) return jsonError("ไม่พบป้ายแพ็ก", 404);
+    if (!label) return jsonError("ไม่พบป้ายรายการ", 404);
     return jsonOk(label);
   } catch (error) {
     return handleApiError(error);

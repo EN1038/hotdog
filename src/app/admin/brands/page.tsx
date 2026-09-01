@@ -486,7 +486,7 @@ export default function BrandsPage() {
                     href={`/admin/brands/${brand.id}/print-layouts/package-label`}
                     className={btnOutline}
                   >
-                    แบบป้ายแพ็ก
+                    แบบป้ายรายการ
                   </Link>
                   <Link
                     href={`/admin/brands/${brand.id}/stock`}

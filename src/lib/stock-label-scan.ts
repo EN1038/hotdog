@@ -41,22 +41,22 @@ export async function fetchPackageLabelPreview(
 ): Promise<StockLabelScanPreview> {
   const trimmed = raw.trim();
   if (!trimmed) {
-    throw new Error("กรุณากรอกรหัสป้ายหรือสแกน QR");
+    throw new Error("กรุณากรอกรหัสหรือสแกน QR");
   }
   if (isStockMenuQrPayload(trimmed)) {
-    throw new Error("นี่คือ QR ป้ายเมนู — ใช้เมนูรับเข้าแพ็ก (ผลิต/แพ็ก)");
+    throw new Error("นี่คือ QR ป้ายเมนู — ใช้เมนู «รับเข้าและพิมพ์บาร์โค้ด + QR»");
   }
 
   const query = buildPackageLabelLookupQuery(trimmed);
   if (!query) {
-    throw new Error("กรุณากรอกรหัสป้ายหรือสแกน QR");
+    throw new Error("กรุณากรอกรหัสหรือสแกน QR");
   }
 
   const res = await fetch(`/api/staff/stock/${path}?${query}`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(
-      typeof body.error === "string" ? body.error : "ไม่พบป้ายแพ็ก",
+      typeof body.error === "string" ? body.error : "ไม่พบรายการ",
     );
   }
   return body as StockLabelScanPreview;

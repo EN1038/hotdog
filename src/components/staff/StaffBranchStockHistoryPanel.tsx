@@ -23,6 +23,13 @@ import {
   parseConvertSummaryNameFromNote,
   staffStockSummaryHref,
 } from "@/lib/history-source-link";
+import {
+  formatStockMovementNoteDisplay,
+  isPackageInMovementNote,
+} from "@/lib/stock-movement-display";
+import { reprintPackageBatchLabels } from "@/lib/stock-package-label-print";
+import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
+import type { PackageHistoryLine } from "@/lib/stock-package-history-types";
 
 function historyKindTone(
   kind: Exclude<BranchHistoryKind, "all">,
@@ -226,6 +233,11 @@ export function StaffBranchStockHistoryPanel({
   const [selected, setSelected] = useState<HistoryBatch | null>(null);
   const [orderDetailId, setOrderDetailId] = useState<string | null>(null);
   const [openingSource, setOpeningSource] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [packagePrintLines, setPackagePrintLines] = useState<PackageHistoryLine[]>(
+    [],
+  );
+  const [packagePrintLoading, setPackagePrintLoading] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const requestIdRef = useRef(0);
   const openedBatchRef = useRef<string | null>(null);
@@ -398,6 +410,62 @@ export function StaffBranchStockHistoryPanel({
     [selected],
   );
 
+  const selectedIsPackageIn = Boolean(
+    selected &&
+      isPackageInMovementNote(selected.note) &&
+      selected.batchId?.trim(),
+  );
+
+  useEffect(() => {
+    const batchId = selected?.batchId?.trim();
+    if (!selected || !isPackageInMovementNote(selected.note) || !batchId) {
+      setPackagePrintLines([]);
+      setPackagePrintLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPackagePrintLoading(true);
+    void fetch(
+      `/api/staff/stock/package-in/history?batchId=${encodeURIComponent(batchId)}`,
+    )
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof body.error === "string"
+              ? body.error
+              : "โหลดข้อมูลพิมพ์ไม่สำเร็จ",
+          );
+        }
+        const lines = Array.isArray(body.batch?.lines)
+          ? (body.batch.lines as PackageHistoryLine[])
+          : [];
+        if (!cancelled) setPackagePrintLines(lines);
+      })
+      .catch(() => {
+        if (!cancelled) setPackagePrintLines([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPackagePrintLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  async function handlePackageReprint(labelCode?: string) {
+    const batchId = selected?.batchId?.trim();
+    if (!batchId) return;
+    setPrinting(true);
+    try {
+      await reprintPackageBatchLabels({ batchId, labelCode });
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "พิมพ์ไม่สำเร็จ");
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <>
       {!hideBack ? (
@@ -418,6 +486,14 @@ export function StaffBranchStockHistoryPanel({
             </p>
           </div>
         </div>
+      ) : null}
+
+      {!hideBack ? (
+        <StaffPrinterStatusChip
+          showBrowserHint
+          requirePackagePrint
+          className="mb-3"
+        />
       ) : null}
 
       <div className="space-y-3">
@@ -696,7 +772,9 @@ export function StaffBranchStockHistoryPanel({
                       value={
                         <SourceLinkButton
                           label={
-                            openingSource ? "กำลังเปิด…" : selected.note
+                            openingSource
+                              ? "กำลังเปิด…"
+                              : formatStockMovementNoteDisplay(selected.note)
                           }
                           onClick={() => void openSummarySource(selected)}
                         />
@@ -720,7 +798,7 @@ export function StaffBranchStockHistoryPanel({
                 return (
                   <SummaryRow
                     label="รายละเอียด"
-                    value={selected.note || "—"}
+                    value={formatStockMovementNoteDisplay(selected.note)}
                   />
                 );
               })()}
@@ -831,6 +909,71 @@ export function StaffBranchStockHistoryPanel({
                 ))}
               </ul>
             </div>
+
+            {selectedIsPackageIn ? (
+              <div className="mt-4">
+                <p className="mb-2 text-[13px] font-bold text-slate-700">
+                  พิมพ์บาร์โค้ด + QR
+                </p>
+                {packagePrintLoading ? (
+                  <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-[13px] font-medium text-slate-500">
+                    กำลังโหลดข้อมูลพิมพ์…
+                  </p>
+                ) : packagePrintLines.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-[13px] font-medium text-slate-400">
+                    ไม่มีข้อมูลสำหรับพิมพ์
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {packagePrintLines.map((line, idx) => (
+                      <li
+                        key={line.id}
+                        className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3"
+                      >
+                        {line.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={line.imageUrl}
+                            alt=""
+                            className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg">
+                            🏷️
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[14px] font-extrabold text-slate-900">
+                            {idx + 1}. {line.name}
+                          </p>
+                          <p className="text-[11px] font-semibold text-slate-500">
+                            {line.labelCode} · LOT {line.lotNumber} ·{" "}
+                            {line.quantity} {line.unit}
+                            {line.status === "CONSUMED" ? " · จ่ายแล้ว" : ""}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={printing}
+                          onClick={() => void handlePackageReprint(line.labelCode)}
+                          className="shrink-0 rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-bold text-white disabled:opacity-60"
+                        >
+                          🖨
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  disabled={printing || packagePrintLines.length === 0}
+                  onClick={() => void handlePackageReprint()}
+                  className="mt-4 w-full rounded-2xl bg-emerald-600 py-3.5 text-[15px] font-extrabold text-white disabled:opacity-60"
+                >
+                  {printing ? "กำลังเตรียมพิมพ์…" : "พิมพ์ทั้งหมด"}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

@@ -3,8 +3,8 @@ export type PackageHistoryKind = (typeof PACKAGE_HISTORY_KINDS)[number];
 
 export const PACKAGE_HISTORY_KIND_LABEL: Record<PackageHistoryKind, string> = {
   all: "ทั้งหมด",
-  in: "รับเข้าแพ็ก",
-  out: "จ่ายแพ็ก",
+  in: "รับเข้ารายการ",
+  out: "จ่ายรายการ",
 };
 
 export function isPackageHistoryKind(v: string): v is PackageHistoryKind {

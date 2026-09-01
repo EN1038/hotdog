@@ -6,11 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toPng } from "html-to-image";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { StaffBranchStockHistoryPanel } from "@/components/staff/StaffBranchStockHistoryPanel";
-import { StaffMenuScanField } from "@/components/staff/StaffMenuScanField";
-import { StaffPackageInHistoryPanel } from "@/components/staff/StaffPackageInHistoryPanel";
 import { StaffPackageInPanel } from "@/components/staff/StaffPackageInPanel";
 import { StaffPackageOutPanel } from "@/components/staff/StaffPackageOutPanel";
-import { StaffPackageReceivePanel } from "@/components/staff/StaffPackageReceivePanel";
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
@@ -216,6 +213,7 @@ function StaffStockContent() {
   const openAsPending = searchParams.get("action") === "pending";
   const openAsView = searchParams.get("action") === "view";
   const openAsIssue = searchParams.get("action") === "issue";
+  const openAsStockIn = searchParams.get("action") === "stock_in";
   const openAsHistory = searchParams.get("action") === "history";
   const focusConvert = searchParams.get("focus") === "convert";
   const summaryIdParam = searchParams.get("summaryId")?.trim() || null;
@@ -247,8 +245,6 @@ function StaffStockContent() {
     | "pending"
     | "package_in"
     | "package_out"
-    | "package_receive"
-    | "package_history"
   >("menu");
   const [actionType, setActionType] = useState<
     "stock_in" | "issue" | "pending" | "view" | "summary" | null
@@ -291,20 +287,14 @@ function StaffStockContent() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [attemptedSummary, setAttemptedSummary] = useState(false);
   const [dailySummaryOpen, setDailySummaryOpen] = useState(false);
-  const [packageHighlightBatchId, setPackageHighlightBatchId] = useState<
-    string | null
-  >(null);
-  const [packageHistoryOpenBatchId, setPackageHistoryOpenBatchId] = useState<
-    string | null
-  >(null);
   const [packageInPrefillItem, setPackageInPrefillItem] = useState<{
     itemId: string;
     name: string;
     productCode: string;
   } | null>(null);
-  const [stockInScanValue, setStockInScanValue] = useState("");
-  const [packageReceiveInitialScan, setPackageReceiveInitialScan] = useState("");
-  const stockInScanRef = useRef<HTMLInputElement>(null);
+  const [pendingHistoryBatchId, setPendingHistoryBatchId] = useState<
+    string | null
+  >(null);
   const [summaryDiffOnly, setSummaryDiffOnly] = useState(false);
 
   const stockCaptureRef = useRef<HTMLDivElement>(null);
@@ -464,6 +454,15 @@ function StaffStockContent() {
     setCategoryFilter("ALL");
     clearIssueFields();
   }, [openAsIssue, openViewStockType, loading, data?.stockActive]);
+
+  useEffect(() => {
+    if (!openAsStockIn || loading || !data?.stockActive) return;
+    setActionType("stock_in");
+    setMode("select_type");
+    setTypeFilter("ALL");
+    setQtyByItemId({});
+    setCategoryFilter("ALL");
+  }, [openAsStockIn, loading, data?.stockActive]);
 
   const categories = useMemo(() => {
     if (!data) return [];
@@ -841,20 +840,6 @@ function StaffStockContent() {
     setMode("items");
   };
 
-  const openPackageReceive = useCallback((raw: string) => {
-    const code = raw.trim();
-    if (!code) return;
-    setPackageReceiveInitialScan(code);
-    setStockInScanValue("");
-    setMode("package_receive");
-    stockInScanRef.current?.blur();
-  }, []);
-
-  useEffect(() => {
-    if (mode !== "select_type" || actionType !== "stock_in") return;
-    stockInScanRef.current?.focus();
-  }, [mode, actionType]);
-
   async function genDocumentNo(kind: StockDocumentKind): Promise<string> {
     setDocGenBusy(true);
     try {
@@ -1074,26 +1059,16 @@ function StaffStockContent() {
   }
 
   const handleBack = () => {
-    if (mode === "package_history") {
-      setMode("package_in");
-      setPackageHistoryOpenBatchId(null);
-      return;
-    }
     if (mode === "package_in") {
       setMode("select_type");
-      setPackageHighlightBatchId(null);
       return;
     }
     if (mode === "package_out") {
       setMode("select_issue_purpose");
       return;
     }
-    if (mode === "package_receive") {
-      setPackageReceiveInitialScan("");
-      setMode("select_type");
-      return;
-    }
     if (mode === "history") {
+      setPendingHistoryBatchId(null);
       setMode("menu");
       return;
     }
@@ -1762,7 +1737,7 @@ function StaffStockContent() {
                 }
                 initialFrom={historyFromParam}
                 initialTo={historyToParam}
-                openBatchId={historyBatchIdParam}
+                openBatchId={historyBatchIdParam ?? pendingHistoryBatchId}
               />
             ) : mode === "pending" && WAREHOUSE_UI_ENABLED ? (
               <>
@@ -2516,10 +2491,10 @@ function StaffStockContent() {
                       </span>
                       <div>
                         <h3 className="text-xl font-black text-slate-900">
-                          จ่ายออกแพ็ก
+                          จ่ายออกรายการ
                         </h3>
                         <p className="mt-1 text-[13px] font-medium text-slate-600">
-                          กรอกรหัสป้ายหรือสแกน QR เพื่อจ่ายออกแพ็ก
+                          กรอกรหัสหรือสแกน QR เพื่อจ่ายออกรายการ
                         </p>
                       </div>
                     </div>
@@ -2550,41 +2525,15 @@ function StaffStockContent() {
                   </h2>
                 </div>
 
-                {(actionType === "stock_in" ||
-                  actionType === "issue" ||
-                  actionType === "summary") && (
+                {(actionType === "issue" || actionType === "summary") && (
                   <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600">
-                    {actionType === "stock_in"
-                      ? "สแกนรับแพ็กจากสาขาอื่น · เลือกประเภทรับเข้าทั่วไป · หรือกด «รับเข้าแพ็ก» เพื่อสร้างป้าย"
-                      : actionType === "issue"
+                    {actionType === "issue"
                         ? issuePurpose === "waste"
                           ? "บันทึกของเสีย เช่น ทำหล่น ชำรุด ใช้ไม่ได้"
                           : "จ่ายออกจากสต๊อกเมื่อเบิกใช้ชัดเจน เช่น เปลี่ยนแก๊ส 1 ถัง"
                         : `ขั้นที่ 2 จาก 2 · จังหวะ: ${summaryTimingLabel} · เลือกประเภทที่จะนับ`}
                   </div>
                 )}
-
-                {actionType === "stock_in" ? (
-                  <form
-                    className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      openPackageReceive(stockInScanValue);
-                    }}
-                  >
-                    <StaffMenuScanField
-                      label="รับแพ็กจากสาขาอื่น"
-                      value={stockInScanValue}
-                      onChange={setStockInScanValue}
-                      onSubmit={(next) => openPackageReceive(next)}
-                      inputRef={stockInScanRef}
-                      autoFocus
-                      placeholder="กรอกรหัสป้าย หรือแตะไอคอนเพื่อสแกน QR"
-                      hint="รับแพ็กที่จ่ายออกจากสาขาอื่นแล้ว — ไม่รับแพ็กที่ผลิตที่สาขานี้เอง"
-                      scannerTitle="สแกน QR บนป้ายแพ็ก"
-                    />
-                  </form>
-                ) : null}
 
                 <div className="grid gap-4 mt-4">
                   {(
@@ -2643,21 +2592,33 @@ function StaffStockContent() {
                     );
                   })}
                   {actionType === "stock_in" ? (
-                    <button
-                      type="button"
-                      onClick={() => setMode("package_in")}
-                      className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-teal-200 bg-teal-50 p-6 text-slate-700 shadow-sm hover:border-teal-400 transition-all active:scale-[0.98]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="text-3xl">🏷️</div>
-                        <h3 className="text-xl font-bold text-slate-900">
-                          รับเข้าแพ็ก
-                        </h3>
-                      </div>
-                      <p className="text-xs font-medium text-slate-600">
-                        สร้างป้ายหลายแพ็ก · พิมพ์บาร์โค้ด + QR
-                      </p>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setMode("package_in")}
+                        className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-3xl">🏷️</div>
+                          <h3 className="text-xl font-bold">
+                            รับเข้าและพิมพ์บาร์โค้ด + QR
+                          </h3>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push("/staff/stock/package-receive")}
+                        className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-3xl">📥</div>
+                          <h3 className="text-xl font-bold">รับสินค้าโดยสแกน QR CODE</h3>
+                        </div>
+                        <p className="text-xs font-medium text-slate-500">
+                          สแกนรหัสที่จ่ายออกจากสาขาอื่นแล้ว
+                        </p>
+                      </button>
+                    </>
                   ) : null}
                 </div>
               </>
@@ -2666,31 +2627,14 @@ function StaffStockContent() {
                 onBack={handleBack}
                 prefillItem={packageInPrefillItem}
                 onPrefillApplied={() => setPackageInPrefillItem(null)}
-                onHistory={() => {
-                  setPackageHistoryOpenBatchId(null);
-                  setMode("package_history");
-                }}
                 onSuccess={(batchId) => {
-                  setPackageHighlightBatchId(batchId);
-                  setPackageHistoryOpenBatchId(batchId);
-                  setMode("package_history");
+                  setPendingHistoryBatchId(batchId);
+                  setMode("history");
                   void load();
                 }}
               />
             ) : mode === "package_out" ? (
               <StaffPackageOutPanel onBack={handleBack} />
-            ) : mode === "package_receive" ? (
-              <StaffPackageReceivePanel
-                onBack={handleBack}
-                initialScan={packageReceiveInitialScan}
-                onSuccess={() => void load()}
-              />
-            ) : mode === "package_history" ? (
-              <StaffPackageInHistoryPanel
-                onBack={handleBack}
-                highlightBatchId={packageHighlightBatchId}
-                autoOpenBatchId={packageHistoryOpenBatchId}
-              />
             ) : (
               <>
                 <div className="flex items-center gap-2 mb-4">

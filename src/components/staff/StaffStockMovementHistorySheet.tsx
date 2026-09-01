@@ -9,6 +9,7 @@ import { DateInput } from "@/components/DateInput";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
 import { outboundHistoryLabel } from "@/lib/stock-outbound";
 import { parseMovementImages } from "@/lib/stock-movement-images";
+import { formatStockMovementNoteDisplay } from "@/lib/stock-movement-display";
 
 type MovementKind = "stock_in" | "issue";
 
@@ -365,7 +366,10 @@ export function StaffStockMovementHistorySheet({
     const purpose = batchPurposeLabel(selected);
     if (purpose) lines.push(`ประเภทจ่ายออก: ${purpose}`);
     lines.push(`ประเภทสินค้า: ${batchTypeLabel(selected)}`);
-    if (selected.note) lines.push(`รายละเอียด: ${selected.note}`);
+    if (selected.note)
+      lines.push(
+        `รายละเอียด: ${formatStockMovementNoteDisplay(selected.note)}`,
+      );
     lines.push(
       `จำนวนรายการ: ${selected.itemCount.toLocaleString("th-TH")} · รวม ${selected.totalQty.toLocaleString("th-TH")}`,
     );
@@ -587,7 +591,10 @@ export function StaffStockMovementHistorySheet({
                         value={batchTypeLabel(selected)}
                       />
                       {selected.note ? (
-                        <SummaryRow label="รายละเอียด" value={selected.note} />
+                        <SummaryRow
+                          label="รายละเอียด"
+                          value={formatStockMovementNoteDisplay(selected.note)}
+                        />
                       ) : null}
                       <SummaryRow
                         label="จำนวนรายการ"

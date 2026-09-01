@@ -36,7 +36,7 @@ export default function PublicStockLabelPage() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
-          typeof body.error === "string" ? body.error : "ไม่พบป้ายแพ็ก",
+          typeof body.error === "string" ? body.error : "ไม่พบป้ายรายการ",
         );
       }
       setData(body as PublicStockLabel);
@@ -53,14 +53,14 @@ export default function PublicStockLabelPage() {
   }, [load]);
 
   if (loading) {
-    return <LoadingState label="กำลังโหลดข้อมูลป้ายแพ็ก…" />;
+    return <LoadingState label="กำลังโหลดข้อมูลป้ายรายการ…" />;
   }
 
   if (error || !data) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-lg items-center justify-center p-6">
         <div className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
-          <p className="text-base font-bold text-slate-900">ไม่พบป้ายแพ็ก</p>
+          <p className="text-base font-bold text-slate-900">ไม่พบป้ายรายการ</p>
           <p className="mt-2 text-sm text-slate-600">
             {error ?? "ตรวจสอบ QR หรือรหัสป้ายอีกครั้ง"}
           </p>

@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       qrPayload: body.qrPayload,
       labelId: body.labelId,
     });
-    if (!label) return jsonError("ไม่พบป้ายแพ็กนี้", 404);
+    if (!label) return jsonError("ไม่พบป้ายรายการนี้", 404);
     if (label.status === "CONSUMED") {
       return jsonError("ป้ายนี้จ่ายออกแล้ว");
     }
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
             menuItemId: menuItem.id,
             quantity: -label.quantity,
             type: "ISSUE",
-            note: `จ่ายแพ็ก ${label.labelCode}: ${body.note}`,
+            note: `จ่ายรายการ ${label.labelCode}: ${body.note}`,
             batchId,
             documentNo,
             createdByStaffId: session.staffId,
@@ -170,7 +170,7 @@ export async function POST(request: Request) {
             branchNonMenuItemId: item.id,
             quantity: -label.quantity,
             type: "ISSUE",
-            note: `จ่ายแพ็ก ${label.labelCode}: ${body.note}`,
+            note: `จ่ายรายการ ${label.labelCode}: ${body.note}`,
             batchId,
             documentNo,
             createdByStaffId: session.staffId,
@@ -231,7 +231,7 @@ export async function GET(request: Request) {
       labelCode,
     });
     if (!label || label.branchId !== session.branchId) {
-      return jsonError("ไม่พบป้ายแพ็กในสาขานี้", 404);
+      return jsonError("ไม่พบรายการในสาขานี้", 404);
     }
 
     return jsonOk(labelPreviewPayload(label));

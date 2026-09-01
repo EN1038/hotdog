@@ -27,13 +27,13 @@ function receiveValidationError(
   receivingBranchId: string,
 ): string | null {
   if (label.branchId === receivingBranchId) {
-    return "ไม่สามารถรับแพ็กที่ผลิตที่สาขานี้เอง — ใช้เมนู «รับเข้าแพ็ก» สำหรับแพ็กใหม่";
+    return "ไม่สามารถรับรายการที่ผลิตที่สาขานี้เอง — ใช้เมนู «รับเข้าและพิมพ์บาร์โค้ด + QR» สำหรับรายการใหม่";
   }
   if (label.receivedBranchId) {
     return `ป้ายนี้รับเข้าที่ ${label.receivedBranch?.name ?? "สาขาอื่น"} แล้ว`;
   }
   if (label.status !== "CONSUMED") {
-    return "แพ็กนี้ยังไม่ได้จ่ายออกจากคลัง — ให้คลังยืนยันจ่ายออกก่อน";
+    return "รายการนี้ยังไม่ได้จ่ายออกจากคลัง — ให้คลังยืนยันจ่ายออกก่อน";
   }
   return null;
 }
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
       qrPayload: qr,
       labelCode,
     });
-    if (!label) return jsonError("ไม่พบป้ายแพ็ก", 404);
+    if (!label) return jsonError("ไม่พบป้ายรายการ", 404);
 
     const validationError = receiveValidationError(label, branch.id);
     if (validationError) return jsonError(validationError, 400);
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
       labelCode: body.labelCode,
       qrPayload: body.qrPayload,
     });
-    if (!label) return jsonError("ไม่พบป้ายแพ็ก", 404);
+    if (!label) return jsonError("ไม่พบป้ายรายการ", 404);
 
     const validationError = receiveValidationError(label, branch.id);
     if (validationError) return jsonError(validationError, 400);
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     });
     if (!match) {
       return jsonError(
-        `ไม่พบสินค้า ${label.productCode} ในสาขานี้ — ตั้งรหัสสินค้าให้ตรงก่อนรับแพ็ก`,
+        `ไม่พบสินค้า ${label.productCode} ในสาขานี้ — ตั้งรหัสสินค้าให้ตรงก่อนรับรายการ`,
         404,
       );
     }
@@ -141,15 +141,15 @@ export async function POST(request: Request) {
         where: { id: label.id },
         select: { receivedBranchId: true, status: true, branchId: true },
       });
-      if (!fresh) throw new Error("ไม่พบป้ายแพ็ก");
+      if (!fresh) throw new Error("ไม่พบป้ายรายการ");
       if (fresh.branchId === branch.id) {
-        throw new Error("ไม่สามารถรับแพ็กที่ผลิตที่สาขานี้เอง");
+        throw new Error("ไม่สามารถรับรายการที่ผลิตที่สาขานี้เอง");
       }
       if (fresh.receivedBranchId) {
         throw new Error("ป้ายนี้รับเข้าแล้ว");
       }
       if (fresh.status !== "CONSUMED") {
-        throw new Error("แพ็กนี้ยังไม่ได้จ่ายออกจากคลัง");
+        throw new Error("รายการนี้ยังไม่ได้จ่ายออกจากคลัง");
       }
 
       if (match.stockType === "SALE_ITEM") {
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
             menuItemId: menuItem.id,
             quantity: label.quantity,
             type: "STOCK_IN",
-            note: `รับแพ็ก ${label.labelCode} จาก ${label.branch.name}`,
+            note: `รับรายการ ${label.labelCode} จาก ${label.branch.name}`,
             batchId,
             documentNo,
             createdByStaffId: session.staffId,
@@ -202,7 +202,7 @@ export async function POST(request: Request) {
             branchNonMenuItemId: nonMenu.id,
             quantity: label.quantity,
             type: "STOCK_IN",
-            note: `รับแพ็ก ${label.labelCode} จาก ${label.branch.name}`,
+            note: `รับรายการ ${label.labelCode} จาก ${label.branch.name}`,
             batchId,
             documentNo,
             createdByStaffId: session.staffId,

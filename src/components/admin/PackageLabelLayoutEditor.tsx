@@ -261,7 +261,7 @@ export function PackageLabelLayoutEditor({
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
-        กำลังโหลดแบบป้ายแพ็ก…
+        กำลังโหลดแบบป้ายรายการ…
       </div>
     );
   }
@@ -269,8 +269,8 @@ export function PackageLabelLayoutEditor({
   return (
     <div>
       <AdminPageHeader
-        title="แบบป้ายแพ็ก"
-        description="ปรับ layout ป้ายแพ็กสต๊อกระดับแบรนด์ — พนักงานและแอป SkillSale Print จะใช้แบบนี้โดยอัตโนมัติเมื่อ version เปลี่ยน"
+        title="แบบป้ายรายการ"
+        description="ปรับ layout ป้ายรายการสต๊อกระดับแบรนด์ — พนักงานและแอป SkillSale Print จะใช้แบบนี้โดยอัตโนมัติเมื่อ version เปลี่ยน"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {backHref ? (
@@ -497,7 +497,7 @@ export function PackageLabelLayoutEditor({
           <section className={adminCardClass}>
             <h3 className="text-sm font-bold text-slate-900">ตัวอย่างป้าย</h3>
             <p className="mt-1 text-xs text-slate-500">
-              ข้อมูลตัวอย่าง — ป้ายจริงใช้ข้อมูลจากการรับเข้าแพ็ก
+              ข้อมูลตัวอย่าง — ป้ายจริงใช้ข้อมูลจากการรับเข้ารายการ
             </p>
             <div
               className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-inner"
@@ -770,7 +770,7 @@ function BlockFields({
             ))}
           </select>
           <p className="mt-1 text-xs text-slate-500">
-            ปกติใช้ qrPayload — สแกนเพื่อจ่ายออกแพ็ก
+            ปกติใช้ qrPayload — สแกนเพื่อจ่ายออกรายการ
           </p>
         </div>
         <div>

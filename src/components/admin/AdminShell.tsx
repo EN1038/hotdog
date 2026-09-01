@@ -111,7 +111,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: "/admin/print-layouts/package-label",
-        label: "แบบป้ายแพ็ก",
+        label: "แบบป้ายรายการ",
         brandAdminOnly: true,
         match: (pathname) =>
           pathname === "/admin/print-layouts/package-label" ||

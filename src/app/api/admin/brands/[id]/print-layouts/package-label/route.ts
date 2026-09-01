@@ -41,7 +41,7 @@ export async function PUT(request: Request, { params }: Params) {
 
     await logAdminActivity(session, {
       action: "brand.update",
-      summary: `อัปเดตแบบป้ายแพ็ก v${payload.version}`,
+      summary: `อัปเดตแบบป้ายรายการ v${payload.version}`,
       brandId: id,
       entityType: "BrandPrintLayout",
       entityId: id,

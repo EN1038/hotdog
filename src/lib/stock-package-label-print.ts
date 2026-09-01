@@ -122,7 +122,7 @@ export async function openPackageLabelPrint(
       labels: items.map(toNativePayload),
     });
     if (result?.code === "1") return;
-    window.alert(result?.message ?? "พิมพ์ป้ายแพ็กไม่สำเร็จ");
+    window.alert(result?.message ?? "พิมพ์ป้ายรายการไม่สำเร็จ");
     return;
   }
 
@@ -175,7 +175,7 @@ async function openPackageLabelPrintInBrowser(
 <html lang="th">
 <head>
   <meta charset="utf-8" />
-  <title>พิมพ์ป้ายแพ็ก</title>
+  <title>พิมพ์ป้ายรายการ</title>
   <style>
     @page { size: 60mm 50mm; margin: 1mm; }
     * { box-sizing: border-box; }
@@ -248,4 +248,30 @@ export function labelsToPrintInput(
     lotNumber: row.lotNumber,
     copies: 1,
   }));
+}
+
+/** Reprint barcode + QR labels for a package-in batch (optional single label). */
+export async function reprintPackageBatchLabels(input: {
+  batchId: string;
+  labelCode?: string;
+}): Promise<void> {
+  const res = await fetch(
+    `/api/staff/stock/package-in/history?batchId=${encodeURIComponent(input.batchId)}`,
+  );
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      typeof body.error === "string" ? body.error : "โหลดข้อมูลพิมพ์ไม่สำเร็จ",
+    );
+  }
+  let labels = Array.isArray(body.labels) ? body.labels : [];
+  if (input.labelCode) {
+    labels = labels.filter(
+      (l: { labelCode?: string }) => l.labelCode === input.labelCode,
+    );
+  }
+  if (labels.length === 0) {
+    throw new Error("ไม่มีข้อมูลสำหรับพิมพ์");
+  }
+  await openPackageLabelPrint(labels);
 }

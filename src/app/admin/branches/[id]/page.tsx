@@ -2825,7 +2825,7 @@ function BranchDetailContent() {
               ) : null}
             </div>
           ) : (
-            <BranchStockPanel branchId={id} />
+            <BranchStockPanel branchId={id} branchName={branch.name} />
           ))}
 
         {activeTab === "expenses" && <BranchExpensesPanel branchId={id} />}
@@ -3829,7 +3829,7 @@ function BranchDetailContent() {
                     <div className="flex flex-wrap gap-2">
                       {branch?.brandId && (
                         <Link
-                          href={`${branchBase}?tab=stock`}
+                          href={`${branchBase}?tab=stock&view=manage`}
                           className={`${btnOutline} w-full shrink-0 sm:w-auto`}
                         >
                           จัดการสต๊อก

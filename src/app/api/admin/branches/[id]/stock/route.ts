@@ -83,6 +83,15 @@ export async function GET(_request: Request, { params }: Params) {
       orderBy: { name: "asc" },
     });
 
+    const parByMenuId = new Map(
+      (
+        await prisma.branchMenuItemParStock.findMany({
+          where: { branchId: id },
+          select: { menuItemId: true, parStock: true },
+        })
+      ).map((row) => [row.menuItemId, row.parStock]),
+    );
+
     const products: any[] = [];
     const balances: any[] = [];
 
@@ -112,6 +121,7 @@ export async function GET(_request: Request, { params }: Params) {
         imageUrl: item.imageUrl,
         isMenu: true,
         price: Number(item.price ?? 0),
+        parStock: parByMenuId.has(item.id) ? parByMenuId.get(item.id)! : null,
       });
       balances.push({
         id: item.id,

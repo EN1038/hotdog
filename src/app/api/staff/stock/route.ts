@@ -269,6 +269,15 @@ export async function GET() {
       orderBy: { name: "asc" },
     });
 
+    const parByMenuId = new Map(
+      (
+        await prisma.branchMenuItemParStock.findMany({
+          where: { branchId: branch.id },
+          select: { menuItemId: true, parStock: true },
+        })
+      ).map((row) => [row.menuItemId, row.parStock]),
+    );
+
     const products: Array<Record<string, unknown>> = [];
     const balances: Array<Record<string, unknown>> = [];
 
@@ -304,6 +313,7 @@ export async function GET() {
         isMenu: true,
         price,
         defaultShelfLifeDays: item.defaultShelfLifeDays ?? null,
+        parStock: parByMenuId.has(item.id) ? parByMenuId.get(item.id)! : null,
       });
       balances.push({
         id: item.id, // Frontend uses product.id anyway

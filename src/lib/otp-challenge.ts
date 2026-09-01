@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/db";
 import { taximailVerifyOtp } from "@/lib/taximail";
 
-export const OTP_PURPOSES = ["customer", "staff", "owner"] as const;
+export const OTP_PURPOSES = [
+  "customer",
+  "staff",
+  "owner",
+  "owner_register",
+] as const;
 export type OtpPurpose = (typeof OTP_PURPOSES)[number];
 
 export type ConsumeOtpResult =

@@ -33,6 +33,11 @@ import {
   type SkewerParPolicy,
 } from "@/lib/inventory/inventory-par-policy";
 import {
+  PAR_STOCK_LABEL,
+  PAR_STOCK_SHORT_LABEL,
+  parStockFeatureTitle,
+} from "@/lib/inventory/inventory-par-labels";
+import {
   formatParStockShareText,
   parStockShareRowsFromDisplayed,
 } from "@/lib/inventory/inventory-par-stock-share";
@@ -497,9 +502,7 @@ export function BranchParStockPanel({
     setExportMsg("");
     try {
       const dataUrl = await captureParPng();
-      const title = data?.branchName
-        ? `แนะนำ Par Stock — ${data.branchName}`
-        : "แนะนำ Par Stock";
+      const title = parStockFeatureTitle(data?.branchName);
       const result = await sharePngDataUrl(dataUrl, parShareFilename(), title);
       if (result.error === "cancelled") {
         setExportMsg("");
@@ -614,7 +617,7 @@ export function BranchParStockPanel({
         return;
       }
       applyParPayload(json as ParStockApiResult);
-      toast.success("วิเคราะห์ Par Stock แล้ว");
+      toast.success(`วิเคราะห์${PAR_STOCK_LABEL}แล้ว`);
     } finally {
       setBusy(false);
     }
@@ -624,7 +627,7 @@ export function BranchParStockPanel({
     const raw = manualDraft[menuItemId] ?? "0";
     const parStock = Number.parseInt(raw, 10);
     if (!Number.isInteger(parStock) || parStock < 0) {
-      toast.error("Par Stock ไม่ถูกต้อง", "ต้องเป็นจำนวนเต็ม ≥ 0");
+      toast.error(`${PAR_STOCK_LABEL}ไม่ถูกต้อง`, "ต้องเป็นจำนวนเต็ม ≥ 0");
       return;
     }
     setBusy(true);
@@ -650,7 +653,7 @@ export function BranchParStockPanel({
       }
       applyParPayload(json as ParStockApiResult);
       onInventoryMutated?.();
-      toast.success("บันทึก Par Stock แล้ว");
+      toast.success(`บันทึก${PAR_STOCK_LABEL}แล้ว`);
     } finally {
       setBusy(false);
     }
@@ -672,7 +675,7 @@ export function BranchParStockPanel({
 
   async function saveDirtyPar() {
     if (dirtyParItems.length === 0) {
-      toast.error("ยังไม่มีค่าที่แก้", "ปรับตัวเลข Par ในตารางก่อน แล้วกดบันทึก");
+      toast.error("ยังไม่มีค่าที่แก้", `ปรับตัวเลข${PAR_STOCK_SHORT_LABEL}ในตารางก่อน แล้วกดบันทึก`);
       return;
     }
     const invalid = (data?.items ?? []).some((row) => {
@@ -682,7 +685,7 @@ export function BranchParStockPanel({
       return !Number.isInteger(parsed) || parsed < 0;
     });
     if (invalid) {
-      toast.error("Par Stock ไม่ถูกต้อง", "ต้องเป็นจำนวนเต็ม ≥ 0");
+      toast.error(`${PAR_STOCK_LABEL}ไม่ถูกต้อง`, "ต้องเป็นจำนวนเต็ม ≥ 0");
       return;
     }
     setBusy(true);
@@ -707,7 +710,7 @@ export function BranchParStockPanel({
       }
       applyParPayload(json as ParStockApiResult);
       onInventoryMutated?.();
-      toast.success(`บันทึก Par ${json.updated ?? dirtyParItems.length} รายการแล้ว`);
+      toast.success(`บันทึก${PAR_STOCK_SHORT_LABEL} ${json.updated ?? dirtyParItems.length} รายการแล้ว`);
     } finally {
       setBusy(false);
     }
@@ -743,7 +746,7 @@ export function BranchParStockPanel({
       applyParPayload(json as ParStockApiResult);
       setReviewOpen(false);
       onInventoryMutated?.();
-      toast.success(`ใช้ Par แนะนำ ${json.applied ?? reviewItems.length} รายการแล้ว`);
+      toast.success(`ใช้${PAR_STOCK_SHORT_LABEL}ที่แนะนำ ${json.applied ?? reviewItems.length} รายการแล้ว`);
     } finally {
       setBusy(false);
     }
@@ -822,7 +825,7 @@ export function BranchParStockPanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 max-w-xl">
             <h3 className="text-base font-semibold text-gray-900">
-              แนะนำ Par Stock
+              แนะนำ{PAR_STOCK_LABEL}
             </h3>
             <p className="mt-1 text-sm text-gray-600">
               {holdDaysSubtitle(parPolicy.holdDays)}
@@ -913,7 +916,7 @@ export function BranchParStockPanel({
                   ? `แชร์ (${displayedItems.length})`
                   : "แชร์"
               }
-              sheetTitle="แชร์แนะนำ Par Stock"
+              sheetTitle={`แชร์แนะนำ${PAR_STOCK_LABEL}`}
               sheetHint="แชร์รูป บันทึกรูป หรือคัดลอกข้อความ"
               onShareImage={handleShareImage}
               onSaveImage={handleSaveImage}
@@ -963,7 +966,7 @@ export function BranchParStockPanel({
             />
             <KpiCard
               value={data.summary.sumCurrentPar.toLocaleString("th-TH")}
-              label="Par ที่ตั้งไว้"
+              label="ยอดที่ตั้งไว้"
               hint={
                 ineligiblePar > 0
                   ? `ในกลุ่ม ${data.summary.eligibleCurrentPar?.toLocaleString("th-TH") ?? "—"} · นอกกลุ่ม ${ineligiblePar.toLocaleString("th-TH")}`
@@ -975,7 +978,7 @@ export function BranchParStockPanel({
                 data.summary.eligibleRecommendedPar ??
                 data.summary.sumRecommendedPar
               ).toLocaleString("th-TH")}
-              label="Par ที่แนะนำ"
+              label="ยอดที่แนะนำ"
               hint="เฉพาะกลุ่มที่เลือก"
             />
           </div>
@@ -984,7 +987,7 @@ export function BranchParStockPanel({
         {kpis && data ? (
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
             <span>
-              ตั้ง Par ได้{" "}
+              ตั้ง{PAR_STOCK_SHORT_LABEL}ได้{" "}
               <strong className="tabular-nums text-gray-800">{kpis.total}</strong>{" "}
               เมนู
             </span>
@@ -1003,7 +1006,7 @@ export function BranchParStockPanel({
                   : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
               }`}
             >
-              ไม่ได้ตั้ง / Par = 0{" "}
+              ไม่ได้ตั้ง / {PAR_STOCK_SHORT_LABEL} = 0{" "}
               <strong className="tabular-nums">{kpis.noParAll}</strong>
             </button>
             <button
@@ -1017,7 +1020,7 @@ export function BranchParStockPanel({
                   : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
               }`}
             >
-              ตั้ง Par แล้ว{" "}
+              ตั้ง{PAR_STOCK_SHORT_LABEL}แล้ว{" "}
               <strong className="tabular-nums">{kpis.hasParAll}</strong>
             </button>
             {kpis.hidden > 0 ? (
@@ -1030,7 +1033,7 @@ export function BranchParStockPanel({
               วิเคราะห์ {data.analysisFrom} – {data.analysisTo}
             </span>
             <span className="text-gray-700">
-              Par อัปเดตล่าสุด{" "}
+              {PAR_STOCK_LABEL}อัปเดตล่าสุด{" "}
               <strong className="tabular-nums font-medium text-gray-900">
                 {formatBangkokDateTime(data.lastParUpdatedAt) || "ยังไม่เคยปรับ"}
               </strong>
@@ -1040,7 +1043,7 @@ export function BranchParStockPanel({
 
         {ineligiblePar > 0 ? (
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            ยังมี Par นอกกลุ่มที่เลือก{" "}
+            ยังมี{PAR_STOCK_SHORT_LABEL}นอกกลุ่มที่เลือก{" "}
             <strong>{ineligiblePar.toLocaleString("th-TH")}</strong> ไม้
             (ขายช้า/ไม่ขาย) — กดใช้ค่าที่แนะนำเพื่อเคลียร์เป็น 0 ไม่เก็บของ
           </div>
@@ -1048,7 +1051,7 @@ export function BranchParStockPanel({
           data.summary.branchParTarget != null &&
           data.summary.sumCurrentPar > data.summary.branchParTarget * 1.2 ? (
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Par ที่ตั้งไว้{" "}
+            {PAR_STOCK_LABEL}ที่ตั้งไว้{" "}
             <strong>{data.summary.sumCurrentPar.toLocaleString("th-TH")}</strong>{" "}
             ไม้ สูงกว่าเป้า — กดวิเคราะห์ใหม่ แล้วใช้ค่าที่แนะนำ (
             {(
@@ -1088,23 +1091,23 @@ export function BranchParStockPanel({
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as typeof filter)}
                 >
-                  <option value="ELIGIBLE">กลุ่มที่ตั้ง Par ได้</option>
+                  <option value="ELIGIBLE">กลุ่มที่ตั้ง{PAR_STOCK_SHORT_LABEL}ได้</option>
                   <option value="ALL">ทั้งหมด</option>
                   <option value="NEW">สินค้าใหม่ / ยังไม่ขาย</option>
                   <option value="NEEDS_APPLY">ค่าแนะนำต่างจากปัจจุบัน</option>
-                  <option value="NO_PAR">ไม่ได้ตั้ง Par / Par = 0</option>
-                  <option value="HAS_PAR">ตั้ง Par แล้ว</option>
+                  <option value="NO_PAR">ไม่ได้ตั้ง{PAR_STOCK_SHORT_LABEL} / {PAR_STOCK_SHORT_LABEL} = 0</option>
+                  <option value="HAS_PAR">ตั้ง{PAR_STOCK_SHORT_LABEL}แล้ว</option>
                 </select>
               </div>
             </div>
             <p className="mt-2 text-xs text-gray-500">
               สินค้าที่ยังไม่มียอดขายถูกซ่อนจากกลุ่ม A+B — ค้นหาชื่อ เลือก
-              「ทั้งหมด」 / 「สินค้าใหม่」 / 「ไม่ได้ตั้ง Par」 / 「ตั้ง Par แล้ว」
+              「ทั้งหมด」 / 「สินค้าใหม่」 / 「ไม่ได้ตั้ง{PAR_STOCK_SHORT_LABEL}」 / 「ตั้ง{PAR_STOCK_SHORT_LABEL}แล้ว」
             </p>
           </div>
 
           <div>
-            <p className={`${adminLabelClass} mb-2`}>ตั้ง Par ให้กลุ่ม</p>
+            <p className={`${adminLabelClass} mb-2`}>ตั้ง{PAR_STOCK_SHORT_LABEL}ให้กลุ่ม</p>
             <div className="grid gap-2">
               {GRADE_SET_OPTIONS.map((opt) => {
                 const selectedOpt = gradeSetId === opt.id;
@@ -1217,7 +1220,7 @@ export function BranchParStockPanel({
           <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
             <p className="text-sm font-medium text-gray-900">เป้าทั้งร้าน (ไม้)</p>
             <p className="mt-0.5 text-xs text-gray-500">
-              รวมทุกเมนูที่ตั้ง Par — ประมาณ {parPolicy.holdDays} วันขาย
+              รวมทุกเมนูที่ตั้ง{PAR_STOCK_SHORT_LABEL} — ประมาณ {parPolicy.holdDays} วันขาย
               {parPolicy.holdDays <= 1 ? " (ไม่ให้ถึง 2 วัน)" : ""}
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3">
@@ -1254,14 +1257,14 @@ export function BranchParStockPanel({
             </div>
             <p className="mt-3 text-xs text-gray-500">
               ปรับค่าแล้วกด <span className="font-medium text-gray-700">วิเคราะห์ใหม่</span>{" "}
-              เพื่อคำนวณ Par แนะนำ
+              เพื่อคำนวณ{PAR_STOCK_SHORT_LABEL}ที่แนะนำ
             </p>
           </div>
         </div>
       </div>
 
       {loading ? (
-        <AdminLoadingState label="กำลังโหลด Par Stock…" />
+        <AdminLoadingState label={`กำลังโหลด${PAR_STOCK_LABEL}…`} />
       ) : !data || filteredItems.length === 0 ? (
         <AdminEmptyState
           title={
@@ -1270,19 +1273,19 @@ export function BranchParStockPanel({
               : filter === "NEW"
                 ? "ยังไม่มีสินค้าใหม่ / ยังไม่ขาย"
                 : filter === "NO_PAR"
-                  ? "ทุกรายการตั้ง Par แล้ว"
+                  ? `ทุกรายการตั้ง${PAR_STOCK_SHORT_LABEL}แล้ว`
                   : filter === "HAS_PAR"
-                    ? "ยังไม่มีรายการที่ตั้ง Par"
+                    ? `ยังไม่มีรายการที่ตั้ง${PAR_STOCK_SHORT_LABEL}`
                     : "ไม่มีเมนูในกลุ่มที่เลือก"
           }
           description={
             query.trim()
               ? "ลองค้นหาชื่อหรือรหัสอื่น หรือเลือกแสดงทั้งหมด"
               : filter === "NO_PAR"
-                ? "ไม่มีเมนูที่ Par เป็น 0 — เลือก 「ตั้ง Par แล้ว」 ถ้าต้องการดูรายการที่ตั้งไว้"
+                ? `ไม่มีเมนูที่${PAR_STOCK_SHORT_LABEL}เป็น 0 — เลือก 「ตั้ง${PAR_STOCK_SHORT_LABEL}แล้ว」 ถ้าต้องการดูรายการที่ตั้งไว้`
                 : filter === "HAS_PAR"
-                  ? "ยังไม่มีเมนูที่ Par มากกว่า 0 — เลือก 「ไม่ได้ตั้ง Par」 เพื่อตั้งค่า"
-                  : "ตารางปริยายแสดงเฉพาะกลุ่มที่ตั้ง Par ได้ — ค้นหาชื่อ หรือเลือก ทั้งหมด / สินค้าใหม่ / ไม่ได้ตั้ง Par / ตั้ง Par แล้ว"
+                  ? `ยังไม่มีเมนูที่${PAR_STOCK_SHORT_LABEL}มากกว่า 0 — เลือก 「ไม่ได้ตั้ง${PAR_STOCK_SHORT_LABEL}」 เพื่อตั้งค่า`
+                  : `ตารางปริยายแสดงเฉพาะกลุ่มที่ตั้ง${PAR_STOCK_SHORT_LABEL}ได้ — ค้นหาชื่อ หรือเลือก ทั้งหมด / สินค้าใหม่ / ไม่ได้ตั้ง${PAR_STOCK_SHORT_LABEL} / ตั้ง${PAR_STOCK_SHORT_LABEL}แล้ว`
           }
         />
       ) : (
@@ -1293,13 +1296,13 @@ export function BranchParStockPanel({
           >
             <div className="border-b border-gray-100 px-4 py-3">
               <p className="text-sm font-semibold text-gray-900">
-                แนะนำ Par Stock
+                แนะนำ{PAR_STOCK_LABEL}
                 {data.branchName ? ` — ${data.branchName}` : ""}
               </p>
               <p className="mt-0.5 text-xs text-gray-500">
                 ช่วง {data.analysisFrom} – {data.analysisTo}
                 {formatBangkokDateTime(data.lastParUpdatedAt)
-                  ? ` · Par อัปเดตล่าสุด ${formatBangkokDateTime(data.lastParUpdatedAt)}`
+                  ? ` · ${PAR_STOCK_LABEL}อัปเดตล่าสุด ${formatBangkokDateTime(data.lastParUpdatedAt)}`
                   : ""}
                 {captureStamp ? ` · แคป ${captureStamp}` : ""}
               </p>
@@ -1430,7 +1433,7 @@ export function BranchParStockPanel({
                       activeKey={sortKey}
                       dir={sortDir}
                       align="right"
-                      title="ยอดขายสูงสุดต่อวัน — เทียบกับ Par ว่าวันแน่นพอไหม"
+                      title={`ยอดขายสูงสุดต่อวัน — เทียบกับ${PAR_STOCK_SHORT_LABEL}ว่าวันแน่นพอไหม`}
                       onSort={toggleSort}
                     />
                     <SortTh
@@ -1442,12 +1445,12 @@ export function BranchParStockPanel({
                       onSort={toggleSort}
                     />
                     <SortTh
-                      label="Par"
+                      label={PAR_STOCK_SHORT_LABEL}
                       sortKey="par"
                       activeKey={sortKey}
                       dir={sortDir}
                       align="right"
-                      title="ค่า Par ที่ตั้งไว้ — ใต้ช่องมีวันเวลาที่ปรับล่าสุด"
+                      title={`ค่า${PAR_STOCK_LABEL}ที่ตั้งไว้ — ใต้ช่องมีวันเวลาที่ปรับล่าสุด`}
                       onSort={toggleSort}
                     />
                     <SortTh
@@ -1464,7 +1467,7 @@ export function BranchParStockPanel({
                       activeKey={sortKey}
                       dir={sortDir}
                       align="right"
-                      title="ควรเติม = Par − สต็อกปัจจุบัน"
+                      title={`ควรเติม = ${PAR_STOCK_SHORT_LABEL} − สต็อกปัจจุบัน`}
                       onSort={toggleSort}
                     />
                     <th className="px-3 py-3 text-left font-semibold uppercase tracking-wide text-gray-600">
@@ -1538,7 +1541,7 @@ export function BranchParStockPanel({
                             ? "font-medium text-amber-800"
                             : "text-gray-600"
                         }`}
-                        title="ยอดขายสูงสุดต่อวัน (เฉพาะวันที่มียอดขาย) — เทียบกับ Par ว่าวันแน่นพอไหม"
+                        title={`ยอดขายสูงสุดต่อวัน (เฉพาะวันที่มียอดขาย) — เทียบกับ${PAR_STOCK_SHORT_LABEL}ว่าวันแน่นพอไหม`}
                       >
                         {(row.maxDailySales ?? 0).toLocaleString("th-TH")}
                       </td>
@@ -1562,7 +1565,7 @@ export function BranchParStockPanel({
                           />
                           <span
                             className="max-w-[7.5rem] text-[10px] leading-tight text-gray-400"
-                            title="วันเวลาที่ปรับ Par ล่าสุด"
+                            title={`วันเวลาที่ปรับ${PAR_STOCK_SHORT_LABEL}ล่าสุด`}
                           >
                             {formatBangkokDateTime(row.parUpdatedAt) || "ยังไม่ปรับ"}
                           </span>
@@ -1594,7 +1597,7 @@ export function BranchParStockPanel({
                             disabled={busy}
                             onClick={() => void saveManualPar(row.menuItemId)}
                           >
-                            บันทึก Par
+                            บันทึก{PAR_STOCK_SHORT_LABEL}
                           </button>
                           <button
                             type="button"
@@ -1673,11 +1676,11 @@ export function BranchParStockPanel({
           if (!busy) setReviewOpen(false);
         }}
         busy={busy}
-        title="ยืนยันใช้ Par ที่แนะนำ"
+        title={`ยืนยันใช้${PAR_STOCK_LABEL}ที่แนะนำ`}
         description={
           zeroIneligibleOnApply && ineligiblePar > 0
-            ? `เปลี่ยน Par ${reviewItems.length} เมนูในกลุ่มที่เลือก และเคลียร์ Par นอกกลุ่ม ${ineligiblePar.toLocaleString("th-TH")} ไม้ เป็น 0 — ไม่กระทบสต๊อกคงเหลือ`
-            : `เปลี่ยน Par ${reviewItems.length} เมนู — ไม่กระทบสต๊อกคงเหลือ`
+            ? `เปลี่ยน${PAR_STOCK_SHORT_LABEL} ${reviewItems.length} เมนูในกลุ่มที่เลือก และเคลียร์${PAR_STOCK_SHORT_LABEL}นอกกลุ่ม ${ineligiblePar.toLocaleString("th-TH")} ไม้ เป็น 0 — ไม่กระทบสต๊อกคงเหลือ`
+            : `เปลี่ยน${PAR_STOCK_SHORT_LABEL} ${reviewItems.length} เมนู — ไม่กระทบสต๊อกคงเหลือ`
         }
         maxWidthClassName="max-w-3xl"
       >
@@ -1688,8 +1691,8 @@ export function BranchParStockPanel({
                 <tr>
                   <th className="px-3 py-2">เมนู</th>
                   <th className="px-3 py-2">รหัส</th>
-                  <th className="px-3 py-2 text-right">Par ปัจจุบัน</th>
-                  <th className="px-3 py-2 text-right">Par แนะนำ</th>
+                  <th className="px-3 py-2 text-right">{PAR_STOCK_SHORT_LABEL}ปัจจุบัน</th>
+                  <th className="px-3 py-2 text-right">{PAR_STOCK_SHORT_LABEL}ที่แนะนำ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

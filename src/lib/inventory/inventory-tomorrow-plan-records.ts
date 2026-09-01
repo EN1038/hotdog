@@ -506,27 +506,51 @@ export async function deleteTomorrowPlan(input: {
   if (!lineDb) throw new Error("NOT_FOUND");
 
   const legacy = parseLegacyPlanId(input.planId);
+  const headerDb = getTomorrowPlanHeaderDb();
+
   if (legacy) {
     await lineDb.deleteMany({
       where: { branchId: legacy.branchId, planDate: legacy.planDate },
     });
+    if (headerDb) {
+      await headerDb
+        .deleteMany({
+          where: { branchId: legacy.branchId, planDate: legacy.planDate },
+        })
+        .catch(() => {});
+    }
     return;
   }
 
-  const headerDb = getTomorrowPlanHeaderDb();
-  if (headerDb) {
-    const existing = await headerDb.findFirst({
-      where: { id: input.planId, branchId: input.branchId },
-      select: { id: true },
-    });
-    if (!existing) throw new Error("NOT_FOUND");
-    await headerDb.delete({ where: { id: input.planId } });
-    return;
-  }
+  const detail = await getTomorrowPlanDetail({
+    branchId: input.branchId,
+    planId: input.planId,
+  }).catch(() => null);
+  if (!detail) throw new Error("NOT_FOUND");
 
   await lineDb.deleteMany({
-    where: { branchId: input.branchId, planId: input.planId },
+    where: {
+      branchId: input.branchId,
+      OR: [{ planId: input.planId }, { planDate: detail.planDate }],
+    },
   });
+
+  if (!headerDb) return;
+
+  const header = await headerDb.findFirst({
+    where: { id: input.planId, branchId: input.branchId },
+    select: { id: true },
+  });
+  if (header) {
+    await headerDb.delete({ where: { id: header.id } });
+    return;
+  }
+
+  await headerDb
+    .deleteMany({
+      where: { branchId: input.branchId, planDate: detail.planDate },
+    })
+    .catch(() => {});
 }
 
 export async function deleteTomorrowPlanLine(input: {

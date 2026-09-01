@@ -1,4 +1,10 @@
 import { bangkokWeekdayLabel } from "@/lib/inventory/inventory-date";
+import {
+  PAR_COMPARISON_LABELS,
+  PAR_STOCK_LABEL,
+  PAR_STOCK_SHORT_LABEL,
+  formatParAmountLine,
+} from "@/lib/inventory/inventory-par-labels";
 
 export type ParComparisonKind =
   | "NO_PAR"
@@ -6,12 +12,7 @@ export type ParComparisonKind =
   | "AT_PAR"
   | "ABOVE_PAR";
 
-export const PAR_COMPARISON_LABELS: Record<ParComparisonKind, string> = {
-  NO_PAR: "ยังไม่ตั้ง Par",
-  BELOW_PAR: "ต่ำกว่า Par",
-  AT_PAR: "ใกล้ Par",
-  ABOVE_PAR: "เกิน Par",
-};
+export { PAR_COMPARISON_LABELS };
 
 export const PAR_COMPARISON_TONE: Record<ParComparisonKind, string> = {
   NO_PAR: "bg-gray-100 text-gray-600 border-gray-200",
@@ -102,11 +103,11 @@ export function exportTomorrowPlanCsv(
     "กลุ่มขาย",
     "ขายช่วงวิเคราะห์",
     "สัดส่วน%",
-    "Par Stock",
+    PAR_STOCK_LABEL,
     "คงเหลือ",
-    "ส่งผลิต (ถึง Par)",
+    `ส่งผลิต (ถึง${PAR_STOCK_SHORT_LABEL})`,
     "ยืนยันส่งผลิต",
-    "เทียบ Par",
+    `เทียบ${PAR_STOCK_SHORT_LABEL}`,
     "คาดขายพรุ่งนี้",
   ];
 
@@ -114,7 +115,7 @@ export function exportTomorrowPlanCsv(
     [
       branchName,
       input.tomorrowDate,
-      "เติมถึง Par",
+      `เติมถึง${PAR_STOCK_SHORT_LABEL}`,
       row.productCode,
       row.name,
       row.category ?? "",
@@ -150,15 +151,15 @@ export function formatTomorrowPlanShareText(
   const lines = input.items.map((row, i) => {
     const parPart =
       row.parStock > 0
-        ? `Par ${row.parStock} · คงเหลือ ${row.availableStock}`
-        : "ยังไม่ตั้ง Par";
+        ? formatParAmountLine(row.parStock, row.availableStock)
+        : PAR_COMPARISON_LABELS.NO_PAR;
     return `${i + 1}. [${row.productCode}] [${row.salesGradeLabel}] ${row.name} — ส่งผลิต ${row.confirmedQty ?? row.suggestedRefill} (${parPart}${row.forecastQty > 0 ? ` · คาดขาย ${row.forecastQty}` : ""})`;
   });
 
   return [
     `📦 แผนผลิต-เติมสินค้าขาย — ${branchName}`,
     `พรุ่งนี้ ${input.tomorrowDate} (${weekday})`,
-    "โหมด: เติมถึง Par ที่ตั้งไว้",
+    `โหมด: เติมถึง${PAR_STOCK_LABEL}ที่ตั้งไว้`,
     "",
     ...lines,
     "",
@@ -185,8 +186,8 @@ export function formatConfirmedPlanShareText(input: {
   const lines = input.items.map((row, i) => {
     const parPart =
       row.parStock > 0
-        ? `Par ${row.parStock} · คงเหลือ ${row.availableStock}`
-        : "ยังไม่ตั้ง Par";
+        ? formatParAmountLine(row.parStock, row.availableStock)
+        : PAR_COMPARISON_LABELS.NO_PAR;
     return `${i + 1}. [${row.productCode}] ${row.name} — ส่งผลิต ${row.confirmedQty} (${parPart})`;
   });
 

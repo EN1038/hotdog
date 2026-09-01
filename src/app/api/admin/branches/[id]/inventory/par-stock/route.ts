@@ -11,6 +11,7 @@ import {
 import { parseInventoryAnalysisRange } from "@/lib/inventory/inventory-date";
 import { parseSkewerParPolicyFromSearchParams, skewerParPolicyFromBody } from "@/lib/inventory/inventory-par-policy";
 import { bangkokDateKey } from "@/lib/constants";
+import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -46,7 +47,7 @@ const patchSchema = z
     (body) =>
       (body.items != null && body.items.length > 0) ||
       (body.menuItemId != null && body.parStock != null),
-    { message: "ต้องระบุรายการ Par ที่จะบันทึก" },
+    { message: `ต้องระบุรายการ${PAR_STOCK_SHORT_LABEL}ที่จะบันทึก` },
   );
 
 export async function GET(request: Request, { params }: Params) {
@@ -115,8 +116,8 @@ export async function PATCH(request: Request, { params }: Params) {
       action: "branch.update",
       summary:
         items.length === 1
-          ? `ตั้ง Par Stock ${items[0]!.parStock} สาขา ${branch.name}`
-          : `บันทึก Par Stock ${updated} เมนู สาขา ${branch.name}`,
+          ? `ตั้ง${PAR_STOCK_LABEL} ${items[0]!.parStock} สาขา ${branch.name}`
+          : `บันทึก${PAR_STOCK_LABEL} ${updated} เมนู สาขา ${branch.name}`,
       branchId: branch.id,
       branchName: branch.name,
       entityType: items.length === 1 ? "menu_item" : "branch",
@@ -129,7 +130,7 @@ export async function PATCH(request: Request, { params }: Params) {
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === "INVALID_PAR") {
-        return jsonError("Par Stock ต้องเป็นจำนวนเต็ม ≥ 0");
+        return jsonError(`${PAR_STOCK_LABEL}ต้องเป็นจำนวนเต็ม ≥ 0`);
       }
       if (error.message === "MENU_NOT_FOUND") {
         return jsonError("ไม่พบเมนูในสาขานี้");
@@ -192,7 +193,7 @@ export async function POST(request: Request, { params }: Params) {
 
     await logAdminActivity(session, {
       action: "branch.update",
-      summary: `วิเคราะห์ Par Stock ${analyzed.updated} เมนู สาขา ${branch.name}`,
+      summary: `วิเคราะห์${PAR_STOCK_LABEL} ${analyzed.updated} เมนู สาขา ${branch.name}`,
       branchId: branch.id,
       branchName: branch.name,
       entityType: "branch",

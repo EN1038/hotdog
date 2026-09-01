@@ -11,6 +11,7 @@ import { useToast } from "@/components/admin/Toast";
 import { PlatformSupportCard } from "@/components/PlatformSupportCard";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
 import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
+import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 function formatDateLabel(iso: string | null) {
   if (!iso) return null;
@@ -490,10 +491,17 @@ export function buildOwnerShopLinkGroups(input: {
 
   const stock: OwnerShopLink[] = [];
   if (stockEnabled) {
+    if (firstBranchId) {
+      stock.push({
+        href: `${branchBase}?tab=stock&view=manage`,
+        label: "จัดการสต๊อก",
+        hint: "รับเข้า · จ่ายออก · ปรับยอด · สร้างของสิ้นเปลือง/อุปกรณ์",
+      });
+    }
     stock.push({
       href: "/staff/stock",
-      label: "จัดการสต๊อก",
-      hint: "รับเข้า · จ่ายออก · นับสต๊อก — มีเลขที่เอกสาร",
+      label: "นับสต๊อกหน้าร้าน",
+      hint: "เข้าเมนูพนักงาน — นับสต๊อก · มีเลขที่เอกสาร",
       enterStaff: true,
     });
     stock.push({
@@ -503,13 +511,13 @@ export function buildOwnerShopLinkGroups(input: {
     });
     stock.push({
       href: "/owner/par-stock",
-      label: "แนะนำ Par Stock",
+      label: `แนะนำ${PAR_STOCK_LABEL}`,
       hint: "ตั้งเป้าคงคลังต่อเมนู · ฐานแผนผลิต",
     });
     stock.push({
       href: "/owner/tomorrow-plans",
       label: "แผนผลิต-เติม",
-      hint: "คำนวณของที่ต้องผลิต/เติมจาก Par",
+      hint: `คำนวณของที่ต้องผลิต/เติมจาก${PAR_STOCK_SHORT_LABEL}`,
     });
     stock.push({
       href: "/owner/stock-flow",

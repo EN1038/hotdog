@@ -24,6 +24,7 @@ import {
   OwnerProfileMenuButton,
   useOwnerViewHomeSoftRedirect,
 } from "@/components/owner/OwnerViewSwitch";
+import { OwnerTrialBanner } from "@/components/owner/OwnerTrialBanner";
 
 export type OwnerShellTab = "home" | "today" | "summary" | "settings";
 
@@ -134,6 +135,9 @@ export function OwnerAppShell({
   const completedCount = data?.stats.completedCount ?? 0;
   const openCount = data?.stats.openCount ?? 0;
   const subscription = data?.subscription ?? null;
+  const isTrial =
+    subscription?.status === "TRIAL" ||
+    subscription?.effectiveStatus === "TRIAL";
   const packageBanner = subscription?.writeAllowed === false
     ? {
         tone: "border-rose-200 bg-rose-50 text-rose-950",
@@ -141,7 +145,7 @@ export function OwnerAppShell({
           subscription.writeBlockedReason ??
           "แพ็กเกจหมดอายุ — ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้",
       }
-    : subscription?.nearExpiry
+    : !isTrial && subscription?.nearExpiry
       ? {
           tone: "border-amber-200 bg-amber-50 text-amber-950",
           text:
@@ -244,6 +248,12 @@ export function OwnerAppShell({
             <div className="mx-auto max-w-lg">
               <p className="text-[13px] font-semibold">{packageBanner.text}</p>
             </div>
+          </div>
+        ) : null}
+
+        {isTrial ? (
+          <div className="mx-auto max-w-lg pt-3">
+            <OwnerTrialBanner subscription={subscription} />
           </div>
         ) : null}
 

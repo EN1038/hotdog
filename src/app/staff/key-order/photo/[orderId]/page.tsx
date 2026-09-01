@@ -27,6 +27,14 @@ import {
   scrollToStaffAnchor,
   type StaffOrderSummaryLine,
 } from "@/components/staff/StaffOrderSummary";
+import {
+  emptyStaffOrderDiscountState,
+  staffOrderDiscountPayload,
+  StaffOrderDiscountSection,
+  validateStaffOrderDiscountClient,
+  type StaffOrderDiscountState,
+} from "@/components/staff/StaffOrderDiscountSection";
+import { computeOrderGrandTotal } from "@/lib/order-discount";
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
 import { IconSkewerPlaceholder } from "@/components/icons";
 import { formatPrice, formatPriceLabel } from "@/lib/constants";
@@ -97,6 +105,9 @@ export default function StaffPhotoKeyOrderPage() {
   );
   const [fulfillment, setFulfillment] = useState<StaffFulfillmentState>(
     emptyStaffFulfillment,
+  );
+  const [orderDiscount, setOrderDiscount] = useState<StaffOrderDiscountState>(
+    emptyStaffOrderDiscountState,
   );
   const [showStickySummary, setShowStickySummary] = useState(true);
 
@@ -245,14 +256,25 @@ export default function StaffPhotoKeyOrderPage() {
       });
   }, [regularItems, qtyByItemId, selectedByGroup, channel]);
 
-  const orderTotal = useMemo(() => {
-    const items = summaryLines.reduce(
-      (sum, line) =>
-        sum + (line.unitPrice + line.optionsPrice) * line.quantity,
-      0,
-    );
-    return items + deliveryFee;
-  }, [summaryLines, deliveryFee]);
+  const itemsSubtotal = useMemo(
+    () =>
+      summaryLines.reduce(
+        (sum, line) =>
+          sum + (line.unitPrice + line.optionsPrice) * line.quantity,
+        0,
+      ),
+    [summaryLines],
+  );
+
+  const orderTotal = useMemo(
+    () =>
+      computeOrderGrandTotal({
+        itemsSubtotal,
+        deliveryFee,
+        discountAmount: orderDiscount.discountAmount,
+      }),
+    [itemsSubtotal, deliveryFee, orderDiscount.discountAmount],
+  );
   const selectedLineCount = summaryLines.length;
 
   useEffect(() => {
@@ -330,6 +352,16 @@ export default function StaffPhotoKeyOrderPage() {
       return;
     }
 
+    const discountErr = validateStaffOrderDiscountClient(
+      itemsSubtotal,
+      deliveryFee,
+      orderDiscount,
+    );
+    if (discountErr) {
+      fail(discountErr, "staff-order-discount");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const items = lines.map((item) => ({
@@ -349,6 +381,7 @@ export default function StaffPhotoKeyOrderPage() {
             branchNonMenuItemId,
             quantity,
           })),
+        ...staffOrderDiscountPayload(orderDiscount),
       };
       if (fulfillment.fulfillmentType === "DELIVERY") {
         body.deliveryLocationId = fulfillment.deliveryLocationId;
@@ -623,7 +656,22 @@ export default function StaffPhotoKeyOrderPage() {
       </div>
 
       <div id="staff-order-summary">
-        <StaffOrderSummary lines={summaryLines} deliveryFee={deliveryFee} />
+        <StaffOrderDiscountSection
+          itemsSubtotal={itemsSubtotal}
+          deliveryFee={deliveryFee}
+          value={orderDiscount}
+          onChange={(next) => {
+            clearValidation();
+            setOrderDiscount(next);
+          }}
+          disabled={submitting}
+        />
+
+        <StaffOrderSummary
+          lines={summaryLines}
+          deliveryFee={deliveryFee}
+          discountAmount={orderDiscount.discountAmount}
+        />
       </div>
 
       <p className="mt-4 text-center text-xs text-gray-500">

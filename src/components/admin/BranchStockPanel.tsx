@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -10,12 +11,27 @@ import {
 } from "@/components/admin/AdminShell";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { compareThaiText } from "@/lib/thai-sort";
+import {
+  PAR_STOCK_LABEL,
+  PAR_STOCK_SHORT_LABEL,
+} from "@/lib/inventory/inventory-par-labels";
 import {
   assignStableMenuSequence,
   sortStaffMenuItems,
 } from "@/lib/staff-menu-order";
-import { formatPrice } from "@/lib/constants";
+import { formatPrice, bangkokDateKey } from "@/lib/constants";
+import { compareThaiText } from "@/lib/thai-sort";
+import { formatBangkokDateTime } from "@/lib/inventory/inventory-date";
+import {
+  captureElementToPng,
+  copyTextToClipboard,
+  downloadPngDataUrl,
+  sharePngDataUrl,
+} from "@/lib/share-media";
+import {
+  ShareExportMenu,
+  type ShareExportAction,
+} from "@/components/staff/ShareExportMenu";
 import { IconEdit, IconSkewerPlaceholder, IconTrash } from "@/components/icons";
 import { ImageField } from "@/components/admin/ImageField";
 import { BranchStockCountsView } from "@/components/admin/BranchStockCountsView";
@@ -31,6 +47,12 @@ import {
 } from "@/lib/stock-outbound";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+
+const STOCK_TYPE_LABEL: Record<StockType, string> = {
+  SALE_ITEM: "เมนูขาย",
+  CONSUMABLE: "ของสิ้นเปลือง",
+  EQUIPMENT: "อุปกรณ์",
+};
 
 type Product = {
   id: string;
@@ -49,6 +71,7 @@ type Product = {
   isMenu?: boolean;
   showOnKeyOrder?: boolean;
   keyOrderSortOrder?: number;
+  parStock?: number | null;
 };
 
 type Balance = {
@@ -64,7 +87,13 @@ type StockPayload = {
   products: Product[];
 };
 
-export function BranchStockPanel({ branchId }: { branchId: string }) {
+export function BranchStockPanel({
+  branchId,
+  branchName,
+}: {
+  branchId: string;
+  branchName?: string;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
@@ -108,20 +137,29 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   >(
     viewParam === "movements"
       ? "movements"
+      : viewParam === "manage"
+        ? "manage"
       : viewParam === "recommend" || viewParam === "par-stock"
         ? "par-stock"
         : viewParam === "tomorrow"
           ? "tomorrow"
           : viewParam === "tomorrow-plans"
             ? "tomorrow-plans"
-            : "manage",
+            : viewParam === "counts"
+              ? "counts"
+              : "manage",
   );
   const [pendingCountBadge, setPendingCountBadge] = useState(0);
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const pendingTabSwitched = useRef(false);
+  const manageCaptureRef = useRef<HTMLDivElement>(null);
+  const [exportBusy, setExportBusy] = useState<ShareExportAction | null>(null);
+  const [exportMsg, setExportMsg] = useState("");
+  const [captureStamp, setCaptureStamp] = useState("");
 
   useEffect(() => {
     if (viewParam === "movements") setActiveTab("movements");
+    if (viewParam === "manage") setActiveTab("manage");
     if (viewParam === "recommend" || viewParam === "par-stock")
       setActiveTab("par-stock");
     if (viewParam === "tomorrow") setActiveTab("tomorrow");
@@ -211,7 +249,6 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
       if (res.ok) {
         const json = (await res.json()) as StockPayload;
         setData(json);
-        setInventoryRefreshKey((k) => k + 1);
       } else {
         const body = await res.json().catch(() => ({}));
         setLoadError(body.error || "โหลดข้อมูลสต๊อกไม่สำเร็จ");
@@ -354,6 +391,156 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
     }
     return list;
   }, [typedCatalog, categoryFilter, manageQ]);
+
+  const showParColumn = useMemo(() => {
+    if (!data) return false;
+    if (typeFilter !== "ALL" && typeFilter !== "SALE_ITEM") return false;
+    return data.products.some(
+      (p) => p.stockType === "SALE_ITEM" && p.parStock != null,
+    );
+  }, [data, typeFilter]);
+
+  const manageStockTypeLabel =
+    typeFilter !== "ALL" ? STOCK_TYPE_LABEL[typeFilter] : "สต๊อก";
+
+  const manageStockShareText = useMemo(() => {
+    if (!data || visibleItems.length === 0) return "";
+    const lines: string[] = [];
+    if (branchName?.trim()) lines.push(branchName.trim());
+    lines.push(`📦 ยอดคงเหลือปัจจุบัน · ${manageStockTypeLabel}`);
+    lines.push(formatBangkokDateTime(new Date().toISOString()));
+    if (categoryFilter !== "ALL") lines.push(`หมวด ${categoryFilter}`);
+    if (manageQ.trim()) lines.push(`ค้นหา: ${manageQ.trim()}`);
+    lines.push("");
+    for (const item of visibleItems) {
+      const dbBalance =
+        data.balances.find((b) => b.product.id === item.id)?.quantity ?? 0;
+      const seq = seqById.get(item.id) ?? 0;
+      const code = item.productCode ? `[${item.productCode}] ` : "";
+      const parPart =
+        item.stockType === "SALE_ITEM" && item.parStock != null
+          ? ` · ${PAR_STOCK_SHORT_LABEL} ${item.parStock}`
+          : "";
+      lines.push(
+        `${seq}. ${code}${item.name}: คงเหลือ ${dbBalance}${item.unit ? ` ${item.unit}` : ""}${parPart}`,
+      );
+    }
+    lines.push("");
+    lines.push(`รวม ${visibleItems.length} รายการ`);
+    return lines.join("\n");
+  }, [
+    branchName,
+    categoryFilter,
+    data,
+    manageQ,
+    manageStockTypeLabel,
+    seqById,
+    visibleItems,
+  ]);
+
+  function manageShareFilename() {
+    const slug = (branchName ?? "สาขา")
+      .replace(/[^\w\u0E00-\u0E7F\-]+/g, "_")
+      .slice(0, 40);
+    const typePart =
+      typeFilter !== "ALL" ? STOCK_TYPE_LABEL[typeFilter] : "สต๊อก";
+    return `ยอดคงเหลือ_${typePart}_${slug}_${bangkokDateKey()}.png`;
+  }
+
+  async function captureManageStockPng() {
+    flushSync(() => {
+      setCaptureStamp(formatBangkokDateTime(new Date().toISOString()));
+    });
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+    const node = manageCaptureRef.current;
+    if (!node) throw new Error("ไม่พบรายการสต๊อก");
+    return captureElementToPng(node);
+  }
+
+  async function handleManageShareImage() {
+    if (exportBusy || visibleItems.length === 0) return;
+    setExportBusy("share");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureManageStockPng();
+      const title = branchName?.trim()
+        ? `ยอดคงเหลือ · ${branchName.trim()}`
+        : "ยอดคงเหลือปัจจุบัน";
+      const result = await sharePngDataUrl(
+        dataUrl,
+        manageShareFilename(),
+        title,
+      );
+      if (result.error === "cancelled") {
+        setExportMsg("");
+        return;
+      }
+      if (result.mode === "share") {
+        setExportMsg("แชร์รูปแล้ว");
+        toast.success("แชร์รูปแล้ว");
+      } else if (result.ok) {
+        setExportMsg("บันทึกรูปแล้ว — แชร์จากแกลเลอรีได้");
+        toast.success("บันทึกรูปแล้ว", "เครื่องนี้แชร์ตรงไม่ได้ — บันทึกไว้ให้แล้ว");
+      } else {
+        setExportMsg(result.error || "แชร์รูปไม่สำเร็จ");
+        toast.error("แชร์รูปไม่สำเร็จ", result.error);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "แชร์รูปไม่สำเร็จ";
+      setExportMsg(msg);
+      toast.error("แชร์รูปไม่สำเร็จ", msg);
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleManageSaveImage() {
+    if (exportBusy || visibleItems.length === 0) return;
+    setExportBusy("save");
+    setExportMsg("");
+    try {
+      const dataUrl = await captureManageStockPng();
+      const result = await downloadPngDataUrl(dataUrl, manageShareFilename());
+      if (result.ok) {
+        setExportMsg("บันทึกรูปแล้ว");
+        toast.success("บันทึกรูปแล้ว");
+      } else {
+        setExportMsg(result.error || "บันทึกรูปไม่สำเร็จ");
+        toast.error("บันทึกรูปไม่สำเร็จ", result.error);
+      }
+    } catch {
+      setExportMsg("บันทึกรูปไม่สำเร็จ");
+      toast.error("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleManageCopyText() {
+    if (exportBusy || !manageStockShareText) {
+      toast.error("ไม่มีรายการให้แชร์", "มีรายการในตารางก่อน แล้วกดแชร์");
+      return;
+    }
+    setExportBusy("copy");
+    setExportMsg("");
+    try {
+      const ok = await copyTextToClipboard(manageStockShareText);
+      if (ok) {
+        setExportMsg("คัดลอกข้อความแล้ว — ไปวางในไลน์ได้เลย");
+        toast.success("คัดลอกข้อความแล้ว", "ไปวางในไลน์ได้เลย");
+      } else {
+        setExportMsg("คัดลอกไม่สำเร็จ");
+        toast.error("คัดลอกไม่สำเร็จ");
+      }
+    } catch {
+      setExportMsg("คัดลอกไม่สำเร็จ");
+      toast.error("คัดลอกไม่สำเร็จ");
+    } finally {
+      setExportBusy(null);
+    }
+  }
 
   const selectedItems = useMemo(() => {
     const changes: { id: string; name: string; quantity: number }[] = [];
@@ -646,12 +833,12 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
         <div className="flex min-w-max border-b border-slate-200">
           {(
             [
-              { id: "counts" as const, label: "สรุปยอด / Convert" },
               { id: "manage" as const, label: "จัดการสต๊อก" },
-              { id: "par-stock" as const, label: "แนะนำ Par Stock" },
-              { id: "tomorrow-plans" as const, label: "แผนผลิต-เติม" },
+              { id: "counts" as const, label: "สรุปยอด / Convert" },
               { id: "movements" as const, label: "ประวัติเคลื่อนไหว" },
               { id: "usage" as const, label: "การใช้ / ต้นทุน" },
+              { id: "par-stock" as const, label: `แนะนำ${PAR_STOCK_LABEL}` },
+              { id: "tomorrow-plans" as const, label: "แผนผลิต-เติม" },
             ] as const
           ).map((tab) => (
             <button
@@ -726,7 +913,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
       ) : activeTab === "usage" ? (
         <BranchStockUsageView branchId={branchId} />
       ) : (
-        <>
+        <div className="space-y-6">
           {pendingCountBadge > 0 ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-900">
@@ -748,40 +935,39 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                 รับเข้า · จ่ายออก · ปรับยอด · สร้าง/แก้ไขของสิ้นเปลืองและอุปกรณ์ · ดูยอดคงเหลือ
               </p>
             </div>
-        
-        <div className="relative">
-          <button
-            onClick={() => setShowCreateDropdown(!showCreateDropdown)}
-            className="flex h-9 items-center justify-center rounded-lg bg-site-primary px-4 text-sm font-semibold text-white transition hover:bg-site-primary-focus"
-          >
-            สร้างรายการใหม่ ▾
-          </button>
-          {showCreateDropdown && (
-            <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg border border-slate-100 py-1 z-50">
-              <Link
-                href={`/admin/branches/${branchId}/menu/new`}
-                className="block px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
-              >
-                🍜 เมนูขาย
-              </Link>
+            <div className="relative">
               <button
-                onClick={() => openCreateItem("CONSUMABLE")}
-                className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
+                onClick={() => setShowCreateDropdown(!showCreateDropdown)}
+                className="flex h-9 items-center justify-center rounded-lg bg-site-primary px-4 text-sm font-semibold text-white transition hover:bg-site-primary-focus"
               >
-                📦 ของสิ้นเปลือง
+                สร้างรายการใหม่ ▾
               </button>
-              <button
-                onClick={() => openCreateItem("EQUIPMENT")}
-                className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
-              >
-                🛠️ อุปกรณ์
-              </button>
+              {showCreateDropdown && (
+                <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg border border-slate-100 py-1 z-50">
+                  <Link
+                    href={`/admin/branches/${branchId}/menu/new`}
+                    className="block px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
+                  >
+                    🍜 เมนูขาย
+                  </Link>
+                  <button
+                    onClick={() => openCreateItem("CONSUMABLE")}
+                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
+                  >
+                    📦 ของสิ้นเปลือง
+                  </button>
+                  <button
+                    onClick={() => openCreateItem("EQUIPMENT")}
+                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
+                  >
+                    🛠️ อุปกรณ์
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {data.products.length === 0 ? (
+      {(data.products?.length ?? 0) === 0 ? (
         <AdminEmptyState
           title="ไม่มีรายการในสต๊อก"
           description="สาขานี้ยังไม่มีรายการเมนู ของใช้ หรืออุปกรณ์"
@@ -790,8 +976,44 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
         <div className="w-full">
           {mode === "menu" ? (
             <div className="space-y-6">
-              {/* Dashboard Section */}
-              {dashboardStats && (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <button
+                  onClick={() => handleActionClick("stock_in")}
+                  className="w-full flex items-center justify-between rounded-2xl bg-emerald-600 p-6 text-white shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
+                >
+                  <div className="text-left">
+                    <h3 className="text-xl font-black">รับเข้า</h3>
+                    <p className="mt-1 text-emerald-100 text-xs">เพิ่มจำนวนสต๊อก</p>
+                  </div>
+                  <div className="text-3xl">📦</div>
+                </button>
+
+                <button
+                  onClick={() => handleActionClick("issue")}
+                  className="w-full flex items-center justify-between rounded-2xl bg-amber-500 p-6 text-white shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
+                >
+                  <div className="text-left">
+                    <h3 className="text-xl font-black">จ่ายออก</h3>
+                    <p className="mt-1 text-amber-100 text-xs">
+                      ของเสีย หรือ จ่ายออกจากสต๊อก
+                    </p>
+                  </div>
+                  <div className="text-3xl">📤</div>
+                </button>
+
+                <button
+                  onClick={() => handleActionClick("adjust")}
+                  className="w-full flex items-center justify-between rounded-2xl bg-sky-600 p-6 text-white shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
+                >
+                  <div className="text-left">
+                    <h3 className="text-xl font-black">ปรับยอด</h3>
+                    <p className="mt-1 text-sky-100 text-xs">ตั้งยอดคงเหลือตามที่นับได้</p>
+                  </div>
+                  <div className="text-3xl">🔢</div>
+                </button>
+              </div>
+
+              {dashboardStats ? (
                 <div className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between">
@@ -871,51 +1093,27 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                     </div>
                   </div>
                 </div>
-              )}
-              
-              <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                <button
-                  onClick={() => handleActionClick("stock_in")}
-                  className="w-full flex items-center justify-between rounded-2xl bg-emerald-600 p-6 text-white shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
-                >
-                  <div className="text-left">
-                    <h3 className="text-xl font-black">รับเข้า</h3>
-                    <p className="mt-1 text-emerald-100 text-xs">เพิ่มจำนวนสต๊อก</p>
-                  </div>
-                  <div className="text-3xl">📦</div>
-                </button>
-
-                <button
-                  onClick={() => handleActionClick("issue")}
-                  className="w-full flex items-center justify-between rounded-2xl bg-amber-500 p-6 text-white shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
-                >
-                  <div className="text-left">
-                    <h3 className="text-xl font-black">จ่ายออก</h3>
-                    <p className="mt-1 text-amber-100 text-xs">
-                      ของเสีย หรือ จ่ายออกจากสต๊อก
-                    </p>
-                  </div>
-                  <div className="text-3xl">📤</div>
-                </button>
-
-                <button
-                  onClick={() => handleActionClick("adjust")}
-                  className="w-full flex items-center justify-between rounded-2xl bg-sky-600 p-6 text-white shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
-                >
-                  <div className="text-left">
-                    <h3 className="text-xl font-black">ปรับยอด</h3>
-                    <p className="mt-1 text-sky-100 text-xs">ตั้งยอดคงเหลือตามที่นับได้</p>
-                  </div>
-                  <div className="text-3xl">🔢</div>
-                </button>
-              </div>
+              ) : null}
 
               {/* Table View of Balances */}
               <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <div className="p-4 border-b border-slate-200 bg-slate-50">
                   <div className="flex flex-wrap items-end justify-between gap-3">
-                    <h3 className="font-bold text-slate-800">ยอดคงเหลือปัจจุบัน</h3>
-                    <div className="w-full max-w-xs">
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                      <h3 className="font-bold text-slate-800">ยอดคงเหลือปัจจุบัน</h3>
+                      <ShareExportMenu
+                        busy={exportBusy}
+                        message={exportMsg}
+                        disabled={busy || visibleItems.length === 0}
+                        className="sm:hidden"
+                        sheetTitle="แชร์ยอดคงเหลือ"
+                        sheetHint="แชร์รูป บันทึกรูป หรือคัดลอกข้อความส่งทีม"
+                        onShareImage={handleManageShareImage}
+                        onSaveImage={handleManageSaveImage}
+                        onCopyText={handleManageCopyText}
+                      />
+                    </div>
+                    <div className="w-full max-w-xs sm:w-auto sm:flex-1 sm:max-w-xs">
                       <input
                         type="search"
                         value={manageQ}
@@ -925,6 +1123,11 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                       />
                     </div>
                   </div>
+                  {exportMsg ? (
+                    <p className="mt-2 text-xs font-medium text-emerald-700 sm:hidden">
+                      {exportMsg}
+                    </p>
+                  ) : null}
 
                   {/* Type Filter */}
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -984,6 +1187,85 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                   )}
                 </div>
 
+                {visibleItems.length > 0 ? (
+                  <div
+                    ref={manageCaptureRef}
+                    className="pointer-events-none fixed -left-[10000px] top-0 z-[-1] w-[min(100vw,400px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    aria-hidden
+                  >
+                    {branchName?.trim() ? (
+                      <p className="text-sm font-extrabold text-slate-900">
+                        {branchName.trim()}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs font-bold text-slate-800">
+                      ยอดคงเหลือ · {manageStockTypeLabel}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {captureStamp || formatBangkokDateTime(new Date().toISOString())}
+                      {categoryFilter !== "ALL" ? ` · หมวด ${categoryFilter}` : ""}
+                    </p>
+                    <ul className="mt-3 divide-y divide-slate-100">
+                      {visibleItems.map((item) => {
+                        const dbBalance =
+                          data.balances.find((b) => b.product.id === item.id)
+                            ?.quantity ?? 0;
+                        const seq = seqById.get(item.id) ?? 0;
+                        const hasPar =
+                          item.stockType === "SALE_ITEM" &&
+                          item.parStock != null;
+                        const belowPar = hasPar && dbBalance < item.parStock!;
+                        return (
+                          <li
+                            key={item.id}
+                            className="flex items-center justify-between gap-3 py-2.5"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-slate-900">
+                                {seq}. {item.name}
+                              </p>
+                              {item.productCode ? (
+                                <p className="text-[11px] text-slate-500">
+                                  {item.productCode}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="flex shrink-0 items-stretch gap-1.5">
+                              {hasPar ? (
+                                <div className="min-w-[2.75rem] rounded-lg bg-sky-50 px-2 py-1.5 text-center text-sky-800">
+                                  <p className="text-sm font-black tabular-nums leading-none">
+                                    {item.parStock}
+                                  </p>
+                                  <p className="mt-0.5 text-[9px] font-semibold">
+                                    {PAR_STOCK_SHORT_LABEL}
+                                  </p>
+                                </div>
+                              ) : null}
+                              <div
+                                className={`min-w-[3.25rem] rounded-lg px-2 py-1.5 text-center ${
+                                  belowPar || dbBalance <= 0
+                                    ? "bg-red-50 text-red-700"
+                                    : "bg-emerald-50 text-emerald-700"
+                                }`}
+                              >
+                                <p className="text-sm font-black tabular-nums leading-none">
+                                  {dbBalance}
+                                </p>
+                                <p className="mt-0.5 text-[9px] font-semibold opacity-80">
+                                  คงเหลือ
+                                </p>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <p className="mt-3 border-t border-slate-100 pt-2 text-center text-[11px] font-semibold text-slate-500">
+                      รวม {visibleItems.length} รายการ
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm text-slate-600">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
@@ -992,7 +1274,10 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                         <th className="px-4 py-3 font-semibold w-16">รหัส</th>
                         <th className="px-4 py-3 font-semibold">รายการ</th>
                         <th className="px-4 py-3 font-semibold">หมวดหมู่</th>
-                        <th className="px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
+                        <th className="hidden sm:table-cell px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
+                        {showParColumn ? (
+                          <th className="px-3 py-3 font-semibold text-right whitespace-nowrap">{PAR_STOCK_SHORT_LABEL}</th>
+                        ) : null}
                         <th className="px-4 py-3 font-semibold text-right">ยอดคงเหลือ</th>
                         <th className="px-4 py-3 font-semibold text-right w-28">จัดการ</th>
                       </tr>
@@ -1001,7 +1286,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                       {visibleItems.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={showParColumn ? 8 : 7}
                             className="px-4 py-10 text-center text-sm text-slate-500"
                           >
                             {manageQ.trim()
@@ -1017,6 +1302,9 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                         const alertAt =
                           item.lowStockAlert == null ? 0 : item.lowStockAlert;
                         const unitPrice = Number(item.price ?? 0);
+                        const hasPar =
+                          item.stockType === "SALE_ITEM" && item.parStock != null;
+                        const belowPar = hasPar && dbBalance < item.parStock!;
                         return (
                           <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3 text-sm font-bold tabular-nums text-slate-400 align-top">
@@ -1054,6 +1342,11 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                                       </span>
                                     ) : null}
                                   </div>
+                                  {hasPar ? (
+                                    <div className="mt-0.5 text-[11px] font-bold text-sky-700 sm:hidden">
+                                      {PAR_STOCK_SHORT_LABEL} {item.parStock} {item.unit}
+                                    </div>
+                                  ) : null}
                                 </div>
                               </div>
                             </td>
@@ -1062,7 +1355,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                                 {item.category || "-"}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right text-xs font-semibold tabular-nums text-slate-600">
+                            <td className="hidden sm:table-cell px-4 py-3 text-right text-xs font-semibold tabular-nums text-slate-600">
                               {unitPrice > 0 ? (
                                 <>฿{formatPrice(unitPrice)}</>
                               ) : (
@@ -1071,9 +1364,20 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
                                 </span>
                               )}
                             </td>
+                            {showParColumn ? (
+                              <td className="px-3 py-3 text-right">
+                                {hasPar ? (
+                                  <span className="inline-flex items-center rounded-lg bg-sky-50 px-2 py-1 text-sm font-bold tabular-nums text-sky-800 ring-1 ring-inset ring-sky-600/10">
+                                    {item.parStock}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                            ) : null}
                             <td className="px-4 py-3 text-right">
                               <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-bold ${
-                                dbBalance <= alertAt
+                                dbBalance <= alertAt || belowPar
                                   ? "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/10"
                                   : "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10"
                               }`}>
@@ -1451,7 +1755,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
           )}
         </div>
       )}
-      </>
+        </div>
       )}
 
       {/* Modal สร้างของสิ้นเปลือง/อุปกรณ์ */}

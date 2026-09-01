@@ -1,3 +1,4 @@
+import { PAR_COMPARISON_LABELS } from "@/lib/inventory/inventory-par-labels";
 import type { InventoryReasonCode } from "@/lib/inventory/inventory-reason-codes";
 
 export type DerivedInventoryAlertKind =
@@ -18,11 +19,11 @@ export type DerivedInventoryAlert = {
 const ALERT_LABELS: Record<DerivedInventoryAlertKind, string> = {
   OUT_OF_STOCK: "ของหมด",
   LOW_STOCK: "สต๊อกต่ำ",
-  BELOW_PAR: "ต่ำกว่า Par",
+  BELOW_PAR: PAR_COMPARISON_LABELS.BELOW_PAR,
   OVERSTOCK: "สต๊อกเกิน",
   REFILL_REQUIRED: "ควรเติมพรุ่งนี้",
   HIGH_DEMAND: "ความต้องการสูง",
-  NO_PAR: "ยังไม่ตั้ง Par",
+  NO_PAR: PAR_COMPARISON_LABELS.NO_PAR,
 };
 
 /** Phase 1: derived alerts only — no persisted lifecycle. */

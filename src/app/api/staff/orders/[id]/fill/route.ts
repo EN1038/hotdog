@@ -27,6 +27,7 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { orderGrandTotal } from "@/lib/order-totals";
+import { validateOrderDiscount } from "@/lib/order-discount";
 import { deductStockForOrder, deductBranchMenuStockForOrder, deductBranchNonMenuStockForOrder, StockError } from "@/lib/stock";
 import { isMenuItemSoldOut, isPromoMenuItem } from "@/lib/staff-key-order";
 
@@ -63,6 +64,9 @@ const fillSchema = z.object({
     .max(50)
     .optional(),
   items: z.array(orderItemSchema).min(1),
+  discountAmount: z.number().min(0).max(999_999).optional(),
+  discountReason: z.string().trim().max(40).optional(),
+  discountReasonNote: z.string().trim().max(120).optional(),
 });
 
 /** Fill menu items for a photo-draft order (until round cutoff lock). */
@@ -321,6 +325,23 @@ export async function PUT(request: Request, { params }: Params) {
       ? OrderStatus.PREPARING
       : OrderStatus.WAITING_FOR_STORE_ACCEPTANCE;
 
+    const itemsSubtotalPreview = orderItems.reduce(
+      (sum, item) =>
+        sum +
+        (Number(item.unitPrice) + Number(item.optionsPrice)) * item.quantity,
+      0,
+    );
+    const discountCheck = validateOrderDiscount({
+      itemsSubtotal: itemsSubtotalPreview,
+      deliveryFee: Number(deliveryFee),
+      discountAmount: body.discountAmount ?? 0,
+      discountReason: body.discountReason,
+      discountReasonNote: body.discountReasonNote,
+    });
+    if (!discountCheck.ok) {
+      return jsonError(discountCheck.error);
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       await tx.orderItem.deleteMany({ where: { orderId: id } });
       await tx.orderConsumableLine.deleteMany({ where: { orderId: id } });
@@ -354,6 +375,12 @@ export async function PUT(request: Request, { params }: Params) {
           cupCount: derivedCupCount,
           bagCount: derivedBagCount,
           deliveryFee,
+          discountAmount: new Prisma.Decimal(discountCheck.discountAmount),
+          discountReason: discountCheck.discountReason,
+          discountReasonNote:
+            discountCheck.discountReason === "other"
+              ? body.discountReasonNote?.trim() || null
+              : null,
           status: nextStatus,
           items: { create: orderItems },
           consumableLines:
@@ -417,7 +444,7 @@ export async function PUT(request: Request, { params }: Params) {
         optionsPrice: Number(item.optionsPrice),
       })),
       Number(deliveryFee),
-      0,
+      discountCheck.discountAmount,
     );
 
     return jsonOk({

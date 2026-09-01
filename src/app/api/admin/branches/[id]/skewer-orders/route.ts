@@ -25,6 +25,7 @@ import {
   loadLatestRepeatCustomerUnitPrices,
   lookupRepeatSkewerUnitPrice,
 } from "@/lib/skewer-order-repeat-pricing";
+import { validateOrderDiscount } from "@/lib/order-discount";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -64,6 +65,40 @@ async function applySkewerOrderItemPricing(
 
 function resolveShippingCostBaht(value: number | null | undefined) {
   return value != null && value >= 0 ? value : null;
+}
+
+function pricingLinesSubtotal(
+  existingItems: Array<{
+    id: string;
+    confirmedQuantity: number | null;
+    requestedQuantity: number;
+  }>,
+  pricingLines: PricingLine[],
+): number {
+  const priceById = new Map(pricingLines.map((l) => [l.id, l.unitPriceBaht]));
+  let sum = 0;
+  for (const item of existingItems) {
+    const qty = item.confirmedQuantity ?? item.requestedQuantity;
+    if (qty <= 0) continue;
+    sum += qty * (priceById.get(item.id) ?? 0);
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+function resolveSkewerOrderDiscount(input: {
+  itemsSubtotal: number;
+  shippingCostBaht: number | null;
+  discountAmount?: number;
+  discountReason?: string | null;
+  discountReasonNote?: string | null;
+}) {
+  return validateOrderDiscount({
+    itemsSubtotal: input.itemsSubtotal,
+    deliveryFee: input.shippingCostBaht ?? 0,
+    discountAmount: input.discountAmount ?? 0,
+    discountReason: input.discountReason,
+    discountReasonNote: input.discountReasonNote,
+  });
 }
 
 const skewerItemInclude = {
@@ -157,6 +192,9 @@ function serialize(
   customerId?: string;
   publicShareToken?: string | null;
   shippingCostBaht?: { toString(): string } | number | string | null;
+  discountAmount?: { toString(): string } | number | string | null;
+  discountReason?: string | null;
+  discountReasonNote?: string | null;
   deliveredAt?: Date | null;
   deliveredOn?: Date | null;
   deliveryInfo?: string | null;
@@ -182,11 +220,15 @@ function serialize(
   },
   repeatPrices?: Map<string, number>,
 ) {
-  const { items, publicShareToken, shippingCostBaht, ...rest } = order;
+  const { items, publicShareToken, shippingCostBaht, discountAmount, discountReason, discountReasonNote, ...rest } = order;
   const shippingRaw =
     shippingCostBaht != null && shippingCostBaht !== ""
       ? Number(shippingCostBaht)
       : null;
+  const discountRaw =
+    discountAmount != null && discountAmount !== ""
+      ? Number(discountAmount)
+      : 0;
   const itemOpts = order.customerId
     ? { customerId: order.customerId, repeatPrices }
     : undefined;
@@ -200,6 +242,10 @@ function serialize(
     deliveryInfo: order.deliveryInfo ?? null,
     shippingCostBaht:
       shippingRaw != null && Number.isFinite(shippingRaw) ? shippingRaw : null,
+    discountAmount:
+      Number.isFinite(discountRaw) && discountRaw > 0 ? discountRaw : 0,
+    discountReason: discountReason ?? null,
+    discountReasonNote: discountReasonNote ?? null,
     publicSharePath: publicShareToken
       ? skewerOrderPublicSharePath(publicShareToken)
       : null,
@@ -290,6 +336,9 @@ const patchSchema = z.discriminatedUnion("action", [
     deliveredOn: z.string().trim().min(1),
     deliveryInfo: z.string().trim().max(1000).optional(),
     shippingCostBaht: z.number().min(0).max(999_999).optional().nullable(),
+    discountAmount: z.number().min(0).max(999_999).optional(),
+    discountReason: z.string().trim().max(40).optional().nullable(),
+    discountReasonNote: z.string().trim().max(120).optional().nullable(),
     items: z
       .array(
         z.object({
@@ -311,6 +360,9 @@ const patchSchema = z.discriminatedUnion("action", [
       )
       .min(1),
     shippingCostBaht: z.number().min(0).max(999_999).optional().nullable(),
+    discountAmount: z.number().min(0).max(999_999).optional(),
+    discountReason: z.string().trim().max(40).optional().nullable(),
+    discountReasonNote: z.string().trim().max(120).optional().nullable(),
   }),
 ]);
 
@@ -394,6 +446,22 @@ export async function PATCH(request: Request, { params }: Params) {
       }
 
       const shippingCost = resolveShippingCostBaht(body.shippingCostBaht);
+      const pricingLines =
+        body.items ??
+        existing.items.map((item) => ({
+          id: item.id,
+          unitPriceBaht: Number(item.unitPriceBaht ?? 0),
+        }));
+      const itemsSubtotal = pricingLinesSubtotal(existing.items, pricingLines);
+      const discountCheck = resolveSkewerOrderDiscount({
+        itemsSubtotal,
+        shippingCostBaht: shippingCost,
+        discountAmount: body.discountAmount,
+        discountReason: body.discountReason,
+        discountReasonNote: body.discountReasonNote,
+      });
+      if (!discountCheck.ok) return jsonError(discountCheck.error);
+
       const updated = await prisma.$transaction(async (tx) => {
         if (body.items?.length) {
           await applySkewerOrderItemPricing(tx, body.items);
@@ -406,6 +474,12 @@ export async function PATCH(request: Request, { params }: Params) {
             deliveredOn: queueBusinessDateFromKey(body.deliveredOn),
             deliveryInfo: body.deliveryInfo?.trim() || null,
             shippingCostBaht: shippingCost,
+            discountAmount: new Prisma.Decimal(discountCheck.discountAmount),
+            discountReason: discountCheck.discountReason,
+            discountReasonNote:
+              discountCheck.discountReason === "other"
+                ? body.discountReasonNote?.trim() || null
+                : null,
           },
           include: { items: skewerItemInclude },
         });
@@ -437,11 +511,29 @@ export async function PATCH(request: Request, { params }: Params) {
       if (pricingErr) return jsonError(pricingErr);
 
       const shippingCost = resolveShippingCostBaht(body.shippingCostBaht);
+      const itemsSubtotal = pricingLinesSubtotal(existing.items, body.items);
+      const discountCheck = resolveSkewerOrderDiscount({
+        itemsSubtotal,
+        shippingCostBaht: shippingCost,
+        discountAmount: body.discountAmount,
+        discountReason: body.discountReason,
+        discountReasonNote: body.discountReasonNote,
+      });
+      if (!discountCheck.ok) return jsonError(discountCheck.error);
+
       const updated = await prisma.$transaction(async (tx) => {
         await applySkewerOrderItemPricing(tx, body.items);
         return tx.skewerOrder.update({
           where: { id: existing.id },
-          data: { shippingCostBaht: shippingCost },
+          data: {
+            shippingCostBaht: shippingCost,
+            discountAmount: new Prisma.Decimal(discountCheck.discountAmount),
+            discountReason: discountCheck.discountReason,
+            discountReasonNote:
+              discountCheck.discountReason === "other"
+                ? body.discountReasonNote?.trim() || null
+                : null,
+          },
           include: { items: skewerItemInclude },
         });
       }, SKEWER_ORDER_TX);

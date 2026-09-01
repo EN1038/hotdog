@@ -21,6 +21,11 @@ import {
   INVENTORY_STATUS_TONE,
   type InventoryStatusSeverity,
 } from "@/lib/inventory/inventory-status";
+import {
+  PAR_COMPARISON_LABELS,
+  PAR_STOCK_LABEL,
+  PAR_STOCK_SHORT_LABEL,
+} from "@/lib/inventory/inventory-par-labels";
 import { FORECAST_SOURCE_LABELS } from "@/lib/inventory/inventory-forecast";
 import {
   bangkokWeekdayLabel,
@@ -315,19 +320,13 @@ export function BranchTomorrowPlanPanel({
     }
   }
 
-  const shareItems = useMemo(
-    () =>
-      filteredItems.filter((row) => rowConfirmQty(row, confirmDraft) > 0),
-    [filteredItems, confirmDraft],
-  );
-
   const shareText = useMemo(() => {
-    if (!data || shareItems.length === 0) return "";
+    if (!data || filteredItems.length === 0) return "";
     return formatTomorrowPlanShareText(data.branchName, {
       tomorrowDate: data.tomorrowDate,
-      items: toShareRows(shareItems, confirmDraft),
+      items: toShareRows(filteredItems, confirmDraft),
     });
-  }, [data, shareItems, confirmDraft]);
+  }, [data, filteredItems, confirmDraft]);
 
   const tomorrowLabel = data ? bangkokWeekdayLabel(data.tomorrowDate) : "";
 
@@ -363,7 +362,7 @@ export function BranchTomorrowPlanPanel({
   }
 
   async function handleShareImage() {
-    if (exportBusy || shareItems.length === 0) return;
+    if (exportBusy || filteredItems.length === 0) return;
     setExportBusy("share");
     setExportMsg("");
     try {
@@ -396,7 +395,7 @@ export function BranchTomorrowPlanPanel({
   }
 
   async function handleSaveImage() {
-    if (exportBusy || shareItems.length === 0) return;
+    if (exportBusy || filteredItems.length === 0) return;
     setExportBusy("save");
     setExportMsg("");
     try {
@@ -441,8 +440,7 @@ export function BranchTomorrowPlanPanel({
     }
   }
 
-  const captureRows =
-    exportCapturing && shareItems.length > 0 ? shareItems : filteredItems;
+  const captureRows = filteredItems;
 
   const tableTotals = useMemo(() => {
     return captureRows.reduce(
@@ -472,12 +470,12 @@ export function BranchTomorrowPlanPanel({
               แผนผลิต-เติมสินค้าขาย
             </h3>
             <p className="mt-1 text-sm text-gray-600">
-              เติมถึง <span className="font-medium text-gray-800">Par ที่ตั้งไว้</span>
+              เติมถึง <span className="font-medium text-gray-800">ยอดที่ตั้งไว้</span>
               {" "}— พยากรณ์โชว์ประกอบ ไม่คำนวณเป้าคนละสูตร
             </p>
             {data ? (
               <p className="mt-2 text-sm text-gray-700">
-                พรุ่งนี้ ({tomorrowLabel} {data.tomorrowDate}) · ส่งผลิต = Par −
+                พรุ่งนี้ ({tomorrowLabel} {data.tomorrowDate}) · ส่งผลิต = {PAR_STOCK_SHORT_LABEL} −
                 ของที่มี
               </p>
             ) : null}
@@ -493,7 +491,7 @@ export function BranchTomorrowPlanPanel({
             {data?.summary?.branchParTarget != null ? (
               <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">
                 ขายเฉลี่ย ~{(data.summary.totalAvgDailySales ?? 0).toLocaleString("th-TH")}{" "}
-                ไม้/วัน · Par ตั้งไว้{" "}
+                ไม้/วัน · {PAR_STOCK_SHORT_LABEL}ตั้งไว้{" "}
                 {(data.summary.sumCurrentPar ?? 0).toLocaleString("th-TH")} · คงเหลือ{" "}
                 {(data.summary.sumAvailableStock ?? 0).toLocaleString("th-TH")} ·
                 ควรเติม{" "}
@@ -504,7 +502,7 @@ export function BranchTomorrowPlanPanel({
               <p className="mt-1 text-xs font-medium text-emerald-700">{exportMsg}</p>
             ) : null}
             <p className="mt-1 text-xs text-gray-500">
-              ยังไม่ตั้ง Par = ไม่มีจำนวนส่งผลิต — ไปแท็บแนะนำ Par Stock เพื่อตั้งก่อน
+              {PAR_COMPARISON_LABELS.NO_PAR} = ไม่มีจำนวนส่งผลิต — ไปแท็บแนะนำ{PAR_STOCK_LABEL}เพื่อตั้งก่อน
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -521,18 +519,18 @@ export function BranchTomorrowPlanPanel({
               type="button"
               className={btnOutline}
               onClick={() => exportCsv()}
-              disabled={loading || !data || shareItems.length === 0}
+              disabled={loading || !data || filteredItems.length === 0}
             >
               Export CSV
             </button>
             <ShareExportMenu
               busy={exportBusy}
               message={exportMsg}
-              disabled={busy || loading || shareItems.length === 0}
+              disabled={busy || loading || filteredItems.length === 0}
               className={btnOutline}
               label={
-                shareItems.length > 0
-                  ? `แชร์ (${shareItems.length})`
+                filteredItems.length > 0
+                  ? `แชร์ (${filteredItems.length})`
                   : "แชร์"
               }
               sheetTitle="แชร์แผนผลิต-เติม"
@@ -590,7 +588,7 @@ export function BranchTomorrowPlanPanel({
           description={
             loadError
               ? loadError
-              : "กดสร้างแผน เพื่อคำนวณรายการส่งผลิตจาก Par และสต็อกปัจจุบัน"
+              : `กดสร้างแผน เพื่อคำนวณรายการส่งผลิตจาก${PAR_STOCK_SHORT_LABEL}และสต็อกปัจจุบัน`
           }
           action={
             <button
@@ -609,7 +607,7 @@ export function BranchTomorrowPlanPanel({
             <KpiCard
               value={data.summary.refillRequiredCount.toLocaleString("th-TH")}
               label="ควรส่งผลิต"
-              hint="ต่ำกว่า Par"
+              hint={PAR_COMPARISON_LABELS.BELOW_PAR}
             />
             <KpiCard
               value={data.summary.totalSuggestedRefill.toLocaleString("th-TH")}
@@ -622,7 +620,7 @@ export function BranchTomorrowPlanPanel({
             />
             <KpiCard
               value={(data.summary.sumCurrentPar ?? 0).toLocaleString("th-TH")}
-              label="Par ที่ตั้งไว้"
+              label="ยอดที่ตั้งไว้"
             />
             <KpiCard
               value={(data.summary.sumAvailableStock ?? 0).toLocaleString("th-TH")}
@@ -630,7 +628,7 @@ export function BranchTomorrowPlanPanel({
             />
             <KpiCard
               value={noParCount.toLocaleString("th-TH")}
-              label="ยังไม่ตั้ง Par"
+              label={PAR_COMPARISON_LABELS.NO_PAR}
             />
           </div>
 
@@ -648,15 +646,15 @@ export function BranchTomorrowPlanPanel({
                     },
                     {
                       id: "BELOW_PAR" as const,
-                      label: `ต่ำกว่า Par (${data.summary.belowParCount})`,
+                      label: `${PAR_COMPARISON_LABELS.BELOW_PAR} (${data.summary.belowParCount})`,
                     },
                     {
                       id: "HAS_PAR" as const,
-                      label: `ตั้ง Par แล้ว (${hasParCount})`,
+                      label: `ตั้ง${PAR_STOCK_SHORT_LABEL}แล้ว (${hasParCount})`,
                     },
                     {
                       id: "NO_PAR" as const,
-                      label: `ยังไม่ตั้ง Par (${noParCount})`,
+                      label: `${PAR_COMPARISON_LABELS.NO_PAR} (${noParCount})`,
                     },
                     {
                       id: "ALL" as const,
@@ -725,9 +723,9 @@ export function BranchTomorrowPlanPanel({
                 query.trim()
                   ? "ไม่พบเมนูที่ตรงกับคำค้น"
                   : statusFilter === "NO_PAR"
-                    ? "ทุกรายการตั้ง Par แล้ว"
+                    ? `ทุกรายการตั้ง${PAR_STOCK_SHORT_LABEL}แล้ว`
                     : statusFilter === "HAS_PAR"
-                      ? "ยังไม่มีรายการที่ตั้ง Par"
+                      ? `ยังไม่มีรายการที่ตั้ง${PAR_STOCK_SHORT_LABEL}`
                       : statusFilter === "REFILL"
                       ? "ไม่มีรายการที่ต้องส่งผลิต"
                       : "ไม่มีรายการตามตัวกรอง"
@@ -736,9 +734,9 @@ export function BranchTomorrowPlanPanel({
                 query.trim()
                   ? "ลองค้นหาชื่อหรือรหัสอื่น"
                   : statusFilter === "HAS_PAR"
-                    ? "ยังไม่มีเมนูที่ Par มากกว่า 0 — ไปแท็บแนะนำ Par Stock เพื่อตั้งค่า"
+                    ? `ยังไม่มีเมนูที่${PAR_STOCK_SHORT_LABEL}มากกว่า 0 — ไปแท็บแนะนำ${PAR_STOCK_LABEL}เพื่อตั้งค่า`
                     : statusFilter === "REFILL"
-                    ? "สต็อกถึง Par แล้ว หรือยังไม่ได้ตั้ง Par — ดูแท็บแนะนำ Par Stock"
+                    ? `สต็อกถึง${PAR_STOCK_SHORT_LABEL}แล้ว หรือ${PAR_COMPARISON_LABELS.NO_PAR} — ดูแท็บแนะนำ${PAR_STOCK_LABEL}`
                     : "ลองเปลี่ยนตัวกรองสถานะหรือกลุ่มขาย"
               }
             />
@@ -753,7 +751,7 @@ export function BranchTomorrowPlanPanel({
                     แผนผลิต-เติม — {data.branchName}
                   </p>
                   <p className="text-xs text-gray-500">
-                    พรุ่งนี้ {data.tomorrowDate} ({tomorrowLabel}) · เติมถึง Par ·{" "}
+                    พรุ่งนี้ {data.tomorrowDate} ({tomorrowLabel}) · เติมถึง{PAR_STOCK_SHORT_LABEL} ·{" "}
                     {captureStamp}
                   </p>
                 </div>
@@ -765,11 +763,11 @@ export function BranchTomorrowPlanPanel({
                       <th className="px-3 py-3">รหัส</th>
                       <th className="px-3 py-3">สินค้า</th>
                       <th className="px-3 py-3">กลุ่มขาย</th>
-                      <th className="px-3 py-3 text-right">Par</th>
+                      <th className="px-3 py-3 text-right">{PAR_STOCK_SHORT_LABEL}</th>
                       <th className="px-3 py-3 text-right">คงเหลือ</th>
                       <th className="px-3 py-3 text-right">ควรส่ง</th>
                       <th className="px-3 py-3 text-right">ยืนยันส่งผลิต</th>
-                      <th className="px-3 py-3">เทียบ Par</th>
+                      <th className="px-3 py-3">เทียบ{PAR_STOCK_SHORT_LABEL}</th>
                       <th className="px-3 py-3 text-right">คาดขาย</th>
                       {!exportCapturing ? (
                         <>

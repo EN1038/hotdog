@@ -2,114 +2,102 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError } from "@/lib/api";
-import { hashAndSealPassword } from "@/lib/admin-password";
-import { NEW_BRAND_DEFAULTS, trialEndsAtFromNow } from "@/lib/brand-plan";
-import { slugifyCode, withUniqueSuffix } from "@/lib/slug";
-import { attachSessionCookie } from "@/lib/auth";
-import { DEFAULT_BRAND_COLOR } from "@/lib/color";
 import { normalizePhone } from "@/lib/constants";
+import { attachSessionCookie } from "@/lib/auth";
+import { consumeOtpChallenge } from "@/lib/otp-challenge";
+import {
+  OWNER_REGISTER_IMPORT_OPTIONS,
+  OWNER_REGISTER_TRIAL_DAYS,
+  OWNER_SHOP_CATEGORY_IDS,
+  categoryAllowsMasterImport,
+} from "@/lib/owner-register-shared";
+import { createOwnerRegistration } from "@/lib/owner-register-setup";
+
+const importIds = OWNER_REGISTER_IMPORT_OPTIONS.map((o) => o.id) as [
+  "none",
+  "menu",
+  "full",
+];
 
 const schema = z.object({
-  shopName: z.string().trim().min(2, "กรุณากรอกชื่อร้าน"),
-  phone: z.string().optional(),
-  username: z
-    .string()
-    .trim()
-    .min(3, "ไอดีต้องมีอย่างน้อย 3 ตัวอักษร"),
-  password: z.string().min(6, "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"),
+  phone: z.string().min(9),
+  challengeId: z.string().min(1),
+  otpCode: z.string().min(4).max(8),
+  shopName: z.string().trim().min(2, "กรุณากรอกชื่อร้าน").max(80),
+  shopCategory: z.enum(OWNER_SHOP_CATEGORY_IDS),
+  importMaster: z.enum(importIds).optional().default("none"),
 });
-
-async function uniqueBrandCode(shopName: string): Promise<string> {
-  const base = slugifyCode(shopName) || "shop";
-  const existing = await prisma.brand.findMany({ select: { code: true } });
-  const taken = new Set(existing.map((b) => b.code));
-  return withUniqueSuffix(base, taken);
-}
 
 export async function POST(request: Request) {
   try {
     const body = schema.parse(await request.json());
-    const username = body.username.trim().toLowerCase();
-    if (!/^[a-z0-9._-]{3,40}$/.test(username)) {
-      return jsonError("ไอดีใช้ได้เฉพาะ a-z, 0-9, จุด, - และ _");
+    const phone = normalizePhone(body.phone);
+    if (phone.length < 9) {
+      return jsonError("เบอร์โทรไม่ถูกต้อง");
     }
 
-    const dupAdmin = await prisma.admin.findUnique({ where: { username } });
-    if (dupAdmin) return jsonError("ไอดีนี้มีคนใช้แล้ว กรุณาใช้ชื่ออื่น");
-
-    const phone = body.phone ? normalizePhone(body.phone) : "";
-    const code = await uniqueBrandCode(body.shopName);
-    const { passwordHash, passwordEnc } = await hashAndSealPassword(
-      body.password,
-    );
-
-    const result = await prisma.$transaction(async (tx) => {
-      const brand = await tx.brand.create({
-        data: {
-          code,
-          name: body.shopName.trim(),
-          contactPhone: phone || null,
-          color: DEFAULT_BRAND_COLOR,
-          status: NEW_BRAND_DEFAULTS.status,
-          plan: NEW_BRAND_DEFAULTS.plan,
-          maxBranches: NEW_BRAND_DEFAULTS.maxBranches,
-          maxStaff: NEW_BRAND_DEFAULTS.maxStaff,
-          stockEnabled: NEW_BRAND_DEFAULTS.stockEnabled,
-          kitchenEnabled: NEW_BRAND_DEFAULTS.kitchenEnabled,
-          bbqEnabled: NEW_BRAND_DEFAULTS.bbqEnabled,
-          skewerEnabled: NEW_BRAND_DEFAULTS.skewerEnabled,
-          trialEndsAt: trialEndsAtFromNow(),
-        },
-      });
-
-      const admin = await tx.admin.create({
-        data: {
-          username,
-          passwordHash,
-          passwordEnc,
-          isPlatformAdmin: false,
-        },
-      });
-
-      await tx.brandMember.create({
-        data: {
-          adminId: admin.id,
-          brandId: brand.id,
-          role: "OWNER",
-        },
-      });
-
-      await tx.brand.update({
-        where: { id: brand.id },
-        data: { primaryAdminId: admin.id },
-      });
-
-      await tx.branch.create({
-        data: {
-          brandId: brand.id,
-          code: "main",
-          name: "สาขาหลัก",
-          phone: phone || null,
-          isOpen: false,
-        },
-      });
-
-      return { brand, admin };
+    const dup = await prisma.admin.findFirst({
+      where: {
+        isPlatformAdmin: false,
+        OR: [{ phone }, { username: phone }],
+      },
+      select: { id: true },
     });
+    if (dup) {
+      return jsonError("เบอร์นี้สมัครแล้ว — กรุณาเข้าสู่ระบบ", 409, {
+        redirect: "/owner/login",
+      });
+    }
+
+    const otp = await consumeOtpChallenge({
+      phone,
+      challengeId: body.challengeId,
+      otpCode: body.otpCode.trim(),
+      purpose: "owner_register",
+    });
+    if (!otp.ok) {
+      return jsonError(otp.message, otp.status);
+    }
+
+    let importMaster = body.importMaster;
+    if (!categoryAllowsMasterImport(body.shopCategory)) {
+      importMaster = "none";
+    }
+
+    const result = await createOwnerRegistration({
+      phone,
+      shopName: body.shopName,
+      shopCategory: body.shopCategory,
+      importMaster,
+    });
+
+    const importRequested =
+      importMaster !== "none" && categoryAllowsMasterImport(body.shopCategory);
+    const importWarning =
+      importRequested && !result.importSummary
+        ? "ไม่พบต้นแบบหมาล่าไวไวในระบบ — กรุณาติดต่อทีมงานหรือตั้งค่า OWNER_REGISTER_MENU_TEMPLATE_BRANCH_ID"
+        : null;
 
     const res = NextResponse.json({
       ok: true,
-      shopName: result.brand.name,
-      username,
-      trialDays: NEW_BRAND_DEFAULTS.trialDays,
+      shopName: result.brandName,
+      brandCode: result.brandCode,
+      trialDays: OWNER_REGISTER_TRIAL_DAYS,
+      trialEndsAt: result.trialEndsAt.toISOString(),
+      branchId: result.branchId,
+      importSummary: result.importSummary,
+      importWarning,
+      redirect: "/owner/welcome",
     });
+
     await attachSessionCookie(res, {
       type: "admin",
-      adminId: result.admin.id,
-      username,
+      adminId: result.adminId,
+      username: phone,
       isPlatformAdmin: false,
-      brandIds: [result.brand.id],
+      brandIds: [result.brandId],
     });
+
     return res;
   } catch (error) {
     return handleApiError(error);

@@ -1,3 +1,8 @@
+import {
+  PAR_STOCK_LABEL,
+  PAR_STOCK_SHORT_LABEL,
+  parStockShareHeader,
+} from "@/lib/inventory/inventory-par-labels";
 import type { ParStockApiRow } from "@/lib/inventory/inventory-shared-types";
 import { formatBangkokDateTime } from "@/lib/inventory/inventory-date";
 
@@ -22,9 +27,7 @@ export function formatParStockShareText(input: {
     refill: number;
   }>;
 }): string {
-  const header = input.branchName
-    ? `📌 แนะนำ Par Stock — ${input.branchName}`
-    : "📌 แนะนำ Par Stock";
+  const header = parStockShareHeader(input.branchName);
   const target =
     input.branchParTarget != null
       ? `เป้าทั้งร้าน ${input.branchParTarget.toLocaleString("th-TH")} ไม้`
@@ -40,7 +43,7 @@ export function formatParStockShareText(input: {
   const lines = input.items.map((row, i) => {
     const refill =
       row.refill > 0 ? `ควรเติม ${row.refill}` : "พอแล้ว";
-    return `${i + 1}. [${row.productCode}] [${row.salesGradeLabel}] ${row.name} — Par ${row.currentPar} · แนะนำ ${row.recommendedPar} · สต็อก ${row.availableStock} · ${refill} (ขาย ${row.totalSold} · เฉลี่ย ${row.avgDailySales} · ต่ำ-สูง ${row.minDailySales}–${row.maxDailySales})`;
+    return `${i + 1}. [${row.productCode}] [${row.salesGradeLabel}] ${row.name} — ${PAR_STOCK_SHORT_LABEL} ${row.currentPar} · แนะนำ ${row.recommendedPar} · สต็อก ${row.availableStock} · ${refill} (ขาย ${row.totalSold} · เฉลี่ย ${row.avgDailySales} · ต่ำ-สูง ${row.minDailySales}–${row.maxDailySales})`;
   });
 
   return [
@@ -48,13 +51,13 @@ export function formatParStockShareText(input: {
     `ช่วง ${input.from} – ${input.to}`,
     hold,
     input.lastParUpdatedAt
-      ? `Par อัปเดตล่าสุด ${formatBangkokDateTime(input.lastParUpdatedAt)}`
-      : "Par อัปเดตล่าสุด — ยังไม่เคยปรับ",
+      ? `${PAR_STOCK_LABEL}อัปเดตล่าสุด ${formatBangkokDateTime(input.lastParUpdatedAt)}`
+      : `${PAR_STOCK_LABEL}อัปเดตล่าสุด — ยังไม่เคยปรับ`,
     target,
     "",
     ...lines,
     "",
-    `รวม ${input.items.length} รายการ · Par ${sumPar.toLocaleString("th-TH")} · แนะนำ ${sumRec.toLocaleString("th-TH")} · ควรเติม ${sumRefill.toLocaleString("th-TH")}`,
+    `รวม ${input.items.length} รายการ · ${PAR_STOCK_SHORT_LABEL} ${sumPar.toLocaleString("th-TH")} · แนะนำ ${sumRec.toLocaleString("th-TH")} · ควรเติม ${sumRefill.toLocaleString("th-TH")}`,
   ]
     .filter((line) => line != null)
     .join("\n");

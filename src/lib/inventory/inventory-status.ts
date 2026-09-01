@@ -1,3 +1,4 @@
+import { PAR_COMPARISON_LABELS } from "@/lib/inventory/inventory-par-labels";
 import type { InventoryDataQuality } from "@/lib/inventory/inventory-data-quality";
 
 export type InventoryStatusKind =
@@ -13,7 +14,7 @@ export const INVENTORY_STATUS_LABELS: Record<InventoryStatusKind, string> = {
   REFILL_REQUIRED: "ควรเติมพรุ่งนี้",
   NORMAL: "ปกติ",
   OVERSTOCK: "สต๊อกเกิน",
-  NO_PAR: "ยังไม่ตั้ง Par",
+  NO_PAR: PAR_COMPARISON_LABELS.NO_PAR,
   INSUFFICIENT_DATA: "ข้อมูลไม่พอ",
 };
 

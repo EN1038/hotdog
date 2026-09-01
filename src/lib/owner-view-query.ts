@@ -1,4 +1,5 @@
 import { isBangkokDateKey } from "@/lib/constants";
+import { branchAdminBasePath } from "@/lib/branch-admin-path";
 
 /** Query สำหรับส่งต่อช่วงวัน / สาขา ระหว่างหน้า owner */
 
@@ -65,7 +66,7 @@ export function ownerStockHref(opts: {
   branchId?: string | null;
 }) {
   if (opts.branchId) {
-    return `/admin/branches/${opts.branchId}?tab=stock`;
+    return `${branchAdminBasePath(opts.branchId, { ownerShell: true })}?tab=stock&view=manage`;
   }
   return "/owner/stock";
 }

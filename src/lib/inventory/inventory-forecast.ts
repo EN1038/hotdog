@@ -5,6 +5,7 @@ import {
   computeRecentTrendFactor,
 } from "@/lib/inventory/inventory-calculations";
 import { bangkokWeekdayIndex } from "@/lib/inventory/inventory-date";
+import { PAR_STOCK_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 export type ForecastSource =
   | "SAME_WEEKDAY_RECENT_TREND"
@@ -176,7 +177,7 @@ export const FORECAST_SOURCE_LABELS: Record<ForecastSource, string> = {
   AVG_7: "เฉลี่ย 7 วัน",
   AVG_14: "เฉลี่ย 14 วัน",
   AVG_30: "เฉลี่ย 30 วัน",
-  PAR_FALLBACK: "Par Stock",
+  PAR_FALLBACK: PAR_STOCK_LABEL,
   MANUAL_FALLBACK: "ตั้งเอง",
   INSUFFICIENT: "ข้อมูลไม่พอ",
 };

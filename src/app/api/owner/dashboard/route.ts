@@ -29,6 +29,7 @@ import {
 } from "@/lib/brand-plan-shared";
 import type { BrandPlan, BrandStatus } from "@prisma/client";
 import { pendingConvertNotiCreatedAtGte } from "@/lib/stock-count-pending-noti";
+import { syncOwnerTrialFullAccess, syncOwnerRegisterTemplateIfEmpty } from "@/lib/owner-register-setup";
 
 async function loadBrandSaleStockSnapshot(branchIds: string[]) {
   if (branchIds.length === 0) {
@@ -132,6 +133,9 @@ export async function GET(request: Request) {
 
     const includeTest = searchParams.get("includeTest") === "1";
     const branchIdParam = searchParams.get("branchId")?.trim() || null;
+
+    await syncOwnerTrialFullAccess(brandId);
+    await syncOwnerRegisterTemplateIfEmpty(brandId);
 
     const [brand, branches] = await Promise.all([
       prisma.brand.findUnique({

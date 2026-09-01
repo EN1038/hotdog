@@ -8,6 +8,9 @@ import { OwnerBranchFilterBar } from "@/components/owner/OwnerBranchFilterBar";
 import { BranchParStockPanel } from "@/components/admin/BranchParStockPanel";
 import { bangkokDateKey } from "@/lib/constants";
 import {
+  PAR_STOCK_LABEL,
+} from "@/lib/inventory/inventory-par-labels";
+import {
   buildOwnerViewQuery,
   ownerHomeHref,
   ownerSalesDaysHref,
@@ -77,7 +80,7 @@ function OwnerParStockInner() {
           Owner · วางแผนสต๊อก
         </p>
         <h1 className="mt-1 text-[22px] font-black text-slate-900">
-          แนะนำ Par Stock
+          แนะนำ{PAR_STOCK_LABEL}
         </h1>
         <p className="mt-1 text-[14px] font-medium text-slate-500">
           ตั้งเป้าคงคลังต่อเมนู — ใช้เป็นฐานคำนวณแผนผลิต-เติม
@@ -103,7 +106,7 @@ function OwnerParStockInner() {
         />
       ) : (
         <p className="rounded-2xl bg-white px-4 py-10 text-center text-sm text-slate-400 shadow-sm">
-          ยังไม่มีสาขาสำหรับตั้ง Par Stock
+          ยังไม่มีสาขาสำหรับตั้ง{PAR_STOCK_LABEL}
         </p>
       )}
 

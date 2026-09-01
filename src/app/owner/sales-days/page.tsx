@@ -29,6 +29,15 @@ import {
   ownerTomorrowPlansHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
+import { PAR_STOCK_LABEL } from "@/lib/inventory/inventory-par-labels";
+import {
+  OwnerMonthPatternSection,
+  type SalesMonthPatternPayload,
+} from "@/components/owner/OwnerMonthPatternSection";
+import {
+  MONTH_PATTERN_DEFAULT_PERIOD_DAYS,
+  type MonthPatternPeriodDays,
+} from "@/lib/sales-month-pattern-config";
 
 function OwnerSalesDaysInner() {
   const { data } = useOwnerDashboard();
@@ -50,6 +59,11 @@ function OwnerSalesDaysInner() {
     initial.branchId,
   );
   const [payload, setPayload] = useState<OwnerDashboardPayload | null>(null);
+  const [monthPattern, setMonthPattern] =
+    useState<SalesMonthPatternPayload | null>(null);
+  const [monthPatternLoading, setMonthPatternLoading] = useState(false);
+  const [monthPeriodDays, setMonthPeriodDays] =
+    useState<MonthPatternPeriodDays>(MONTH_PATTERN_DEFAULT_PERIOD_DAYS);
   const [loading, setLoading] = useState(false);
   const urlReady = useRef(false);
 
@@ -114,6 +128,29 @@ function OwnerSalesDaysInner() {
     })();
     return () => ac.abort();
   }, [filterBranchId, from, to]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    setMonthPatternLoading(true);
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          periodDays: String(monthPeriodDays),
+        });
+        if (filterBranchId) params.set("branchId", filterBranchId);
+        const res = await fetch(`/api/owner/sales-month-pattern?${params}`, {
+          signal: ac.signal,
+        });
+        if (!res.ok) return;
+        setMonthPattern((await res.json()) as SalesMonthPatternPayload);
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return;
+      } finally {
+        if (!ac.signal.aborted) setMonthPatternLoading(false);
+      }
+    })();
+    return () => ac.abort();
+  }, [filterBranchId, monthPeriodDays]);
 
   const filterBranches = (payload?.branches ?? data?.branches ?? []).filter(
     (b) => !b.isHidden && b.kind !== "WAREHOUSE" && !b.isTest,
@@ -226,10 +263,17 @@ function OwnerSalesDaysInner() {
             href={parHref}
             className="rounded-full bg-white px-3.5 py-2 text-[12px] font-extrabold text-emerald-800 ring-1 ring-emerald-200"
           >
-            ตั้ง Par Stock
+            ตั้ง{PAR_STOCK_LABEL}
           </Link>
         </div>
       </section>
+
+      <OwnerMonthPatternSection
+        data={monthPattern}
+        loading={monthPatternLoading}
+        periodDays={monthPeriodDays}
+        onPeriodChange={setMonthPeriodDays}
+      />
 
       <section
         className={`mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${

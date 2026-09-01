@@ -136,8 +136,25 @@ export type PackageLabelBridgeInput = {
   copies?: number;
 };
 
+export type PackageLabelPrintEnvelope = {
+  brandId?: string;
+  layoutVersion: number;
+  layout?: Record<string, unknown>;
+  labels: PackageLabelBridgeInput[];
+};
+
+/** @deprecated Use printPackageLabelsEnvelope — kept for legacy APK array payloads */
 export function printPackageLabels(
   labels: PackageLabelBridgeInput[],
+): PrintBridgeResult | null {
+  return printPackageLabelsEnvelope({
+    layoutVersion: 1,
+    labels,
+  });
+}
+
+export function printPackageLabelsEnvelope(
+  envelope: PackageLabelPrintEnvelope,
 ): PrintBridgeResult | null {
   if (!canUsePrintActions()) {
     return { code: "-1", message: "ยังไม่ได้เชื่อมเครื่องพิมพ์" };
@@ -146,7 +163,7 @@ export function printPackageLabels(
   if (!bridge?.printPackageLabels) return null;
   try {
     return JSON.parse(
-      bridge.printPackageLabels(JSON.stringify(labels)),
+      bridge.printPackageLabels(JSON.stringify(envelope)),
     ) as PrintBridgeResult;
   } catch (e) {
     return {

@@ -45,7 +45,10 @@ class QueuePrintService(private val context: Context) {
     fun printQueueNumber(queueNumber: String): PrintResult =
         printQueueTickets(QueueTicket(queueNumber = queueNumber, copies = 1))
 
-    fun printPackageLabels(labels: List<PackageLabel>): PrintResult {
+    fun printPackageLabels(
+        labels: List<PackageLabel>,
+        layout: org.json.JSONObject? = null,
+    ): PrintResult {
         val device = PrinterDevice.load(context)
             ?: return PrintResult.fail("ยังไม่ได้เลือกเครื่องพิมพ์")
         if (device.transport == AppPrefs.TRANSPORT_NETWORK) {
@@ -56,11 +59,11 @@ class QueuePrintService(private val context: Context) {
         return when (PrinterRouter.resolveType(device.name)) {
             AppPrefs.DEVICE_TSC -> {
                 onePrinter.close()
-                tscPrinter.printPackageLabels(labels, device.address)
+                tscPrinter.printPackageLabels(labels, device.address, layout)
             }
             else -> {
                 tscPrinter.close()
-                onePrinter.printPackageLabels(labels, device.address)
+                onePrinter.printPackageLabels(labels, device.address, layout)
             }
         }
     }

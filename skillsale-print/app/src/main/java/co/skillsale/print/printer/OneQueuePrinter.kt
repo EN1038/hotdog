@@ -93,7 +93,11 @@ class OneQueuePrinter(private val context: Context) {
         }
     }
 
-    fun printPackageLabels(labels: List<PackageLabel>, mac: String): PrintResult {
+    fun printPackageLabels(
+        labels: List<PackageLabel>,
+        mac: String,
+        layout: org.json.JSONObject? = null,
+    ): PrintResult {
         if (labels.isEmpty()) return PrintResult.fail("ไม่มีป้ายสำหรับพิมพ์")
         if (!connect(mac)) {
             return PrintResult.fail("เชื่อมต่อเครื่องพิมพ์ One ไม่สำเร็จ (Bluetooth)")
@@ -103,7 +107,7 @@ class OneQueuePrinter(private val context: Context) {
             for (label in labels) {
                 val copies = label.copies.coerceIn(1, 99)
                 repeat(copies) { index ->
-                    val rendered = PackageLabelBitmap.render(context, label)
+                    val rendered = PackageLabelBitmap.render(context, label, layout)
                     val bitmap = scaleBitmapForPrint(rendered, PRINT_WIDTH)
                     printer
                         .printBitmap(bitmap, POSConst.ALIGNMENT_CENTER, PRINT_WIDTH)

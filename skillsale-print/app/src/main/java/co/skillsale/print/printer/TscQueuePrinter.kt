@@ -71,7 +71,11 @@ class TscQueuePrinter(private val context: Context) {
         }
     }
 
-    fun printPackageLabels(labels: List<PackageLabel>, btlAddress: String): PrintResult {
+    fun printPackageLabels(
+        labels: List<PackageLabel>,
+        btlAddress: String,
+        layout: org.json.JSONObject? = null,
+    ): PrintResult {
         if (labels.isEmpty()) return PrintResult.fail("ไม่มีป้ายสำหรับพิมพ์")
         if (!tsc.IsConnected || mac != btlAddress) {
             if (!connect(btlAddress)) {
@@ -82,7 +86,7 @@ class TscQueuePrinter(private val context: Context) {
             for (label in labels) {
                 val copies = label.copies.coerceIn(1, 99)
                 repeat(copies) { index ->
-                    val bitmap = PackageLabelBitmap.render(context, label)
+                    val bitmap = PackageLabelBitmap.render(context, label, layout)
                     val mmHeight = Math.ceil(bitmap.height / 8.0).toInt().coerceAtLeast(25) + 2
                     val setup = tsc.setup(50, mmHeight, 4, 8, 0, 0, 0)
                     if (setup != "1") {

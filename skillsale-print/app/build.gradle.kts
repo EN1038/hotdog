@@ -12,8 +12,8 @@ android {
         applicationId = "co.skillsale.print"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "1.2.8"
+        versionCode = 13
+        versionName = "1.2.9"
     }
 
     buildTypes {

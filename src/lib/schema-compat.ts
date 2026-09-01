@@ -170,6 +170,10 @@ export async function ensureProdSchemaCompat(): Promise<void> {
       const invoiceTableSql = [
         `CREATE TABLE IF NOT EXISTS "${schema}"."BrandInvoice" ("id" TEXT NOT NULL, "brandId" TEXT NOT NULL, "number" TEXT NOT NULL, "title" TEXT NOT NULL, "amountBaht" DECIMAL(10,2) NOT NULL, "status" "BrandInvoiceStatus" NOT NULL DEFAULT 'DRAFT', "periodLabel" TEXT, "issuedAt" TIMESTAMP(3), "paidAt" TIMESTAMP(3), "note" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "createdByAdminId" TEXT, CONSTRAINT "BrandInvoice_pkey" PRIMARY KEY ("id"))`,
         `CREATE UNIQUE INDEX IF NOT EXISTS "BrandInvoice_brandId_number_key" ON "${schema}"."BrandInvoice"("brandId", "number")`,
+        `DO $$ BEGIN CREATE TYPE "${schema}"."BrandPrintLayoutKind" AS ENUM ('PACKAGE_LABEL'); EXCEPTION WHEN duplicate_object THEN null; END $$;`,
+        `CREATE TABLE IF NOT EXISTS "${schema}"."BrandPrintLayout" ("id" TEXT NOT NULL, "brandId" TEXT NOT NULL, "kind" "${schema}"."BrandPrintLayoutKind" NOT NULL, "version" INTEGER NOT NULL DEFAULT 1, "layout" JSONB NOT NULL, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "BrandPrintLayout_pkey" PRIMARY KEY ("id"))`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BrandPrintLayout_brandId_kind_key" ON "${schema}"."BrandPrintLayout"("brandId", "kind")`,
+        `CREATE INDEX IF NOT EXISTS "BrandPrintLayout_brandId_idx" ON "${schema}"."BrandPrintLayout"("brandId")`,
         `CREATE INDEX IF NOT EXISTS "BrandInvoice_brandId_createdAt_idx" ON "${schema}"."BrandInvoice"("brandId", "createdAt")`,
         `CREATE INDEX IF NOT EXISTS "BrandInvoice_brandId_status_idx" ON "${schema}"."BrandInvoice"("brandId", "status")`,
       ];

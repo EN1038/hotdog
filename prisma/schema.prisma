@@ -339,6 +339,7 @@ model Brand {
   branchStockRequests  BranchStockRequest[]
   invoices             BrandInvoice[]
   smsSendLogs          SmsSendLog[]
+  printLayouts         BrandPrintLayout[]
 
   @@index([primaryAdminId])
 }
@@ -1786,4 +1787,22 @@ model StockLabel {
   @@index([branchId, documentNo])
   @@index([branchId, status, createdAt])
   @@index([lotNumber])
+}
+
+enum BrandPrintLayoutKind {
+  PACKAGE_LABEL
+}
+
+/// Brand-level print template (versioned; APK caches until version changes)
+model BrandPrintLayout {
+  id        String               @id @default(cuid())
+  brandId   String
+  kind      BrandPrintLayoutKind
+  version   Int                  @default(1)
+  layout    Json
+  updatedAt DateTime             @updatedAt
+  brand     Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, kind])
+  @@index([brandId])
 }

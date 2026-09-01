@@ -71,6 +71,9 @@ export function handleApiError(error: unknown) {
       if (fields.includes("phone")) {
         return jsonError("เบอร์โทรนี้ถูกใช้ในระบบแล้ว", 409);
       }
+      if (fields.includes("labelCode")) {
+        return jsonError("รหัสป้ายซ้ำ กรุณาลองบันทึกอีกครั้ง", 409);
+      }
       return jsonError("ข้อมูลซ้ำในระบบ", 409);
     }
     if (error.code === "P2025") {

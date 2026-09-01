@@ -22,6 +22,16 @@ import {
 import { labelsToPrintInput } from "@/lib/stock-package-label-print";
 
 const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_PACKAGE_IN_ATTEMPTS = 6;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002"
+  );
+}
 
 function parseLotDays(raw: string | null): string[] {
   if (!raw?.trim()) return [];
@@ -206,7 +216,10 @@ export async function POST(request: Request) {
       lotNumber: string;
     }> = [];
 
-    await prisma.$transaction(async (tx) => {
+    for (let attempt = 0; attempt < MAX_PACKAGE_IN_ATTEMPTS; attempt++) {
+      createdLabels.length = 0;
+      try {
+        await prisma.$transaction(async (tx) => {
       for (const line of body.lines) {
         const lineProducedKey = line.producedAt ?? defaultProducedAtKey;
         const lineReceivedKey = line.receivedAt ?? todayKey;
@@ -422,7 +435,17 @@ export async function POST(request: Request) {
           createdLabels.push(label);
         }
       }
-    });
+        });
+        break;
+      } catch (error) {
+        if (
+          !isUniqueConstraintError(error) ||
+          attempt >= MAX_PACKAGE_IN_ATTEMPTS - 1
+        ) {
+          throw error;
+        }
+      }
+    }
 
     const printLabels = labelsToPrintInput(createdLabels).map((l, i) => {
       const line = body.lines[i];

@@ -245,6 +245,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
   }
 
   async function submit() {
+    if (busy) return;
     const validRows = rows.filter((r) => r.itemId && r.quantity > 0);
     if (validRows.length === 0) {
       toast.error("กรุณาเลือกสินค้าอย่างน้อย 1 แพ็ก");

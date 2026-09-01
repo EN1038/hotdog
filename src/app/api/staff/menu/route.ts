@@ -7,9 +7,14 @@ import {
   menuItemOptionGroupInclude,
 } from "@/lib/menu-option-groups";
 import { serializePromoSchedule } from "@/lib/promo-schedule";
+import { loadBrandSkewerImageLookup, withBrandSkewerImages } from "@/lib/menu-skewer-image";
 
 function parseChannel(raw: string | null): MenuPriceChannel {
   return raw === "delivery" ? "delivery" : "storefront";
+}
+
+function parseImageMode(raw: string | null): "default" | "skewer" {
+  return raw === "skewer" ? "skewer" : "default";
 }
 
 export async function GET(request: Request) {
@@ -17,12 +22,14 @@ export async function GET(request: Request) {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
     const channel = parseChannel(searchParams.get("channel"));
+    const imageMode = parseImageMode(searchParams.get("imageMode"));
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
       select: {
         id: true,
         name: true,
+        brandId: true,
         menuItems: {
           where: { isHidden: false, hideFromStaff: false },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
@@ -74,39 +81,50 @@ export async function GET(request: Request) {
       });
     }
 
+    const menuItems = branch.menuItems.map((item) => {
+      const flattened = flattenMenuItemOptionGroups(item);
+      const stockQuantity = item.stock?.quantity ?? null;
+      const isPromo = (flattened.optionGroups ?? []).some(
+        (g) => g.mode === "FROM_MENU",
+      );
+      const stockExempt = Boolean(item.category?.stockExempt) || isPromo;
+      const schedule = serializePromoSchedule(item);
+      return {
+        ...flattened,
+        ...schedule,
+        category: item.category
+          ? {
+              id: item.category.id,
+              name: item.category.name,
+              sortOrder: item.category.sortOrder,
+              stockExempt: Boolean(item.category.stockExempt) || isPromo,
+            }
+          : null,
+        stockQuantity: stockExempt ? null : stockQuantity,
+        // Promo packs / exempt categories: manual sold-out only (not pack stock qty)
+        isOutOfStock: stockExempt
+          ? flattened.isOutOfStock
+          : stockQuantity != null
+            ? stockQuantity <= 0
+            : flattened.isOutOfStock,
+      };
+    });
+
+    const skewerLookup =
+      imageMode === "skewer" && branch.brandId
+        ? await loadBrandSkewerImageLookup(prisma, branch.brandId)
+        : null;
+
     return jsonOk({
       branchId: branch.id,
       branchName: branch.name,
       channel,
+      imageMode,
       consumables: branch.branchNonMenuItems,
-      menuItems: branch.menuItems.map((item) => {
-        const flattened = flattenMenuItemOptionGroups(item);
-        const stockQuantity = item.stock?.quantity ?? null;
-        const isPromo = (flattened.optionGroups ?? []).some(
-          (g) => g.mode === "FROM_MENU",
-        );
-        const stockExempt = Boolean(item.category?.stockExempt) || isPromo;
-        const schedule = serializePromoSchedule(item);
-        return {
-          ...flattened,
-          ...schedule,
-          category: item.category
-            ? {
-                id: item.category.id,
-                name: item.category.name,
-                sortOrder: item.category.sortOrder,
-                stockExempt: Boolean(item.category.stockExempt) || isPromo,
-              }
-            : null,
-          stockQuantity: stockExempt ? null : stockQuantity,
-          // Promo packs / exempt categories: manual sold-out only (not pack stock qty)
-          isOutOfStock: stockExempt
-            ? flattened.isOutOfStock
-            : stockQuantity != null
-              ? stockQuantity <= 0
-              : flattened.isOutOfStock,
-        };
-      }),
+      menuItems:
+        skewerLookup != null
+          ? withBrandSkewerImages(menuItems, skewerLookup)
+          : menuItems,
       deliveryLocations: branch.deliveryLocations,
     });
   } catch (error) {

@@ -5,9 +5,24 @@ export function lotDayPrefix(producedAt: string): string {
   return `${y.slice(-2)}${m}${d}`;
 }
 
-/** Preview LOT before save — running number assigned on submit */
-export function formatLotPreview(producedAt: string): string {
-  return `${lotDayPrefix(producedAt)}-????`;
+/** Full LOT string e.g. 260901-0003 */
+export function formatLotNumber(producedAt: string, sequence: number): string {
+  return `${lotDayPrefix(producedAt)}-${String(sequence).padStart(4, "0")}`;
+}
+
+/** Plan sequential LOT numbers for unsaved pack rows (same order as submit). */
+export function planLotNumbersForRows(
+  rows: Array<{ producedAt: string }>,
+  baseCountsByDay: Record<string, number>,
+): string[] {
+  const dayOffset = new Map<string, number>();
+  return rows.map((row) => {
+    const day = row.producedAt;
+    const base = baseCountsByDay[day] ?? 0;
+    const offset = dayOffset.get(day) ?? 0;
+    dayOffset.set(day, offset + 1);
+    return formatLotNumber(day, base + offset + 1);
+  });
 }
 
 export function formatThaiDateKey(dateKey: string): string {

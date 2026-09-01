@@ -4,15 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { DateInput } from "@/components/DateInput";
-import { StockDocumentNoField } from "@/components/stock/StockDocumentNoField";
 import { bangkokDateKey } from "@/lib/constants";
 import { resolveSkewerMenuImageUrl } from "@/lib/skewer-order";
 import {
-  formatLotPreview,
   formatThaiDateKey,
+  planLotNumbersForRows,
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
-import type { StockDocumentKind } from "@/lib/stock-document-no-format";
 
 type MenuItem = {
   id: string;
@@ -83,18 +81,18 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
   const [pickerRowKey, setPickerRowKey] = useState<string | null>(null);
   const [menuQ, setMenuQ] = useState("");
 
-  const [documentNo, setDocumentNo] = useState("");
-  const [docGenerating, setDocGenerating] = useState(false);
   const [sourceBranchId, setSourceBranchId] = useState<string>("");
   const [rows, setRows] = useState<PackageRow[]>([createPackageRow()]);
-  const [printAfterSave, setPrintAfterSave] = useState(true);
+  const [lotCountsByDay, setLotCountsByDay] = useState<Record<string, number>>(
+    {},
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [metaRes, menuRes] = await Promise.all([
         fetch("/api/staff/stock/package-in"),
-        fetch("/api/staff/menu"),
+        fetch("/api/staff/menu?imageMode=skewer"),
       ]);
       const metaBody = await metaRes.json().catch(() => ({}));
       const menuBody = await menuRes.json().catch(() => ({}));
@@ -127,34 +125,51 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
     void load();
   }, [load]);
 
-  async function genDocumentNo(kind: StockDocumentKind) {
-    setDocGenerating(true);
-    try {
-      const res = await fetch(`/api/staff/stock/document-no?kind=${kind}`);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          typeof json.error === "string" ? json.error : "สร้างเลขไม่สำเร็จ",
-        );
-      }
-      const next = String(json.documentNo ?? "").trim();
-      if (next) setDocumentNo(next);
-    } catch (e) {
-      toast.error(
-        "สร้างเลขเอกสารไม่สำเร็จ",
-        e instanceof Error ? e.message : "",
-      );
-    } finally {
-      setDocGenerating(false);
-    }
-  }
+  const producedDaysKey = useMemo(
+    () =>
+      [...new Set(rows.map((r) => r.producedAt))]
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort()
+        .join(","),
+    [rows],
+  );
 
   useEffect(() => {
-    if (!documentNo && meta?.stockActive) {
-      void genDocumentNo("IN");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta?.stockActive]);
+    if (!producedDaysKey || !meta?.stockActive) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/staff/stock/package-in?lotDays=${encodeURIComponent(producedDaysKey)}`,
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const counts = body.lotCountsByDay;
+        if (counts && typeof counts === "object") {
+          setLotCountsByDay(counts as Record<string, number>);
+        }
+      } catch {
+        // keep previous counts on transient errors
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [producedDaysKey, meta?.stockActive]);
+
+  const lotByRowKey = useMemo(() => {
+    const planned = planLotNumbersForRows(rows, lotCountsByDay);
+    const map = new Map<string, string>();
+    rows.forEach((row, index) => {
+      map.set(row.key, planned[index] ?? "—");
+    });
+    return map;
+  }, [rows, lotCountsByDay]);
+
+  const willPrintAny = useMemo(
+    () => rows.some((r) => r.printSticker && r.stickerCopies > 0),
+    [rows],
+  );
 
   const itemById = useMemo(() => {
     const map = new Map<string, MenuItem>();
@@ -172,24 +187,39 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
     );
   }, [menuItems, menuQ]);
 
-  function addRow(copyLast = false) {
+  function rowSnapshot(row: PackageRow): Partial<PackageRow> {
+    return {
+      itemId: row.itemId,
+      quantity: row.quantity,
+      producedAt: row.producedAt,
+      receivedAt: row.receivedAt,
+      stickerCopies: row.stickerCopies,
+      printSticker: row.printSticker,
+      expanded: false,
+    };
+  }
+
+  function addEmptyRow() {
+    setRows((prev) => [...prev, createPackageRow()]);
+  }
+
+  function copyLastRow() {
     setRows((prev) => {
       const last = prev[prev.length - 1];
-      if (copyLast && last) {
-        return [
-          ...prev,
-          createPackageRow({
-            itemId: last.itemId,
-            quantity: last.quantity,
-            producedAt: last.producedAt,
-            receivedAt: last.receivedAt,
-            stickerCopies: last.stickerCopies,
-            printSticker: last.printSticker,
-            expanded: false,
-          }),
-        ];
-      }
-      return [...prev, createPackageRow()];
+      if (!last) return prev;
+      return [...prev, createPackageRow(rowSnapshot(last))];
+    });
+  }
+
+  function duplicateRow(sourceKey: string) {
+    setRows((prev) => {
+      const source = prev.find((r) => r.key === sourceKey);
+      if (!source) return prev;
+      const index = prev.findIndex((r) => r.key === sourceKey);
+      const copy = createPackageRow(rowSnapshot(source));
+      const next = [...prev];
+      next.splice(index + 1, 0, copy);
+      return next;
     });
   }
 
@@ -219,10 +249,6 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
       toast.error("กรุณาเลือกสินค้าอย่างน้อย 1 แพ็ก");
       return;
     }
-    if (!documentNo.trim()) {
-      toast.error("กรุณาระบุเลขที่เอกสาร");
-      return;
-    }
 
     setBusy(true);
     try {
@@ -230,15 +256,13 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          documentNo: documentNo.trim(),
           sourceBranchId: sourceBranchId || null,
           lines: validRows.map((r) => ({
             itemId: r.itemId,
             quantity: r.quantity,
             producedAt: r.producedAt,
             receivedAt: r.receivedAt,
-            labelCopies:
-              printAfterSave && r.printSticker ? r.stickerCopies : 0,
+            labelCopies: r.printSticker ? r.stickerCopies : 0,
           })),
         }),
       });
@@ -253,13 +277,13 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
       const toPrint = labels.filter(
         (l: { copies?: number }) => (l.copies ?? 1) > 0,
       );
-      if (printAfterSave && toPrint.length > 0) {
+      if (toPrint.length > 0) {
         await openPackageLabelPrint(toPrint);
       }
 
       toast.success(
         "บันทึกสำเร็จ",
-        `${body.packageCount ?? validRows.length} แพ็ก · ${body.documentNo ?? documentNo}`,
+        `${body.packageCount ?? validRows.length} แพ็ก${body.documentNo ? ` · ${body.documentNo}` : ""}`,
       );
 
       const batchId = String(body.batchId ?? "");
@@ -340,44 +364,18 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
             </select>
           </label>
         ) : null}
-
-        <StockDocumentNoField
-          value={documentNo}
-          onChange={setDocumentNo}
-          onGenerate={() => void genDocumentNo("IN")}
-          generating={docGenerating}
-          label="เลขที่เอกสารรับเข้า"
-        />
       </div>
 
       <div className="mt-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[14px] font-extrabold text-slate-900">
-            รายการแพ็ก ({rows.length})
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => addRow(true)}
-              className="rounded-xl bg-slate-100 px-3 py-1.5 text-[12px] font-bold text-slate-700"
-            >
-              คัดลอกแถวล่าสุด
-            </button>
-            <button
-              type="button"
-              onClick={() => addRow(false)}
-              className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[12px] font-bold text-white"
-            >
-              + เพิ่มแพ็ก
-            </button>
-          </div>
-        </div>
+        <p className="text-[14px] font-extrabold text-slate-900">
+          รายการแพ็ก ({rows.length})
+        </p>
 
         {rows.map((row, index) => {
           const item = itemById.get(row.itemId);
           const thumb = menuThumb(item);
           const productCode = item?.itemCode?.trim() || "—";
-          const lotPreview = formatLotPreview(row.producedAt);
+          const lotPreview = lotByRowKey.get(row.key) ?? "—";
 
           return (
             <div
@@ -425,7 +423,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
                       </p>
                       <p className="text-[11px] font-mono font-semibold text-slate-600">
                         {productCode} · LOT {lotPreview}
-                        {row.printSticker && printAfterSave
+                        {row.printSticker
                           ? ` · พิมพ์ ${row.stickerCopies} ป้าย`
                           : ""}
                       </p>
@@ -446,6 +444,13 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
                     >
                       ▾
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => duplicateRow(row.key)}
+                    className="border-t border-slate-100 px-3 py-2 text-[11px] font-bold text-indigo-600 active:bg-indigo-50"
+                  >
+                    คัดลอก
                   </button>
                   {rows.length > 1 ? (
                     <button
@@ -525,7 +530,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold text-slate-500">
-                        LOT (ตอนบันทึก)
+                        LOT (เลขถัดไป)
                       </p>
                       <p className="font-mono text-[13px] font-bold text-slate-900">
                         {lotPreview}
@@ -564,7 +569,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
                         className="h-5 w-5 rounded border-slate-300 text-emerald-600"
                       />
                       <span className="text-[13px] font-bold text-slate-800">
-                        พิมพ์สติกเกอร์แพ็กนี้
+                        พิมพ์ป้ายแพ็กนี้
                       </span>
                     </label>
                     {row.printSticker ? (
@@ -595,29 +600,35 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
             </div>
           );
         })}
-      </div>
 
-      <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
-        <input
-          type="checkbox"
-          checked={printAfterSave}
-          onChange={(e) => setPrintAfterSave(e.target.checked)}
-          className="h-5 w-5 rounded border-slate-300 text-emerald-600"
-        />
-        <span className="text-[14px] font-bold text-slate-800">
-          พิมพ์ป้ายหลังบันทึก (ค่าเริ่มต้น)
-        </span>
-      </label>
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <button
+            type="button"
+            onClick={copyLastRow}
+            className="flex min-h-[4.5rem] items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-[12px] font-bold text-slate-700 shadow-sm active:bg-slate-50"
+          >
+            คัดลอกแถวล่าสุด
+          </button>
+          <button
+            type="button"
+            onClick={addEmptyRow}
+            className="flex min-h-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 px-3 text-emerald-700 active:bg-emerald-50"
+          >
+            <span className="text-[28px] font-light leading-none">+</span>
+            <span className="text-[12px] font-extrabold">เพิ่มแพ็ก</span>
+          </button>
+        </div>
+      </div>
 
       <button
         type="button"
         disabled={busy}
         onClick={() => void submit()}
-        className="mt-3 w-full rounded-2xl bg-emerald-600 py-4 text-[16px] font-extrabold text-white shadow-md disabled:opacity-60"
+        className="mt-4 w-full rounded-2xl bg-emerald-600 py-4 text-[16px] font-extrabold text-white shadow-md disabled:opacity-60"
       >
         {busy
           ? "กำลังบันทึก…"
-          : printAfterSave
+          : willPrintAny
             ? "บันทึกและพิมพ์ป้าย"
             : "บันทึก"}
       </button>

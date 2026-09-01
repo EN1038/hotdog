@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
-import { StockDocumentNoField } from "@/components/stock/StockDocumentNoField";
-import type { StockDocumentKind } from "@/lib/stock-document-no-format";
 
 type LabelPreview = {
   id: string;
@@ -34,39 +32,10 @@ export function StaffPackageOutPanel({ onBack }: Props) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  const [documentNo, setDocumentNo] = useState("");
-  const [docGenerating, setDocGenerating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
-
-  async function genDocumentNo(kind: StockDocumentKind) {
-    setDocGenerating(true);
-    try {
-      const res = await fetch(`/api/staff/stock/document-no?kind=${kind}`);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          typeof json.error === "string" ? json.error : "สร้างเลขไม่สำเร็จ",
-        );
-      }
-      const next = String(json.documentNo ?? "").trim();
-      if (next) setDocumentNo(next);
-    } catch (e) {
-      toast.error(
-        "สร้างเลขเอกสารไม่สำเร็จ",
-        e instanceof Error ? e.message : "",
-      );
-    } finally {
-      setDocGenerating(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!documentNo) void genDocumentNo("OUT");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const lookup = useCallback(
@@ -120,7 +89,6 @@ export function StaffPackageOutPanel({ onBack }: Props) {
           labelId: preview.id,
           labelCode: preview.labelCode,
           qrPayload: preview.qrPayload,
-          documentNo: documentNo.trim() || undefined,
           note: note.trim(),
         }),
       });
@@ -234,13 +202,6 @@ export function StaffPackageOutPanel({ onBack }: Props) {
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[14px] font-semibold"
                 />
               </label>
-              <StockDocumentNoField
-                value={documentNo}
-                onChange={setDocumentNo}
-                onGenerate={() => void genDocumentNo("OUT")}
-                generating={docGenerating}
-                label="เลขที่เอกสารจ่ายออก"
-              />
               <button
                 type="button"
                 disabled={busy}

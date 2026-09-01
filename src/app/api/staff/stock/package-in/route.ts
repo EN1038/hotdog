@@ -14,11 +14,19 @@ import {
   validateStockDocumentNo,
 } from "@/lib/stock-document-no";
 import {
+  countStockLabelsForDay,
   generateLabelCode,
   generateLotNumber,
   stockLabelQrPayload,
 } from "@/lib/stock-label";
 import { labelsToPrintInput } from "@/lib/stock-package-label-print";
+
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseLotDays(raw: string | null): string[] {
+  if (!raw?.trim()) return [];
+  return [...new Set(raw.split(",").map((d) => d.trim()).filter((d) => DAY_KEY_RE.test(d)))];
+}
 
 const lineSchema = z.object({
   itemId: z.string().min(1),
@@ -53,10 +61,11 @@ const postSchema = z.object({
   printOnly: z.boolean().optional(),
 });
 
-/** GET — metadata for package-in form (brand, source branches) */
-export async function GET() {
+/** GET — metadata for package-in form (brand, source branches, optional LOT counts) */
+export async function GET(request: Request) {
   try {
     const session = await requireStaff();
+    const lotDays = parseLotDays(new URL(request.url).searchParams.get("lotDays"));
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
       select: {
@@ -93,6 +102,11 @@ export async function GET() {
         ? branch.id
         : (sourceBranches[0]?.id ?? null);
 
+    const lotCountsByDay: Record<string, number> = {};
+    for (const day of lotDays) {
+      lotCountsByDay[day] = await countStockLabelsForDay(branch.id, day);
+    }
+
     return jsonOk({
       stockActive: true,
       branch: {
@@ -105,6 +119,7 @@ export async function GET() {
       sourceBranches,
       defaultSourceId,
       producedAt: bangkokDateKey(),
+      lotCountsByDay,
     });
   } catch (error) {
     return handleApiError(error);

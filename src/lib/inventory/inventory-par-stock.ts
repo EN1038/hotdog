@@ -4,6 +4,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { bangkokDateKey, queueBusinessDateFromKey } from "@/lib/constants";
+import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 import { avgDailyForPar, computeSuggestedRefill } from "@/lib/inventory/inventory-calculations";
 import { BRANCH_WASTE_HISTORY_TYPES } from "@/lib/stock-outbound";
 import { INVENTORY_DEFAULTS } from "@/lib/inventory/inventory-config";
@@ -279,7 +280,7 @@ export async function setManualParStockMany(input: {
           oldParStock: oldPar,
           newParStock: parStock,
           source: BranchMenuItemParStockSource.MANUAL,
-          reason: "ตั้ง Par Stock ด้วยตนเอง",
+          reason: `ตั้ง${PAR_STOCK_LABEL}ด้วยตนเอง`,
           updatedByAdminId: input.adminId ?? null,
         });
         updated += 1;
@@ -373,8 +374,8 @@ export async function applyRecommendedParStock(input: {
         const oldPar = row.currentParStock;
         const newPar = row.recommendedParStock;
         const reason = row.parEligible
-          ? "ใช้ค่า Par ที่แนะนำ"
-          : "เคลียร์ Par กลุ่มที่ไม่ได้ตั้ง (ขายช้า/ไม่ขาย)";
+          ? `ใช้ค่า${PAR_STOCK_LABEL}ที่แนะนำ`
+          : `เคลียร์${PAR_STOCK_SHORT_LABEL}กลุ่มที่ไม่ได้ตั้ง (ขายช้า/ไม่ขาย)`;
 
         await tx.branchMenuItemParStock.upsert({
           where: { menuItemId: row.menuItemId },

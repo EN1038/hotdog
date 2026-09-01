@@ -10,6 +10,7 @@ import {
 import { skewerParPolicyFromBody } from "@/lib/inventory/inventory-par-policy";
 import { parseInventoryAnalysisRange } from "@/lib/inventory/inventory-date";
 import { bangkokDateKey } from "@/lib/constants";
+import { PAR_STOCK_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -62,7 +63,7 @@ export async function POST(request: Request, { params }: Params) {
 
     await logAdminActivity(session, {
       action: "branch.update",
-      summary: `ใช้ Par แนะนำ ${applied} เมนู สาขา ${branch.name}`,
+      summary: `ใช้${PAR_STOCK_LABEL}ที่แนะนำ ${applied} เมนู สาขา ${branch.name}`,
       branchId: branch.id,
       branchName: branch.name,
       entityType: "branch",

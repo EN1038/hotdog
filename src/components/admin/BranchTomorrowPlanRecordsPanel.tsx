@@ -22,6 +22,7 @@ import {
   formatBangkokDateTime,
 } from "@/lib/inventory/inventory-date";
 import { formatConfirmedPlanShareText } from "@/lib/inventory/inventory-tomorrow-plan-shared";
+import { PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 import { IconEdit, IconTrash } from "@/components/icons";
 import {
   ShareExportMenu,
@@ -88,6 +89,10 @@ function MenuThumb({ url, name }: { url: string | null; name: string }) {
   );
 }
 
+function planApiPath(branchId: string, planId: string) {
+  return `/api/admin/branches/${branchId}/inventory/tomorrow-plans/${encodeURIComponent(planId)}`;
+}
+
 export function BranchTomorrowPlanRecordsPanel({
   branchId,
   refreshKey = 0,
@@ -145,7 +150,7 @@ export function BranchTomorrowPlanRecordsPanel({
       const params = new URLSearchParams();
       if (row.planDate) params.set("planDate", row.planDate);
       const res = await fetch(
-        `/api/admin/branches/${branchId}/inventory/tomorrow-plans/${encodeURIComponent(row.id)}?${params}`,
+        planApiPath(branchId, row.id) + `?${params}`,
       );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -186,7 +191,7 @@ export function BranchTomorrowPlanRecordsPanel({
     setBusy(true);
     try {
       const res = await fetch(
-        `/api/admin/branches/${branchId}/inventory/tomorrow-plans/${detail.id}`,
+        planApiPath(branchId, detail.id),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -226,7 +231,7 @@ export function BranchTomorrowPlanRecordsPanel({
     setBusy(true);
     try {
       const res = await fetch(
-        `/api/admin/branches/${branchId}/inventory/tomorrow-plans/${detail.id}`,
+        planApiPath(branchId, detail.id),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -257,7 +262,7 @@ export function BranchTomorrowPlanRecordsPanel({
     setBusy(true);
     try {
       const res = await fetch(
-        `/api/admin/branches/${branchId}/inventory/tomorrow-plans/${planId}`,
+        planApiPath(branchId, planId),
         { method: "DELETE" },
       );
       const json = await res.json().catch(() => ({}));
@@ -284,7 +289,7 @@ export function BranchTomorrowPlanRecordsPanel({
     setBusy(true);
     try {
       const res = await fetch(
-        `/api/admin/branches/${branchId}/inventory/tomorrow-plans/${detail.id}/lines/${lineId}`,
+        `${planApiPath(branchId, detail.id)}/lines/${encodeURIComponent(lineId)}`,
         { method: "DELETE" },
       );
       const json = await res.json().catch(() => ({}));
@@ -491,7 +496,7 @@ export function BranchTomorrowPlanRecordsPanel({
       ) : items.length === 0 ? (
         <AdminEmptyState
           title="ยังไม่มีแผนที่ยืนยัน"
-          description="กดสร้างแผนใหม่ เพื่อคำนวณรายการจาก Par แล้วยืนยันส่งผลิต"
+          description={`กดสร้างแผนใหม่ เพื่อคำนวณรายการจาก${PAR_STOCK_SHORT_LABEL}แล้วยืนยันส่งผลิต`}
           action={
             onCreatePlan ? (
               <button
@@ -696,7 +701,7 @@ export function BranchTomorrowPlanRecordsPanel({
                     <th className="px-3 py-2">สินค้า</th>
                     <th className="px-3 py-2 text-right">ควรส่ง</th>
                     <th className="px-3 py-2 text-right">ยืนยัน</th>
-                    <th className="px-3 py-2 text-right">Par / คงเหลือ</th>
+                    <th className="px-3 py-2 text-right">{PAR_STOCK_SHORT_LABEL} / คงเหลือ</th>
                     {editMode ? <th className="px-3 py-2" /> : null}
                   </tr>
                 </thead>

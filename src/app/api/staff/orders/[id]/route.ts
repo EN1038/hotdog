@@ -1,4 +1,4 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { requireStaff } from "@/lib/auth";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/lib/stock";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 import { orderGrandTotal } from "@/lib/order-totals";
+import { validateOrderDiscount } from "@/lib/order-discount";
 
 const statusSchema = z.object({
   status: z.nativeEnum(OrderStatus).optional(),
@@ -26,6 +27,9 @@ const statusSchema = z.object({
   paymentSlipUrl: z
     .union([z.string().min(1).max(2000), z.literal(""), z.null()])
     .optional(),
+  discountAmount: z.number().min(0).max(999_999).optional(),
+  discountReason: z.string().trim().max(40).optional().nullable(),
+  discountReasonNote: z.string().trim().max(120).optional().nullable(),
 });
 
 type Params = { params: Promise<{ id: string }> };
@@ -79,6 +83,8 @@ export async function GET(_request: Request, { params }: Params) {
       note: order.note,
       deliveryFee: Number(order.deliveryFee),
       discountAmount: Number(order.discountAmount),
+      discountReason: order.discountReason,
+      discountReasonNote: order.discountReasonNote,
       grandTotal: orderGrandTotal(
         items.map((i) => ({
           quantity: i.quantity,
@@ -111,6 +117,81 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { id, branchId: session.branchId },
     });
     if (!order) return jsonError("ไม่พบออเดอร์", 404);
+
+    const hasDiscountPatch =
+      body.discountAmount !== undefined ||
+      body.discountReason !== undefined ||
+      body.discountReasonNote !== undefined;
+
+    // Discount-only update on mutable orders in active shift
+    if (
+      hasDiscountPatch &&
+      body.status === undefined &&
+      body.paymentSlipUrl === undefined
+    ) {
+      if (order.status === OrderStatus.CANCELLED) {
+        return jsonError("ไม่สามารถแก้ส่วนลดออเดอร์ที่ยกเลิกแล้ว");
+      }
+      if (order.awaitingPhotoKey) {
+        return jsonError("ออเดอร์รูปยังไม่ได้คีย์รายการ");
+      }
+      try {
+        await assertOrderMutableInActiveShift({
+          branchId: session.branchId,
+          orderShiftId: order.shiftId,
+          orderQueueBusinessDate: order.queueBusinessDate,
+        });
+      } catch (e) {
+        if (e instanceof ShiftGateError) {
+          return jsonError(e.message, e.status);
+        }
+        throw e;
+      }
+
+      const fullOrder = await prisma.order.findFirst({
+        where: { id, branchId: session.branchId },
+        include: { items: true },
+      });
+      if (!fullOrder) return jsonError("ไม่พบออเดอร์", 404);
+
+      const itemsSubtotal = fullOrder.items.reduce(
+        (sum, it) =>
+          sum + (Number(it.unitPrice) + Number(it.optionsPrice)) * it.quantity,
+        0,
+      );
+      const discountCheck = validateOrderDiscount({
+        itemsSubtotal,
+        deliveryFee: Number(fullOrder.deliveryFee),
+        discountAmount:
+          body.discountAmount ?? Number(fullOrder.discountAmount),
+        discountReason:
+          body.discountReason !== undefined
+            ? body.discountReason
+            : fullOrder.discountReason,
+        discountReasonNote:
+          body.discountReasonNote !== undefined
+            ? body.discountReasonNote
+            : fullOrder.discountReasonNote,
+      });
+      if (!discountCheck.ok) {
+        return jsonError(discountCheck.error);
+      }
+
+      await prisma.order.update({
+        where: { id },
+        data: {
+          discountAmount: new Prisma.Decimal(discountCheck.discountAmount),
+          discountReason: discountCheck.discountReason,
+          discountReasonNote:
+            discountCheck.discountReason === "other"
+              ? body.discountReasonNote?.trim() ||
+                fullOrder.discountReasonNote
+              : null,
+        },
+      });
+      const latest = await loadStaffOrder(id, session.branchId);
+      return jsonOk(latest);
+    }
 
     // Slip-only update: may attach anytime for current shift orders (closed shift OK for view+patch on today's orders)
     if (body.paymentSlipUrl !== undefined && body.status === undefined) {

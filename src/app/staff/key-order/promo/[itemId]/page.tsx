@@ -27,6 +27,14 @@ import {
   StaffOrderStickySummary,
   scrollToStaffAnchor,
 } from "@/components/staff/StaffOrderSummary";
+import {
+  emptyStaffOrderDiscountState,
+  staffOrderDiscountPayload,
+  StaffOrderDiscountSection,
+  validateStaffOrderDiscountClient,
+  type StaffOrderDiscountState,
+} from "@/components/staff/StaffOrderDiscountSection";
+import { computeOrderGrandTotal } from "@/lib/order-discount";
 import { MenuOptionGroupPicker } from "@/components/customer/MenuOptionGroupPicker";
 import { formatPrice } from "@/lib/constants";
 import type { MenuItemData } from "@/lib/customer-types";
@@ -95,6 +103,9 @@ export default function StaffPromoKeyOrderDetailPage() {
   );
   const [fulfillment, setFulfillment] = useState<StaffFulfillmentState>(
     emptyStaffFulfillment,
+  );
+  const [orderDiscount, setOrderDiscount] = useState<StaffOrderDiscountState>(
+    emptyStaffOrderDiscountState,
   );
   const [showStickySummary, setShowStickySummary] = useState(true);
 
@@ -189,14 +200,25 @@ export default function StaffPromoKeyOrderDetailPage() {
     ];
   }, [item, quantity, unitPrice, selectedOpts]);
 
-  const orderTotal = useMemo(() => {
-    const items = summaryLines.reduce(
-      (sum, line) =>
-        sum + (line.unitPrice + line.optionsPrice) * line.quantity,
-      0,
-    );
-    return items + deliveryFee;
-  }, [summaryLines, deliveryFee]);
+  const itemsSubtotal = useMemo(
+    () =>
+      summaryLines.reduce(
+        (sum, line) =>
+          sum + (line.unitPrice + line.optionsPrice) * line.quantity,
+        0,
+      ),
+    [summaryLines],
+  );
+
+  const orderTotal = useMemo(
+    () =>
+      computeOrderGrandTotal({
+        itemsSubtotal,
+        deliveryFee,
+        discountAmount: orderDiscount.discountAmount,
+      }),
+    [itemsSubtotal, deliveryFee, orderDiscount.discountAmount],
+  );
 
   useEffect(() => {
     const summary = document.getElementById("staff-order-summary");
@@ -264,6 +286,16 @@ export default function StaffPromoKeyOrderDetailPage() {
       return;
     }
 
+    const discountErr = validateStaffOrderDiscountClient(
+      itemsSubtotal,
+      deliveryFee,
+      orderDiscount,
+    );
+    if (discountErr) {
+      fail(discountErr, "staff-order-discount");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const optionIds = (item.optionGroups ?? []).flatMap(
@@ -288,6 +320,7 @@ export default function StaffPromoKeyOrderDetailPage() {
             branchNonMenuItemId,
             quantity,
           })),
+        ...staffOrderDiscountPayload(orderDiscount),
       };
       if (fulfillment.fulfillmentType === "DELIVERY") {
         body.deliveryLocationId = fulfillment.deliveryLocationId;
@@ -619,7 +652,22 @@ export default function StaffPromoKeyOrderDetailPage() {
         deliveryLocations={deliveryLocations}
       />
 
-      <StaffOrderSummary lines={summaryLines} deliveryFee={deliveryFee} />
+      <StaffOrderDiscountSection
+        itemsSubtotal={itemsSubtotal}
+        deliveryFee={deliveryFee}
+        value={orderDiscount}
+        onChange={(next) => {
+          clearValidation();
+          setOrderDiscount(next);
+        }}
+        disabled={submitting}
+      />
+
+      <StaffOrderSummary
+        lines={summaryLines}
+        deliveryFee={deliveryFee}
+        discountAmount={orderDiscount.discountAmount}
+      />
 
       {error ? (
         <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">

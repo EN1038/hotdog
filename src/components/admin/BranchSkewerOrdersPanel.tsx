@@ -26,6 +26,14 @@ import {
 } from "@/lib/skewer-order";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatPrice } from "@/lib/constants";
+import { computeSkewerOrderGrandTotal } from "@/lib/order-discount";
+import {
+  AdminOrderDiscountFields,
+  emptyStaffOrderDiscountState,
+  staffOrderDiscountPayload,
+  validateStaffOrderDiscountClient,
+  type StaffOrderDiscountState,
+} from "@/components/staff/StaffOrderDiscountSection";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import { SkewerOrderShareExtras } from "@/components/skewer/SkewerOrderShareExtras";
 import { bangkokDateKey } from "@/lib/constants";
@@ -70,6 +78,9 @@ type SkewerOrderRow = {
   deliveredOn: string | null;
   deliveryInfo: string | null;
   shippingCostBaht: number | null;
+  discountAmount?: number;
+  discountReason?: string | null;
+  discountReasonNote?: string | null;
   createdAt: string;
   publicSharePath?: string | null;
   items: SkewerItem[];
@@ -160,8 +171,13 @@ function orderListBilling(order: SkewerOrderRow) {
     itemsSubtotal += skewerLineSubtotalBaht(qty, itemDefaultUnitPrice(item));
   }
   const shipping = order.shippingCostBaht ?? 0;
+  const discount = order.discountAmount ?? 0;
   const itemsRounded = Math.round(itemsSubtotal * 100) / 100;
-  const grandTotal = Math.round((itemsRounded + shipping) * 100) / 100;
+  const grandTotal = computeSkewerOrderGrandTotal({
+    itemsSubtotal: itemsRounded,
+    shippingCostBaht: shipping,
+    discountAmount: discount,
+  });
   const hasSavedPricing =
     hasSavedItemPrice ||
     (order.shippingCostBaht != null && Number.isFinite(order.shippingCostBaht));
@@ -190,6 +206,9 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const [deliveryInfo, setDeliveryInfo] = useState("");
   const [deliveredOn, setDeliveredOn] = useState(() => bangkokDateKey());
   const [shippingCostBaht, setShippingCostBaht] = useState("");
+  const [orderDiscount, setOrderDiscount] = useState<StaffOrderDiscountState>(
+    emptyStaffOrderDiscountState,
+  );
   const [saving, setSaving] = useState(false);
   const [exportBusy, setExportBusy] = useState<
     "save" | "share" | "link" | "view" | null
@@ -415,6 +434,13 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
         ? String(selected.shippingCostBaht)
         : "",
     );
+    setOrderDiscount({
+      discountAmount: selected.discountAmount ?? 0,
+      discountReason:
+        (selected.discountReason as StaffOrderDiscountState["discountReason"]) ??
+        "",
+      discountReasonNote: selected.discountReasonNote ?? "",
+    });
   }, [selected]);
 
   async function cancelOrder(opts?: { requireReason?: boolean }) {
@@ -493,6 +519,16 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
       return;
     }
 
+    const discountErr = validateStaffOrderDiscountClient(
+      billingSummary?.itemsSubtotal ?? 0,
+      shippingCost ?? 0,
+      orderDiscount,
+    );
+    if (discountErr) {
+      toast.error("ส่วนลดไม่ถูกต้อง", discountErr);
+      return;
+    }
+
     const ok = await confirm({
       title: "บันทึกส่งสำเร็จ?",
       message: `#${selected.orderNumber} · ${selected.customerPhone} · วันที่ ${formatDateLabel(deliveredOn.trim())}`,
@@ -520,6 +556,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                 unitPriceDraft[item.id] ?? "",
               )!,
             })),
+            ...staffOrderDiscountPayload(orderDiscount),
           }),
         },
       );
@@ -620,6 +657,24 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
       shippingCost = n;
     }
 
+    let itemsSubtotal = 0;
+    for (const item of selected.items) {
+      const qty = itemEffectiveQty(selected, item);
+      const unitPrice = parseSkewerUnitPriceInput(unitPriceDraft[item.id] ?? "");
+      if (unitPrice == null) continue;
+      itemsSubtotal += skewerLineSubtotalBaht(qty, unitPrice);
+    }
+    itemsSubtotal = Math.round(itemsSubtotal * 100) / 100;
+    const discountErr = validateStaffOrderDiscountClient(
+      itemsSubtotal,
+      shippingCost ?? 0,
+      orderDiscount,
+    );
+    if (discountErr) {
+      toast.error("ส่วนลดไม่ถูกต้อง", discountErr);
+      return;
+    }
+
     setSaving(true);
     try {
       const res = await fetch(
@@ -635,6 +690,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
               unitPriceBaht: row.unitPrice!,
             })),
             shippingCostBaht: shippingCost,
+            ...staffOrderDiscountPayload(orderDiscount),
           }),
         },
       );
@@ -674,9 +730,14 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
     return {
       itemsSubtotal: itemsRounded,
       shipping,
-      grandTotal: Math.round((itemsRounded + shipping) * 100) / 100,
+      discount: orderDiscount.discountAmount,
+      grandTotal: computeSkewerOrderGrandTotal({
+        itemsSubtotal: itemsRounded,
+        shippingCostBaht: shipping,
+        discountAmount: orderDiscount.discountAmount,
+      }),
     };
-  }, [selected, unitPriceDraft, shippingCostBaht]);
+  }, [selected, unitPriceDraft, shippingCostBaht, orderDiscount]);
 
   async function cancelPendingOrder() {
     await cancelOrder({ requireReason: false });
@@ -1240,6 +1301,21 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                           placeholder="0"
                         />
                       </div>
+                      <AdminOrderDiscountFields
+                        itemsSubtotal={billingSummary.itemsSubtotal}
+                        shippingCostBaht={billingSummary.shipping}
+                        value={orderDiscount}
+                        onChange={setOrderDiscount}
+                        disabled={saving}
+                      />
+                      {billingSummary.discount > 0 ? (
+                        <div className="flex items-center justify-between gap-3 text-emerald-800">
+                          <span>ส่วนลด</span>
+                          <span className="font-semibold tabular-nums">
+                            −{formatPrice(billingSummary.discount)} บาท
+                          </span>
+                        </div>
+                      ) : null}
                       <div className="flex items-center justify-between gap-3 border-t border-violet-200/80 pt-2">
                         <span className="font-semibold text-gray-900">
                           รวมทั้งสิ้น
@@ -1275,6 +1351,14 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                           <span>ค่าส่ง</span>
                           <span className="font-semibold tabular-nums">
                             {formatPrice(billingSummary.shipping)} บาท
+                          </span>
+                        </p>
+                      ) : null}
+                      {billingSummary.discount > 0 ? (
+                        <p className="flex justify-between gap-3 text-emerald-800">
+                          <span>ส่วนลด</span>
+                          <span className="font-semibold tabular-nums">
+                            −{formatPrice(billingSummary.discount)} บาท
                           </span>
                         </p>
                       ) : null}

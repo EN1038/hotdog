@@ -13,6 +13,10 @@ import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { compareThaiText } from "@/lib/thai-sort";
 import {
+  PAR_COMPARISON_LABELS,
+  PAR_STOCK_SHORT_LABEL,
+} from "@/lib/inventory/inventory-par-labels";
+import {
   assignStableMenuSequence,
   sortStaffMenuItems,
 } from "@/lib/staff-menu-order";
@@ -103,6 +107,7 @@ type Product = {
   price?: number;
   isMenu?: boolean;
   defaultShelfLifeDays?: number | null;
+  parStock?: number | null;
 };
 
 function StockItemName({
@@ -3058,7 +3063,13 @@ function StaffStockContent() {
                                       data.balances.find(
                                         (b) => b.product.id === item.id,
                                       )?.quantity ?? 0;
+                                    const hasPar =
+                                      item.stockType === "SALE_ITEM" &&
+                                      item.parStock != null;
+                                    const isBelowPar =
+                                      hasPar && dbBalance < item.parStock!;
                                     const isLow =
+                                      !isBelowPar &&
                                       item.lowStockAlert != null &&
                                       dbBalance <= item.lowStockAlert;
                                     const isEmpty = dbBalance <= 0;
@@ -3103,27 +3114,41 @@ function StaffStockContent() {
                                               : `${item.unit}${
                                                   isEmpty
                                                     ? " · หมดสต๊อก"
-                                                    : isLow
-                                                      ? " · สต๊อกใกล้หมด"
-                                                      : ""
+                                                    : isBelowPar
+                                                      ? ` · ${PAR_COMPARISON_LABELS.BELOW_PAR}`
+                                                      : isLow
+                                                        ? " · สต๊อกใกล้หมด"
+                                                        : ""
                                                 }`}
                                           </p>
                                         </div>
-                                        <div
-                                          className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
-                                            isEmpty
-                                              ? "bg-red-50 text-red-700"
-                                              : isLow
-                                                ? "bg-amber-50 text-amber-700"
-                                                : "bg-slate-100 text-slate-900"
-                                          }`}
-                                        >
-                                          <p className="text-lg font-black tabular-nums leading-none">
-                                            {dbBalance}
-                                          </p>
-                                          <p className="mt-0.5 text-[10px] font-semibold opacity-70">
-                                            คงเหลือ
-                                          </p>
+                                        <div className="flex shrink-0 items-stretch gap-1.5">
+                                          {hasPar ? (
+                                            <div className="min-w-[3.25rem] rounded-xl bg-sky-50 px-2 py-2 text-center text-sky-800">
+                                              <p className="text-lg font-black tabular-nums leading-none">
+                                                {item.parStock}
+                                              </p>
+                                              <p className="mt-0.5 text-[10px] font-semibold">
+                                                {PAR_STOCK_SHORT_LABEL}
+                                              </p>
+                                            </div>
+                                          ) : null}
+                                          <div
+                                            className={`min-w-[4.5rem] rounded-xl px-3 py-2 text-center ${
+                                              isEmpty || isBelowPar
+                                                ? "bg-red-50 text-red-700"
+                                                : isLow
+                                                  ? "bg-amber-50 text-amber-700"
+                                                  : "bg-slate-100 text-slate-900"
+                                            }`}
+                                          >
+                                            <p className="text-lg font-black tabular-nums leading-none">
+                                              {dbBalance}
+                                            </p>
+                                            <p className="mt-0.5 text-[10px] font-semibold opacity-70">
+                                              คงเหลือ
+                                            </p>
+                                          </div>
                                         </div>
                                       </li>
                                     );

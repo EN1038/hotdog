@@ -67,6 +67,19 @@ export async function POST(request: Request) {
       if (!admin || admin.brandMembers.length === 0) {
         return jsonError("เบอร์นี้ยังไม่ได้ลงทะเบียนเป็นเจ้าของร้าน", 404);
       }
+    } else if (body.purpose === "owner_register") {
+      const admin = await prisma.admin.findFirst({
+        where: {
+          isPlatformAdmin: false,
+          OR: [{ phone }, { username: phone }],
+        },
+        select: { id: true },
+      });
+      if (admin) {
+        return jsonError("เบอร์นี้สมัครแล้ว — กรุณาเข้าสู่ระบบ", 409, {
+          redirect: "/owner/login",
+        });
+      }
     } else {
       const existing = await prisma.customer.findUnique({ where: { phone } });
       if (!existing && !body.name) {

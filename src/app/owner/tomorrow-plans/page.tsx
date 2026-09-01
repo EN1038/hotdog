@@ -9,6 +9,10 @@ import { BranchTomorrowPlanPanel } from "@/components/admin/BranchTomorrowPlanPa
 import { BranchTomorrowPlanRecordsPanel } from "@/components/admin/BranchTomorrowPlanRecordsPanel";
 import { bangkokDateKey } from "@/lib/constants";
 import {
+  PAR_STOCK_LABEL,
+  PAR_STOCK_SHORT_LABEL,
+} from "@/lib/inventory/inventory-par-labels";
+import {
   buildOwnerViewQuery,
   ownerHomeHref,
   ownerParStockHref,
@@ -91,7 +95,7 @@ function OwnerTomorrowPlansInner() {
           แผนผลิต-เติม
         </h1>
         <p className="mt-1 text-[14px] font-medium text-slate-500">
-          คำนวณของที่ต้องผลิต/เติมจาก Par และสต๊อกปัจจุบัน
+          คำนวณของที่ต้องผลิต/เติมจาก{PAR_STOCK_SHORT_LABEL}และสต๊อกปัจจุบัน
         </p>
       </header>
 
@@ -139,7 +143,7 @@ function OwnerTomorrowPlansInner() {
           วันขายดี / ยอดอ่อน
         </Link>
         <Link href={parHref} className="font-bold text-sky-700">
-          ← Par Stock
+          ← {PAR_STOCK_LABEL}
         </Link>
         <Link href={homeHref} className="font-bold text-slate-600">
           หน้าแรก

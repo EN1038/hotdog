@@ -36,7 +36,8 @@ import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
 import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
 import { SalesShareSection } from "@/components/merchant/SalesSummaryView";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
-import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, ownerParStockHref, ownerTomorrowPlansHref, ownerSalesDaysHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
+import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, ownerParStockHref, ownerTomorrowPlansHref, ownerSalesDaysHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
+import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 const OWNER_HOME_TAB_KEY = "skillsale_owner_home_tab_v2";
 
@@ -720,6 +721,11 @@ function OwnerHomeInner() {
     from: rangeFrom,
     to: rangeTo,
   });
+  const branchStockTargetId =
+    filterBranchId ?? data?.soleBranchId ?? firstBranchId;
+  const branchStockHref = branchStockTargetId
+    ? ownerStockHref({ branchId: branchStockTargetId })
+    : null;
   const topSellersHref = ownerTopSellersHref({
     branchId: filterBranchId,
     from: rangeFrom,
@@ -1396,21 +1402,53 @@ function OwnerHomeInner() {
       {homeTab === "stock" ? (
         stockEnabled ? (
           <div className="space-y-3" aria-label="สต๊อก">
+            {multiBranch ? (
+              <OwnerBranchFilterBar
+                branches={liveBranches}
+                value={filterBranchId}
+                onChange={(id) => applyBranchFilter(id, { scroll: false })}
+              />
+            ) : null}
             <section className="overflow-hidden rounded-2xl shadow-md divide-y divide-white/40">
+              {branchStockHref ? (
+                <SoftTile
+                  href={branchStockHref}
+                  title="จัดการสต๊อก"
+                  subtitle="รับเข้า · จ่ายออก · ปรับยอด · สร้างของสิ้นเปลือง/อุปกรณ์"
+                  icon={<IconBoxes size={28} />}
+                  tone="teal"
+                  size="hero"
+                  pill="งานวันต่อวัน"
+                />
+              ) : (
+                <SoftTile
+                  onClick={() =>
+                    toast.error(
+                      "เลือกสาขาก่อน",
+                      "กดเลือกสาขาด้านบน แล้วเปิดจัดการสต๊อก",
+                    )
+                  }
+                  title="จัดการสต๊อก"
+                  subtitle="เลือกสาขาก่อน — รับเข้า · จ่ายออก · ปรับยอด"
+                  icon={<IconBoxes size={28} />}
+                  tone="teal"
+                  size="hero"
+                  pill="งานวันต่อวัน"
+                />
+              )}
               <SoftTile
-                onClick={() => void goStaffStock()}
-                title={enteringStaff ? "กำลังเข้า…" : "จัดการสต๊อก"}
+                onClick={() => void goStaffStock(filterBranchId ?? undefined)}
+                title={enteringStaff ? "กำลังเข้า…" : "นับสต๊อกหน้าร้าน"}
                 subtitle={
                   (pulseSource?.pendingStockConvertCount ??
                     data?.pendingStockConvertCount ??
                     0) > 0
-                    ? `รอ Convert ${pulseSource?.pendingStockConvertCount ?? data?.pendingStockConvertCount} · นับสต๊อก · ยอดต่าง`
-                    : "รับเข้า · จ่ายออก · นับสต๊อก — มีเลขที่เอกสาร"
+                    ? `รอ Convert ${pulseSource?.pendingStockConvertCount ?? data?.pendingStockConvertCount} · ยอดต่าง`
+                    : "เข้าเมนูพนักงาน — นับสต๊อก · มีเลขที่เอกสาร"
                 }
-                icon={<IconBoxes size={28} />}
-                tone="teal"
+                icon={<IconClipboard size={26} />}
+                tone="sky"
                 size="hero"
-                pill="งานวันต่อวัน"
                 badge={
                   (pulseSource?.pendingStockConvertCount ??
                     data?.pendingStockConvertCount ??
@@ -1418,6 +1456,9 @@ function OwnerHomeInner() {
                     ? (pulseSource?.pendingStockConvertCount ??
                       data?.pendingStockConvertCount)
                     : undefined
+                }
+                className={
+                  enteringStaff ? "pointer-events-none opacity-60" : undefined
                 }
               />
             </section>
@@ -1434,7 +1475,7 @@ function OwnerHomeInner() {
               />
               <SoftTile
                 href={parStockHref}
-                title="แนะนำ Par Stock"
+                title={`แนะนำ${PAR_STOCK_LABEL}`}
                 subtitle="ตั้งเป้าคงคลังต่อเมนู · ฐานแผนผลิต"
                 icon={<IconClipboard size={26} />}
                 tone="sky"
@@ -1444,7 +1485,7 @@ function OwnerHomeInner() {
               <SoftTile
                 href={tomorrowPlansHref}
                 title="แผนผลิต-เติม"
-                subtitle="คำนวณของที่ต้องผลิต/เติมจาก Par"
+                subtitle={`คำนวณของที่ต้องผลิต/เติมจาก${PAR_STOCK_SHORT_LABEL}`}
                 icon={<IconBoxes size={26} />}
                 tone="emerald"
                 size="hero"

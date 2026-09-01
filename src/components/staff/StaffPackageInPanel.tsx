@@ -341,7 +341,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
         ) : null}
       </div>
 
-      <StaffPrinterStatusChip showBrowserHint requireTsc className="mb-3" />
+      <StaffPrinterStatusChip showBrowserHint requirePackagePrint className="mb-3" />
 
       <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
         {meta.brandName ? (

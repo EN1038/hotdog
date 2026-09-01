@@ -93,6 +93,42 @@ class OneQueuePrinter(private val context: Context) {
         }
     }
 
+    fun printPackageLabels(labels: List<PackageLabel>, mac: String): PrintResult {
+        if (labels.isEmpty()) return PrintResult.fail("ไม่มีป้ายสำหรับพิมพ์")
+        if (!connect(mac)) {
+            return PrintResult.fail("เชื่อมต่อเครื่องพิมพ์ One ไม่สำเร็จ (Bluetooth)")
+        }
+        return try {
+            val printer = POSPrinter(connection)
+            for (label in labels) {
+                val copies = label.copies.coerceIn(1, 99)
+                repeat(copies) { index ->
+                    val rendered = PackageLabelBitmap.render(context, label)
+                    val bitmap = scaleBitmapForPrint(rendered, PRINT_WIDTH)
+                    printer
+                        .printBitmap(bitmap, POSConst.ALIGNMENT_CENTER, PRINT_WIDTH)
+                        .cutHalfAndFeed(1)
+                    bitmap.recycle()
+                    if (index < copies - 1) Thread.sleep(250)
+                }
+            }
+            PrintResult.ok()
+        } catch (e: Exception) {
+            Log.e(TAG, "package label print failed", e)
+            close()
+            PrintResult.fail(e.message ?: "พิมพ์ป้ายแพ็กไม่สำเร็จ")
+        }
+    }
+
+    private fun scaleBitmapForPrint(source: Bitmap, targetWidth: Int): Bitmap {
+        if (source.width == targetWidth) return source
+        val targetHeight =
+            (source.height.toFloat() * targetWidth / source.width).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+        source.recycle()
+        return scaled
+    }
+
     private fun renderTicketBitmap(
         ticket: QueueTicket,
         role: String,

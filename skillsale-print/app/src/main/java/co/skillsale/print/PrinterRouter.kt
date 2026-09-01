@@ -1,14 +1,13 @@
 package co.skillsale.print
 
 object PrinterRouter {
-  /** Zenpert TSC label printers — not receipt printers such as TPS-80161. */
+  /** TSPL sticker printers (e.g. 3R20) — not TPS-80160/80161 POS printers. */
   fun isTscLabelPrinter(bluetoothName: String?): Boolean {
     val name = bluetoothName.orEmpty().uppercase()
-    if (name.contains("80161")) return false
+    if (name.contains("80160") || name.contains("80161")) return false
     return name.contains("3R20") ||
       name.contains("ZENPERT") ||
-      name.contains("TSC") ||
-      name.contains("80160")
+      name.contains("TSC")
   }
 
   fun resolveType(bluetoothName: String?): String {

@@ -81,7 +81,7 @@ function toNativePayload(label: PackageLabelInput) {
   };
 }
 
-/** Print via APK (TSC) when available, otherwise browser print dialog. */
+/** Print via APK when available, otherwise browser print dialog. */
 export async function openPackageLabelPrint(
   labels: PackageLabelInput[],
 ): Promise<void> {

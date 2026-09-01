@@ -267,7 +267,7 @@ export function StaffPackageInHistoryPanel({
       ) : null}
 
       {!hideBack ? (
-        <StaffPrinterStatusChip showBrowserHint requireTsc className="mb-3" />
+        <StaffPrinterStatusChip showBrowserHint requirePackagePrint className="mb-3" />
       ) : null}
 
       <div className="space-y-3">

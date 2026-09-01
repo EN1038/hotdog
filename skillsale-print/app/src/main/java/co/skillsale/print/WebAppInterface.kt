@@ -10,7 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import co.skillsale.print.printer.QueuePrintService
 import co.skillsale.print.printer.QueueTicket
+import co.skillsale.print.printer.PackageLabel
 import co.skillsale.print.ui.SelectPrinterActivity
+import org.json.JSONArray
 import org.json.JSONObject
 
 class WebAppInterface(
@@ -140,6 +142,53 @@ class WebAppInterface(
                     .toString()
             mainHandler.post {
                 Toast.makeText(activity, e.message ?: "พิมพ์ไม่สำเร็จ", Toast.LENGTH_SHORT).show()
+            }
+            fail
+        }
+    }
+
+    /** JSON array of package label objects for TSC sticker printers. */
+    @JavascriptInterface
+    fun printPackageLabels(json: String): String {
+        return try {
+            val arr = JSONArray(json)
+            val labels = mutableListOf<PackageLabel>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val labelCode = obj.optString("labelCode", "").trim()
+                if (labelCode.isEmpty()) continue
+                labels.add(
+                    PackageLabel(
+                        labelCode = labelCode,
+                        qrPayload = obj.optString("qrPayload", labelCode),
+                        productName = obj.optString("productName", ""),
+                        productCode = obj.optString("productCode", ""),
+                        brandName = obj.optString("brandName", ""),
+                        sourceBranchName = obj.optString("sourceBranchName", ""),
+                        quantity = obj.optInt("quantity", 1).coerceAtLeast(1),
+                        unit = obj.optString("unit", "ชิ้น"),
+                        producedAtLabel = obj.optString("producedAtLabel", ""),
+                        lotNumber = obj.optString("lotNumber", ""),
+                        copies = obj.optInt("copies", 1).coerceIn(1, 99),
+                    ),
+                )
+            }
+            val result = printService.printPackageLabels(labels)
+            if (result.code != "1") {
+                mainHandler.post {
+                    Toast.makeText(activity, result.message, Toast.LENGTH_SHORT).show()
+                }
+            }
+            result.toJson()
+        } catch (e: Exception) {
+            val fail =
+                JSONObject()
+                    .put("code", "-1")
+                    .put("message", e.message ?: "print error")
+                    .toString()
+            mainHandler.post {
+                Toast.makeText(activity, e.message ?: "พิมพ์ป้ายแพ็กไม่สำเร็จ", Toast.LENGTH_SHORT)
+                    .show()
             }
             fail
         }

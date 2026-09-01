@@ -266,7 +266,9 @@ export function StaffPackageInHistoryPanel({
         </div>
       ) : null}
 
-      {!hideBack ? <StaffPrinterStatusChip showBrowserHint className="mb-3" /> : null}
+      {!hideBack ? (
+        <StaffPrinterStatusChip showBrowserHint requireTsc className="mb-3" />
+      ) : null}
 
       <div className="space-y-3">
         <MobileDateRangeControl

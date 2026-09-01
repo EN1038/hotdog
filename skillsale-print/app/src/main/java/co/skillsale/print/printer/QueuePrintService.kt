@@ -44,4 +44,23 @@ class QueuePrintService(private val context: Context) {
 
     fun printQueueNumber(queueNumber: String): PrintResult =
         printQueueTickets(QueueTicket(queueNumber = queueNumber, copies = 1))
+
+    fun printPackageLabels(labels: List<PackageLabel>): PrintResult {
+        val device = PrinterDevice.load(context)
+            ?: return PrintResult.fail("ยังไม่ได้เลือกเครื่องพิมพ์")
+        if (device.transport == AppPrefs.TRANSPORT_NETWORK) {
+            return PrintResult.fail("กรุณาเลือกเครื่องพิมพ์ Bluetooth ใหม่")
+        }
+        if (labels.isEmpty()) return PrintResult.fail("ไม่มีป้ายสำหรับพิมพ์")
+
+        return when (PrinterRouter.resolveType(device.name)) {
+            AppPrefs.DEVICE_TSC -> {
+                onePrinter.close()
+                tscPrinter.printPackageLabels(labels, device.address)
+            }
+            else -> {
+                PrintResult.fail("ป้ายแพ็กต้องใช้เครื่องป้าย TSC/3R20")
+            }
+        }
+    }
 }

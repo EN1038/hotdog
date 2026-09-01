@@ -44,6 +44,7 @@ type AndroidPrintBridge = {
   selectPrinter?: () => void;
   printQueueNumber?: (queueNumber: string) => string;
   printQueueTickets?: (json: string) => string;
+  printPackageLabels?: (json: string) => string;
 };
 
 declare global {
@@ -105,6 +106,52 @@ export function getPrintBridgeStatus(): PrintBridgeStatus {
 
 export function canUsePrintActions(): boolean {
   return hasPrintBridge() && isPrinterConfigured();
+}
+
+export function hasPackageLabelPrintBridge(): boolean {
+  return typeof getBridge()?.printPackageLabels === "function";
+}
+
+export function canPrintPackageLabelsNative(): boolean {
+  if (!canUsePrintActions() || !hasPackageLabelPrintBridge()) return false;
+  return getSelectedPrinter()?.type === "TSC";
+}
+
+export type PackageLabelBridgeInput = {
+  labelCode: string;
+  qrPayload: string;
+  productName: string;
+  productCode: string;
+  brandName?: string | null;
+  sourceBranchName?: string | null;
+  quantity: number;
+  unit: string;
+  producedAtLabel?: string;
+  lotNumber: string;
+  copies?: number;
+};
+
+export function printPackageLabels(
+  labels: PackageLabelBridgeInput[],
+): PrintBridgeResult | null {
+  if (!canUsePrintActions()) {
+    return { code: "-1", message: "ยังไม่ได้เชื่อมเครื่องพิมพ์" };
+  }
+  const bridge = getBridge();
+  if (!bridge?.printPackageLabels) return null;
+  if (getSelectedPrinter()?.type !== "TSC") {
+    return { code: "-1", message: "ป้ายแพ็กต้องใช้เครื่องป้าย TSC/3R20" };
+  }
+  try {
+    return JSON.parse(
+      bridge.printPackageLabels(JSON.stringify(labels)),
+    ) as PrintBridgeResult;
+  } catch (e) {
+    return {
+      code: "-1",
+      message: e instanceof Error ? e.message : "พิมพ์ป้ายแพ็กไม่สำเร็จ",
+    };
+  }
 }
 
 export function selectPrinter(): boolean {

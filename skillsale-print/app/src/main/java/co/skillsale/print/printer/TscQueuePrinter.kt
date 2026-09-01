@@ -71,6 +71,39 @@ class TscQueuePrinter(private val context: Context) {
         }
     }
 
+    fun printPackageLabels(labels: List<PackageLabel>, btlAddress: String): PrintResult {
+        if (labels.isEmpty()) return PrintResult.fail("ไม่มีป้ายสำหรับพิมพ์")
+        if (!tsc.IsConnected || mac != btlAddress) {
+            if (!connect(btlAddress)) {
+                return PrintResult.fail("เชื่อมต่อเครื่องพิมพ์ 3R20 ไม่สำเร็จ")
+            }
+        }
+        return try {
+            for (label in labels) {
+                val copies = label.copies.coerceIn(1, 99)
+                repeat(copies) { index ->
+                    val bitmap = PackageLabelBitmap.render(context, label)
+                    val mmHeight = Math.ceil(bitmap.height / 8.0).toInt().coerceAtLeast(25) + 2
+                    val setup = tsc.setup(50, mmHeight, 4, 8, 0, 0, 0)
+                    if (setup != "1") {
+                        bitmap.recycle()
+                        return PrintResult.fail("ตั้งค่าป้ายไม่สำเร็จ")
+                    }
+                    tsc.sendcommand("CLS\r\n")
+                    tsc.sendbitmap(10, 8, bitmap)
+                    Thread.sleep(250)
+                    tsc.sendcommand("PRINT 1\r\n")
+                    bitmap.recycle()
+                    if (index < copies - 1) Thread.sleep(350)
+                }
+            }
+            PrintResult.ok()
+        } catch (e: Exception) {
+            Log.e(TAG, "package label print failed", e)
+            PrintResult.fail(e.message ?: "พิมพ์ป้ายแพ็กไม่สำเร็จ")
+        }
+    }
+
     private fun renderTicketBitmap(
         ticket: QueueTicket,
         role: String,

@@ -1,5 +1,9 @@
 import QRCode from "qrcode";
 import { renderProductBarcodeSvg } from "@/lib/product-label-print";
+import {
+  canPrintPackageLabelsNative,
+  printPackageLabels,
+} from "@/lib/print-bridge";
 
 export type PackageLabelInput = {
   labelCode: string;
@@ -58,7 +62,23 @@ function labelHtml(label: PackageLabelInput, qrSvg: string): string {
   `;
 }
 
-/** Open browser print dialog for package labels (barcode + QR). */
+function toNativePayload(label: PackageLabelInput) {
+  return {
+    labelCode: label.labelCode,
+    qrPayload: label.qrPayload,
+    productName: label.productName,
+    productCode: label.productCode,
+    brandName: label.brandName ?? "",
+    sourceBranchName: label.sourceBranchName ?? "",
+    quantity: label.quantity,
+    unit: label.unit,
+    producedAtLabel: formatThaiDate(label.producedAt),
+    lotNumber: label.lotNumber,
+    copies: label.copies ?? 1,
+  };
+}
+
+/** Print via APK (TSC) when available, otherwise browser print dialog. */
 export async function openPackageLabelPrint(
   labels: PackageLabelInput[],
 ): Promise<void> {
@@ -76,6 +96,22 @@ export async function openPackageLabelPrint(
     window.alert("ไม่มีป้ายสำหรับพิมพ์");
     return;
   }
+
+  if (canPrintPackageLabelsNative()) {
+    const result = printPackageLabels(items.map(toNativePayload));
+    if (result?.code === "1") return;
+    if (result) {
+      window.alert(result.message);
+      return;
+    }
+  }
+
+  await openPackageLabelPrintInBrowser(items);
+}
+
+async function openPackageLabelPrintInBrowser(
+  items: PackageLabelInput[],
+): Promise<void> {
 
   const qrSvgs = await Promise.all(
     items.map((label) =>
@@ -100,7 +136,7 @@ export async function openPackageLabelPrint(
 
   const body = items
     .flatMap((label, i) =>
-      Array.from({ length: label.copies }, () =>
+      Array.from({ length: label.copies ?? 1 }, () =>
         labelHtml(label, qrSvgs[i] ?? ""),
       ),
     )

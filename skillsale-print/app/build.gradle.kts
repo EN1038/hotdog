@@ -12,8 +12,8 @@ android {
         applicationId = "co.skillsale.print"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -50,4 +50,5 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
+    implementation("com.google.zxing:core:3.5.3")
 }

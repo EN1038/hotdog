@@ -15,6 +15,7 @@ import {
   type ActiveShiftInfo,
   StaffShiftControls,
 } from "@/components/staff/StaffShiftControls";
+import { StaffPrepTipBanner } from "@/components/staff/StaffPrepTipBanner";
 import { StaffExpensesSheet } from "@/components/staff/StaffExpensesSheet";
 import { AddToHomeScreenBanner } from "@/components/staff/AddToHomeScreenBanner";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
@@ -653,7 +654,8 @@ export default function StaffHomePage() {
         ) : null}
 
         {/* สถานะรอบขาย */}
-        <section className="shrink-0">
+        <section className="shrink-0 space-y-3">
+          <StaffPrepTipBanner />
           {hasOpenShift ? (
             <StaffShiftControls
               variant="merchant"

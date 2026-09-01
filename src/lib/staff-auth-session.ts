@@ -53,6 +53,37 @@ export async function staffDeviceSlotAvailable(
   return { ok: true };
 }
 
+/**
+ * Owner → staff bridge: if slots are full, kick the least-recently-used
+ * other device so the already-authenticated owner can open the shop floor.
+ */
+export async function claimStaffDeviceSlotForOwner(
+  phone: string,
+  deviceId: string,
+): Promise<{ ok: true; kickedOldest: boolean }> {
+  const slot = await staffDeviceSlotAvailable(phone, deviceId);
+  if (slot.ok) return { ok: true, kickedOldest: false };
+
+  const now = new Date();
+  const oldest = await prisma.staffAuthSession.findFirst({
+    where: {
+      phone,
+      revokedAt: null,
+      expiresAt: { gt: now },
+      NOT: { deviceId },
+    },
+    orderBy: [{ lastSeenAt: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
+  });
+  if (oldest) {
+    await prisma.staffAuthSession.update({
+      where: { id: oldest.id },
+      data: { revokedAt: now },
+    });
+  }
+  return { ok: true, kickedOldest: Boolean(oldest) };
+}
+
 export async function issueStaffAuthSession(opts: {
   phone: string;
   deviceId: string;

@@ -1,6 +1,6 @@
 import { requireStaff } from "@/lib/auth";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { isBangkokDateKey } from "@/lib/constants";
+import { bangkokDateKey, isBangkokDateKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { listShiftsForBranchDate } from "@/lib/branch-shift";
 import {
@@ -12,6 +12,7 @@ import {
   resolveStockCountTiming,
   type StockCountTiming,
 } from "@/lib/stock-count-timing";
+import { staffCanConvertStockSummary } from "@/lib/stock-count-convert-auth";
 
 type NoteLine = {
   name: string;
@@ -65,12 +66,35 @@ function parseNote(note: string | null): NotePayload {
   }
 }
 
-/** GET — daily sales/stock summaries for staff branch by Bangkok date */
+/** GET — daily sales/stock summaries for staff branch by Bangkok date (or resolve by id/name). */
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
-    const dateStr = searchParams.get("date")?.trim() ?? "";
+    const idParam = searchParams.get("id")?.trim() || "";
+    const nameParam = searchParams.get("name")?.trim() || "";
+    let dateStr = searchParams.get("date")?.trim() ?? "";
+    let resolvedSummaryId: string | null = null;
+
+    if (idParam || nameParam) {
+      const found = await prisma.stockCount.findFirst({
+        where: {
+          branchId: session.branchId,
+          status: { in: ["IN_PROGRESS", "COMPLETED", "CANCELLED"] },
+          ...(idParam ? { id: idParam } : { name: nameParam }),
+        },
+        select: {
+          id: true,
+          completedAt: true,
+          createdAt: true,
+        },
+      });
+      if (!found) {
+        return jsonError("ไม่พบสรุปยอดที่อ้างอิง", 404);
+      }
+      resolvedSummaryId = found.id;
+      dateStr = bangkokDateKey(found.completedAt ?? found.createdAt);
+    }
 
     if (!dateStr || !isBangkokDateKey(dateStr)) {
       return jsonError("กรุณาระบุวันที่ (YYYY-MM-DD)");
@@ -99,6 +123,7 @@ export async function GET(request: Request) {
                 lte: endOfDay,
               },
             },
+            ...(resolvedSummaryId ? [{ id: resolvedSummaryId }] : []),
           ],
         },
         orderBy: [{ createdAt: "desc" }, { completedAt: "desc" }],
@@ -247,13 +272,24 @@ export async function GET(request: Request) {
             (typeof note.cash === "number" && Array.isArray(note.lines)),
         };
       })
-      .filter((s) => s.isDailySales)
+      .filter(
+        (s) =>
+          s.isDailySales ||
+          (resolvedSummaryId != null && s.id === resolvedSummaryId),
+      )
       .map(({ isDailySales: _drop, ...rest }) => rest);
 
     return jsonOk({
       date: dateStr,
       shifts,
       summaries,
+      resolvedSummaryId,
+      canConvertStockSummary: session.staffPhone
+        ? await staffCanConvertStockSummary({
+            branchId: session.branchId,
+            staffPhone: session.staffPhone,
+          })
+        : false,
     });
   } catch (error) {
     return handleApiError(error);

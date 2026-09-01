@@ -44,7 +44,8 @@ import {
   promoScheduleStatusOf,
   type StaffDeliveryLocation,
 } from "@/lib/staff-key-order";
-import { PROMO_SCHEDULE_STATUS_LABEL } from "@/lib/promo-schedule";
+import { PROMO_SCHEDULE_STATUS_LABEL, PROMO_SCHEDULE_STATUS_TONE } from "@/lib/promo-schedule";
+import { StatusBadge } from "@/components/StatusBadge";
 import { readStaffOrderMode } from "@/lib/staff-order-mode";
 import {
   computeSelectedOptions,
@@ -451,10 +452,12 @@ export default function StaffPromoKeyOrderDetailPage() {
     >
       {!isPromoSellableOnShop(item) ? (
         <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-[15px] font-extrabold text-amber-950">
-            {PROMO_SCHEDULE_STATUS_LABEL[promoScheduleStatusOf(item)]}
-          </p>
-          <p className="mt-1 text-[13px] font-medium text-amber-800/90">
+          <StatusBadge
+            label={PROMO_SCHEDULE_STATUS_LABEL[promoScheduleStatusOf(item)]}
+            tone={PROMO_SCHEDULE_STATUS_TONE[promoScheduleStatusOf(item)]}
+            size="md"
+          />
+          <p className="mt-2 text-[13px] font-medium text-amber-800/90">
             โปรนี้หมดอายุแล้ว คีย์ขายไม่ได้ · แก้วันหมดอายุได้ที่จัดการโปร
           </p>
           <Link

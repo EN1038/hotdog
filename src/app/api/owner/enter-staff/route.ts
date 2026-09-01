@@ -8,9 +8,7 @@ import { isTestBranch } from "@/lib/branch-test";
 import { markStaffPhoneVerified } from "@/lib/otp-challenge";
 import {
   issueStaffAuthSession,
-  staffDeviceSlotAvailable,
-  STAFF_LOGIN_DEVICE_LIMIT,
-  STAFF_MAX_DEVICES,
+  claimStaffDeviceSlotForOwner,
   staffDeviceIdPattern,
 } from "@/lib/staff-auth-session";
 import {
@@ -139,17 +137,7 @@ export async function POST(request: Request) {
       return jsonError("ไม่มีสิทธิ์ขายหน้าร้าน", 403);
     }
 
-    const slot = await staffDeviceSlotAvailable(owner.phone, body.deviceId);
-    if (!slot.ok) {
-      return jsonError(
-        `เข้าใช้งานครบ ${STAFF_MAX_DEVICES} เครื่องแล้ว`,
-        403,
-        {
-          reason: STAFF_LOGIN_DEVICE_LIMIT,
-          maxDevices: STAFF_MAX_DEVICES,
-        },
-      );
-    }
+    await claimStaffDeviceSlotForOwner(owner.phone, body.deviceId);
 
     await markStaffPhoneVerified(owner.phone).catch(() => null);
 

@@ -28,6 +28,7 @@ import {
   getBrandSubscriptionState,
 } from "@/lib/brand-plan-shared";
 import type { BrandPlan, BrandStatus } from "@prisma/client";
+import { pendingConvertNotiCreatedAtGte } from "@/lib/stock-count-pending-noti";
 
 async function loadBrandSaleStockSnapshot(branchIds: string[]) {
   if (branchIds.length === 0) {
@@ -321,24 +322,34 @@ export async function GET(request: Request) {
             to: rangeTo,
           });
 
-    const [stock, topSellers, days, hours, aging] = await Promise.all([
-      stockEnabled
-        ? loadBrandSaleStockSnapshot(branchIds)
-        : Promise.resolve({
-            saleStockQty: 0,
-            saleStockValue: 0,
-            byBranch: new Map<
-              string,
-              { saleStockQty: number; saleStockValue: number }
-            >(),
-          }),
-      loadShopTopSellers(branchIds, rangeFrom, rangeTo),
-      loadShopDailySeries(branchIds, rangeFrom, rangeTo),
-      loadShopHourlySeries(branchIds, rangeFrom, rangeTo),
-      stockEnabled
-        ? loadShopAgingAttention(branchIds)
-        : Promise.resolve(null),
-    ]);
+    const [stock, topSellers, days, hours, aging, pendingStockConvertCount] =
+      await Promise.all([
+        stockEnabled
+          ? loadBrandSaleStockSnapshot(branchIds)
+          : Promise.resolve({
+              saleStockQty: 0,
+              saleStockValue: 0,
+              byBranch: new Map<
+                string,
+                { saleStockQty: number; saleStockValue: number }
+              >(),
+            }),
+        loadShopTopSellers(branchIds, rangeFrom, rangeTo),
+        loadShopDailySeries(branchIds, rangeFrom, rangeTo),
+        loadShopHourlySeries(branchIds, rangeFrom, rangeTo),
+        stockEnabled
+          ? loadShopAgingAttention(branchIds)
+          : Promise.resolve(null),
+        stockEnabled && branchIds.length > 0
+          ? prisma.stockCount.count({
+              where: {
+                branchId: { in: branchIds },
+                status: "IN_PROGRESS",
+                createdAt: { gte: pendingConvertNotiCreatedAtGte() },
+              },
+            })
+          : Promise.resolve(0),
+      ]);
     const weekdays = aggregateShopWeekdaySeries(days);
 
     const byBranch = report.byBranch.map((row) => {
@@ -449,6 +460,7 @@ export async function GET(request: Request) {
       cancelReasons: report.cancelReasons,
       aging,
       wasteItems: report.wasteItems,
+      pendingStockConvertCount,
       soleOperator: liveBranchIds.length === 1,
       soleBranchId: liveBranchIds.length === 1 ? liveBranchIds[0]! : null,
     });

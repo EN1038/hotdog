@@ -44,13 +44,14 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
 };
 
 export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
-  WAITING_FOR_STORE_ACCEPTANCE: "bg-amber-50 text-amber-600",
-  PREPARING: "bg-orange-50 text-orange-600",
-  READY_FOR_PICKUP: "bg-teal-50 text-teal-600",
-  READY_FOR_DELIVERY: "bg-blue-50 text-blue-600",
-  DELIVERING: "bg-sky-50 text-sky-700",
-  COMPLETED: "bg-green-50 text-green-600",
-  CANCELLED: "bg-slate-100 text-slate-500",
+  WAITING_FOR_STORE_ACCEPTANCE:
+    "bg-amber-50 text-amber-950 ring-1 ring-inset ring-amber-300",
+  PREPARING: "bg-orange-50 text-orange-800 ring-1 ring-inset ring-orange-300",
+  READY_FOR_PICKUP: "bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-300",
+  READY_FOR_DELIVERY: "bg-sky-50 text-sky-900 ring-1 ring-inset ring-sky-300",
+  DELIVERING: "bg-blue-50 text-blue-800 ring-1 ring-inset ring-blue-300",
+  COMPLETED: "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200",
+  CANCELLED: "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200",
 };
 
 export const FULFILLMENT_LABELS: Record<FulfillmentType, string> = {

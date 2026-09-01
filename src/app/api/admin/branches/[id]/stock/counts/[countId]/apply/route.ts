@@ -199,6 +199,7 @@ export async function POST(request: Request, { params }: Params) {
                 menuItemId: menu.id,
                 quantity: actualDiff,
                 type: "ADJUST",
+                batchId: count.id,
                 note:
                   body.note?.trim() ||
                   `แอดมิน Convert จากสรุปยอด · ${count.name} (นับได้ ${newQty})`,

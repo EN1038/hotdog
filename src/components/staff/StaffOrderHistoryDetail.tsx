@@ -14,6 +14,8 @@ import {
   SALES_CHANNEL_LABELS,
   formatPrice,
 } from "@/lib/constants";
+import { orderStatusTone } from "@/lib/status-badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import {
   absoluteUrlFromPath,
@@ -298,18 +300,23 @@ export function StaffOrderHistoryDetail({
                   <p className="mt-1 text-xs text-slate-500">
                     {formatWhen(order.createdAt)}
                   </p>
-                  <p className="mt-1 text-xs font-semibold text-slate-600">
-                    {ORDER_STATUS_LABELS[order.status] ?? order.status}
-                    {" · "}
-                    {PAYMENT_METHOD_LABELS[order.paymentMethod] ??
-                      order.paymentMethod}
-                    {" · "}
-                    {FULFILLMENT_LABELS[order.fulfillmentType] ??
-                      order.fulfillmentType}
-                    {order.salesChannel
-                      ? ` · ${SALES_CHANNEL_LABELS[order.salesChannel] ?? order.salesChannel}`
-                      : ""}
-                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <StatusBadge
+                      label={ORDER_STATUS_LABELS[order.status] ?? order.status}
+                      tone={orderStatusTone(order.status)}
+                      size="sm"
+                    />
+                    <p className="text-xs font-semibold text-slate-600">
+                      {PAYMENT_METHOD_LABELS[order.paymentMethod] ??
+                        order.paymentMethod}
+                      {" · "}
+                      {FULFILLMENT_LABELS[order.fulfillmentType] ??
+                        order.fulfillmentType}
+                      {order.salesChannel
+                        ? ` · ${SALES_CHANNEL_LABELS[order.salesChannel] ?? order.salesChannel}`
+                        : ""}
+                    </p>
+                  </div>
                   {order.customerName ? (
                     <p className="mt-1 text-xs text-slate-600">
                       ลูกค้า {order.customerName}

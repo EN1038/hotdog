@@ -36,7 +36,7 @@ import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
 import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
 import { SalesShareSection } from "@/components/merchant/SalesSummaryView";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
-import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
+import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, ownerParStockHref, ownerTomorrowPlansHref, ownerSalesDaysHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
 
 const OWNER_HOME_TAB_KEY = "skillsale_owner_home_tab_v2";
 
@@ -295,14 +295,13 @@ function SoftTile({
   const body =
     size === "hero" ? (
       <>
-        {pill ? (
-          <span className="absolute right-3 top-3 rounded-full bg-amber-300 px-2.5 py-0.5 text-[11px] font-extrabold text-amber-950">
-            {pill}
-          </span>
-        ) : null}
         {(badge ?? 0) > 0 ? (
           <span className="absolute right-3 top-3 flex h-7 min-w-7 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[13px] font-black text-white">
             {badge! > 99 ? "99+" : badge}
+          </span>
+        ) : pill ? (
+          <span className="absolute right-3 top-3 rounded-full bg-amber-300 px-2.5 py-0.5 text-[11px] font-extrabold text-amber-950">
+            {pill}
           </span>
         ) : null}
         <span
@@ -712,6 +711,15 @@ function OwnerHomeInner() {
     from: rangeFrom,
     to: rangeTo,
   });
+  const parStockHref = ownerParStockHref({ branchId: filterBranchId });
+  const tomorrowPlansHref = ownerTomorrowPlansHref({
+    branchId: filterBranchId,
+  });
+  const salesDaysHref = ownerSalesDaysHref({
+    branchId: filterBranchId,
+    from: rangeFrom,
+    to: rangeTo,
+  });
   const topSellersHref = ownerTopSellersHref({
     branchId: filterBranchId,
     from: rangeFrom,
@@ -808,7 +816,13 @@ function OwnerHomeInner() {
   }
 
   async function goStaffStock(branchId?: string) {
-    await goStaff("/staff/stock", branchId);
+    const pending =
+      pulseSource?.pendingStockConvertCount ??
+      data?.pendingStockConvertCount ??
+      0;
+    const path =
+      pending > 0 ? "/staff/stock?focus=convert" : "/staff/stock";
+    await goStaff(path, branchId);
   }
 
   // แม่ค้าคนเดียว / เริ่มที่หน้าร้าน — พาเข้า staff อัตโนมัติ (ไม่ลูปหลังกดบัญชีร้าน)
@@ -1381,56 +1395,103 @@ function OwnerHomeInner() {
 
       {homeTab === "stock" ? (
         stockEnabled ? (
-          <section
-            className="overflow-hidden rounded-2xl shadow-md divide-y divide-white/40"
-            aria-label="สต๊อก"
-          >
-            <SoftTile
-              href={stockFlowHref}
-              title="วิเคราะห์สต๊อก"
-              subtitle="รับเข้า · จ่าย · ขาย · เสีย · เทียบสาขา"
-              icon={<IconBoxes size={30} />}
-              tone="violet"
-              size="hero"
-              pill="งานหลัก"
-            />
-            <SoftTile
-              onClick={() => void goStaffStock()}
-              title={enteringStaff ? "กำลังเข้า…" : "จัดการสต๊อก"}
-              subtitle="รับเข้า · จ่ายออก · นับสต๊อก — มีเลขที่เอกสาร"
-              icon={<IconBoxes size={28} />}
-              tone="teal"
-              size="hero"
-            />
-            <SoftTile
-              href={agingHref}
-              title="ค้างอายุ"
-              subtitle={
-                aging
-                  ? `แดง ${formatPrice(aging.criticalQty ?? 0)} · ส้ม ${formatPrice(aging.warnQty ?? 0)}`
-                  : "ดูของใกล้หมดอายุ"
-              }
-              icon={<IconClipboard size={26} />}
-              tone="rose"
-              size="hero"
-            />
-            <SoftTile
-              href={wasteHref}
-              title="ของเสีย"
-              subtitle="ชำรุด · สูญหาย"
-              icon={<IconReceipt size={26} />}
-              tone="orange"
-              size="hero"
-            />
-            <SoftTile
-              href={stockHistoryHref}
-              title="ประวัติ"
-              subtitle="รับ · ขาย · ของเสีย · จ่ายออก"
-              icon={<IconReceipt size={26} />}
-              tone="indigo"
-              size="hero"
-            />
-          </section>
+          <div className="space-y-3" aria-label="สต๊อก">
+            <section className="overflow-hidden rounded-2xl shadow-md divide-y divide-white/40">
+              <SoftTile
+                onClick={() => void goStaffStock()}
+                title={enteringStaff ? "กำลังเข้า…" : "จัดการสต๊อก"}
+                subtitle={
+                  (pulseSource?.pendingStockConvertCount ??
+                    data?.pendingStockConvertCount ??
+                    0) > 0
+                    ? `รอ Convert ${pulseSource?.pendingStockConvertCount ?? data?.pendingStockConvertCount} · นับสต๊อก · ยอดต่าง`
+                    : "รับเข้า · จ่ายออก · นับสต๊อก — มีเลขที่เอกสาร"
+                }
+                icon={<IconBoxes size={28} />}
+                tone="teal"
+                size="hero"
+                pill="งานวันต่อวัน"
+                badge={
+                  (pulseSource?.pendingStockConvertCount ??
+                    data?.pendingStockConvertCount ??
+                    0) > 0
+                    ? (pulseSource?.pendingStockConvertCount ??
+                      data?.pendingStockConvertCount)
+                    : undefined
+                }
+              />
+            </section>
+
+            <section className="overflow-hidden rounded-2xl shadow-md divide-y divide-white/40">
+              <SoftTile
+                href={salesDaysHref}
+                title="วันขายดี / วันยอดอ่อน"
+                subtitle="รู้วันเตรียมเพิ่ม–ลด · ช่วงที่ลูกค้าใช้จ่าย"
+                icon={<IconClipboard size={26} />}
+                tone="amber"
+                size="hero"
+                pill="วางแผน"
+              />
+              <SoftTile
+                href={parStockHref}
+                title="แนะนำ Par Stock"
+                subtitle="ตั้งเป้าคงคลังต่อเมนู · ฐานแผนผลิต"
+                icon={<IconClipboard size={26} />}
+                tone="sky"
+                size="hero"
+                pill="วางแผน"
+              />
+              <SoftTile
+                href={tomorrowPlansHref}
+                title="แผนผลิต-เติม"
+                subtitle="คำนวณของที่ต้องผลิต/เติมจาก Par"
+                icon={<IconBoxes size={26} />}
+                tone="emerald"
+                size="hero"
+                pill="วางแผน"
+              />
+            </section>
+
+            <section className="overflow-hidden rounded-2xl shadow-md divide-y divide-white/40">
+              <SoftTile
+                href={stockFlowHref}
+                title="วิเคราะห์สต๊อก"
+                subtitle="รับเข้า · จ่าย · ขาย · เสีย · เทียบสาขา"
+                icon={<IconBoxes size={30} />}
+                tone="violet"
+                size="hero"
+                pill="ติดตาม"
+              />
+              <SoftTile
+                href={agingHref}
+                title="ค้างอายุ"
+                subtitle={
+                  aging
+                    ? `แดง ${formatPrice(aging.criticalQty ?? 0)} · ส้ม ${formatPrice(aging.warnQty ?? 0)}`
+                    : "ดูของใกล้หมดอายุ"
+                }
+                icon={<IconClipboard size={26} />}
+                tone="rose"
+                size="hero"
+              />
+              <SoftTile
+                href={wasteHref}
+                title="ของเสีย"
+                subtitle="ชำรุด · สูญหาย"
+                icon={<IconReceipt size={26} />}
+                tone="orange"
+                size="hero"
+              />
+              <SoftTile
+                href={stockHistoryHref}
+                title="ประวัติ"
+                subtitle="รับ · ขาย · ปรับสต๊อก · ของเสีย · จ่ายออก"
+                icon={<IconReceipt size={26} />}
+                tone="indigo"
+                size="hero"
+              />
+            </section>
+          </div>
         ) : (
           <p className="rounded-2xl bg-white px-4 py-8 text-center text-sm font-medium text-slate-500 shadow-sm">
             แพ็กเกจนี้ยังไม่เปิดโมดูลสต๊อก

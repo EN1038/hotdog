@@ -1,4 +1,5 @@
 import { bangkokDateKey, isBangkokDateKey } from "@/lib/constants";
+import type { StatusTone } from "@/lib/status-badge";
 
 /** หลังหมดอายุ ยังโชว์ที่หน้าร้านกี่วัน (ใช้ขายไม่ได้) */
 export const PROMO_EXPIRED_GRACE_DAYS = 3;
@@ -21,6 +22,14 @@ export const PROMO_SCHEDULE_STATUS_LABEL: Record<PromoScheduleStatus, string> = 
   expired_grace: "หมดอายุแล้ว",
   expired_hidden: "หมดอายุ (ซ่อนแล้ว)",
 };
+
+export const PROMO_SCHEDULE_STATUS_TONE: Record<PromoScheduleStatus, StatusTone> =
+  {
+    active: "active",
+    upcoming: "info",
+    expired_grace: "warning",
+    expired_hidden: "neutral",
+  };
 
 function toDate(value: Date | string | null | undefined): Date | null {
   if (value == null || value === "") return null;

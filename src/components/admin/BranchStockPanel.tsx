@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -72,6 +72,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
   const dateParam = searchParams.get("date");
+  const countIdParam = searchParams.get("countId")?.trim() || null;
   const toast = useToast();
   const { confirm } = useConfirm();
 
@@ -117,6 +118,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
   );
   const [pendingCountBadge, setPendingCountBadge] = useState(0);
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
+  const pendingTabSwitched = useRef(false);
 
   useEffect(() => {
     if (viewParam === "movements") setActiveTab("movements");
@@ -124,7 +126,16 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
       setActiveTab("par-stock");
     if (viewParam === "tomorrow") setActiveTab("tomorrow");
     if (viewParam === "tomorrow-plans") setActiveTab("tomorrow-plans");
+    if (viewParam === "counts") setActiveTab("counts");
   }, [viewParam]);
+
+  useEffect(() => {
+    if (viewParam) return;
+    if (pendingTabSwitched.current) return;
+    if (pendingCountBadge <= 0) return;
+    pendingTabSwitched.current = true;
+    setActiveTab("counts");
+  }, [pendingCountBadge, viewParam]);
 
   // Dropdown for "สร้างรายการใหม่"
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
@@ -635,10 +646,10 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
         <div className="flex min-w-max border-b border-slate-200">
           {(
             [
+              { id: "counts" as const, label: "สรุปยอด / Convert" },
               { id: "manage" as const, label: "จัดการสต๊อก" },
               { id: "par-stock" as const, label: "แนะนำ Par Stock" },
               { id: "tomorrow-plans" as const, label: "แผนผลิต-เติม" },
-              { id: "counts" as const, label: "สรุปยอด / Convert" },
               { id: "movements" as const, label: "ประวัติเคลื่อนไหว" },
               { id: "usage" as const, label: "การใช้ / ต้นทุน" },
             ] as const
@@ -677,6 +688,7 @@ export function BranchStockPanel({ branchId }: { branchId: string }) {
         <BranchStockCountsView
           branchId={branchId}
           onPendingChange={setPendingCountBadge}
+          initialCountId={countIdParam}
         />
       ) : activeTab === "par-stock" ? (
         <BranchParStockPanel

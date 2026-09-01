@@ -7,6 +7,8 @@ import {
   PAYMENT_METHOD_LABELS,
   formatPrice,
 } from "@/lib/constants";
+import { orderStatusTone } from "@/lib/status-badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDetail";
@@ -227,15 +229,20 @@ function OrderBillRow({
           <span className="mt-1.5 block truncate text-[15px] font-extrabold text-slate-900">
             {order.customerName || "ลูกค้าทั่วไป"}
           </span>
-          <span className="mt-0.5 block text-[12px] text-slate-500">
-            {ORDER_STATUS_LABELS[order.status] ?? order.status}
-            {" · "}
-            {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
-            {" · "}
-            {order.itemCount} ชิ้น
-            {showShift && order.shiftRound != null
-              ? ` · รอบ ${order.shiftRound}${day ? ` ${formatOperatingDayLabel(day)}` : ""}`
-              : ""}
+          <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <StatusBadge
+              label={ORDER_STATUS_LABELS[order.status] ?? order.status}
+              tone={orderStatusTone(order.status)}
+              size="sm"
+            />
+            <span className="text-[12px] text-slate-500">
+              {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+              {" · "}
+              {order.itemCount} ชิ้น
+              {showShift && order.shiftRound != null
+                ? ` · รอบ ${order.shiftRound}${day ? ` ${formatOperatingDayLabel(day)}` : ""}`
+                : ""}
+            </span>
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end justify-between py-0.5">

@@ -96,6 +96,31 @@ export function ownerStockHistoryHref(opts: {
   return `/owner/stock-history${buildOwnerViewQuery(opts)}`;
 }
 
+/** แนะนำ Par Stock ต่อสาขา (เจ้าของ / ผู้จัดการ) */
+export function ownerParStockHref(opts: {
+  branchId?: string | null;
+}) {
+  return `/owner/par-stock${buildOwnerViewQuery({ branchId: opts.branchId })}`;
+}
+
+/** แผนผลิต-เติมต่อสาขา (เจ้าของ / ผู้จัดการ) */
+export function ownerTomorrowPlansHref(opts: {
+  branchId?: string | null;
+}) {
+  return `/owner/tomorrow-plans${buildOwnerViewQuery({
+    branchId: opts.branchId,
+  })}`;
+}
+
+/** วันขายดี / วันยอดอ่อน · ช่วงที่ลูกค้าใช้จ่าย */
+export function ownerSalesDaysHref(opts: {
+  branchId?: string | null;
+  from?: string | null;
+  to?: string | null;
+}) {
+  return `/owner/sales-days${buildOwnerViewQuery(opts)}`;
+}
+
 export function readOwnerViewRangeParams(
   searchParams: URLSearchParams,
   todayKey: string,

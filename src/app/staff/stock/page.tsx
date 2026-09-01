@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toPng } from "html-to-image";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { StaffBranchStockHistoryPanel } from "@/components/staff/StaffBranchStockHistoryPanel";
+import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { compareThaiText } from "@/lib/thai-sort";
@@ -39,6 +40,7 @@ import {
 } from "@/lib/stock-document-no-format";
 import { MAX_STOCK_MOVEMENT_IMAGES } from "@/lib/stock-movement-images";
 import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
+import { StaffPrepTipBanner } from "@/components/staff/StaffPrepTipBanner";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -153,6 +155,8 @@ type Payload = {
   products: Product[];
   lowItems: Balance[];
   pending: Pending[];
+  pendingConvertCount?: number;
+  canConvertStockSummary?: boolean;
   brandBranches?: Array<{ id: string; name: string }>;
   lastStockCountAt?: string | null;
   lastStockCountAtByType?: Partial<Record<StockType, string | null>>;
@@ -207,6 +211,14 @@ function StaffStockContent() {
   const openAsPending = searchParams.get("action") === "pending";
   const openAsView = searchParams.get("action") === "view";
   const openAsIssue = searchParams.get("action") === "issue";
+  const openAsHistory = searchParams.get("action") === "history";
+  const focusConvert = searchParams.get("focus") === "convert";
+  const summaryIdParam = searchParams.get("summaryId")?.trim() || null;
+  const summaryDateParam = searchParams.get("date")?.trim() || null;
+  const historyBatchIdParam = searchParams.get("batchId")?.trim() || null;
+  const historyKindParam = searchParams.get("kind")?.trim() || null;
+  const historyFromParam = searchParams.get("from")?.trim() || null;
+  const historyToParam = searchParams.get("to")?.trim() || null;
   const openViewTypeParam = searchParams.get("type");
   const openViewStockType: StockType =
     openViewTypeParam === "CONSUMABLE" || openViewTypeParam === "EQUIPMENT"
@@ -269,6 +281,8 @@ function StaffStockContent() {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [attemptedSummary, setAttemptedSummary] = useState(false);
+  const [dailySummaryOpen, setDailySummaryOpen] = useState(false);
+  const [summaryDiffOnly, setSummaryDiffOnly] = useState(false);
 
   const stockCaptureRef = useRef<HTMLDivElement>(null);
   const [exportBusy, setExportBusy] = useState<"save" | "share" | "copy" | null>(
@@ -388,7 +402,19 @@ function StaffStockContent() {
     setChangeVal("");
     setCustomersVal("");
     setAttemptedSummary(false);
+    setSummaryDiffOnly(false);
   }, [openAsDailySummary, loading, data?.stockActive]);
+
+  useEffect(() => {
+    if (!focusConvert || loading || !data?.stockActive) return;
+    if (openAsDailySummary) return;
+    setDailySummaryOpen(true);
+  }, [focusConvert, loading, data?.stockActive, openAsDailySummary]);
+
+  useEffect(() => {
+    if (!openAsHistory || loading || !data?.stockActive) return;
+    setMode("history");
+  }, [openAsHistory, loading, data?.stockActive]);
 
   useEffect(() => {
     if (!WAREHOUSE_UI_ENABLED) return;
@@ -587,9 +613,26 @@ function StaffStockContent() {
   }, [summaryItems]);
 
   const visibleSummarySections = useMemo(() => {
-    if (categoryFilter === "ALL") return summarySections;
-    return summarySections.filter((s) => s.id === categoryFilter);
-  }, [summarySections, categoryFilter]);
+    const base =
+      categoryFilter === "ALL"
+        ? summarySections
+        : summarySections.filter((s) => s.id === categoryFilter);
+    if (!summaryDiffOnly) return base;
+    return base
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => {
+          const bal =
+            data?.balances.find((b) => b.product.id === item.id)?.quantity ?? 0;
+          return summaryCountedQty(item.id) !== bal;
+        }),
+      }))
+      .filter((section) => section.items.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- summaryCountedQty closes over qtyByItemId
+  }, [summarySections, categoryFilter, summaryDiffOnly, data, qtyByItemId]);
+
+  const pendingConvertCount = data?.pendingConvertCount ?? 0;
+  const canConvertStockSummary = Boolean(data?.canConvertStockSummary);
 
   const summaryTodayLabel = useMemo(() => {
     return new Intl.DateTimeFormat("th-TH", {
@@ -724,6 +767,7 @@ function StaffStockContent() {
       setChangeVal("");
       setCustomersVal("");
       setAttemptedSummary(false);
+      setSummaryDiffOnly(false);
       setShowSummaryModal(false);
       setShowReviewModal(false);
       return;
@@ -1487,6 +1531,7 @@ function StaffStockContent() {
                   <h2 className="text-lg font-extrabold text-slate-900">จัดการสต๊อก</h2>
                   <p className="text-xs text-slate-500">ปรับปรุงจำนวนสต๊อกของเมนูที่หน้าร้าน</p>
                 </div>
+                <StaffPrepTipBanner />
                 <div className="space-y-4 mt-6">
                   {WAREHOUSE_UI_ENABLED && (data.pending?.length ?? 0) > 0 ? (
                     <button
@@ -1505,6 +1550,80 @@ function StaffStockContent() {
                       </div>
                     </button>
                   ) : null}
+
+                  {canConvertStockSummary && pendingConvertCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setDailySummaryOpen(true)}
+                      className="w-full flex items-center justify-between rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 text-left shadow-sm active:scale-[0.98] transition-transform"
+                    >
+                      <div className="min-w-0 pr-3">
+                        <p className="text-[13px] font-bold uppercase tracking-wide text-amber-800">
+                          งานท้ายวัน
+                        </p>
+                        <h3 className="mt-0.5 text-xl font-black text-amber-950">
+                          รอ Convert {pendingConvertCount} เอกสาร
+                        </h3>
+                        <p className="mt-1 text-sm font-medium text-amber-900/80">
+                          ดูยอดต่าง · สรุปยอดนับ — เจ้าของหรือผู้จัดการปรับสต๊อก
+                        </p>
+                      </div>
+                      <div className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 px-2.5 text-base font-black text-white">
+                        {pendingConvertCount > 99 ? "99+" : pendingConvertCount}
+                      </div>
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => handleActionClick("summary")}
+                    className="relative w-full flex items-center justify-between rounded-2xl bg-blue-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="min-w-0 text-left pr-3">
+                      <p className="text-[12px] font-bold uppercase tracking-wide text-blue-100">
+                        งานหลัก · ท้ายวัน
+                      </p>
+                      <h3 className="mt-0.5 text-2xl font-black">
+                        นับสต๊อก / สรุปยอด
+                      </h3>
+                      <p className="mt-1 text-blue-100 text-sm">
+                        นับคงเหลือจริง · เห็นยอดต่าง · บันทึกสรุปยอด
+                      </p>
+                      <div className="mt-2.5 space-y-0.5 text-[12px] font-semibold leading-snug text-blue-50/95">
+                        <p>
+                          นับสต๊อกล่าสุด{" "}
+                          <span className="font-bold text-white">
+                            {lastStockCountLabel
+                              ? `${lastStockCountLabel} น.`
+                              : "ยังไม่เคยนับ"}
+                          </span>
+                        </p>
+                        <p>
+                          ขายล่าสุด{" "}
+                          <span className="font-bold text-white">
+                            {lastSaleLabel
+                              ? `${lastSaleLabel} น.`
+                              : "ยังไม่มียอดขาย"}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-4xl shrink-0">🧮</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDailySummaryOpen(true)}
+                    className="w-full flex items-center justify-between rounded-2xl bg-violet-700 p-5 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-xl font-black">เอกสารสรุปยอด</h3>
+                      <p className="mt-1 text-violet-100 text-sm">
+                        ดูยอดต่าง · สถานะรอ Convert / เสร็จแล้ว
+                      </p>
+                    </div>
+                    <div className="text-3xl">📑</div>
+                  </button>
 
                   <button
                     onClick={() => handleActionClick("stock_in")}
@@ -1573,38 +1692,6 @@ function StaffStockContent() {
                   </button>
 
                   <button
-                    type="button"
-                    onClick={() => handleActionClick("summary")}
-                    className="w-full flex items-center justify-between rounded-2xl bg-blue-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
-                  >
-                    <div className="min-w-0 text-left pr-3">
-                      <h3 className="text-2xl font-black">นับสต๊อก</h3>
-                      <p className="mt-1 text-blue-100 text-sm">
-                        นับคงเหลือจริงตามกลุ่มเมนู แล้วบันทึกสรุปยอด
-                      </p>
-                      <div className="mt-2.5 space-y-0.5 text-[12px] font-semibold leading-snug text-blue-50/95">
-                        <p>
-                          นับสต๊อกล่าสุด{" "}
-                          <span className="font-bold text-white">
-                            {lastStockCountLabel
-                              ? `${lastStockCountLabel} น.`
-                              : "ยังไม่เคยนับ"}
-                          </span>
-                        </p>
-                        <p>
-                          ขายล่าสุด{" "}
-                          <span className="font-bold text-white">
-                            {lastSaleLabel
-                              ? `${lastSaleLabel} น.`
-                              : "ยังไม่มียอดขาย"}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-4xl shrink-0">🧮</div>
-                  </button>
-
-                  <button
                     onClick={() => handleActionClick("issue")}
                     className="w-full flex items-center justify-between rounded-2xl bg-amber-500 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
                   >
@@ -1639,7 +1726,7 @@ function StaffStockContent() {
                     <div className="text-left">
                       <h3 className="text-2xl font-black">ประวัติ</h3>
                       <p className="mt-1 text-indigo-100 text-sm">
-                        รับ · ขาย · ของเสีย · จ่ายออก — ดูรายละเอียดตามเลขเอกสาร
+                        รับ · ขาย · ปรับสต๊อก · ของเสีย · จ่ายออก — กดดูรายละเอียดแต่ละบิล
                       </p>
                     </div>
                     <div className="text-4xl">🧾</div>
@@ -1649,6 +1736,19 @@ function StaffStockContent() {
             ) : mode === "history" ? (
               <StaffBranchStockHistoryPanel
                 onBack={() => setMode("menu")}
+                initialKind={
+                  historyKindParam === "adjust" ||
+                  historyKindParam === "sale" ||
+                  historyKindParam === "in" ||
+                  historyKindParam === "out" ||
+                  historyKindParam === "waste" ||
+                  historyKindParam === "all"
+                    ? historyKindParam
+                    : null
+                }
+                initialFrom={historyFromParam}
+                initialTo={historyToParam}
+                openBatchId={historyBatchIdParam}
               />
             ) : mode === "pending" && WAREHOUSE_UI_ENABLED ? (
               <>
@@ -1792,6 +1892,17 @@ function StaffStockContent() {
                         — ช่องสีแดง
                       </div>
                     ) : null}
+                    {summaryDiffItems.length > 0 ? (
+                      <label className="mb-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-[13px] font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={summaryDiffOnly}
+                          onChange={(e) => setSummaryDiffOnly(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        แสดงเฉพาะยอดต่าง ({summaryDiffItems.length})
+                      </label>
+                    ) : null}
                     {summarySections.length > 1 ? (
                       <div className="mb-3 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <div className="flex w-max min-w-full gap-2">
@@ -1837,7 +1948,9 @@ function StaffStockContent() {
                       </p>
                     ) : visibleSummarySections.length === 0 ? (
                       <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-sm font-semibold text-slate-500">
-                        ไม่มีเมนูในหมวดนี้
+                        {summaryDiffOnly
+                          ? "ไม่มีรายการที่ยอดต่างในตัวกรองนี้ — ปิด「เฉพาะยอดต่าง」เพื่อดูทั้งหมด"
+                          : "ไม่มีเมนูในหมวดนี้"}
                       </p>
                     ) : null}
                     <div className="space-y-4">
@@ -2121,6 +2234,7 @@ function StaffStockContent() {
                         disabled={summaryItems.length === 0}
                         onClick={() => {
                           if (!validateSummaryForm()) return;
+                          setSummaryDiffOnly(true);
                           setShowReviewModal(true);
                         }}
                         className="flex-1 rounded-xl border-2 border-slate-300 bg-white py-3.5 text-center text-base font-bold text-slate-800 shadow-sm active:scale-[0.98] transition-transform disabled:opacity-50"
@@ -3306,7 +3420,15 @@ function StaffStockContent() {
           </div>
         </div>
       ) : null}
-      
+
+      <StaffDailySalesSummarySheet
+        open={dailySummaryOpen}
+        onClose={() => setDailySummaryOpen(false)}
+        initialDate={summaryDateParam}
+        initialSummaryId={summaryIdParam}
+        brandName={brandName}
+        branchName={branchName}
+      />
     </StaffAppShell>
   );
 }

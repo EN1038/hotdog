@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import {
   SKILLSALE_ICON_URL,
@@ -107,17 +108,19 @@ function faviconFromMarks(
     : icon || SKILLSALE_ICON_URL;
 }
 
-export async function getPlatformSettings(): Promise<PlatformSettingsData> {
-  try {
-    const row = await prisma.siteSettings.findUnique({
-      where: { id: "default" },
-    });
-    if (!row) return PLATFORM_SETTINGS_DEFAULTS;
-    return withAssetFallbacks(row as SiteSettingsRow);
-  } catch {
-    return PLATFORM_SETTINGS_DEFAULTS;
-  }
-}
+export const getPlatformSettings = cache(
+  async (): Promise<PlatformSettingsData> => {
+    try {
+      const row = await prisma.siteSettings.findUnique({
+        where: { id: "default" },
+      });
+      if (!row) return PLATFORM_SETTINGS_DEFAULTS;
+      return withAssetFallbacks(row as SiteSettingsRow);
+    } catch {
+      return PLATFORM_SETTINGS_DEFAULTS;
+    }
+  },
+);
 
 /** @deprecated Prefer getPlatformSettings */
 export async function getSiteSettings(): Promise<PlatformSettingsData> {

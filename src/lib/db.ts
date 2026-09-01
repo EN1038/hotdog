@@ -11,12 +11,18 @@ const globalForPrisma = globalThis as unknown as {
   prismaClientVersion?: number;
 };
 
+function getPoolMax(): number {
+  // `next build` forks many workers; each process gets its own pool singleton.
+  if (process.env.NEXT_PHASE === "phase-production-build") return 1;
+  return 8;
+}
+
 function getPool() {
   if (!globalForPrisma.prismaPool) {
     globalForPrisma.prismaPool = new Pool({
       connectionString: process.env.DATABASE_URL,
       // Managed Postgres (DO) has a small slot budget; HMR must not open a new pool.
-      max: 8,
+      max: getPoolMax(),
       idleTimeoutMillis: 30_000,
     });
     globalForPrisma.prismaPool.on("error", (err) => {

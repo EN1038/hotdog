@@ -59,7 +59,7 @@ class QueuePrintService(private val context: Context) {
                 tscPrinter.printPackageLabels(labels, device.address)
             }
             else -> {
-                PrintResult.fail("ป้ายแพ็กต้องใช้เครื่องป้าย TSC/3R20")
+                PrintResult.fail("ป้ายแพ็กต้องใช้เครื่องป้าย TSC (เช่น 3R20, 80160)")
             }
         }
     }

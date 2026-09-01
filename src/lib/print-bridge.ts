@@ -113,11 +113,24 @@ export function hasPackageLabelPrintBridge(): boolean {
   return typeof getBridge()?.printPackageLabels === "function";
 }
 
+export function isTscLabelPrinter(printer: PrintBridgePrinter | null): boolean {
+  if (!printer) return false;
+  if (printer.type === "TSC") return true;
+  const name = printer.name.toUpperCase();
+  if (name.includes("80161")) return false;
+  return (
+    name.includes("3R20") ||
+    name.includes("ZENPERT") ||
+    name.includes("TSC") ||
+    name.includes("80160")
+  );
+}
+
 export function canPrintPackageLabelsNative(): boolean {
   return (
     canUsePrintActions() &&
     hasPackageLabelPrintBridge() &&
-    getSelectedPrinter()?.type === "TSC"
+    isTscLabelPrinter(getSelectedPrinter())
   );
 }
 
@@ -148,8 +161,9 @@ export function printPackageLabels(
   }
   const bridge = getBridge();
   if (!bridge?.printPackageLabels) return null;
-  if (getSelectedPrinter()?.type !== "TSC") {
-    return { code: "-1", message: "ป้ายแพ็กต้องใช้เครื่องป้าย TSC/3R20" };
+  const printer = getSelectedPrinter();
+  if (!isTscLabelPrinter(printer)) {
+    return { code: "-1", message: "ป้ายแพ็กต้องใช้เครื่องป้าย TSC (เช่น 3R20, 80160)" };
   }
   try {
     return JSON.parse(

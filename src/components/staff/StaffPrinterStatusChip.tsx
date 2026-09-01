@@ -4,13 +4,14 @@ import { IconPrinter } from "@/components/icons";
 import { usePrintBridgeStatus } from "@/hooks/usePrintBridgeStatus";
 import {
   hasPackageLabelPrintBridge,
+  isTscLabelPrinter,
   selectPrinter,
 } from "@/lib/print-bridge";
 
 type Props = {
   /** When true, show a hint that browser print is used outside the APK. */
   showBrowserHint?: boolean;
-  /** Package labels require a TSC/3R20 sticker printer in the APK. */
+  /** Package labels require a TSC sticker printer in the APK. */
   requireTsc?: boolean;
   className?: string;
 };
@@ -22,14 +23,14 @@ export function StaffPrinterStatusChip({
 }: Props) {
   const { inApp, configured, printer, label } = usePrintBridgeStatus();
   const hasPackageBridge = hasPackageLabelPrintBridge();
-  const isTsc = printer?.type === "TSC";
+  const isTsc = isTscLabelPrinter(printer);
   const readyForPackage =
     configured && hasPackageBridge && (!requireTsc || isTsc);
   let displayLabel = label;
   if (requireTsc && inApp && configured && !hasPackageBridge) {
     displayLabel = "อัปเดตแอป v1.2.0 เพื่อพิมพ์ป้ายแพ็ก";
   } else if (requireTsc && configured && hasPackageBridge && !isTsc) {
-    displayLabel = "เชื่อมแล้ว · ต้องใช้เครื่องป้าย TSC/3R20";
+    displayLabel = "เชื่อมแล้ว · ต้องใช้เครื่องป้าย TSC (3R20 / 80160)";
   }
 
   if (!inApp) {

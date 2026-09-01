@@ -176,6 +176,10 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `CREATE INDEX IF NOT EXISTS "BrandPrintLayout_brandId_idx" ON "${schema}"."BrandPrintLayout"("brandId")`,
         `CREATE INDEX IF NOT EXISTS "BrandInvoice_brandId_createdAt_idx" ON "${schema}"."BrandInvoice"("brandId", "createdAt")`,
         `CREATE INDEX IF NOT EXISTS "BrandInvoice_brandId_status_idx" ON "${schema}"."BrandInvoice"("brandId", "status")`,
+        `ALTER TABLE "${schema}"."StockLabel" ADD COLUMN IF NOT EXISTS "receivedBranchId" TEXT`,
+        `ALTER TABLE "${schema}"."StockLabel" ADD COLUMN IF NOT EXISTS "receivedAt" TIMESTAMP(3)`,
+        `ALTER TABLE "${schema}"."StockLabel" ADD COLUMN IF NOT EXISTS "receivedByStaffId" TEXT`,
+        `CREATE INDEX IF NOT EXISTS "StockLabel_receivedBranchId_receivedAt_idx" ON "${schema}"."StockLabel"("receivedBranchId", "receivedAt")`,
       ];
       for (const sql of invoiceTableSql) {
         try {

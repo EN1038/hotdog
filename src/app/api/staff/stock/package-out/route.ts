@@ -12,6 +12,10 @@ import {
   parseStockLabelQrPayload,
   stockLabelQrPayload,
 } from "@/lib/stock-label";
+import {
+  labelPreviewPayload,
+  resolveBrandStockLabel,
+} from "@/lib/stock-label-resolve";
 
 const postSchema = z.object({
   labelCode: z.string().trim().min(1).optional(),
@@ -204,39 +208,33 @@ export async function POST(request: Request) {
   }
 }
 
-/** GET — lookup label by QR for scan preview */
+/** GET — lookup label by QR or label code for scan preview */
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
     const qr = searchParams.get("qr")?.trim();
-    if (!qr) return jsonError("กรุณาสแกน QR");
+    const labelCode = searchParams.get("labelCode")?.trim();
+    if (!qr && !labelCode) {
+      return jsonError("กรุณากรอกรหัสป้ายหรือสแกน QR");
+    }
 
-    const label = await resolveLabel({
-      branchId: session.branchId,
+    const branch = await prisma.branch.findUnique({
+      where: { id: session.branchId },
+      select: { id: true, brandId: true },
+    });
+    if (!branch?.brandId) return jsonError("สาขาไม่มีแบรนด์", 400);
+
+    const label = await resolveBrandStockLabel({
+      brandId: branch.brandId,
       qrPayload: qr,
+      labelCode,
     });
-    if (!label) return jsonError("ไม่พบป้ายแพ็ก", 404);
+    if (!label || label.branchId !== session.branchId) {
+      return jsonError("ไม่พบป้ายแพ็กในสาขานี้", 404);
+    }
 
-    return jsonOk({
-      id: label.id,
-      labelCode: label.labelCode,
-      lotNumber: label.lotNumber,
-      productName: label.productName,
-      productCode: label.productCode,
-      brandName: label.brandName,
-      sourceBranchName: label.sourceBranchName,
-      quantity: label.quantity,
-      unit: label.unit,
-      status: label.status,
-      producedAt: label.producedAt?.toISOString() ?? null,
-      expiresAt: label.expiresAt?.toISOString() ?? null,
-      documentNo: label.documentNo,
-      qrPayload: stockLabelQrPayload({
-        id: label.id,
-        labelCode: label.labelCode,
-      }),
-    });
+    return jsonOk(labelPreviewPayload(label));
   } catch (error) {
     return handleApiError(error);
   }

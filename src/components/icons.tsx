@@ -451,6 +451,25 @@ export function IconPlus(props: IconProps) {
   );
 }
 
+export function IconQrScan(props: IconProps) {
+  const p = baseProps(props);
+  return (
+    <svg {...p}>
+      <path
+        d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 8h2v2H8zM14 8h2v2h-2zM8 14h2v2H8zM11 11h2v2h-2zM14 14h1v1h-1zM16 11h1v1h-1z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export function IconMic(props: IconProps) {
   const p = baseProps(props);
   return (

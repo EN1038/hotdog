@@ -12,7 +12,8 @@ import {
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
 import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
-import { isStockMenuQrPayload } from "@/lib/stock-menu-qr";
+import { StaffMenuScanField } from "@/components/staff/StaffMenuScanField";
+import { lookupStockMenuScan } from "@/lib/stock-menu-scan";
 
 type MenuItem = {
   id: string;
@@ -240,30 +241,10 @@ export function StaffPackageInPanel({
     async (raw: string) => {
       const qr = raw.trim();
       if (!qr || scanBusy) return;
-      if (!isStockMenuQrPayload(qr)) {
-        toast.error(
-          "สแกนไม่สำเร็จ",
-          "กรุณาสแกน QR จากป้ายเมนู/สินค้า (ไม่ใช่บาร์โค้ด)",
-        );
-        return;
-      }
       setScanBusy(true);
       try {
-        const res = await fetch(
-          `/api/staff/stock/menu-lookup?qr=${encodeURIComponent(qr)}`,
-        );
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            typeof body.error === "string"
-              ? body.error
-              : "ไม่พบรหัสสินค้าในสาขานี้",
-          );
-        }
-        const itemId = String(body.itemId ?? "");
-        const itemName = String(body.name ?? "สินค้า");
-        const productCode = String(body.productCode ?? "");
-        if (!itemId) throw new Error("ไม่พบรหัสสินค้าในสาขานี้");
+        const body = await lookupStockMenuScan(qr);
+        const { itemId, name: itemName, productCode } = body;
 
         if (!itemById.has(itemId)) {
           setScannedItems((prev) => ({
@@ -501,24 +482,17 @@ export function StaffPackageInPanel({
           void lookupAndApplyScan(scanValue);
         }}
       >
-        <label className="block">
-          <span className="mb-1 block text-[12px] font-semibold text-slate-600">
-            สแกน QR เพื่อเพิ่มแพ็ก
-          </span>
-          <input
-            ref={scanInputRef}
-            value={scanValue}
-            onChange={(e) => setScanValue(e.target.value)}
-            placeholder="สแกน QR บนป้ายเมนู/สินค้า"
-            disabled={scanBusy}
-            className="w-full rounded-xl border border-slate-200 px-3 py-3 text-[15px] font-semibold text-slate-900 disabled:opacity-60"
-            autoComplete="off"
-            inputMode="text"
-          />
-        </label>
-        <p className="mt-1.5 text-[11px] font-medium text-slate-500">
-          บาร์โค้ดบนป้ายใช้แสดงรหัสเท่านั้น · สแกนซ้ำเพิ่มจำนวน · เลือกเมนูด้านล่างได้
-        </p>
+        <StaffMenuScanField
+          label="สแกน QR เพื่อเพิ่มแพ็ก"
+          value={scanValue}
+          onChange={setScanValue}
+          onSubmit={(next) => void lookupAndApplyScan(next)}
+          busy={scanBusy}
+          inputRef={scanInputRef}
+          placeholder="กรอกรหัสสินค้า หรือแตะไอคอนเพื่อสแกน QR"
+          hint="บาร์โค้ดบนป้ายเมนู = รหัสสินค้า · สแกนซ้ำเพิ่มจำนวน · เลือกเมนูด้านล่างได้"
+          scannerTitle="สแกน QR ป้ายเมนู/สินค้า"
+        />
       </form>
 
       <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">

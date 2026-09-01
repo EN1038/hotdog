@@ -570,6 +570,7 @@ model Branch {
   smsSendLogs                  SmsSendLog[]
   stockLabels                  StockLabel[]
   sourceStockLabels            StockLabel[]                 @relation("StockLabelSource")
+  receivedStockLabels          StockLabel[]                 @relation("StockLabelReceived")
 
   @@unique([brandId, code])
   @@index([alertSoundId])
@@ -639,6 +640,7 @@ model Staff {
   stockRequests                BranchStockRequest[]
   createdStockLabels           StockLabel[]                 @relation("StockLabelCreatedBy")
   consumedStockLabels          StockLabel[]                 @relation("StockLabelConsumedBy")
+  receivedStockLabels          StockLabel[]                 @relation("StockLabelReceivedBy")
 
   @@unique([branchId, phone])
   @@index([phone])
@@ -1771,21 +1773,27 @@ model StockLabel {
   status             StockLabelStatus @default(ACTIVE)
   consumedAt         DateTime?
   consumedByStaffId  String?
+  receivedBranchId   String?
+  receivedAt         DateTime?
+  receivedByStaffId  String?
   printedAt          DateTime?
   createdAt          DateTime         @default(now())
   createdByStaffId   String?
 
   branch           Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
   sourceBranch     Branch?             @relation("StockLabelSource", fields: [sourceBranchId], references: [id], onDelete: SetNull)
+  receivedBranch   Branch?             @relation("StockLabelReceived", fields: [receivedBranchId], references: [id], onDelete: SetNull)
   menuItem         BranchMenuItem?     @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
   nonMenuItem      BranchNonMenuItem?  @relation(fields: [nonMenuItemId], references: [id], onDelete: SetNull)
   createdByStaff   Staff?              @relation("StockLabelCreatedBy", fields: [createdByStaffId], references: [id], onDelete: SetNull)
   consumedByStaff  Staff?              @relation("StockLabelConsumedBy", fields: [consumedByStaffId], references: [id], onDelete: SetNull)
+  receivedByStaff Staff?             @relation("StockLabelReceivedBy", fields: [receivedByStaffId], references: [id], onDelete: SetNull)
 
   @@unique([branchId, labelCode])
   @@index([branchId, batchId])
   @@index([branchId, documentNo])
   @@index([branchId, status, createdAt])
+  @@index([receivedBranchId, receivedAt])
   @@index([lotNumber])
 }
 

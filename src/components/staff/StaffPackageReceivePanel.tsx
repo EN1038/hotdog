@@ -11,16 +11,22 @@ import {
 
 type Props = {
   onBack: () => void;
+  onSuccess?: () => void;
+  initialScan?: string;
 };
 
-export function StaffPackageOutPanel({ onBack }: Props) {
+export function StaffPackageReceivePanel({
+  onBack,
+  onSuccess,
+  initialScan = "",
+}: Props) {
   const toast = useToast();
-  const [scanValue, setScanValue] = useState("");
+  const [scanValue, setScanValue] = useState(initialScan);
   const [preview, setPreview] = useState<StockLabelScanPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const initialHandled = useRef(false);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -32,7 +38,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
       if (!trimmed) return;
       setLoading(true);
       try {
-        const body = await fetchPackageLabelPreview("package-out", trimmed);
+        const body = await fetchPackageLabelPreview("package-receive", trimmed);
         setPreview(body);
       } catch (e) {
         setPreview(null);
@@ -47,41 +53,42 @@ export function StaffPackageOutPanel({ onBack }: Props) {
     [toast],
   );
 
-  async function confirmIssue() {
+  useEffect(() => {
+    if (!initialScan.trim() || initialHandled.current) return;
+    initialHandled.current = true;
+    void lookup(initialScan);
+  }, [initialScan, lookup]);
+
+  async function confirmReceive() {
     if (!preview) return;
-    if (!note.trim()) {
-      toast.error("กรุณากรอกรายละเอียดการจ่ายออก");
-      return;
-    }
     setBusy(true);
     try {
-      const res = await fetch("/api/staff/stock/package-out", {
+      const res = await fetch("/api/staff/stock/package-receive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           labelId: preview.id,
           labelCode: preview.labelCode,
           qrPayload: preview.qrPayload,
-          note: note.trim(),
         }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
-          typeof body.error === "string" ? body.error : "จ่ายออกไม่สำเร็จ",
+          typeof body.error === "string" ? body.error : "รับเข้าไม่สำเร็จ",
         );
       }
       toast.success(
-        "จ่ายแพ็กสำเร็จ",
+        "รับแพ็กสำเร็จ",
         `${preview.productName} · ${preview.quantity} ${preview.unit}`,
       );
       setPreview(null);
       setScanValue("");
-      setNote("");
+      onSuccess?.();
       inputRef.current?.focus();
     } catch (e) {
       toast.error(
-        "จ่ายออกไม่สำเร็จ",
+        "รับเข้าไม่สำเร็จ",
         e instanceof Error ? e.message : "ลองใหม่",
       );
     } finally {
@@ -100,19 +107,19 @@ export function StaffPackageOutPanel({ onBack }: Props) {
           ← กลับ
         </button>
         <div className="min-w-0">
-          <h2 className="text-lg font-extrabold text-slate-900">จ่ายออกแพ็ก</h2>
+          <h2 className="text-lg font-extrabold text-slate-900">รับเข้าแพ็ก</h2>
           <p className="text-xs font-semibold text-slate-600">
-            กรอกรหัสป้ายหรือสแกน QR เพื่อจ่ายออกจากคลัง
+            สแกนป้ายแพ็กที่ส่งมาจากคลัง/สาขาแพ็ก
           </p>
         </div>
       </div>
 
       <form
+        className="rounded-2xl bg-white p-4 shadow-sm"
         onSubmit={(e) => {
           e.preventDefault();
           void lookup(scanValue);
         }}
-        className="rounded-2xl bg-white p-4 shadow-sm"
       >
         <StaffMenuScanField
           label="รหัสป้าย / สแกน QR"
@@ -121,9 +128,9 @@ export function StaffPackageOutPanel({ onBack }: Props) {
           onSubmit={(next) => void lookup(next)}
           busy={loading}
           inputRef={inputRef}
-          autoFocus
+          autoFocus={!initialScan.trim()}
           placeholder="กรอกรหัสป้าย หรือแตะไอคอนเพื่อสแกน QR"
-          hint="จ่ายออกแพ็กจากสต๊อกคลัง — สาขาปลายทางจะรับเข้าด้วยป้ายเดียวกัน"
+          hint="รับแพ็กที่จ่ายออกจากคลังแล้ว — ไม่รับแพ็กที่ผลิตที่สาขานี้เอง"
           scannerTitle="สแกน QR บนป้ายแพ็ก"
         />
         <button
@@ -140,13 +147,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
       {preview ? (
         <div className="mt-4 space-y-3 rounded-2xl bg-white p-4 shadow-sm">
           <div>
-            <p className="text-[13px] font-bold text-site-primary">
-              {preview.status === "ACTIVE"
-                ? "พร้อมจ่ายออก"
-                : preview.status === "CONSUMED"
-                  ? "จ่ายออกแล้ว"
-                  : preview.status}
-            </p>
+            <p className="text-[13px] font-bold text-emerald-700">พร้อมรับเข้า</p>
             <p className="mt-1 text-[17px] font-extrabold text-slate-900">
               {preview.productName}
             </p>
@@ -156,37 +157,19 @@ export function StaffPackageOutPanel({ onBack }: Props) {
             <p className="mt-1 text-[15px] font-black text-slate-900">
               {preview.quantity} {preview.unit}
             </p>
-            {preview.sourceBranchName ? (
-              <p className="text-[12px] text-slate-500">
-                จาก {preview.sourceBranchName}
-              </p>
-            ) : null}
+            <p className="text-[12px] text-slate-500">
+              แพ็กจาก {preview.originBranchName}
+            </p>
           </div>
 
-          {preview.status === "ACTIVE" ? (
-            <>
-              <label className="block">
-                <span className="mb-1 block text-[12px] font-semibold text-slate-600">
-                  รายละเอียดการจ่ายออก *
-                </span>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  rows={2}
-                  placeholder="เช่น ส่งไปสาขา X / ใช้ในครัว"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[14px] font-semibold"
-                />
-              </label>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void confirmIssue()}
-                className="w-full rounded-2xl bg-amber-500 py-3.5 text-[15px] font-extrabold text-white disabled:opacity-60"
-              >
-                {busy ? "กำลังบันทึก…" : "ยืนยันจ่ายออกแพ็ก"}
-              </button>
-            </>
-          ) : null}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void confirmReceive()}
+            className="w-full rounded-2xl bg-emerald-600 py-3.5 text-[15px] font-extrabold text-white disabled:opacity-60"
+          >
+            {busy ? "กำลังบันทึก…" : "ยืนยันรับเข้าแพ็ก"}
+          </button>
         </div>
       ) : null}
     </>

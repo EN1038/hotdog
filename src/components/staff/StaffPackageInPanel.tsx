@@ -6,6 +6,11 @@ import { useToast } from "@/components/admin/Toast";
 import { DateInput } from "@/components/DateInput";
 import { StockDocumentNoField } from "@/components/stock/StockDocumentNoField";
 import { bangkokDateKey } from "@/lib/constants";
+import { resolveSkewerMenuImageUrl } from "@/lib/skewer-order";
+import {
+  formatLotPreview,
+  formatThaiDateKey,
+} from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
 import type { StockDocumentKind } from "@/lib/stock-document-no-format";
 
@@ -13,6 +18,7 @@ type MenuItem = {
   id: string;
   name: string;
   imageUrl?: string | null;
+  skewerImageUrl?: string | null;
   itemCode?: string | null;
   stockQuantity?: number | null;
   category?: { name: string } | null;
@@ -22,6 +28,11 @@ type PackageRow = {
   key: string;
   itemId: string;
   quantity: number;
+  producedAt: string;
+  receivedAt: string;
+  stickerCopies: number;
+  printSticker: boolean;
+  expanded: boolean;
 };
 
 type MetaPayload = {
@@ -34,6 +45,26 @@ type MetaPayload = {
 
 function newRowKey() {
   return `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createPackageRow(patch?: Partial<PackageRow>): PackageRow {
+  const today = bangkokDateKey();
+  return {
+    key: newRowKey(),
+    itemId: "",
+    quantity: 1,
+    producedAt: today,
+    receivedAt: today,
+    stickerCopies: 1,
+    printSticker: true,
+    expanded: false,
+    ...patch,
+  };
+}
+
+function menuThumb(item: MenuItem | undefined) {
+  if (!item) return null;
+  return resolveSkewerMenuImageUrl(item);
 }
 
 type Props = {
@@ -54,11 +85,8 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
 
   const [documentNo, setDocumentNo] = useState("");
   const [docGenerating, setDocGenerating] = useState(false);
-  const [producedAt, setProducedAt] = useState(bangkokDateKey());
   const [sourceBranchId, setSourceBranchId] = useState<string>("");
-  const [rows, setRows] = useState<PackageRow[]>([
-    { key: newRowKey(), itemId: "", quantity: 1 },
-  ]);
+  const [rows, setRows] = useState<PackageRow[]>([createPackageRow()]);
   const [printAfterSave, setPrintAfterSave] = useState(true);
 
   const load = useCallback(async () => {
@@ -78,7 +106,6 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
         );
       }
       setMeta(metaBody as MetaPayload);
-      if (metaBody.producedAt) setProducedAt(metaBody.producedAt);
       if (metaBody.defaultSourceId) {
         setSourceBranchId(metaBody.defaultSourceId);
       }
@@ -148,14 +175,21 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
   function addRow(copyLast = false) {
     setRows((prev) => {
       const last = prev[prev.length - 1];
-      return [
-        ...prev,
-        {
-          key: newRowKey(),
-          itemId: copyLast && last ? last.itemId : "",
-          quantity: copyLast && last ? last.quantity : 1,
-        },
-      ];
+      if (copyLast && last) {
+        return [
+          ...prev,
+          createPackageRow({
+            itemId: last.itemId,
+            quantity: last.quantity,
+            producedAt: last.producedAt,
+            receivedAt: last.receivedAt,
+            stickerCopies: last.stickerCopies,
+            printSticker: last.printSticker,
+            expanded: false,
+          }),
+        ];
+      }
+      return [...prev, createPackageRow()];
     });
   }
 
@@ -168,6 +202,14 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
   function updateRow(key: string, patch: Partial<PackageRow>) {
     setRows((prev) =>
       prev.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+    );
+  }
+
+  function toggleExpanded(key: string) {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.key === key ? { ...r, expanded: !r.expanded } : r,
+      ),
     );
   }
 
@@ -189,11 +231,14 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           documentNo: documentNo.trim(),
-          producedAt,
           sourceBranchId: sourceBranchId || null,
           lines: validRows.map((r) => ({
             itemId: r.itemId,
             quantity: r.quantity,
+            producedAt: r.producedAt,
+            receivedAt: r.receivedAt,
+            labelCopies:
+              printAfterSave && r.printSticker ? r.stickerCopies : 0,
           })),
         }),
       });
@@ -205,8 +250,11 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
       }
 
       const labels = Array.isArray(body.labels) ? body.labels : [];
-      if (printAfterSave && labels.length > 0) {
-        await openPackageLabelPrint(labels);
+      const toPrint = labels.filter(
+        (l: { copies?: number }) => (l.copies ?? 1) > 0,
+      );
+      if (printAfterSave && toPrint.length > 0) {
+        await openPackageLabelPrint(toPrint);
       }
 
       toast.success(
@@ -253,7 +301,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-extrabold text-slate-900">รับเข้าแพ็ก</h2>
           <p className="text-xs font-semibold text-slate-600">
-            สร้างป้ายแพ็กหลายรายการ · พิมพ์ครั้งเดียว
+            แตะการ์ดเพื่อดู/แก้รายละเอียดแต่ละแพ็ก
           </p>
         </div>
         {onHistory ? (
@@ -293,13 +341,6 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
           </label>
         ) : null}
 
-        <label className="block">
-          <span className="mb-1 block text-[12px] font-semibold text-slate-600">
-            วันที่ผลิต *
-          </span>
-          <DateInput value={producedAt} onChange={setProducedAt} />
-        </label>
-
         <StockDocumentNoField
           value={documentNo}
           onChange={setDocumentNo}
@@ -334,76 +375,223 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
 
         {rows.map((row, index) => {
           const item = itemById.get(row.itemId);
+          const thumb = menuThumb(item);
+          const productCode = item?.itemCode?.trim() || "—";
+          const lotPreview = formatLotPreview(row.producedAt);
+
           return (
             <div
               key={row.key}
-              className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm"
+              className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-colors ${
+                row.expanded
+                  ? "border-teal-300 ring-1 ring-teal-100"
+                  : "border-slate-100"
+              }`}
             >
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[13px] font-extrabold text-slate-800">
-                  แพ็ก #{index + 1}
-                </p>
-                {rows.length > 1 ? (
+              <div className="flex items-stretch gap-0">
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(row.key)}
+                  className="min-w-0 flex-1 p-3 text-left active:bg-slate-50"
+                >
+                  <div className="flex items-start gap-3">
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-2xl">
+                        🍢
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[12px] font-bold text-teal-700">
+                          แพ็ก #{index + 1}
+                        </p>
+                        <span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-bold text-white">
+                          {row.quantity} ชิ้น
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[15px] font-extrabold text-slate-900">
+                        {item?.name ?? "แตะเพื่อเลือกเมนู · ขยายแก้รายละเอียด"}
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold leading-snug text-slate-500">
+                        ผลิต {formatThaiDateKey(row.producedAt)} · รับ{" "}
+                        {formatThaiDateKey(row.receivedAt)}
+                      </p>
+                      <p className="text-[11px] font-mono font-semibold text-slate-600">
+                        {productCode} · LOT {lotPreview}
+                        {row.printSticker && printAfterSave
+                          ? ` · พิมพ์ ${row.stickerCopies} ป้าย`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+                <div className="flex shrink-0 flex-col border-l border-slate-100">
                   <button
                     type="button"
-                    onClick={() => removeRow(row.key)}
-                    className="text-[12px] font-bold text-rose-600"
+                    onClick={() => toggleExpanded(row.key)}
+                    className="flex flex-1 items-center justify-center px-3 text-slate-500 active:bg-slate-50"
+                    aria-label={row.expanded ? "ย่อการ์ด" : "ขยายการ์ด"}
                   >
-                    ลบ
+                    <span
+                      className={`text-lg transition-transform ${
+                        row.expanded ? "rotate-180" : ""
+                      }`}
+                    >
+                      ▾
+                    </span>
                   </button>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setPickerRowKey(row.key);
-                  setMenuQ("");
-                  setPickerOpen(true);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl bg-slate-50 p-3 text-left"
-              >
-                {item?.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.imageUrl}
-                    alt=""
-                    className="h-14 w-14 rounded-xl object-cover"
-                  />
-                ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-200 text-2xl">
-                    🍜
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-extrabold text-slate-900">
-                    {item?.name ?? "แตะเพื่อเลือกเมนู"}
-                  </p>
-                  {item ? (
-                    <p className="text-[11px] font-semibold text-slate-500">
-                      {item.itemCode ?? "—"} · คงเหลือ{" "}
-                      {item.stockQuantity ?? 0}
-                    </p>
+                  {rows.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => removeRow(row.key)}
+                      className="border-t border-slate-100 px-3 py-2 text-[11px] font-bold text-rose-600 active:bg-rose-50"
+                    >
+                      ลบ
+                    </button>
                   ) : null}
                 </div>
-                <span className="text-slate-400">›</span>
-              </button>
-              <label className="mt-3 block">
-                <span className="mb-1 block text-[12px] font-semibold text-slate-600">
-                  จำนวนในแพ็กนี้
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={9999}
-                  value={row.quantity}
-                  onChange={(e) =>
-                    updateRow(row.key, {
-                      quantity: Math.max(1, Number(e.target.value) || 1),
-                    })
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[16px] font-extrabold"
-                />
-              </label>
+              </div>
+
+              {row.expanded ? (
+                <div className="space-y-3 border-t border-slate-100 bg-slate-50/80 px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerRowKey(row.key);
+                      setMenuQ("");
+                      setPickerOpen(true);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white p-3 text-left"
+                  >
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt=""
+                        className="h-12 w-12 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-xl">
+                        🍢
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-bold text-site-primary">
+                        {item ? "เปลี่ยนเมนู" : "เลือกเมนู"}
+                      </p>
+                      <p className="truncate text-[14px] font-extrabold text-slate-900">
+                        {item?.name ?? "แตะเพื่อเลือก"}
+                      </p>
+                    </div>
+                    <span className="text-slate-400">›</span>
+                  </button>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                        วันที่ผลิต *
+                      </span>
+                      <DateInput
+                        value={row.producedAt}
+                        onChange={(v) => updateRow(row.key, { producedAt: v })}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                        วันที่รับเข้า *
+                      </span>
+                      <DateInput
+                        value={row.receivedAt}
+                        onChange={(v) => updateRow(row.key, { receivedAt: v })}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 rounded-xl bg-white px-3 py-2.5">
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-500">
+                        รหัสสินค้า
+                      </p>
+                      <p className="font-mono text-[13px] font-bold text-slate-900">
+                        {productCode}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-500">
+                        LOT (ตอนบันทึก)
+                      </p>
+                      <p className="font-mono text-[13px] font-bold text-slate-900">
+                        {lotPreview}
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1 block text-[12px] font-semibold text-slate-600">
+                      จำนวนในแพ็กนี้
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={9999}
+                      value={row.quantity}
+                      onChange={(e) =>
+                        updateRow(row.key, {
+                          quantity: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[16px] font-extrabold"
+                    />
+                  </label>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <label className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={row.printSticker}
+                        onChange={(e) =>
+                          updateRow(row.key, {
+                            printSticker: e.target.checked,
+                          })
+                        }
+                        className="h-5 w-5 rounded border-slate-300 text-emerald-600"
+                      />
+                      <span className="text-[13px] font-bold text-slate-800">
+                        พิมพ์สติกเกอร์แพ็กนี้
+                      </span>
+                    </label>
+                    {row.printSticker ? (
+                      <label className="mt-3 block">
+                        <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                          จำนวนป้ายที่พิมพ์
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={row.stickerCopies}
+                          onChange={(e) =>
+                            updateRow(row.key, {
+                              stickerCopies: Math.max(
+                                1,
+                                Math.min(99, Number(e.target.value) || 1),
+                              ),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[16px] font-extrabold"
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -417,7 +605,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
           className="h-5 w-5 rounded border-slate-300 text-emerald-600"
         />
         <span className="text-[14px] font-bold text-slate-800">
-          พิมพ์ป้ายหลังบันทึก
+          พิมพ์ป้ายหลังบันทึก (ค่าเริ่มต้น)
         </span>
       </label>
 
@@ -456,41 +644,47 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
               />
             </div>
             <ul className="max-h-[60dvh] overflow-y-auto p-2">
-              {filteredMenu.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (pickerRowKey) {
-                        updateRow(pickerRowKey, { itemId: item.id });
-                      }
-                      setPickerOpen(false);
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl p-2 text-left active:bg-slate-50"
-                  >
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt=""
-                        className="h-12 w-12 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100">
-                        🍜
+              {filteredMenu.map((item) => {
+                const thumb = menuThumb(item);
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pickerRowKey) {
+                          updateRow(pickerRowKey, {
+                            itemId: item.id,
+                            expanded: true,
+                          });
+                        }
+                        setPickerOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl p-2 text-left active:bg-slate-50"
+                    >
+                      {thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={thumb}
+                          alt=""
+                          className="h-12 w-12 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100">
+                          🍢
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px] font-extrabold text-slate-900">
+                          {item.name}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {item.itemCode ?? "—"} · {item.category?.name ?? "—"}
+                        </p>
                       </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-extrabold text-slate-900">
-                        {item.name}
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {item.category?.name ?? "—"}
-                      </p>
-                    </div>
-                  </button>
-                </li>
-              ))}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>

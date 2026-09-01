@@ -23,6 +23,15 @@ import { labelsToPrintInput } from "@/lib/stock-package-label-print";
 const lineSchema = z.object({
   itemId: z.string().min(1),
   quantity: z.number().int().positive(),
+  producedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  receivedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  labelCopies: z.number().int().min(0).max(99).optional(),
   shelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
 });
 
@@ -109,10 +118,8 @@ export async function POST(request: Request) {
     await assertBrandWriteAllowedByBranchId(session.branchId);
 
     const body = postSchema.parse(await request.json());
-    const producedAtKey = body.producedAt ?? bangkokDateKey();
-    if (producedAtKey > bangkokDateKey()) {
-      return jsonError("วันที่ผลิตต้องไม่เกินวันนี้");
-    }
+    const defaultProducedAtKey = body.producedAt ?? bangkokDateKey();
+    const todayKey = bangkokDateKey();
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
@@ -170,11 +177,6 @@ export async function POST(request: Request) {
         : `batch-${Date.now()}`);
 
     const brandName = branch.brand?.nameTh ?? branch.brand?.name ?? null;
-    const producedAt = startOfBangkokDayFromKey(producedAtKey);
-    const lotNumber = await generateLotNumber({
-      branchId: branch.id,
-      producedAt: producedAtKey,
-    });
 
     const createdLabels: Array<{
       id: string;
@@ -191,6 +193,25 @@ export async function POST(request: Request) {
 
     await prisma.$transaction(async (tx) => {
       for (const line of body.lines) {
+        const lineProducedKey = line.producedAt ?? defaultProducedAtKey;
+        const lineReceivedKey = line.receivedAt ?? todayKey;
+        if (lineProducedKey > todayKey) {
+          throw new Error("วันที่ผลิตต้องไม่เกินวันนี้");
+        }
+        if (lineReceivedKey > todayKey) {
+          throw new Error("วันที่รับเข้าต้องไม่เกินวันนี้");
+        }
+        if (lineReceivedKey < lineProducedKey) {
+          throw new Error("วันที่รับเข้าต้องไม่ก่อนวันที่ผลิต");
+        }
+
+        const producedAt = startOfBangkokDayFromKey(lineProducedKey);
+        const receivedAt = startOfBangkokDayFromKey(lineReceivedKey);
+        const lotNumber = await generateLotNumber({
+          branchId: branch.id,
+          producedAt: lineProducedKey,
+        });
+
         const nonMenu = await tx.branchNonMenuItem.findFirst({
           where: { id: line.itemId, branchId: branch.id },
         });
@@ -271,7 +292,7 @@ export async function POST(request: Request) {
 
         let expiresAt: Date | null = null;
         if (shelfDays != null && shelfDays >= 0) {
-          const receiveNoon = new Date(`${producedAtKey}T12:00:00+07:00`);
+          const receiveNoon = new Date(`${lineProducedKey}T12:00:00+07:00`);
           receiveNoon.setDate(receiveNoon.getDate() + shelfDays);
           expiresAt = startOfBangkokDayFromKey(bangkokDateKey(receiveNoon));
         }
@@ -304,7 +325,7 @@ export async function POST(request: Request) {
               note: "รับเข้าแพ็ก",
               batchId,
               documentNo,
-              receivedAt: producedAt,
+              receivedAt,
               expiresAt,
               createdByStaffId: session.staffId,
             },
@@ -384,20 +405,24 @@ export async function POST(request: Request) {
       }
     });
 
-    const printLabels = labelsToPrintInput(createdLabels).map((l, i) => ({
-      ...l,
-      qrPayload: stockLabelQrPayload({
-        id: createdLabels[i].id,
-        labelCode: createdLabels[i].labelCode,
-      }),
-    }));
+    const printLabels = labelsToPrintInput(createdLabels).map((l, i) => {
+      const line = body.lines[i];
+      const copies = line?.labelCopies ?? 1;
+      return {
+        ...l,
+        copies,
+        qrPayload: stockLabelQrPayload({
+          id: createdLabels[i]!.id,
+          labelCode: createdLabels[i]!.labelCode,
+        }),
+      };
+    });
 
     return jsonOk(
       {
         ok: true,
         documentNo,
         batchId,
-        lotNumber,
         packageCount: createdLabels.length,
         totalQty: createdLabels.reduce((s, l) => s + l.quantity, 0),
         labels: printLabels,

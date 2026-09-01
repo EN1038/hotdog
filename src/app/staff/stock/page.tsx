@@ -6,6 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toPng } from "html-to-image";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { StaffBranchStockHistoryPanel } from "@/components/staff/StaffBranchStockHistoryPanel";
+import { StaffPackageInHistoryPanel } from "@/components/staff/StaffPackageInHistoryPanel";
+import { StaffPackageInPanel } from "@/components/staff/StaffPackageInPanel";
+import { StaffPackageOutPanel } from "@/components/staff/StaffPackageOutPanel";
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
@@ -240,6 +243,9 @@ function StaffStockContent() {
     | "items"
     | "summary"
     | "pending"
+    | "package_in"
+    | "package_out"
+    | "package_history"
   >("menu");
   const [actionType, setActionType] = useState<
     "stock_in" | "issue" | "pending" | "view" | "summary" | null
@@ -282,6 +288,12 @@ function StaffStockContent() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [attemptedSummary, setAttemptedSummary] = useState(false);
   const [dailySummaryOpen, setDailySummaryOpen] = useState(false);
+  const [packageHighlightBatchId, setPackageHighlightBatchId] = useState<
+    string | null
+  >(null);
+  const [packageHistoryOpenBatchId, setPackageHistoryOpenBatchId] = useState<
+    string | null
+  >(null);
   const [summaryDiffOnly, setSummaryDiffOnly] = useState(false);
 
   const stockCaptureRef = useRef<HTMLDivElement>(null);
@@ -1037,6 +1049,20 @@ function StaffStockContent() {
   }
 
   const handleBack = () => {
+    if (mode === "package_history") {
+      setMode("package_in");
+      setPackageHistoryOpenBatchId(null);
+      return;
+    }
+    if (mode === "package_in") {
+      setMode("select_type");
+      setPackageHighlightBatchId(null);
+      return;
+    }
+    if (mode === "package_out") {
+      setMode("select_issue_purpose");
+      return;
+    }
     if (mode === "history") {
       setMode("menu");
       return;
@@ -1637,34 +1663,6 @@ function StaffStockContent() {
                   </button>
 
                   <button
-                    type="button"
-                    onClick={() => router.push("/staff/stock/package-in")}
-                    className="w-full flex items-center justify-between rounded-2xl bg-teal-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
-                  >
-                    <div className="text-left">
-                      <h3 className="text-2xl font-black">รับเข้าแพ็ก</h3>
-                      <p className="mt-1 text-teal-100 text-sm">
-                        สร้างป้ายแพ็กหลายรายการ · พิมพ์บาร์โค้ด + QR
-                      </p>
-                    </div>
-                    <div className="text-4xl">🏷️</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => router.push("/staff/stock/package-out")}
-                    className="w-full flex items-center justify-between rounded-2xl bg-rose-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
-                  >
-                    <div className="text-left">
-                      <h3 className="text-2xl font-black">จ่ายออกแพ็ก</h3>
-                      <p className="mt-1 text-rose-100 text-sm">
-                        สแกนป้ายแพ็กเพื่อจ่ายออกจากสต๊อก
-                      </p>
-                    </div>
-                    <div className="text-4xl">📲</div>
-                  </button>
-
-                  <button
                     onClick={() => handleActionClick("view")}
                     className="w-full flex items-center justify-between rounded-2xl bg-slate-800 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
                   >
@@ -1702,20 +1700,6 @@ function StaffStockContent() {
                       </p>
                     </div>
                     <div className="text-4xl">📤</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => router.push("/staff/stock/package-in/history")}
-                    className="w-full flex items-center justify-between rounded-2xl bg-violet-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
-                  >
-                    <div className="text-left">
-                      <h3 className="text-2xl font-black">ประวัติแพ็ก</h3>
-                      <p className="mt-1 text-violet-100 text-sm">
-                        ดูรายการรับเข้าแพ็ก · พิมพ์ป้ายซ้ำ
-                      </p>
-                    </div>
-                    <div className="text-4xl">📋</div>
                   </button>
 
                   <button
@@ -2491,6 +2475,25 @@ function StaffStockContent() {
                       </button>
                     );
                   })}
+                  <button
+                    type="button"
+                    onClick={() => setMode("package_out")}
+                    className="w-full rounded-2xl border-2 border-teal-200 bg-teal-50 p-5 text-left shadow-sm transition active:scale-[0.98] hover:border-teal-400"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl" aria-hidden>
+                        🏷️
+                      </span>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-900">
+                          จ่ายออกแพ็ก
+                        </h3>
+                        <p className="mt-1 text-[13px] font-medium text-slate-600">
+                          สแกนป้ายแพ็กเพื่อจ่ายออกจากสต๊อก
+                        </p>
+                      </div>
+                    </div>
+                  </button>
                 </div>
               </>
             ) : mode === "select_type" ? (
@@ -2522,7 +2525,7 @@ function StaffStockContent() {
                   actionType === "summary") && (
                   <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600">
                     {actionType === "stock_in"
-                      ? "ของสิ้นเปลือง (น้ำแข็ง/แก้ว/ถุง/แก๊ส/น้ำจิ้ม): รับเข้าเมื่อของมาส่ง"
+                      ? "ของสิ้นเปลือง (น้ำแข็ง/แก้ว/ถุง/แก๊ส/น้ำจิ้ม): รับเข้าเมื่อของมาส่ง · หรือเลือกรับเข้าแพ็กเพื่อพิมพ์ป้าย"
                       : actionType === "issue"
                         ? issuePurpose === "waste"
                           ? "บันทึกของเสีย เช่น ทำหล่น ชำรุด ใช้ไม่ได้"
@@ -2587,8 +2590,47 @@ function StaffStockContent() {
                       </button>
                     );
                   })}
+                  {actionType === "stock_in" ? (
+                    <button
+                      type="button"
+                      onClick={() => setMode("package_in")}
+                      className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-teal-200 bg-teal-50/80 p-6 text-slate-700 shadow-sm hover:border-teal-500 transition-all active:scale-[0.98]"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="text-3xl">🏷️</div>
+                        <h3 className="text-xl font-bold text-teal-900">
+                          รับเข้าแพ็ก
+                        </h3>
+                      </div>
+                      <p className="text-xs font-medium text-teal-800/80">
+                        สร้างป้ายหลายแพ็ก · พิมพ์บาร์โค้ด + QR
+                      </p>
+                    </button>
+                  ) : null}
                 </div>
               </>
+            ) : mode === "package_in" ? (
+              <StaffPackageInPanel
+                onBack={handleBack}
+                onHistory={() => {
+                  setPackageHistoryOpenBatchId(null);
+                  setMode("package_history");
+                }}
+                onSuccess={(batchId) => {
+                  setPackageHighlightBatchId(batchId);
+                  setPackageHistoryOpenBatchId(batchId);
+                  setMode("package_history");
+                  void load();
+                }}
+              />
+            ) : mode === "package_out" ? (
+              <StaffPackageOutPanel onBack={handleBack} />
+            ) : mode === "package_history" ? (
+              <StaffPackageInHistoryPanel
+                onBack={handleBack}
+                highlightBatchId={packageHighlightBatchId}
+                autoOpenBatchId={packageHistoryOpenBatchId}
+              />
             ) : (
               <>
                 <div className="flex items-center gap-2 mb-4">

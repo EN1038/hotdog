@@ -7,6 +7,7 @@ import {
   printPackageLabels,
   shouldUseBrowserPackageLabelPrint,
 } from "@/lib/print-bridge";
+import { stockLabelQrPayload } from "@/lib/stock-label";
 
 export type PackageLabelInput = {
   labelCode: string;
@@ -139,7 +140,7 @@ async function openPackageLabelPrintInBrowser(
       QRCode.toString(label.qrPayload, {
         type: "svg",
         margin: 0,
-        width: 72,
+        width: 120,
         errorCorrectionLevel: "M",
       }),
     ),
@@ -228,7 +229,7 @@ async function openPackageLabelPrintInBrowser(
       margin-top: 1mm;
       text-align: center;
     }
-    .qr svg { width: 16mm; height: 16mm; }
+    .qr svg { width: 22mm; height: 22mm; }
     @media print {
       .sheet { gap: 0; padding: 0; }
     }
@@ -264,7 +265,10 @@ export function labelsToPrintInput(
 ): PackageLabelInput[] {
   return rows.map((row) => ({
     labelCode: row.labelCode,
-    qrPayload: `hotdog:label:${row.id}:${row.labelCode}`,
+    qrPayload: stockLabelQrPayload({
+      id: row.id,
+      labelCode: row.labelCode,
+    }),
     productName: row.productName,
     productCode: row.productCode,
     brandName: row.brandName,

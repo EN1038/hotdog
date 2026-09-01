@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
+import { isStockLabelQrPayload } from "@/lib/stock-label";
 
 type LabelPreview = {
   id: string;
@@ -44,7 +45,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
       if (!trimmed) return;
       setLoading(true);
       try {
-        const isQr = trimmed.startsWith("hotdog:label:");
+        const isQr = isStockLabelQrPayload(trimmed);
         const qs = isQr
           ? `qr=${encodeURIComponent(trimmed)}`
           : `code=${encodeURIComponent(trimmed)}`;

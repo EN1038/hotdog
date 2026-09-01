@@ -41,7 +41,7 @@ async function resolveLabel(input: {
       where: {
         id: fromQr.id,
         branchId: input.branchId,
-        labelCode: fromQr.labelCode,
+        ...(fromQr.labelCode ? { labelCode: fromQr.labelCode } : {}),
       },
     });
   }

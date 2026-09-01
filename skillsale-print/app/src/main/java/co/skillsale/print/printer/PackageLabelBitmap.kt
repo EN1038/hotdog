@@ -62,7 +62,7 @@ object PackageLabelBitmap {
         val nameLines = wrapLines(productName, namePaint, contentWidth, maxLines = 2)
 
         val barcodeBitmap = encodeBarcode(productCode, 260, 52)
-        val qrBitmap = encodeQr(label.qrPayload.trim().ifBlank { label.labelCode }, 96)
+        val qrBitmap = encodeQr(label.qrPayload.trim().ifBlank { label.labelCode }, 136)
 
         var height = 16f
         height += 26f // header

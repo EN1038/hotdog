@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { isBangkokDateKey } from "@/lib/constants";
+import { stockLabelQrPayload } from "@/lib/stock-label";
 import type {
   PackageHistoryBatch,
   PackageHistoryKind,
@@ -103,7 +104,10 @@ export async function loadPackageHistoryBatches(input: {
       quantity: row.quantity,
       unit: row.unit,
       status: row.status,
-      qrPayload: `hotdog:label:${row.id}:${row.labelCode}`,
+      qrPayload: stockLabelQrPayload({
+        id: row.id,
+        labelCode: row.labelCode,
+      }),
     }));
 
     batches.push({
@@ -179,7 +183,10 @@ export async function loadPackageBatchById(input: {
     quantity: row.quantity,
     unit: row.unit,
     status: row.status,
-    qrPayload: `hotdog:label:${row.id}:${row.labelCode}`,
+    qrPayload: stockLabelQrPayload({
+      id: row.id,
+      labelCode: row.labelCode,
+    }),
   }));
 
   return {

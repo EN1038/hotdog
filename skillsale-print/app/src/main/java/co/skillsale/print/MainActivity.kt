@@ -24,7 +24,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import co.skillsale.print.printer.QueuePrintService
-import co.skillsale.print.BuildConfig
 import java.io.File
 
 class MainActivity : AppCompatActivity() {

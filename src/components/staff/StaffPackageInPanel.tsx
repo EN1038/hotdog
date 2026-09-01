@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { DateInput } from "@/components/DateInput";
@@ -66,13 +66,32 @@ function menuThumb(item: MenuItem | undefined) {
   return resolveSkewerMenuImageUrl(item);
 }
 
+type ScannedItemMeta = {
+  name: string;
+  productCode: string;
+};
+
+type PackageInPrefill = {
+  itemId: string;
+  name: string;
+  productCode: string;
+};
+
 type Props = {
   onBack: () => void;
   onHistory?: () => void;
   onSuccess?: (batchId: string) => void;
+  prefillItem?: PackageInPrefill | null;
+  onPrefillApplied?: () => void;
 };
 
-export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
+export function StaffPackageInPanel({
+  onBack,
+  onHistory,
+  onSuccess,
+  prefillItem,
+  onPrefillApplied,
+}: Props) {
   const toast = useToast();
   const [meta, setMeta] = useState<MetaPayload | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -87,6 +106,13 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
   const [lotCountsByDay, setLotCountsByDay] = useState<Record<string, number>>(
     {},
   );
+  const [scanValue, setScanValue] = useState("");
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scannedItems, setScannedItems] = useState<
+    Record<string, ScannedItemMeta>
+  >({});
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const lastPrefillIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -177,6 +203,110 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
     for (const item of menuItems) map.set(item.id, item);
     return map;
   }, [menuItems]);
+
+  const applyItemToRows = useCallback((itemId: string, itemName: string) => {
+    setRows((prev) => {
+      const empty = prev.find((row) => !row.itemId);
+      const lastSame = [...prev].reverse().find((row) => row.itemId === itemId);
+      if (lastSame && !empty) {
+        return prev.map((row) =>
+          row.key === lastSame.key
+            ? { ...row, quantity: row.quantity + 1, expanded: true }
+            : { ...row, expanded: false },
+        );
+      }
+      if (empty) {
+        return prev.map((row) =>
+          row.key === empty.key
+            ? { ...row, itemId, expanded: true }
+            : { ...row, expanded: false },
+        );
+      }
+      return [
+        ...prev.map((row) => ({ ...row, expanded: false })),
+        createPackageRow({ itemId, expanded: true }),
+      ];
+    });
+    toast.success("เพิ่มรายการ", itemName);
+  }, [toast]);
+
+  const lookupAndApplyScan = useCallback(
+    async (raw: string) => {
+      const code = raw.trim();
+      if (!code || scanBusy) return;
+      setScanBusy(true);
+      try {
+        const res = await fetch(
+          `/api/staff/stock/menu-lookup?code=${encodeURIComponent(code)}`,
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof body.error === "string"
+              ? body.error
+              : "ไม่พบรหัสสินค้าในสาขานี้",
+          );
+        }
+        const itemId = String(body.itemId ?? "");
+        const itemName = String(body.name ?? "สินค้า");
+        const productCode = String(body.productCode ?? "");
+        if (!itemId) throw new Error("ไม่พบรหัสสินค้าในสาขานี้");
+
+        if (!itemById.has(itemId)) {
+          setScannedItems((prev) => ({
+            ...prev,
+            [itemId]: { name: itemName, productCode },
+          }));
+        }
+        applyItemToRows(itemId, itemName);
+        setScanValue("");
+        scanInputRef.current?.focus();
+      } catch (e) {
+        toast.error(
+          "สแกนไม่สำเร็จ",
+          e instanceof Error ? e.message : "ไม่พบรหัสสินค้า",
+        );
+      } finally {
+        setScanBusy(false);
+      }
+    },
+    [applyItemToRows, itemById, scanBusy, toast],
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    scanInputRef.current?.focus();
+  }, [loading]);
+
+  useEffect(() => {
+    if (!prefillItem) {
+      lastPrefillIdRef.current = null;
+    }
+  }, [prefillItem]);
+
+  useEffect(() => {
+    if (loading || !prefillItem?.itemId) return;
+    if (lastPrefillIdRef.current === prefillItem.itemId) return;
+    lastPrefillIdRef.current = prefillItem.itemId;
+
+    if (!itemById.has(prefillItem.itemId)) {
+      setScannedItems((prev) => ({
+        ...prev,
+        [prefillItem.itemId]: {
+          name: prefillItem.name,
+          productCode: prefillItem.productCode,
+        },
+      }));
+    }
+    applyItemToRows(prefillItem.itemId, prefillItem.name);
+    onPrefillApplied?.();
+  }, [
+    applyItemToRows,
+    itemById,
+    loading,
+    onPrefillApplied,
+    prefillItem,
+  ]);
 
   const filteredMenu = useMemo(() => {
     const q = menuQ.trim().toLowerCase();
@@ -343,6 +473,33 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
 
       <StaffPrinterStatusChip showBrowserHint requirePackagePrint className="mb-3" />
 
+      <form
+        className="mb-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-3 shadow-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void lookupAndApplyScan(scanValue);
+        }}
+      >
+        <label className="block">
+          <span className="mb-1 block text-[12px] font-bold text-teal-900">
+            สแกนรหัสสินค้าเพื่อเพิ่มแพ็ก
+          </span>
+          <input
+            ref={scanInputRef}
+            value={scanValue}
+            onChange={(e) => setScanValue(e.target.value)}
+            placeholder="ยิงบาร์โค้ดเมนู / พิมพ์รหัสแล้ว Enter"
+            disabled={scanBusy}
+            className="w-full rounded-xl border border-teal-200 bg-white px-3 py-3 text-[15px] font-semibold text-slate-900 disabled:opacity-60"
+            autoComplete="off"
+            inputMode="text"
+          />
+        </label>
+        <p className="mt-1.5 text-[11px] font-medium text-teal-800/80">
+          สแกนซ้ำรายการเดิมจะเพิ่มจำนวน · เลือกจากเมนูด้านล่างได้เหมือนเดิม
+        </p>
+      </form>
+
       <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
         {meta.brandName ? (
           <p className="text-[13px] font-bold text-slate-700">
@@ -377,8 +534,11 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
 
         {rows.map((row, index) => {
           const item = itemById.get(row.itemId);
+          const scanned = scannedItems[row.itemId];
+          const displayName = item?.name ?? scanned?.name;
           const thumb = menuThumb(item);
-          const productCode = item?.itemCode?.trim() || "—";
+          const productCode =
+            item?.itemCode?.trim() || scanned?.productCode || "—";
           const lotPreview = lotByRowKey.get(row.key) ?? "—";
 
           return (
@@ -419,7 +579,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
                         </span>
                       </div>
                       <p className="mt-0.5 truncate text-[15px] font-extrabold text-slate-900">
-                        {item?.name ?? "แตะเพื่อเลือกเมนู · ขยายแก้รายละเอียด"}
+                        {displayName ?? "แตะเพื่อเลือกเมนู · ขยายแก้รายละเอียด"}
                       </p>
                       <p className="mt-1 text-[11px] font-semibold leading-snug text-slate-500">
                         ผลิต {formatThaiDateKey(row.producedAt)} · รับ{" "}
@@ -496,7 +656,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
                         {item ? "เปลี่ยนเมนู" : "เลือกเมนู"}
                       </p>
                       <p className="truncate text-[14px] font-extrabold text-slate-900">
-                        {item?.name ?? "แตะเพื่อเลือก"}
+                        {displayName ?? "แตะเพื่อเลือก"}
                       </p>
                     </div>
                     <span className="text-slate-400">›</span>

@@ -52,19 +52,23 @@ function labelHtml(label: PackageLabelInput, qrSvg: string): string {
   const unit = escapeHtml(label.unit.trim() || "ชิ้น");
   const produced = formatPackageProducedDate(label.producedAt);
   const lot = escapeHtml(label.lotNumber.trim() || "—");
-  const barcode = renderProductBarcodeSvg(label.productCode.trim() || label.labelCode);
+  const labelCode = escapeHtml(label.labelCode.trim() || "—");
+  const barcode = renderProductBarcodeSvg(
+    label.labelCode.trim() || label.productCode.trim(),
+  );
 
   return `
     <article class="label">
       <p class="brand">${brand}</p>
       <p class="name">${name}</p>
-      <p class="row">รหัส: ${productCode}</p>
+      <p class="row">รหัสสินค้า: ${productCode}</p>
       <p class="row">จำนวน: ${label.quantity} ${unit}</p>
       <p class="row">วันที่ผลิต: ${produced}</p>
       <p class="row">Lot: ${lot}</p>
+      <p class="row">รหัสป้าย: ${labelCode}</p>
       <div class="barcode-wrap">
         <div class="barcode">${barcode}</div>
-        <p class="barcode-text">${productCode}</p>
+        <p class="barcode-text">${labelCode}</p>
       </div>
       <div class="qr">${qrSvg}</div>
     </article>

@@ -294,6 +294,14 @@ function StaffStockContent() {
   const [packageHistoryOpenBatchId, setPackageHistoryOpenBatchId] = useState<
     string | null
   >(null);
+  const [packageInPrefillItem, setPackageInPrefillItem] = useState<{
+    itemId: string;
+    name: string;
+    productCode: string;
+  } | null>(null);
+  const [stockInScanValue, setStockInScanValue] = useState("");
+  const [stockInScanBusy, setStockInScanBusy] = useState(false);
+  const stockInScanRef = useRef<HTMLInputElement>(null);
   const [summaryDiffOnly, setSummaryDiffOnly] = useState(false);
 
   const stockCaptureRef = useRef<HTMLDivElement>(null);
@@ -829,6 +837,51 @@ function StaffStockContent() {
     }
     setMode("items");
   };
+
+  const stockInScanLookup = useCallback(
+    async (raw: string) => {
+      const code = raw.trim();
+      if (!code || stockInScanBusy) return;
+      setStockInScanBusy(true);
+      try {
+        const res = await fetch(
+          `/api/staff/stock/menu-lookup?code=${encodeURIComponent(code)}`,
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof body.error === "string"
+              ? body.error
+              : "ไม่พบรหัสสินค้าในสาขานี้",
+          );
+        }
+        const itemId = String(body.itemId ?? "");
+        const itemName = String(body.name ?? "สินค้า");
+        const productCode = String(body.productCode ?? "");
+        if (!itemId) throw new Error("ไม่พบรหัสสินค้าในสาขานี้");
+
+        setPackageInPrefillItem({ itemId, name: itemName, productCode });
+        setStockInScanValue("");
+        setMode("package_in");
+        toast.success("เปิดรับเข้าแพ็ก", itemName);
+        stockInScanRef.current?.blur();
+      } catch (e) {
+        toast.error(
+          "สแกนไม่สำเร็จ",
+          e instanceof Error ? e.message : "ไม่พบรหัสสินค้า",
+        );
+        stockInScanRef.current?.focus();
+      } finally {
+        setStockInScanBusy(false);
+      }
+    },
+    [stockInScanBusy, toast],
+  );
+
+  useEffect(() => {
+    if (mode !== "select_type" || actionType !== "stock_in") return;
+    stockInScanRef.current?.focus();
+  }, [mode, actionType]);
 
   async function genDocumentNo(kind: StockDocumentKind): Promise<string> {
     setDocGenBusy(true);
@@ -2534,6 +2587,34 @@ function StaffStockContent() {
                   </div>
                 )}
 
+                {actionType === "stock_in" ? (
+                  <form
+                    className="mb-4 rounded-2xl border border-teal-200 bg-teal-50/80 p-4 shadow-sm"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void stockInScanLookup(stockInScanValue);
+                    }}
+                  >
+                    <label className="block">
+                      <span className="mb-1 block text-[13px] font-extrabold text-teal-900">
+                        สแกนรหัสสินค้า → รับเข้าแพ็ก
+                      </span>
+                      <input
+                        ref={stockInScanRef}
+                        value={stockInScanValue}
+                        onChange={(e) => setStockInScanValue(e.target.value)}
+                        placeholder="ยิงบาร์โค้ดเมนู / พิมพ์รหัสแล้ว Enter"
+                        disabled={stockInScanBusy}
+                        className="w-full rounded-xl border border-teal-200 bg-white px-3 py-3 text-[15px] font-semibold text-slate-900 disabled:opacity-60"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <p className="mt-1.5 text-[11px] font-medium text-teal-800/80">
+                      ทางลัดไปรับเข้าแพ็ก · เลือกประเภทด้านล่างได้เหมือนเดิม
+                    </p>
+                  </form>
+                ) : null}
+
                 <div className="grid gap-4 mt-4">
                   {(
                     [
@@ -2612,6 +2693,8 @@ function StaffStockContent() {
             ) : mode === "package_in" ? (
               <StaffPackageInPanel
                 onBack={handleBack}
+                prefillItem={packageInPrefillItem}
+                onPrefillApplied={() => setPackageInPrefillItem(null)}
                 onHistory={() => {
                   setPackageHistoryOpenBatchId(null);
                   setMode("package_history");

@@ -51,16 +51,17 @@ object PackageLabelBitmap {
         val paddingH = 14f
         val contentWidth = LABEL_WIDTH - paddingH * 2
         val productCode = label.productCode.trim().ifBlank { "—" }
+        val labelCode = label.labelCode.trim().ifBlank { "—" }
         val productName = label.productName.trim().ifBlank { "—" }
         val nameLines = wrapLines(productName, namePaint, contentWidth, maxLines = 2)
 
-        val barcodeBitmap = encodeBarcode(productCode, 260, 50)
+        val barcodeBitmap = encodeBarcode(labelCode, 260, 50)
         val qrBitmap = encodeQr(label.qrPayload.trim().ifBlank { label.labelCode }, 140)
 
         var height = 8f
         height += 22f // header
         height += nameLines.size * 24f
-        height += 4 * 20f // detail rows
+        height += 5 * 20f // detail rows
         height += 8f + barcodeBitmap.height + 16f + qrBitmap.height + 8f
 
         val bitmap = Bitmap.createBitmap(LABEL_WIDTH, height.toInt(), Bitmap.Config.ARGB_8888)
@@ -81,10 +82,11 @@ object PackageLabelBitmap {
 
         val rows =
             listOf(
-                "รหัส: $productCode",
+                "รหัสสินค้า: $productCode",
                 "จำนวน: ${label.quantity} ${label.unit.trim().ifBlank { "ชิ้น" }}",
                 "วันที่ผลิต: ${label.producedAtLabel.ifBlank { "—" }}",
                 "Lot: ${label.lotNumber.trim().ifBlank { "—" }}",
+                "รหัสป้าย: $labelCode",
             )
         for (row in rows) {
             canvas.drawText(truncate(row, 32), paddingH, y, rowPaint)
@@ -95,7 +97,7 @@ object PackageLabelBitmap {
         val barcodeLeft = (LABEL_WIDTH - barcodeBitmap.width) / 2f
         canvas.drawBitmap(barcodeBitmap, barcodeLeft, y, null)
         y += barcodeBitmap.height + 14f
-        canvas.drawText(productCode, center, y, codePaint)
+        canvas.drawText(labelCode, center, y, codePaint)
         y += 10f
 
         val qrLeft = (LABEL_WIDTH - qrBitmap.width) / 2f

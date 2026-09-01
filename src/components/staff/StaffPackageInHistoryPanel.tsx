@@ -14,6 +14,7 @@ import {
   type PackageHistoryKind,
 } from "@/lib/stock-package-history-types";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
+import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
 
 const PAGE_SIZE = 40;
 
@@ -264,6 +265,8 @@ export function StaffPackageInHistoryPanel({
           </div>
         </div>
       ) : null}
+
+      {!hideBack ? <StaffPrinterStatusChip showBrowserHint className="mb-3" /> : null}
 
       <div className="space-y-3">
         <MobileDateRangeControl

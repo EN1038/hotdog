@@ -11,6 +11,7 @@ import {
   planLotNumbersForRows,
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
+import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
 
 type MenuItem = {
   id: string;
@@ -338,6 +339,8 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
           </button>
         ) : null}
       </div>
+
+      <StaffPrinterStatusChip showBrowserHint className="mb-3" />
 
       <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
         {meta.brandName ? (

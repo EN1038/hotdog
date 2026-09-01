@@ -206,10 +206,11 @@ object PackageLabelLayoutRenderer {
     private class SpacerElement(val height: Float) : RenderElement()
 
     private fun fieldMap(label: PackageLabel): Map<String, String> {
+        val labelCode = label.labelCode.trim().ifBlank { "—" }
         val productCode = label.productCode.trim().ifBlank { "—" }
-        val barcodeValue = productCode.filter { it.isDigit() }.ifBlank { productCode }
+        val barcodeValue = labelCode.filter { it.isDigit() }.ifBlank { labelCode }
         return mapOf(
-            "labelCode" to label.labelCode.trim().ifBlank { "—" },
+            "labelCode" to labelCode,
             "qrPayload" to label.qrPayload.trim().ifBlank { label.labelCode },
             "productName" to label.productName.trim().ifBlank { "—" },
             "productCode" to productCode,

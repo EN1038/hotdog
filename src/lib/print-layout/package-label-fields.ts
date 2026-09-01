@@ -19,7 +19,8 @@ export function buildPackageLabelFieldMap(
 ): PackageLabelFieldMap {
   const productCode = barcodeDigitsOnly(label.productCode.trim()) || "—";
   const unit = label.unit.trim() || "ชิ้น";
-  const barcodeValue = productCode === "—" ? "0" : productCode;
+  const labelCodeDigits = barcodeDigitsOnly(label.labelCode.trim()) || "—";
+  const barcodeValue = labelCodeDigits === "—" ? "0" : labelCodeDigits;
   return {
     labelCode: label.labelCode.trim() || "—",
     qrPayload: label.qrPayload.trim() || label.labelCode.trim(),

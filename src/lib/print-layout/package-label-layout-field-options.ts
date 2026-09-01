@@ -14,7 +14,7 @@ export const PACKAGE_LABEL_FIELD_OPTIONS: PackageLabelFieldOption[] = [
   { id: "lotNumber", label: "Lot" },
   { id: "labelCode", label: "รหัสป้าย" },
   { id: "sourceBranchName", label: "สาขาต้นทาง" },
-  { id: "barcodeValue", label: "ค่าบาร์โค้ด (ตัวเลข)" },
+  { id: "barcodeValue", label: "ค่าบาร์โค้ด (รหัสป้าย)" },
   { id: "qrPayload", label: "ข้อมูล QR" },
 ];
 

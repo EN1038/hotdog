@@ -48,11 +48,11 @@ export const DEFAULT_PACKAGE_LABEL_LAYOUT: PackageLabelLayoutDoc = {
     { type: "spacer", height: 6 },
     {
       type: "barcode",
-      field: "barcodeValue",
+      field: "labelCode",
       width: 260,
       height: 50,
       showCaption: true,
-      captionField: "barcodeValue",
+      captionField: "labelCode",
     },
     { type: "spacer", height: 10 },
     {

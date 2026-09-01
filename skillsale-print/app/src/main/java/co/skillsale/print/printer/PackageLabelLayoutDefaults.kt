@@ -19,7 +19,7 @@ object PackageLabelLayoutDefaults {
                 {"type":"text","template":"Lot: {{lotNumber}}","style":"row"},
                 {"type":"text","template":"รหัสป้าย: {{labelCode}}","style":"row"},
                 {"type":"spacer","height":6},
-                {"type":"barcode","field":"barcodeValue","width":260,"height":50,"showCaption":true,"captionField":"barcodeValue"},
+                {"type":"barcode","field":"labelCode","width":260,"height":50,"showCaption":true,"captionField":"labelCode"},
                 {"type":"spacer","height":10},
                 {"type":"qr","field":"qrPayload","size":140}
               ]

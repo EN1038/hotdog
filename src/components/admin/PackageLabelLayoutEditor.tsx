@@ -61,11 +61,11 @@ function createBlock(type: PackageLabelLayoutBlock["type"]): PackageLabelLayoutB
     case "barcode":
       return {
         type: "barcode",
-        field: "barcodeValue",
+        field: "labelCode",
         width: 260,
         height: 50,
         showCaption: true,
-        captionField: "barcodeValue",
+        captionField: "labelCode",
       };
     case "qr":
       return { type: "qr", field: "qrPayload", size: 140 };

@@ -111,6 +111,10 @@ export type BranchStockHistoryBatch = {
   label: string;
   createdAt: string;
   note: string | null;
+  /** Shared batch / stock-count id when present (Convert ADJUST → count.id). */
+  batchId: string | null;
+  /** SALE rows: order id parsed from note. */
+  orderId: string | null;
   imageUrl: string | null;
   imageUrls: string[];
   documentNo: string | null;
@@ -491,10 +495,26 @@ export async function loadBranchStockHistoryBatches(opts: {
       const imageUrl = mergeMovementImageUrls(lines.map((l) => l.imageUrl));
       const imageUrls = parseMovementImages(imageUrl);
       const orderFromNote = orderFromHistoryNote(g.note);
-      const displayNote =
+      let displayNote =
         g.note && orderFromNote
           ? `ออเดอร์ ${orderFromNote.orderNumber}`
           : g.note;
+      if (kindOf === "adjust" && displayNote) {
+        displayNote = displayNote.replace(/\(นับได้\s*-?\d+\)/g, "").trim();
+      }
+
+      const batchIds = [
+        ...new Set(
+          lines
+            .map((l) => l.batchId?.trim())
+            .filter((v): v is string => Boolean(v)),
+        ),
+      ];
+      const batchId = batchIds.length === 1 ? batchIds[0]! : null;
+      const orderId =
+        lines.find((l) => l.order?.id)?.order?.id ??
+        orderFromNote?.orderId ??
+        null;
 
       return {
         id: g.key,
@@ -505,6 +525,8 @@ export async function loadBranchStockHistoryBatches(opts: {
         label: branchHistoryLabel(g.historyType),
         createdAt: g.createdAt.toISOString(),
         note: displayNote,
+        batchId,
+        orderId,
         imageUrl,
         imageUrls,
         documentNo:

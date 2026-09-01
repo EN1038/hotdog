@@ -9,6 +9,7 @@ export const BRANCH_HISTORY_KINDS = [
   "all",
   "in",
   "sale",
+  "adjust",
   "waste",
   "out",
 ] as const;
@@ -19,6 +20,7 @@ export const BRANCH_HISTORY_KIND_LABEL: Record<BranchHistoryKind, string> = {
   all: "ทั้งหมด",
   in: "รับเข้า",
   sale: "ขาย",
+  adjust: "ปรับสต๊อก",
   waste: "ของเสีย",
   out: "จ่ายออก",
 };
@@ -33,6 +35,8 @@ export function historyTypesForKind(kind: BranchHistoryKind): string[] {
       return ["STOCK_IN"];
     case "sale":
       return ["SALE"];
+    case "adjust":
+      return ["ADJUST"];
     case "waste":
       return [...BRANCH_WASTE_HISTORY_TYPES];
     case "out":
@@ -42,6 +46,7 @@ export function historyTypesForKind(kind: BranchHistoryKind): string[] {
       return [
         "STOCK_IN",
         "SALE",
+        "ADJUST",
         ...BRANCH_WASTE_HISTORY_TYPES,
         ...BRANCH_STOCK_OUT_HISTORY_TYPES,
       ];
@@ -54,13 +59,15 @@ export function branchHistoryKindOfType(type: string): Exclude<
 > {
   if (type === "STOCK_IN") return "in";
   if (type === "SALE") return "sale";
-  if (type === "DAMAGE" || type === "LOST") return "waste";
+  if (type === "ADJUST") return "adjust";
+  if (type === "DAMAGE" || type === "LOST" || type === "WASTE") return "waste";
   return "out";
 }
 
 export function branchHistoryLabel(type: string): string {
   if (type === "STOCK_IN") return "รับเข้า";
   if (type === "SALE") return "ขาย";
+  if (type === "ADJUST") return "ปรับสต๊อก";
   return outboundHistoryLabel(type);
 }
 
@@ -88,11 +95,15 @@ export type BranchHistoryFlatRow = {
 export function fallbackBranchHistoryGroupKey(row: BranchHistoryFlatRow) {
   const minuteKey = new Date(row.createdAt);
   minuteKey.setSeconds(0, 0);
+  // Convert notes embed per-item qty — strip so one Convert groups as one bill
+  const noteKey = (row.note ?? "")
+    .replace(/\(นับได้\s*-?\d+\)/g, "")
+    .trim();
   return [
     "fb",
     row.type,
     row.createdByStaff?.id ?? "none",
-    row.note ?? "",
+    noteKey,
     row.imageUrl ?? "",
     minuteKey.toISOString(),
   ].join("|");

@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toPng } from "html-to-image";
 import { bangkokDateKey, formatPrice, isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 import { DateInput } from "@/components/DateInput";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
+import { useToast } from "@/components/admin/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { StatusBadge } from "@/components/StatusBadge";
+import {
+  STOCK_COUNT_STATUS_META,
+  resolveStockCountUiStatus,
+} from "@/lib/status-badge";
 import {
   STOCK_COUNT_TIMING_LABEL,
   type StockCountTiming,
 } from "@/lib/stock-count-timing";
+import { staffHistoryHrefForSummary } from "@/lib/history-source-link";
 
 type StockLine = {
   name: string;
@@ -64,6 +72,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   initialDate?: string | null;
+  /** Open and select this stock summary (stockCount.id). */
+  initialSummaryId?: string | null;
   brandName?: string | null;
   branchName?: string | null;
 };
@@ -130,7 +140,7 @@ function SummaryRow({
   last = false,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   last?: boolean;
 }) {
   return (
@@ -139,8 +149,10 @@ function SummaryRow({
         last ? "" : "border-b border-gray-200"
       }`}
     >
-      <span className="text-gray-600">{label}</span>
-      <span className="text-right font-semibold text-gray-900">{value}</span>
+      <span className="shrink-0 text-gray-600">{label}</span>
+      <span className="min-w-0 text-right font-semibold text-gray-900">
+        {value}
+      </span>
     </div>
   );
 }
@@ -210,10 +222,13 @@ export function StaffDailySalesSummarySheet({
   open,
   onClose,
   initialDate,
+  initialSummaryId,
   brandName: brandNameProp,
   branchName: branchNameProp,
 }: Props) {
   const router = useRouter();
+  const toast = useToast();
+  const { confirm } = useConfirm();
   const captureRef = useRef<HTMLDivElement>(null);
   const [date, setDate] = useState(() =>
     initialDate && isBangkokDateKey(initialDate)
@@ -230,16 +245,21 @@ export function StaffDailySalesSummarySheet({
   const [exportMsg, setExportMsg] = useState("");
   const [brandName, setBrandName] = useState(brandNameProp?.trim() || "");
   const [branchName, setBranchName] = useState(branchNameProp?.trim() || "");
+  const [diffOnly, setDiffOnly] = useState(true);
+  const [canConvert, setCanConvert] = useState(false);
+  const [convertBusy, setConvertBusy] = useState(false);
+  const preferSummaryIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    preferSummaryIdRef.current = initialSummaryId?.trim() || null;
     // Prefer explicit date; otherwise Bangkok calendar today (not shift operating day).
     setDate(
       initialDate && isBangkokDateKey(initialDate)
         ? initialDate
         : bangkokDateKey(),
     );
-  }, [open, initialDate]);
+  }, [open, initialDate, initialSummaryId]);
 
   useEffect(() => {
     if (brandNameProp?.trim()) setBrandName(brandNameProp.trim());
@@ -280,9 +300,11 @@ export function StaffDailySalesSummarySheet({
       setError("");
       setExportMsg("");
       try {
-        const res = await fetch(
-          `/api/staff/stock/summaries?date=${encodeURIComponent(date)}`,
-        );
+        const preferId = preferSummaryIdRef.current;
+        const qs = preferId
+          ? `id=${encodeURIComponent(preferId)}`
+          : `date=${encodeURIComponent(date)}`;
+        const res = await fetch(`/api/staff/stock/summaries?${qs}`);
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok) {
@@ -291,16 +313,35 @@ export function StaffDailySalesSummarySheet({
           setSelectedId(null);
           return;
         }
+        if (
+          typeof data.date === "string" &&
+          isBangkokDateKey(data.date) &&
+          data.date !== date
+        ) {
+          setDate(data.date);
+        }
         const nextSummaries = Array.isArray(data.summaries)
           ? (data.summaries as DailySummary[])
           : [];
         setSummaries(nextSummaries);
-        setSelectedId(nextSummaries[0]?.id ?? null);
+        const resolvedId =
+          (typeof data.resolvedSummaryId === "string" &&
+            data.resolvedSummaryId) ||
+          preferId;
+        const pick =
+          (resolvedId &&
+            nextSummaries.find((s) => s.id === resolvedId)?.id) ||
+          nextSummaries[0]?.id ||
+          null;
+        setSelectedId(pick);
+        preferSummaryIdRef.current = null;
+        setCanConvert(Boolean(data.canConvertStockSummary));
       } catch {
         if (!cancelled) {
           setError("โหลดไม่สำเร็จ");
           setSummaries([]);
           setSelectedId(null);
+          setCanConvert(false);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -322,6 +363,11 @@ export function StaffDailySalesSummarySheet({
     (selected ? computeStockTotals(selected.lines) : null);
   const mismatchLines =
     selected?.lines.filter((line) => line.systemQty !== line.countedQty) ?? [];
+  const visibleLines = diffOnly
+    ? mismatchLines.length > 0
+      ? mismatchLines
+      : selected?.lines ?? []
+    : selected?.lines ?? [];
   const stockTotalsMismatch = Boolean(
     stockTotals && stockTotals.systemQty !== stockTotals.countedQty,
   );
@@ -329,6 +375,70 @@ export function StaffDailySalesSummarySheet({
   function goCreate() {
     onClose();
     router.push("/staff/stock?action=summary");
+  }
+
+  async function reloadSummaries() {
+    const res = await fetch(
+      `/api/staff/stock/summaries?date=${encodeURIComponent(date)}`,
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(typeof data.error === "string" ? data.error : "โหลดไม่สำเร็จ");
+      return;
+    }
+    const nextSummaries = Array.isArray(data.summaries)
+      ? (data.summaries as DailySummary[])
+      : [];
+    setSummaries(nextSummaries);
+    setCanConvert(Boolean(data.canConvertStockSummary));
+    setSelectedId((prev) =>
+      prev && nextSummaries.some((s) => s.id === prev)
+        ? prev
+        : (nextSummaries[0]?.id ?? null),
+    );
+  }
+
+  async function applyConvert(action: "apply" | "reject") {
+    if (!selected || convertBusy) return;
+    const ok = await confirm({
+      title: action === "apply" ? "Convert ยอดนับเป็น ADJUST?" : "ปฏิเสธสรุปยอด?",
+      message:
+        action === "apply"
+          ? "ระบบจะตั้งยอดเมนูขายตามจำนวนที่นับได้ และสร้างประวัติ ADJUST"
+          : "สรุปยอดนี้จะไม่ถูกนำไปปรับสต๊อก",
+      confirmLabel: action === "apply" ? "Convert สต๊อก" : "ปฏิเสธ",
+    });
+    if (!ok) return;
+    setConvertBusy(true);
+    try {
+      const res = await fetch(
+        `/api/staff/stock/summaries/${selected.id}/apply`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(
+          typeof body.error === "string" ? body.error : "ดำเนินการไม่สำเร็จ",
+        );
+        return;
+      }
+      toast.success(
+        action === "apply"
+          ? `Convert สำเร็จ${
+              typeof body.adjustedItemCount === "number"
+                ? ` · ADJUST ${body.adjustedItemCount} รายการ`
+                : ""
+            }`
+          : "ปฏิเสธสรุปยอดแล้ว",
+      );
+      await reloadSummaries();
+    } finally {
+      setConvertBusy(false);
+    }
   }
 
   async function captureSummaryPng(): Promise<string> {
@@ -567,6 +677,11 @@ export function StaffDailySalesSummarySheet({
                   const pending =
                     s.pendingAdminApply || s.status === "IN_PROGRESS";
                   const cancelled = s.status === "CANCELLED";
+                  const ui = resolveStockCountUiStatus({
+                    status: s.status,
+                    pendingAdminApply: s.pendingAdminApply,
+                  });
+                  const meta = STOCK_COUNT_STATUS_META[ui];
                   return (
                     <button
                       key={s.id}
@@ -585,12 +700,14 @@ export function StaffDailySalesSummarySheet({
                       <span className="block">
                         {timingLabel} · {typeLabel}
                       </span>
-                      <span className="mt-0.5 block opacity-80">
-                        {pending
-                          ? "รอแอดมินปรับสต๊อก · "
-                          : cancelled
-                            ? "ปฏิเสธแล้ว · "
-                            : ""}
+                      <span className="mt-1 block">
+                        <StatusBadge
+                          label={meta.label}
+                          tone={meta.tone}
+                          size="sm"
+                        />
+                      </span>
+                      <span className="mt-1 block opacity-80">
                         {s.shift
                           ? `รอบที่ ${s.shift.roundNumber} · `
                           : ""}
@@ -640,15 +757,44 @@ export function StaffDailySalesSummarySheet({
                       />
                       <SummaryRow
                         label="สถานะ"
-                        value={
-                          selected.pendingAdminApply ||
-                          selected.status === "IN_PROGRESS"
-                            ? "รอแอดมินปรับสต๊อก"
-                            : selected.status === "CANCELLED"
-                              ? "ปฏิเสธแล้ว"
-                              : "ปรับสต๊อกแล้ว / บันทึกแล้ว"
-                        }
+                        value={(() => {
+                          const ui = resolveStockCountUiStatus({
+                            status: selected.status,
+                            pendingAdminApply: selected.pendingAdminApply,
+                          });
+                          const meta = STOCK_COUNT_STATUS_META[ui];
+                          return (
+                            <StatusBadge
+                              label={meta.label}
+                              tone={meta.tone}
+                              size="md"
+                            />
+                          );
+                        })()}
                       />
+                      {selected.status === "COMPLETED" &&
+                      !selected.pendingAdminApply ? (
+                        <SummaryRow
+                          label="ประวัติปรับสต๊อก"
+                          value={
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                router.push(
+                                  staffHistoryHrefForSummary({
+                                    summaryId: selected.id,
+                                    completedAt: selected.completedAt,
+                                  }),
+                                );
+                              }}
+                              className="text-right text-[13px] font-bold text-site-primary underline decoration-site-primary/40 underline-offset-2"
+                            >
+                              เปิดบิลปรับสต๊อก
+                            </button>
+                          }
+                        />
+                      ) : null}
                       <SummaryRow
                         label="บันทึกเมื่อ"
                         value={formatShiftDateTime(selected.completedAt)}
@@ -723,11 +869,24 @@ export function StaffDailySalesSummarySheet({
 
                     {selected.lines.length > 0 ? (
                       <div>
-                        <p className="mb-1.5 text-xs font-semibold text-gray-700">
-                          สต็อกที่นับ
-                        </p>
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-gray-700">
+                            สต็อกที่นับ
+                          </p>
+                          {mismatchLines.length > 0 ? (
+                            <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={diffOnly}
+                                onChange={(e) => setDiffOnly(e.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-slate-300"
+                              />
+                              เฉพาะยอดต่าง ({mismatchLines.length})
+                            </label>
+                          ) : null}
+                        </div>
                         <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 overflow-hidden">
-                          {selected.lines.map((line, index) => {
+                          {visibleLines.map((line, index) => {
                             const seq =
                               line.seq && line.seq > 0 ? line.seq : index + 1;
                             const isDiff = line.systemQty !== line.countedQty;
@@ -805,6 +964,28 @@ export function StaffDailySalesSummarySheet({
                 onSaveImage={handleSaveImage}
                 onCopyText={handleCopyText}
               />
+            </div>
+          ) : null}
+          {canConvert &&
+          selected &&
+          (selected.pendingAdminApply || selected.status === "IN_PROGRESS") ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={convertBusy}
+                onClick={() => void applyConvert("apply")}
+                className="flex-1 rounded-full bg-emerald-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm disabled:opacity-60"
+              >
+                {convertBusy ? "กำลังทำ…" : "Convert → ADJUST"}
+              </button>
+              <button
+                type="button"
+                disabled={convertBusy}
+                onClick={() => void applyConvert("reject")}
+                className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-60"
+              >
+                ปฏิเสธ
+              </button>
             </div>
           ) : null}
           <button

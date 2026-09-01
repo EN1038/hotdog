@@ -152,6 +152,8 @@ export type OwnerDashboardPayload = {
   cancelReasons: SalesReportCancelReason[];
   aging: ShopAgingAttention | null;
   wasteItems: SalesReportWasteItem[];
+  /** เอกสารยอดนับรอ Convert (IN_PROGRESS) ในขอบเขตสาขาที่เลือก — นับเฉพาะ ≤3 วันสำหรับ badge */
+  pendingStockConvertCount?: number;
   /** แม่ค้าคนเดียว · สาขาเดียว — แนะนำเริ่มที่หน้าร้าน */
   soleOperator?: boolean;
   soleBranchId?: string | null;

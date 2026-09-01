@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShell";
@@ -68,7 +69,11 @@ function OwnerTopSellersInner() {
   const [compareOpen, setCompareOpen] = useState(true);
   const [shareBusy, setShareBusy] = useState<ShareExportAction | null>(null);
   const [shareMsg, setShareMsg] = useState("");
+  const [compareShareBusy, setCompareShareBusy] =
+    useState<ShareExportAction | null>(null);
+  const [compareShareMsg, setCompareShareMsg] = useState("");
   const listCaptureRef = useRef<HTMLDivElement>(null);
+  const compareCaptureRef = useRef<HTMLDivElement>(null);
   const urlReady = useRef(false);
 
   const writeViewQuery = useCallback(
@@ -305,6 +310,113 @@ function OwnerTopSellersInner() {
     }
   }
 
+  function buildCompareCopyText() {
+    const lines: string[] = [];
+    lines.push("เมนูขายดีเทียบสาขา");
+    if (brandName) lines.push(brandName);
+    if (rangeLabel) lines.push(`ช่วง ${rangeLabel}`);
+    lines.push(sortLabel);
+    lines.push(
+      `${formatPrice(summary.itemCount)} เมนู · ${formatPrice(summary.totalQty)} ชิ้น · ฿${formatPrice(summary.totalRevenue)}`,
+    );
+    lines.push(compareBranches.map((b) => b.name).join(" · "));
+    lines.push("");
+    const header = ["เมนู", ...compareBranches.map((b) => b.name), "รวม"].join(
+      "\t",
+    );
+    lines.push(header);
+    for (const item of compareRows) {
+      const cols = [
+        item.name,
+        ...compareBranches.map((b) => {
+          const qty = qtyForBranch(item, b.id);
+          return qty > 0 ? String(qty) : "—";
+        }),
+        String(item.quantity),
+      ];
+      lines.push(cols.join("\t"));
+    }
+    return lines.join("\n");
+  }
+
+  async function ensureCompareVisible() {
+    if (compareOpen) return;
+    flushSync(() => setCompareOpen(true));
+    await new Promise((r) => setTimeout(r, 80));
+  }
+
+  async function captureComparePng() {
+    await ensureCompareVisible();
+    const node = compareCaptureRef.current;
+    if (!node) throw new Error("ไม่พบตารางเทียบสาขา");
+    return captureElementToPng(node);
+  }
+
+  function compareFilename() {
+    return `top-sellers-compare-${from}_${to}.png`;
+  }
+
+  async function handleCompareShareImage() {
+    if (compareShareBusy || compareRows.length === 0) return;
+    setCompareShareBusy("share");
+    setCompareShareMsg("");
+    try {
+      const dataUrl = await captureComparePng();
+      const title = ["เมนูขายดีเทียบสาขา", brandName, rangeLabel]
+        .filter(Boolean)
+        .join(" · ");
+      const r = await sharePngDataUrl(dataUrl, compareFilename(), title);
+      if (r.error === "cancelled") {
+        setCompareShareMsg("");
+        return;
+      }
+      setCompareShareMsg(
+        r.mode === "share"
+          ? "แชร์รูปแล้ว"
+          : r.ok
+            ? "อุปกรณ์นี้แชร์ไม่ได้ — บันทึกรูปแทนแล้ว"
+            : r.error ?? "แชร์รูปไม่สำเร็จ",
+      );
+    } catch {
+      setCompareShareMsg("แชร์รูปไม่สำเร็จ");
+    } finally {
+      setCompareShareBusy(null);
+    }
+  }
+
+  async function handleCompareSaveImage() {
+    if (compareShareBusy || compareRows.length === 0) return;
+    setCompareShareBusy("save");
+    setCompareShareMsg("");
+    try {
+      const dataUrl = await captureComparePng();
+      const r = await downloadPngDataUrl(dataUrl, compareFilename());
+      setCompareShareMsg(
+        r.ok ? "บันทึกรูปแล้ว" : r.error ?? "บันทึกรูปไม่สำเร็จ",
+      );
+    } catch {
+      setCompareShareMsg("บันทึกรูปไม่สำเร็จ");
+    } finally {
+      setCompareShareBusy(null);
+    }
+  }
+
+  async function handleCompareCopyText() {
+    if (compareShareBusy || compareRows.length === 0) return;
+    setCompareShareBusy("copy");
+    setCompareShareMsg("");
+    try {
+      const ok = await copyTextToClipboard(buildCompareCopyText());
+      setCompareShareMsg(
+        ok ? "คัดลอกข้อความแล้ว — ไปวางในไลน์ได้เลย" : "คัดลอกไม่สำเร็จ",
+      );
+    } catch {
+      setCompareShareMsg("คัดลอกไม่สำเร็จ");
+    } finally {
+      setCompareShareBusy(null);
+    }
+  }
+
   return (
     <div className="px-4 pb-6 pt-4">
       <header className="mb-4">
@@ -422,93 +534,148 @@ function OwnerTopSellersInner() {
 
       {multiBranch && compareBranches.length > 1 ? (
         <section className="mb-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <button
-            type="button"
-            onClick={() => setCompareOpen((v) => !v)}
-            className="flex w-full items-center justify-between px-4 py-3 text-left"
-          >
-            <div>
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
               <p className="text-[15px] font-extrabold text-slate-900">
                 เทียบสาขา
               </p>
               <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-                Top {compareRows.length} · ชิ้นต่อสาขา
+                {compareOpen
+                  ? `Top ${compareRows.length} · ชิ้นต่อสาขา`
+                  : "เปิดเพื่อเทียบยอดขายแต่ละสาขา"}
               </p>
+              {compareShareMsg ? (
+                <p className="mt-1 text-[12px] font-semibold text-emerald-700">
+                  {compareShareMsg}
+                </p>
+              ) : null}
             </div>
-            <span className="text-[13px] font-bold text-slate-400">
-              {compareOpen ? "ซ่อน" : "แสดง"}
-            </span>
-          </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <ShareExportMenu
+                busy={compareShareBusy}
+                message={compareShareMsg}
+                disabled={loading || compareRows.length === 0}
+                sheetTitle="แชร์เทียบสาขา"
+                sheetHint="แชร์รูป บันทึกรูป หรือคัดลอกข้อความส่งทีม"
+                onShareImage={handleCompareShareImage}
+                onSaveImage={handleCompareSaveImage}
+                onCopyText={handleCompareCopyText}
+              />
+              <button
+                type="button"
+                role="switch"
+                aria-checked={compareOpen}
+                aria-label="แสดงเทียบสาขา"
+                onClick={() => setCompareOpen((v) => !v)}
+                className={`relative h-8 w-14 shrink-0 rounded-full transition ${
+                  compareOpen ? "bg-emerald-600" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className="absolute top-1 h-6 w-6 rounded-full bg-white shadow-sm transition"
+                  style={{ left: compareOpen ? "1.65rem" : "0.2rem" }}
+                />
+              </button>
+            </div>
+          </div>
           {compareOpen ? (
             <div className="overflow-x-auto border-t border-slate-100">
-              <table className="min-w-full text-left text-[12px]">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500">
-                    <th className="sticky left-0 bg-slate-50 px-3 py-2 font-bold">
-                      เมนู
-                    </th>
-                    {compareBranches.map((b) => (
-                      <th
-                        key={b.id}
-                        className="max-w-[5.5rem] truncate px-2 py-2 font-bold"
-                        title={b.name}
-                      >
-                        {b.name}
+              <div
+                ref={compareCaptureRef}
+                className="w-max min-w-full bg-white px-3 py-3"
+              >
+                <div className="mb-2 border-b border-slate-100 pb-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                    <p className="text-[13px] font-extrabold text-slate-900">
+                      เมนูขายดีเทียบสาขา
+                    </p>
+                    <p className="shrink-0 text-[11px] font-medium tabular-nums text-slate-400">
+                      {listStamp}
+                    </p>
+                  </div>
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                    {[
+                      brandName || null,
+                      `ช่วง ${rangeLabel}`,
+                      sortLabel,
+                      `${formatPrice(summary.itemCount)} เมนู · ${formatPrice(summary.totalQty)} ชิ้น · ฿${formatPrice(summary.totalRevenue)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                    {compareBranches.map((b) => b.name).join(" · ")}
+                  </p>
+                </div>
+                <table className="min-w-full text-left text-[12px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500">
+                      <th className="sticky left-0 bg-slate-50 px-3 py-2 font-bold">
+                        เมนู
                       </th>
-                    ))}
-                    <th className="px-3 py-2 font-bold">รวม</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {compareRows.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={compareBranches.length + 2}
-                        className="px-3 py-8 text-center text-slate-400"
-                      >
-                        {loading ? "กำลังโหลด…" : "ยังไม่มีข้อมูล"}
-                      </td>
+                      {compareBranches.map((b) => (
+                        <th
+                          key={b.id}
+                          className="max-w-[5.5rem] truncate px-2 py-2 font-bold"
+                          title={b.name}
+                        >
+                          {b.name}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 font-bold">รวม</th>
                     </tr>
-                  ) : (
-                    compareRows.map((item) => (
-                      <tr
-                        key={item.key}
-                        className="border-t border-slate-50"
-                      >
-                        <td className="sticky left-0 max-w-[7rem] truncate bg-white px-3 py-2 font-semibold text-slate-900">
-                          {item.name}
-                        </td>
-                        {compareBranches.map((b) => {
-                          const qty = qtyForBranch(item, b.id);
-                          const max = Math.max(
-                            1,
-                            ...compareBranches.map((x) =>
-                              qtyForBranch(item, x.id),
-                            ),
-                          );
-                          const hot = qty === max && qty > 0;
-                          return (
-                            <td
-                              key={b.id}
-                              className={`px-2 py-2 tabular-nums ${
-                                hot
-                                  ? "font-black text-emerald-700"
-                                  : "font-semibold text-slate-600"
-                              }`}
-                              title={`฿${formatPrice(revForBranch(item, b.id))}`}
-                            >
-                              {qty > 0 ? formatPrice(qty) : "—"}
-                            </td>
-                          );
-                        })}
-                        <td className="px-3 py-2 font-black tabular-nums text-slate-900">
-                          {formatPrice(item.quantity)}
+                  </thead>
+                  <tbody>
+                    {compareRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={compareBranches.length + 2}
+                          className="px-3 py-8 text-center text-slate-400"
+                        >
+                          {loading ? "กำลังโหลด…" : "ยังไม่มีข้อมูล"}
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      compareRows.map((item) => (
+                        <tr
+                          key={item.key}
+                          className="border-t border-slate-50"
+                        >
+                          <td className="sticky left-0 max-w-[7rem] truncate bg-white px-3 py-2 font-semibold text-slate-900">
+                            {item.name}
+                          </td>
+                          {compareBranches.map((b) => {
+                            const qty = qtyForBranch(item, b.id);
+                            const max = Math.max(
+                              1,
+                              ...compareBranches.map((x) =>
+                                qtyForBranch(item, x.id),
+                              ),
+                            );
+                            const hot = qty === max && qty > 0;
+                            return (
+                              <td
+                                key={b.id}
+                                className={`px-2 py-2 tabular-nums ${
+                                  hot
+                                    ? "font-black text-emerald-700"
+                                    : "font-semibold text-slate-600"
+                                }`}
+                                title={`฿${formatPrice(revForBranch(item, b.id))}`}
+                              >
+                                {qty > 0 ? formatPrice(qty) : "—"}
+                              </td>
+                            );
+                          })}
+                          <td className="px-3 py-2 font-black tabular-nums text-slate-900">
+                            {formatPrice(item.quantity)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : null}
         </section>

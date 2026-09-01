@@ -1,4 +1,5 @@
 import type { SkewerOrderStatus } from "@prisma/client";
+import type { StatusTone } from "@/lib/status-badge";
 import {
   generateOrderNumber,
   isBangkokDateKey,
@@ -250,6 +251,13 @@ export const SKEWER_ORDER_STATUS_LABELS: Record<SkewerOrderStatus, string> = {
   CONFIRMED: "ยืนยันแล้ว",
   DELIVERED: "ส่งสำเร็จแล้ว",
   CANCELLED: "ยกเลิก",
+};
+
+export const SKEWER_ORDER_STATUS_TONE: Record<SkewerOrderStatus, StatusTone> = {
+  PENDING_CONFIRM: "warning",
+  CONFIRMED: "success",
+  DELIVERED: "info",
+  CANCELLED: "neutral",
 };
 
 /** Orders past admin confirm use confirmedQuantity for display. */

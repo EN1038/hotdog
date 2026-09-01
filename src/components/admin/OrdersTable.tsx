@@ -4,10 +4,11 @@ import Link from "next/link";
 import type { FulfillmentType, OrderStatus } from "@prisma/client";
 import {
   FULFILLMENT_LABELS,
-  ORDER_STATUS_BADGE,
   ORDER_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
 } from "@/lib/constants";
+import { orderStatusTone } from "@/lib/status-badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { orderGrandTotal } from "@/lib/order-totals";
 import {
   parseOrderItemOptionsForDisplay,
@@ -236,11 +237,11 @@ export function OrdersTable({
                 </td>
                 <td className="whitespace-nowrap px-3 py-3">
                   <Link href={href}>
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${ORDER_STATUS_BADGE[order.status]}`}
-                    >
-                      {ORDER_STATUS_LABELS[order.status]}
-                    </span>
+                    <StatusBadge
+                      label={ORDER_STATUS_LABELS[order.status]}
+                      tone={orderStatusTone(order.status)}
+                      size="sm"
+                    />
                   </Link>
                 </td>
                 {onHardDelete ? (

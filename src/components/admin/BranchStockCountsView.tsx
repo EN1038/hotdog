@@ -120,13 +120,26 @@ const STOCK_TYPE_LABEL: Record<string, string> = {
 function statusTone(status: string) {
   switch (status) {
     case "IN_PROGRESS":
-      return "bg-amber-50 text-amber-900 ring-amber-300";
+      return "bg-amber-50 text-amber-950 ring-amber-300";
     case "COMPLETED":
       return "bg-emerald-50 text-emerald-800 ring-emerald-200";
     case "CANCELLED":
       return "bg-slate-100 text-slate-600 ring-slate-200";
     default:
       return "bg-slate-50 text-slate-700 ring-slate-200";
+  }
+}
+
+function statusDot(status: string) {
+  switch (status) {
+    case "IN_PROGRESS":
+      return "bg-amber-500 animate-pulse";
+    case "COMPLETED":
+      return "bg-emerald-500";
+    case "CANCELLED":
+      return "bg-slate-400";
+    default:
+      return "bg-slate-400";
   }
 }
 
@@ -512,9 +525,15 @@ function buildVarianceInsights(
 type Props = {
   branchId: string;
   onPendingChange?: (pending: number) => void;
+  /** Expand this stock count when loaded (deep link). */
+  initialCountId?: string | null;
 };
 
-export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
+export function BranchStockCountsView({
+  branchId,
+  onPendingChange,
+  initialCountId = null,
+}: Props) {
   const toast = useToast();
   const { confirm } = useConfirm();
   const [counts, setCounts] = useState<Count[]>([]);
@@ -525,12 +544,15 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("IN_PROGRESS");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(
+    initialCountId?.trim() || null,
+  );
   const [diffOnly, setDiffOnly] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [saveBusyId, setSaveBusyId] = useState<string | null>(null);
   const [captureStamp, setCaptureStamp] = useState("");
   const detailCaptureRef = useRef<HTMLDivElement | null>(null);
+  const initialCountHandled = useRef(false);
 
   async function handleSaveCountImage(
     count: Count,
@@ -583,7 +605,14 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
             ? (json.dayActivity as DayActivity)
             : { date: dateStr, items: [] },
         );
-        setExpandedId(null);
+        const want = initialCountId?.trim() || "";
+        if (want && next.some((c) => c.id === want)) {
+          setExpandedId(want);
+          setStatusFilter("ALL");
+          initialCountHandled.current = true;
+        } else {
+          setExpandedId(null);
+        }
         const pending = next.filter((c) => c.status === "IN_PROGRESS").length;
         onPendingChange?.(pending);
       } else {
@@ -595,7 +624,7 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [branchId, dateStr, toast, onPendingChange]);
+  }, [branchId, dateStr, toast, onPendingChange, initialCountId]);
 
   useEffect(() => {
     void load();
@@ -1025,8 +1054,12 @@ export function BranchStockCountsView({ branchId, onPendingChange }: Props) {
                           {count.name || `สรุปยอด ${time} น.`}
                         </h3>
                         <span
-                          className={`rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${statusTone(status)}`}
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${statusTone(status)}`}
                         >
+                          <span
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot(status)}`}
+                            aria-hidden
+                          />
                           {statusLabel}
                         </span>
                         <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">

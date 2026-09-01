@@ -491,15 +491,30 @@ export function buildOwnerShopLinkGroups(input: {
   const stock: OwnerShopLink[] = [];
   if (stockEnabled) {
     stock.push({
-      href: "/owner/stock-flow",
-      label: "วิเคราะห์สต๊อก",
-      hint: "รับเข้า · ขาย · เสีย · เทียบสาขา",
-    });
-    stock.push({
       href: "/staff/stock",
       label: "จัดการสต๊อก",
       hint: "รับเข้า · จ่ายออก · นับสต๊อก — มีเลขที่เอกสาร",
       enterStaff: true,
+    });
+    stock.push({
+      href: "/owner/sales-days",
+      label: "วันขายดี / วันยอดอ่อน",
+      hint: "รู้วันเตรียมเพิ่ม–ลด · ช่วงที่ลูกค้าใช้จ่าย",
+    });
+    stock.push({
+      href: "/owner/par-stock",
+      label: "แนะนำ Par Stock",
+      hint: "ตั้งเป้าคงคลังต่อเมนู · ฐานแผนผลิต",
+    });
+    stock.push({
+      href: "/owner/tomorrow-plans",
+      label: "แผนผลิต-เติม",
+      hint: "คำนวณของที่ต้องผลิต/เติมจาก Par",
+    });
+    stock.push({
+      href: "/owner/stock-flow",
+      label: "วิเคราะห์สต๊อก",
+      hint: "รับเข้า · ขาย · เสีย · เทียบสาขา",
     });
     if (WAREHOUSE_UI_ENABLED) {
       stock.push({
@@ -521,7 +536,7 @@ export function buildOwnerShopLinkGroups(input: {
     stock.push({
       href: "/owner/stock-history",
       label: "ประวัติ",
-      hint: "รับ · ขาย · ของเสีย · จ่ายออก",
+      hint: "รับ · ขาย · ปรับสต๊อก · ของเสีย · จ่ายออก",
     });
   }
 

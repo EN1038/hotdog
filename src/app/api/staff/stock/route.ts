@@ -23,6 +23,8 @@ import {
   MAX_STOCK_MOVEMENT_IMAGES,
 } from "@/lib/stock-movement-images";
 import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
+import { pendingConvertNotiCreatedAtGte } from "@/lib/stock-count-pending-noti";
+import { staffCanConvertStockSummary } from "@/lib/stock-count-convert-auth";
 
 const WASTE_HISTORY_TYPES = BRANCH_WASTE_HISTORY_TYPES;
 
@@ -579,6 +581,23 @@ export async function GET() {
       );
     }
 
+    const canConvertStockSummary = session.staffPhone
+      ? await staffCanConvertStockSummary({
+          branchId: branch.id,
+          staffPhone: session.staffPhone,
+        })
+      : false;
+
+    const pendingConvertCount = canConvertStockSummary
+      ? await prisma.stockCount.count({
+          where: {
+            branchId: branch.id,
+            status: "IN_PROGRESS",
+            createdAt: { gte: pendingConvertNotiCreatedAtGte() },
+          },
+        })
+      : 0;
+
     let lastStockCountAt: string | null = null;
     let lastSaleAt: string | null = null;
     const lastStockCountAtByType: Record<
@@ -687,6 +706,8 @@ export async function GET() {
       allowNegativeStock: true,
       brandBranches,
       pending,
+      pendingConvertCount,
+      canConvertStockSummary,
       balances,
       products,
       lowItems: balances.filter((b) => Number(b.quantity) <= 0),
@@ -837,6 +858,7 @@ export async function POST(request: Request) {
           a.name.localeCompare(b.name, "th"),
         );
         const seqById = new Map(sorted.map((item, i) => [item.id, i + 1]));
+        const adjustBatchId = crypto.randomUUID();
 
         await prisma.$transaction(
           async (tx) => {
@@ -858,6 +880,7 @@ export async function POST(request: Request) {
                     branchNonMenuItemId: item.id,
                     quantity: actualDiff,
                     type: "ADJUST",
+                    batchId: adjustBatchId,
                     note: `สรุปยอดสต๊อก · ${timingLabel} · ${typeLabel} (นับได้ ${newQty})`,
                     createdByStaffId: session.staffId,
                   },

@@ -10,8 +10,10 @@ import { useToast } from "@/components/admin/Toast";
 import { bangkokDateKey } from "@/lib/constants";
 import {
   PROMO_EXPIRED_GRACE_DAYS,
+  PROMO_SCHEDULE_STATUS_TONE,
   type PromoScheduleStatus,
 } from "@/lib/promo-schedule";
+import { StatusBadge } from "@/components/StatusBadge";
 
 type PromoRow = {
   id: string;
@@ -26,14 +28,6 @@ type PromoRow = {
   endsAtDateKey: string | null;
   startsAtDateKey: string | null;
 };
-
-function statusTone(status: PromoScheduleStatus) {
-  if (status === "active") return "bg-emerald-50 text-emerald-800 ring-emerald-200";
-  if (status === "expired_grace")
-    return "bg-amber-50 text-amber-900 ring-amber-200";
-  if (status === "upcoming") return "bg-sky-50 text-sky-800 ring-sky-200";
-  return "bg-slate-100 text-slate-600 ring-slate-200";
-}
 
 export default function StaffPromoManagePage() {
   const router = useRouter();
@@ -176,11 +170,11 @@ export default function StaffPromoManagePage() {
                         {promo.price.toLocaleString("th-TH")}฿
                       </p>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${statusTone(promo.status)}`}
-                    >
-                      {promo.statusLabel}
-                    </span>
+                    <StatusBadge
+                      label={promo.statusLabel}
+                      tone={PROMO_SCHEDULE_STATUS_TONE[promo.status]}
+                      size="sm"
+                    />
                   </div>
 
                   <label className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5">

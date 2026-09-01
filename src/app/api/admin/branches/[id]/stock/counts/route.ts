@@ -353,6 +353,7 @@ export async function POST(
     // Non-sale always apply; SALE_ITEM pending unless applyNow
     const applyNow = stockType !== "SALE_ITEM" || body.applyNow;
     let adjusted = 0;
+    const adjustBatchId = applyNow ? crypto.randomUUID() : null;
 
     const count = await prisma.$transaction(
       async (tx) => {
@@ -394,6 +395,7 @@ export async function POST(
                     menuItemId: menu.id,
                     quantity: actualDiff,
                     type: "ADJUST",
+                    batchId: adjustBatchId,
                     note:
                       body.note?.trim() ||
                       `แอดมิน Convert จากเอกสารยอดนับ · ${docName} (นับได้ ${newQty})`,
@@ -423,6 +425,7 @@ export async function POST(
                     branchNonMenuItemId: item.id,
                     quantity: actualDiff,
                     type: "ADJUST",
+                    batchId: adjustBatchId,
                     note:
                       body.note?.trim() ||
                       `แอดมินปรับจากเอกสารยอดนับ · ${docName} (นับได้ ${newQty})`,

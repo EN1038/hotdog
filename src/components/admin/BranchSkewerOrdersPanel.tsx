@@ -14,6 +14,7 @@ import { IconChevronRight, IconSkewerPlaceholder } from "@/components/icons";
 import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
 import {
   SKEWER_ORDER_STATUS_LABELS,
+  SKEWER_ORDER_STATUS_TONE,
   SKEWER_CATEGORY_ROLE_LABELS,
   formatSkewerSplitSummary,
   formatSkewerQtyLabel,
@@ -23,6 +24,7 @@ import {
   skewerLineSubtotalBaht,
   summarizeSkewerSplit,
 } from "@/lib/skewer-order";
+import { StatusBadge } from "@/components/StatusBadge";
 import { formatPrice } from "@/lib/constants";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import { SkewerOrderShareExtras } from "@/components/skewer/SkewerOrderShareExtras";
@@ -108,13 +110,6 @@ function itemQtyLabel(qty: number, item: SkewerItem) {
     sticksPerUnit: item.sticksPerUnit,
     countsAsSticks: item.countsAsSticks,
   });
-}
-
-function statusTone(status: SkewerOrderStatus) {
-  if (status === "PENDING_CONFIRM") return "bg-amber-50 text-amber-900 border-amber-200";
-  if (status === "CONFIRMED") return "bg-emerald-50 text-emerald-900 border-emerald-200";
-  if (status === "DELIVERED") return "bg-sky-50 text-sky-900 border-sky-200";
-  return "bg-gray-100 text-gray-600 border-gray-200";
 }
 
 function formatDateLabel(ymd: string) {
@@ -779,11 +774,11 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                           <p className="font-semibold text-gray-900">
                             {order.customerPhone || "—"}
                           </p>
-                          <span
-                            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusTone(order.status)}`}
-                          >
-                            {SKEWER_ORDER_STATUS_LABELS[order.status]}
-                          </span>
+                          <StatusBadge
+                              label={SKEWER_ORDER_STATUS_LABELS[order.status]}
+                              tone={SKEWER_ORDER_STATUS_TONE[order.status]}
+                              size="sm"
+                            />
                         </div>
                         <p className="mt-0.5 text-sm text-gray-600">
                           ต้องการ {formatDateLabel(order.requestedDate)}
@@ -900,11 +895,11 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                 <div ref={captureRef} className="space-y-5 bg-white">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusTone(selected.status)}`}
-                    >
-                      {SKEWER_ORDER_STATUS_LABELS[selected.status]}
-                    </span>
+                    <StatusBadge
+                      label={SKEWER_ORDER_STATUS_LABELS[selected.status]}
+                      tone={SKEWER_ORDER_STATUS_TONE[selected.status]}
+                      size="sm"
+                    />
                     {selected.confirmedAt ? (
                       <span className="text-xs text-gray-500">
                         ยืนยันเมื่อ{" "}

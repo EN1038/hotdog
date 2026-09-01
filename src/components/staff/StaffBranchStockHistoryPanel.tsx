@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { bangkokDateKey } from "@/lib/constants";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { bangkokDateKey, isBangkokDateKey } from "@/lib/constants";
 import {
   MobileDateRangeControl,
   mobileRangeForPreset,
@@ -13,7 +14,34 @@ import {
   BRANCH_HISTORY_KIND_LABEL,
   BRANCH_HISTORY_KINDS,
   type BranchHistoryKind,
+  isBranchHistoryKind,
 } from "@/lib/branch-stock-history";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { StatusTone } from "@/lib/status-badge";
+import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDetail";
+import {
+  parseConvertSummaryNameFromNote,
+  staffStockSummaryHref,
+} from "@/lib/history-source-link";
+
+function historyKindTone(
+  kind: Exclude<BranchHistoryKind, "all">,
+): StatusTone {
+  switch (kind) {
+    case "in":
+      return "success";
+    case "sale":
+      return "info";
+    case "adjust":
+      return "info";
+    case "waste":
+      return "danger";
+    case "out":
+      return "neutral";
+    default:
+      return "neutral";
+  }
+}
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -37,6 +65,8 @@ type HistoryBatch = {
   label: string;
   createdAt: string;
   note: string | null;
+  batchId?: string | null;
+  orderId?: string | null;
   imageUrl: string | null;
   imageUrls?: string[];
   documentNo: string | null;
@@ -97,7 +127,7 @@ function SummaryRow({
   mono = false,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   last?: boolean;
   mono?: boolean;
 }) {
@@ -107,15 +137,33 @@ function SummaryRow({
         last ? "" : "border-b border-slate-100"
       }`}
     >
-      <span className="text-[13px] text-slate-500">{label}</span>
-      <span
-        className={`text-right text-[13px] font-semibold text-slate-900 ${
+      <span className="shrink-0 text-[13px] text-slate-500">{label}</span>
+      <div
+        className={`min-w-0 text-right text-[13px] font-semibold text-slate-900 ${
           mono ? "font-mono text-[12px]" : ""
         }`}
       >
         {value}
-      </span>
+      </div>
     </div>
+  );
+}
+
+function SourceLinkButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-right text-[13px] font-bold text-site-primary underline decoration-site-primary/40 underline-offset-2"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -134,6 +182,11 @@ type Props = {
   branchId?: string | null;
   hideBack?: boolean;
   title?: string;
+  initialKind?: BranchHistoryKind | null;
+  initialFrom?: string | null;
+  initialTo?: string | null;
+  /** Open detail for ADJUST bill whose batchId matches (usually stockCount.id). */
+  openBatchId?: string | null;
 };
 
 export function StaffBranchStockHistoryPanel({
@@ -142,14 +195,27 @@ export function StaffBranchStockHistoryPanel({
   branchId = null,
   hideBack = false,
   title = "ประวัติ",
+  initialKind = null,
+  initialFrom = null,
+  initialTo = null,
+  openBatchId = null,
 }: Props) {
+  const router = useRouter();
   const today = bangkokDateKey();
   const initial = mobileRangeForPreset("today", today);
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
-  const [preset, setPreset] = useState<MobileDatePresetId | null>("today");
+  const [from, setFrom] = useState(() =>
+    initialFrom && isBangkokDateKey(initialFrom) ? initialFrom : initial.from,
+  );
+  const [to, setTo] = useState(() =>
+    initialTo && isBangkokDateKey(initialTo) ? initialTo : initial.to,
+  );
+  const [preset, setPreset] = useState<MobileDatePresetId | null>(
+    initialFrom || initialTo ? null : "today",
+  );
   const [q, setQ] = useState("");
-  const [kind, setKind] = useState<BranchHistoryKind>("all");
+  const [kind, setKind] = useState<BranchHistoryKind>(() =>
+    initialKind && isBranchHistoryKind(initialKind) ? initialKind : "all",
+  );
   const [batches, setBatches] = useState<HistoryBatch[]>([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -158,8 +224,11 @@ export function StaffBranchStockHistoryPanel({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<HistoryBatch | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [orderDetailId, setOrderDetailId] = useState<string | null>(null);
+  const [openingSource, setOpeningSource] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const requestIdRef = useRef(0);
+  const openedBatchRef = useRef<string | null>(null);
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean) => {
@@ -231,6 +300,85 @@ export function StaffBranchStockHistoryPanel({
   }, [fetchPage]);
 
   useEffect(() => {
+    if (!openBatchId || loading) return;
+    if (openedBatchRef.current === openBatchId) return;
+    const match = batches.find((b) => b.batchId === openBatchId);
+    if (match) {
+      openedBatchRef.current = openBatchId;
+      setSelected(match);
+      return;
+    }
+    if (!hasMore || loadingMore) return;
+    void fetchPage(nextOffset, true);
+  }, [
+    openBatchId,
+    batches,
+    loading,
+    hasMore,
+    loadingMore,
+    nextOffset,
+    fetchPage,
+  ]);
+
+  async function openSummarySource(batch: HistoryBatch) {
+    if (openingSource) return;
+    setOpeningSource(true);
+    try {
+      const summaryId = batch.batchId?.trim() || "";
+      const summaryName = parseConvertSummaryNameFromNote(batch.note);
+      if (!summaryId && !summaryName) return;
+
+      let data: Record<string, unknown> = {};
+      let ok = false;
+
+      if (summaryId) {
+        const res = await fetch(
+          `/api/staff/stock/summaries?id=${encodeURIComponent(summaryId)}`,
+        );
+        data = await res.json().catch(() => ({}));
+        ok = res.ok;
+      }
+
+      if (!ok && summaryName) {
+        const res = await fetch(
+          `/api/staff/stock/summaries?name=${encodeURIComponent(summaryName)}`,
+        );
+        data = await res.json().catch(() => ({}));
+        ok = res.ok;
+      }
+
+      if (!ok) {
+        throw new Error(
+          typeof data.error === "string" ? data.error : "เปิดสรุปยอดไม่สำเร็จ",
+        );
+      }
+
+      const resolvedId =
+        (typeof data.resolvedSummaryId === "string" &&
+          data.resolvedSummaryId) ||
+        (ok && summaryId ? summaryId : "") ||
+        (Array.isArray(data.summaries) &&
+          typeof (data.summaries as { id?: string }[])[0]?.id === "string" &&
+          (data.summaries as { id: string }[])[0].id) ||
+        "";
+      const date =
+        typeof data.date === "string" && isBangkokDateKey(data.date)
+          ? data.date
+          : bangkokDateKey(new Date(batch.createdAt));
+      router.push(
+        staffStockSummaryHref({
+          summaryId: resolvedId || null,
+          date,
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "เปิดสรุปยอดไม่สำเร็จ");
+    } finally {
+      setOpeningSource(false);
+    }
+  }
+
+  useEffect(() => {
     const node = loadMoreRef.current;
     if (!node || !hasMore || loading || loadingMore) return;
     const observer = new IntersectionObserver(
@@ -266,7 +414,7 @@ export function StaffBranchStockHistoryPanel({
           <div className="min-w-0">
             <h2 className="text-lg font-extrabold text-slate-900">{title}</h2>
             <p className="text-xs font-semibold text-slate-600">
-              รับ · ขาย · ของเสีย · จ่ายออก — กดดูรายละเอียดแต่ละบิล
+              รับ · ขาย · ปรับสต๊อก · ของเสีย · จ่ายออก — กดดูรายละเอียดแต่ละบิล
             </p>
           </div>
         </div>
@@ -354,11 +502,18 @@ export function StaffBranchStockHistoryPanel({
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className="text-[13px] font-bold text-site-primary">
-                        {batch.label}
-                        {batch.isCancelled ? " · ยกเลิก" : ""}
-                      </p>
-                      <p className="mt-0.5 truncate text-[15px] font-extrabold text-slate-900">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge
+                          label={`${batch.label}${batch.isCancelled ? " · ยกเลิก" : ""}`}
+                          tone={
+                            batch.isCancelled
+                              ? "neutral"
+                              : historyKindTone(batch.kind)
+                          }
+                          size="sm"
+                        />
+                      </div>
+                      <p className="mt-1 truncate text-[15px] font-extrabold text-slate-900">
                         {title}
                       </p>
                       <p className="mt-0.5 text-[12px] font-semibold text-slate-600">
@@ -506,21 +661,69 @@ export function StaffBranchStockHistoryPanel({
                       : "เลขที่เอกสาร"
                 }
                 value={
-                  selected.documentNo ||
-                  selected.orderNumber ||
-                  "—"
+                  selected.kind === "sale" && selected.orderId ? (
+                    <SourceLinkButton
+                      label={
+                        selected.documentNo ||
+                        selected.orderNumber ||
+                        "ดูออเดอร์"
+                      }
+                      onClick={() => setOrderDetailId(selected.orderId!)}
+                    />
+                  ) : (
+                    selected.documentNo || selected.orderNumber || "—"
+                  )
                 }
-                mono
+                mono={!selected.orderId}
               />
               <SummaryRow
                 label="ประเภท"
                 value={selected.label}
               />
-              {selected.note ? (
-                <SummaryRow label="รายละเอียด" value={selected.note} />
-              ) : (
-                <SummaryRow label="รายละเอียด" value="—" />
-              )}
+              {(() => {
+                const canOpenSummary =
+                  selected.kind === "adjust" &&
+                  Boolean(
+                    selected.batchId?.trim() ||
+                      parseConvertSummaryNameFromNote(selected.note),
+                  );
+                const canOpenOrder =
+                  selected.kind === "sale" && Boolean(selected.orderId);
+                if (selected.note && canOpenSummary) {
+                  return (
+                    <SummaryRow
+                      label="รายละเอียด"
+                      value={
+                        <SourceLinkButton
+                          label={
+                            openingSource ? "กำลังเปิด…" : selected.note
+                          }
+                          onClick={() => void openSummarySource(selected)}
+                        />
+                      }
+                    />
+                  );
+                }
+                if (selected.note && canOpenOrder) {
+                  return (
+                    <SummaryRow
+                      label="รายละเอียด"
+                      value={
+                        <SourceLinkButton
+                          label={selected.note}
+                          onClick={() => setOrderDetailId(selected.orderId!)}
+                        />
+                      }
+                    />
+                  );
+                }
+                return (
+                  <SummaryRow
+                    label="รายละเอียด"
+                    value={selected.note || "—"}
+                  />
+                );
+              })()}
               {selected.isCancelled ? (
                 <SummaryRow
                   label="สถานะ"
@@ -631,6 +834,12 @@ export function StaffBranchStockHistoryPanel({
           </div>
         </div>
       ) : null}
+
+      <StaffOrderHistoryDetail
+        open={Boolean(orderDetailId)}
+        orderId={orderDetailId}
+        onClose={() => setOrderDetailId(null)}
+      />
     </>
   );
 }

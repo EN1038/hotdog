@@ -15,6 +15,9 @@ import { DateInput } from "@/components/DateInput";
 import { useToast } from "@/components/admin/Toast";
 import { bangkokDateKey, isBangkokDateKey } from "@/lib/constants";
 import { ZoomableImage } from "@/components/ZoomableImage";
+import {
+  isConvertStyleHistoryNote,
+} from "@/lib/history-source-link";
 
 type Movement = {
   id: string;
@@ -575,8 +578,36 @@ export function BranchStockMovementsView({
                         {" · "}
                         {b.itemCount.toLocaleString("th-TH")} รายการ · รวม{" "}
                         {b.totalQty.toLocaleString("th-TH")}
-                        {b.note ? ` · ${b.note}` : ""}
                       </p>
+                      {b.note ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {(() => {
+                            const countId =
+                              b.type === "ADJUST" &&
+                              isConvertStyleHistoryNote(b.note) &&
+                              b.id &&
+                              !b.id.includes("|")
+                                ? b.id
+                                : null;
+                            if (!countId) {
+                              return <> · {b.note}</>;
+                            }
+                            return (
+                              <Link
+                                href={`/admin/branches/${branchId}?view=counts&countId=${encodeURIComponent(
+                                  countId,
+                                )}`}
+                                className="font-semibold text-site-primary hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {b.note
+                                  .replace(/\(นับได้\s*-?\d+\)/g, "")
+                                  .trim()}
+                              </Link>
+                            );
+                          })()}
+                        </p>
+                      ) : null}
                       {cancelled && b.cancelNote ? (
                         <p className="mt-1 text-xs font-medium text-red-700">
                           เหตุผล: {b.cancelNote}

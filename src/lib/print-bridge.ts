@@ -147,10 +147,37 @@ export type PackageLabelPrintEnvelope = {
 export function printPackageLabels(
   labels: PackageLabelBridgeInput[],
 ): PrintBridgeResult | null {
-  return printPackageLabelsEnvelope({
-    layoutVersion: 1,
-    labels,
-  });
+  return printPackageLabelsLegacyArray(labels);
+}
+
+function isLegacyPackageLabelEnvelopeError(message: string | undefined): boolean {
+  if (!message) return false;
+  return (
+    message.includes("cannot be converted to JSONArray") ||
+    message.includes("org.json.JSONArray") ||
+    (message.startsWith("Value {") && message.includes("layoutVersion"))
+  );
+}
+
+/** Legacy APK payload: JSON array of labels only (no layout envelope). */
+export function printPackageLabelsLegacyArray(
+  labels: PackageLabelBridgeInput[],
+): PrintBridgeResult | null {
+  if (!canUsePrintActions()) {
+    return { code: "-1", message: "ยังไม่ได้เชื่อมเครื่องพิมพ์" };
+  }
+  const bridge = getBridge();
+  if (!bridge?.printPackageLabels) return null;
+  try {
+    return JSON.parse(
+      bridge.printPackageLabels(JSON.stringify(labels)),
+    ) as PrintBridgeResult;
+  } catch (e) {
+    return {
+      code: "-1",
+      message: e instanceof Error ? e.message : "พิมพ์ป้ายแพ็กไม่สำเร็จ",
+    };
+  }
 }
 
 export function printPackageLabelsEnvelope(
@@ -162,14 +189,20 @@ export function printPackageLabelsEnvelope(
   const bridge = getBridge();
   if (!bridge?.printPackageLabels) return null;
   try {
-    return JSON.parse(
+    const result = JSON.parse(
       bridge.printPackageLabels(JSON.stringify(envelope)),
     ) as PrintBridgeResult;
+    if (result?.code === "1") return result;
+    if (isLegacyPackageLabelEnvelopeError(result?.message)) {
+      return printPackageLabelsLegacyArray(envelope.labels);
+    }
+    return result;
   } catch (e) {
-    return {
-      code: "-1",
-      message: e instanceof Error ? e.message : "พิมพ์ป้ายแพ็กไม่สำเร็จ",
-    };
+    const message = e instanceof Error ? e.message : "พิมพ์ป้ายแพ็กไม่สำเร็จ";
+    if (isLegacyPackageLabelEnvelopeError(message)) {
+      return printPackageLabelsLegacyArray(envelope.labels);
+    }
+    return { code: "-1", message };
   }
 }
 

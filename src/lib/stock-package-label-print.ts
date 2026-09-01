@@ -111,7 +111,7 @@ export async function openPackageLabelPrint(
     }
     if (!hasPackageLabelPrintBridge()) {
       window.alert(
-        "แอปเวอร์ชันเก่า — กรุณาติดตั้ง SkillSale Print v1.2.9 ขึ้นไป",
+        "แอปเวอร์ชันเก่า — กรุณาติดตั้ง SkillSale Print v1.2.9 ขึ้นไปเพื่อใช้แบบป้ายจากเว็บ",
       );
       return;
     }

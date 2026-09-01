@@ -24,6 +24,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import co.skillsale.print.printer.QueuePrintService
+import co.skillsale.print.BuildConfig
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -81,7 +82,7 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             allowContentAccess = true
             cacheMode = WebSettings.LOAD_DEFAULT
-            userAgentString = "$userAgentString SkillSalePrint/1.0"
+            userAgentString = "$userAgentString SkillSalePrint/${BuildConfig.VERSION_NAME}"
         }
 
         webView.webViewClient =

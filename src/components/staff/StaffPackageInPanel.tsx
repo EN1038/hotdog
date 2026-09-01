@@ -16,8 +16,6 @@ import {
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
 import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
-import { StaffMenuScanField } from "@/components/staff/StaffMenuScanField";
-import { lookupStockMenuScan } from "@/lib/stock-menu-scan";
 
 type MenuItem = {
   id: string;
@@ -116,8 +114,6 @@ type Props = {
   onSuccess?: (batchId: string) => void;
   prefillItem?: PackageInPrefill | null;
   onPrefillApplied?: () => void;
-  initialScanQr?: string | null;
-  onInitialScanApplied?: () => void;
 };
 
 export function StaffPackageInPanel({
@@ -126,8 +122,6 @@ export function StaffPackageInPanel({
   onSuccess,
   prefillItem,
   onPrefillApplied,
-  initialScanQr,
-  onInitialScanApplied,
 }: Props) {
   const toast = useToast();
   const [meta, setMeta] = useState<MetaPayload | null>(null);
@@ -144,14 +138,10 @@ export function StaffPackageInPanel({
   const [lotCountsByDay, setLotCountsByDay] = useState<Record<string, number>>(
     {},
   );
-  const [scanValue, setScanValue] = useState("");
-  const [scanBusy, setScanBusy] = useState(false);
   const [scannedItems, setScannedItems] = useState<
     Record<string, ScannedItemMeta>
   >({});
-  const scanInputRef = useRef<HTMLInputElement>(null);
   const lastPrefillIdRef = useRef<string | null>(null);
-  const initialScanAppliedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -292,41 +282,6 @@ export function StaffPackageInPanel({
     toast.success("เพิ่มรายการ", itemName);
   }, [toast]);
 
-  const lookupAndApplyScan = useCallback(
-    async (raw: string) => {
-      const qr = raw.trim();
-      if (!qr || scanBusy) return;
-      setScanBusy(true);
-      try {
-        const body = await lookupStockMenuScan(qr);
-        const { itemId, name: itemName, productCode } = body;
-
-        if (!itemById.has(itemId)) {
-          setScannedItems((prev) => ({
-            ...prev,
-            [itemId]: { name: itemName, productCode },
-          }));
-        }
-        applyItemToRows(itemId, itemName);
-        setScanValue("");
-        scanInputRef.current?.focus();
-      } catch (e) {
-        toast.error(
-          "สแกนไม่สำเร็จ",
-          e instanceof Error ? e.message : "ไม่พบรหัสสินค้า",
-        );
-      } finally {
-        setScanBusy(false);
-      }
-    },
-    [applyItemToRows, itemById, scanBusy, toast],
-  );
-
-  useEffect(() => {
-    if (loading) return;
-    scanInputRef.current?.focus();
-  }, [loading]);
-
   useEffect(() => {
     if (!prefillItem) {
       lastPrefillIdRef.current = null;
@@ -356,14 +311,6 @@ export function StaffPackageInPanel({
     onPrefillApplied,
     prefillItem,
   ]);
-
-  useEffect(() => {
-    if (loading || !initialScanQr || initialScanAppliedRef.current) return;
-    initialScanAppliedRef.current = true;
-    void lookupAndApplyScan(initialScanQr).finally(() => {
-      onInitialScanApplied?.();
-    });
-  }, [initialScanQr, loading, lookupAndApplyScan, onInitialScanApplied]);
 
   const filteredSaleMenu = useMemo(() => {
     const q = menuQ.trim().toLowerCase();
@@ -539,26 +486,6 @@ export function StaffPackageInPanel({
       </div>
 
       <StaffPrinterStatusChip showBrowserHint requirePackagePrint className="mb-3" />
-
-      <form
-        className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void lookupAndApplyScan(scanValue);
-        }}
-      >
-        <StaffMenuScanField
-          label="สแกน QR เพื่อเพิ่มแพ็ก"
-          value={scanValue}
-          onChange={setScanValue}
-          onSubmit={(next) => void lookupAndApplyScan(next)}
-          busy={scanBusy}
-          inputRef={scanInputRef}
-          placeholder="กรอกรหัสสินค้า หรือแตะไอคอนเพื่อสแกน QR"
-          hint="บาร์โค้ดบนป้ายเมนู = รหัสสินค้า · สแกนซ้ำเพิ่มจำนวน · เลือกเมนูด้านล่างได้"
-          scannerTitle="สแกน QR ป้ายเมนู/สินค้า"
-        />
-      </form>
 
       <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
         {meta.brandName ? (

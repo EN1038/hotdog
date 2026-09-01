@@ -37,7 +37,7 @@ function parseRunning(documentNo: string, prefix: string): number | null {
 async function collectDocumentNosWithPrefix(prefix: string): Promise<string[]> {
   const like = `${prefix}-%`;
   try {
-    const [movements, menuHist, nonMenuHist] = await Promise.all([
+    const [movements, menuHist, nonMenuHist, stockLabels] = await Promise.all([
       prisma.stockMovement.findMany({
         where: { documentNo: { startsWith: like } },
         select: { documentNo: true },
@@ -50,11 +50,16 @@ async function collectDocumentNosWithPrefix(prefix: string): Promise<string[]> {
         where: { documentNo: { startsWith: like } },
         select: { documentNo: true },
       }),
+      prisma.stockLabel.findMany({
+        where: { documentNo: { startsWith: like } },
+        select: { documentNo: true },
+      }),
     ]);
     return [
       ...movements.map((r) => r.documentNo),
       ...menuHist.map((r) => r.documentNo),
       ...nonMenuHist.map((r) => r.documentNo),
+      ...stockLabels.map((r) => r.documentNo),
     ].filter((v): v is string => Boolean(v));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -87,7 +92,7 @@ export async function generateStockDocumentNo(input: {
 export async function assertDocumentNoAvailable(documentNo: string): Promise<void> {
   const trimmed = documentNo.trim();
   try {
-    const [movement, menuHist, nonMenuHist] = await Promise.all([
+    const [movement, menuHist, nonMenuHist, stockLabels] = await Promise.all([
       prisma.stockMovement.findFirst({
         where: { documentNo: trimmed },
         select: { id: true },
@@ -100,8 +105,12 @@ export async function assertDocumentNoAvailable(documentNo: string): Promise<voi
         where: { documentNo: trimmed },
         select: { id: true },
       }),
+      prisma.stockLabel.findFirst({
+        where: { documentNo: trimmed },
+        select: { id: true },
+      }),
     ]);
-    if (movement || menuHist || nonMenuHist) {
+    if (movement || menuHist || nonMenuHist || stockLabels) {
       throw new StockError("เลขที่เอกสารนี้ถูกใช้แล้ว — กด Gen เพื่อสร้างเลขใหม่");
     }
   } catch (e) {

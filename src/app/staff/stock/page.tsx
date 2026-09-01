@@ -1518,6 +1518,34 @@ function StaffStockContent() {
                   </button>
 
                   <button
+                    type="button"
+                    onClick={() => router.push("/staff/stock/package-in")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-teal-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">รับเข้าแพ็ก</h3>
+                      <p className="mt-1 text-teal-100 text-sm">
+                        สร้างป้ายแพ็กหลายรายการ · พิมพ์บาร์โค้ด + QR
+                      </p>
+                    </div>
+                    <div className="text-4xl">🏷️</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push("/staff/stock/package-out")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-rose-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">จ่ายออกแพ็ก</h3>
+                      <p className="mt-1 text-rose-100 text-sm">
+                        สแกนป้ายแพ็กเพื่อจ่ายออกจากสต๊อก
+                      </p>
+                    </div>
+                    <div className="text-4xl">📲</div>
+                  </button>
+
+                  <button
                     onClick={() => handleActionClick("view")}
                     className="w-full flex items-center justify-between rounded-2xl bg-slate-800 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
                   >
@@ -1587,6 +1615,20 @@ function StaffStockContent() {
                       </p>
                     </div>
                     <div className="text-4xl">📤</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push("/staff/stock/package-in/history")}
+                    className="w-full flex items-center justify-between rounded-2xl bg-violet-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-2xl font-black">ประวัติแพ็ก</h3>
+                      <p className="mt-1 text-violet-100 text-sm">
+                        ดูรายการรับเข้าแพ็ก · พิมพ์ป้ายซ้ำ
+                      </p>
+                    </div>
+                    <div className="text-4xl">📋</div>
                   </button>
 
                   <button

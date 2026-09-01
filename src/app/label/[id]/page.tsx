@@ -7,7 +7,7 @@ import {
   formatPackageLabelDate,
   STOCK_LABEL_STATUS_LABEL,
   type PublicStockLabel,
-} from "@/lib/stock-label-public";
+} from "@/lib/stock-label-public-format";
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (

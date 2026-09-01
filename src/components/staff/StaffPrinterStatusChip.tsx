@@ -23,7 +23,7 @@ export function StaffPrinterStatusChip({
     configured && (!requirePackagePrint || hasPackageBridge);
   let displayLabel = label;
   if (requirePackagePrint && inApp && configured && !hasPackageBridge) {
-    displayLabel = "อัปเดตแอป v1.2.5 เพื่อพิมพ์ป้ายแพ็ก";
+    displayLabel = "อัปเดตแอป v1.2.6 เพื่อพิมพ์ป้ายแพ็ก";
   }
 
   if (!inApp) {

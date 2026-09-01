@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.Typeface
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -48,44 +47,37 @@ object PackageLabelBitmap {
                 textSize = 16f
                 typeface = regular
             }
-        val borderPaint =
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.BLACK
-                style = Paint.Style.STROKE
-                strokeWidth = 2f
-            }
 
-        val paddingH = 18f
+        val paddingH = 14f
         val contentWidth = LABEL_WIDTH - paddingH * 2
         val productCode = label.productCode.trim().ifBlank { "—" }
         val productName = label.productName.trim().ifBlank { "—" }
         val nameLines = wrapLines(productName, namePaint, contentWidth, maxLines = 2)
 
-        val barcodeBitmap = encodeBarcode(productCode, 260, 52)
-        val qrBitmap = encodeQr(label.qrPayload.trim().ifBlank { label.labelCode }, 136)
+        val barcodeBitmap = encodeBarcode(productCode, 260, 50)
+        val qrBitmap = encodeQr(label.qrPayload.trim().ifBlank { label.labelCode }, 140)
 
-        var height = 16f
-        height += 26f // header
-        height += nameLines.size * 26f
-        height += 4 * 22f // detail rows
-        height += 12f + barcodeBitmap.height + 20f + qrBitmap.height + 20f
+        var height = 8f
+        height += 22f // header
+        height += nameLines.size * 24f
+        height += 4 * 20f // detail rows
+        height += 8f + barcodeBitmap.height + 16f + qrBitmap.height + 8f
 
         val bitmap = Bitmap.createBitmap(LABEL_WIDTH, height.toInt(), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
 
         val center = LABEL_WIDTH / 2f
-        var y = 22f
+        var y = 12f
 
         val header = label.brandName.trim().ifBlank { "SKILL SALE" }.uppercase()
         canvas.drawText(header, center, y, headerPaint)
-        y += 28f
+        y += 24f
 
         for (line in nameLines) {
             canvas.drawText(line, paddingH, y, namePaint)
-            y += 26f
+            y += 24f
         }
-        y += 4f
 
         val rows =
             listOf(
@@ -96,30 +88,47 @@ object PackageLabelBitmap {
             )
         for (row in rows) {
             canvas.drawText(truncate(row, 32), paddingH, y, rowPaint)
-            y += 22f
+            y += 20f
         }
 
-        y += 10f
+        y += 6f
         val barcodeLeft = (LABEL_WIDTH - barcodeBitmap.width) / 2f
         canvas.drawBitmap(barcodeBitmap, barcodeLeft, y, null)
-        y += barcodeBitmap.height + 18f
+        y += barcodeBitmap.height + 14f
         canvas.drawText(productCode, center, y, codePaint)
-        y += 14f
+        y += 10f
 
         val qrLeft = (LABEL_WIDTH - qrBitmap.width) / 2f
-        canvas.drawBitmap(qrBitmap, qrLeft, y + 6f, null)
-
-        canvas.drawRoundRect(
-            RectF(8f, 8f, LABEL_WIDTH - 8f, bitmap.height - 8f),
-            4f,
-            4f,
-            borderPaint,
-        )
+        canvas.drawBitmap(qrBitmap, qrLeft, y, null)
 
         barcodeBitmap.recycle()
         qrBitmap.recycle()
 
-        return bitmap
+        return trimVerticalWhitespace(bitmap, paddingPx = 2)
+    }
+
+    fun trimVerticalWhitespace(source: Bitmap, paddingPx: Int = 2): Bitmap {
+        val width = source.width
+        val height = source.height
+        var top = height
+        var bottom = 0
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                if (source.getPixel(x, y) != Color.WHITE) {
+                    if (y < top) top = y
+                    if (y > bottom) bottom = y
+                }
+            }
+        }
+        if (bottom < top) return source
+        val cropTop = (top - paddingPx).coerceAtLeast(0)
+        val cropBottom = (bottom + paddingPx).coerceAtMost(height - 1)
+        val cropHeight = cropBottom - cropTop + 1
+        if (cropTop == 0 && cropHeight == height) return source
+        val cropped =
+            Bitmap.createBitmap(source, 0, cropTop, width, cropHeight)
+        if (cropped !== source) source.recycle()
+        return cropped
     }
 
     private fun wrapLines(

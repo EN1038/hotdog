@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
-import { isStockLabelQrPayload } from "@/lib/stock-label";
+import { isStockLabelQrPayload } from "@/lib/stock-label-qr";
 
 type LabelPreview = {
   id: string;

@@ -7,7 +7,7 @@ import {
   printPackageLabels,
   shouldUseBrowserPackageLabelPrint,
 } from "@/lib/print-bridge";
-import { stockLabelQrPayload } from "@/lib/stock-label";
+import { stockLabelQrPayload } from "@/lib/stock-label-qr";
 
 export type PackageLabelInput = {
   labelCode: string;
@@ -170,7 +170,7 @@ async function openPackageLabelPrintInBrowser(
   <meta charset="utf-8" />
   <title>พิมพ์ป้ายแพ็ก</title>
   <style>
-    @page { size: 60mm 50mm; margin: 2mm; }
+    @page { size: 60mm 50mm; margin: 1mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -186,9 +186,7 @@ async function openPackageLabelPrintInBrowser(
     .label {
       width: 56mm;
       min-height: 46mm;
-      border: 0.35mm solid #111;
-      border-radius: 1mm;
-      padding: 2.5mm 3mm;
+      padding: 1.5mm 2.5mm 2mm;
       page-break-inside: avoid;
       display: flex;
       flex-direction: column;

@@ -304,7 +304,6 @@ function StaffStockContent() {
   } | null>(null);
   const [stockInScanValue, setStockInScanValue] = useState("");
   const [packageReceiveInitialScan, setPackageReceiveInitialScan] = useState("");
-  const [branchKind, setBranchKind] = useState<"STORE" | "WAREHOUSE">("STORE");
   const stockInScanRef = useRef<HTMLInputElement>(null);
   const [summaryDiffOnly, setSummaryDiffOnly] = useState(false);
 
@@ -383,11 +382,8 @@ function StaffStockContent() {
           "";
         const nextBranch =
           typeof data.branchName === "string" ? data.branchName.trim() : "";
-        const nextKind =
-          data.branchKind === "WAREHOUSE" ? "WAREHOUSE" : "STORE";
         if (nextBrand) setBrandName(nextBrand);
         if (nextBranch) setBranchName(nextBranch);
-        setBranchKind(nextKind);
       } catch {
         /* ignore */
       }
@@ -2509,27 +2505,25 @@ function StaffStockContent() {
                       </button>
                     );
                   })}
-                  {branchKind === "WAREHOUSE" ? (
-                    <button
-                      type="button"
-                      onClick={() => setMode("package_out")}
-                      className="w-full rounded-2xl border-2 border-teal-200 bg-teal-50 p-5 text-left shadow-sm transition active:scale-[0.98] hover:border-teal-400"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl" aria-hidden>
-                          🏷️
-                        </span>
-                        <div>
-                          <h3 className="text-xl font-black text-slate-900">
-                            จ่ายออกแพ็ก
-                          </h3>
-                          <p className="mt-1 text-[13px] font-medium text-slate-600">
-                            กรอกรหัสป้ายหรือสแกน QR เพื่อจ่ายออกจากคลัง
-                          </p>
-                        </div>
+                  <button
+                    type="button"
+                    onClick={() => setMode("package_out")}
+                    className="w-full rounded-2xl border-2 border-teal-200 bg-teal-50 p-5 text-left shadow-sm transition active:scale-[0.98] hover:border-teal-400"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl" aria-hidden>
+                        🏷️
+                      </span>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-900">
+                          จ่ายออกแพ็ก
+                        </h3>
+                        <p className="mt-1 text-[13px] font-medium text-slate-600">
+                          กรอกรหัสป้ายหรือสแกน QR เพื่อจ่ายออกแพ็ก
+                        </p>
                       </div>
-                    </button>
-                  ) : null}
+                    </div>
+                  </button>
                 </div>
               </>
             ) : mode === "select_type" ? (
@@ -2561,7 +2555,7 @@ function StaffStockContent() {
                   actionType === "summary") && (
                   <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600">
                     {actionType === "stock_in"
-                      ? "สแกนป้ายแพ็กที่ส่งมาจากคลัง · หรือเลือกประเภทด้านล่างสำหรับรับเข้าทั่วไป"
+                      ? "สแกนรับแพ็กจากสาขาอื่น · เลือกประเภทรับเข้าทั่วไป · หรือกด «รับเข้าแพ็ก» เพื่อสร้างป้าย"
                       : actionType === "issue"
                         ? issuePurpose === "waste"
                           ? "บันทึกของเสีย เช่น ทำหล่น ชำรุด ใช้ไม่ได้"
@@ -2579,14 +2573,14 @@ function StaffStockContent() {
                     }}
                   >
                     <StaffMenuScanField
-                      label="รับเข้าแพ็กจากคลัง"
+                      label="รับแพ็กจากสาขาอื่น"
                       value={stockInScanValue}
                       onChange={setStockInScanValue}
                       onSubmit={(next) => openPackageReceive(next)}
                       inputRef={stockInScanRef}
                       autoFocus
                       placeholder="กรอกรหัสป้าย หรือแตะไอคอนเพื่อสแกน QR"
-                      hint="รับแพ็กที่จ่ายออกจากคลังแล้ว — ไม่รับแพ็กที่ผลิตที่สาขานี้เอง"
+                      hint="รับแพ็กที่จ่ายออกจากสาขาอื่นแล้ว — ไม่รับแพ็กที่ผลิตที่สาขานี้เอง"
                       scannerTitle="สแกน QR บนป้ายแพ็ก"
                     />
                   </form>
@@ -2648,19 +2642,19 @@ function StaffStockContent() {
                       </button>
                     );
                   })}
-                  {actionType === "stock_in" && branchKind === "WAREHOUSE" ? (
+                  {actionType === "stock_in" ? (
                     <button
                       type="button"
                       onClick={() => setMode("package_in")}
-                      className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary transition-all active:scale-[0.98]"
+                      className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-teal-200 bg-teal-50 p-6 text-slate-700 shadow-sm hover:border-teal-400 transition-all active:scale-[0.98]"
                     >
                       <div className="flex items-center gap-3">
                         <div className="text-3xl">🏷️</div>
                         <h3 className="text-xl font-bold text-slate-900">
-                          ผลิต/แพ็ก (สร้างป้าย)
+                          รับเข้าแพ็ก
                         </h3>
                       </div>
-                      <p className="text-xs font-medium text-slate-500">
+                      <p className="text-xs font-medium text-slate-600">
                         สร้างป้ายหลายแพ็ก · พิมพ์บาร์โค้ด + QR
                       </p>
                     </button>

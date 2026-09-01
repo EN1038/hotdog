@@ -17,12 +17,17 @@ function parseImageMode(raw: string | null): "default" | "skewer" {
   return raw === "skewer" ? "skewer" : "default";
 }
 
+function parsePackageIn(raw: string | null): boolean {
+  return raw === "1" || raw === "true";
+}
+
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
     const channel = parseChannel(searchParams.get("channel"));
     const imageMode = parseImageMode(searchParams.get("imageMode"));
+    const forPackageIn = parsePackageIn(searchParams.get("packageIn"));
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
@@ -47,7 +52,10 @@ export async function GET(request: Request) {
           },
         },
         branchNonMenuItems: {
-          where: { stockType: "CONSUMABLE", showOnKeyOrder: true },
+          where: {
+            stockType: "CONSUMABLE",
+            ...(forPackageIn ? {} : { showOnKeyOrder: true }),
+          },
           orderBy: [{ keyOrderSortOrder: "asc" }, { name: "asc" }],
           select: {
             id: true,
@@ -55,6 +63,7 @@ export async function GET(request: Request) {
             unit: true,
             quantity: true,
             imageUrl: true,
+            itemCode: true,
           },
         },
         deliveryLocations: {

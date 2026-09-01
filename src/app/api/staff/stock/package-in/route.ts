@@ -20,6 +20,7 @@ import {
   stockLabelQrPayload,
 } from "@/lib/stock-label";
 import { labelsToPrintInput } from "@/lib/stock-package-label-print";
+import { resolveMenuItemPackageUnit } from "@/lib/stock-package-unit";
 
 const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PACKAGE_IN_ATTEMPTS = 6;
@@ -315,6 +316,8 @@ export async function POST(request: Request) {
           throw new Error(`ไม่พบรายการสินค้า: ${line.itemId}`);
         }
 
+        const packageUnit = resolveMenuItemPackageUnit(menuItem);
+
         const shelfDays =
           line.shelfLifeDays != null
             ? line.shelfLifeDays
@@ -387,7 +390,7 @@ export async function POST(request: Request) {
               brandName,
               sourceBranchName: sourceBranch?.name ?? null,
               quantity: line.quantity,
-              unit: "ชิ้น",
+              unit: packageUnit,
               producedAt,
               expiresAt,
               documentNo,
@@ -423,7 +426,7 @@ export async function POST(request: Request) {
               brandName,
               sourceBranchName: sourceBranch?.name ?? null,
               quantity: line.quantity,
-              unit: "ชิ้น",
+              unit: packageUnit,
               producedAt,
               expiresAt,
               documentNo,

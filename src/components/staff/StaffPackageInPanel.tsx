@@ -7,6 +7,10 @@ import { DateInput } from "@/components/DateInput";
 import { bangkokDateKey } from "@/lib/constants";
 import { resolveSkewerMenuImageUrl } from "@/lib/skewer-order";
 import {
+  formatPackageQtyLabel,
+  resolveMenuItemPackageUnit,
+} from "@/lib/stock-package-unit";
+import {
   formatThaiDateKey,
   planLotNumbersForRows,
 } from "@/lib/stock-label-format";
@@ -22,7 +26,19 @@ type MenuItem = {
   skewerImageUrl?: string | null;
   itemCode?: string | null;
   stockQuantity?: number | null;
+  quantityUnit?: string | null;
+  sticksPerUnit?: number | null;
+  countsAsSticks?: boolean | null;
+  optionGroups?: Array<{ mode?: string }> | null;
   category?: { name: string } | null;
+};
+
+type ConsumableItem = {
+  id: string;
+  name: string;
+  unit: string;
+  imageUrl?: string | null;
+  itemCode?: string | null;
 };
 
 type PackageRow = {
@@ -63,9 +79,24 @@ function createPackageRow(patch?: Partial<PackageRow>): PackageRow {
   };
 }
 
-function menuThumb(item: MenuItem | undefined) {
+function menuThumb(item: MenuItem | ConsumableItem | undefined) {
   if (!item) return null;
-  return resolveSkewerMenuImageUrl(item);
+  if ("skewerImageUrl" in item || "quantityUnit" in item) {
+    return resolveSkewerMenuImageUrl(item as MenuItem);
+  }
+  return item.imageUrl?.trim() || null;
+}
+
+function rowItemUnit(
+  itemId: string,
+  menuById: Map<string, MenuItem>,
+  consumableById: Map<string, ConsumableItem>,
+): string {
+  const menu = menuById.get(itemId);
+  if (menu) return resolveMenuItemPackageUnit(menu);
+  const consumable = consumableById.get(itemId);
+  if (consumable) return consumable.unit.trim() || "ชิ้น";
+  return "ชิ้น";
 }
 
 type ScannedItemMeta = {
@@ -101,6 +132,7 @@ export function StaffPackageInPanel({
   const toast = useToast();
   const [meta, setMeta] = useState<MetaPayload | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [consumableItems, setConsumableItems] = useState<ConsumableItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -126,7 +158,7 @@ export function StaffPackageInPanel({
     try {
       const [metaRes, menuRes] = await Promise.all([
         fetch("/api/staff/stock/package-in"),
-        fetch("/api/staff/menu?imageMode=skewer"),
+        fetch("/api/staff/menu?imageMode=skewer&packageIn=1"),
       ]);
       const metaBody = await metaRes.json().catch(() => ({}));
       const menuBody = await menuRes.json().catch(() => ({}));
@@ -144,7 +176,17 @@ export function StaffPackageInPanel({
       const items = Array.isArray(menuBody.menuItems)
         ? (menuBody.menuItems as MenuItem[])
         : [];
-      setMenuItems(items.filter((i) => i.category?.name !== undefined));
+      setMenuItems(
+        items.filter(
+          (item) =>
+            item.category?.name !== undefined &&
+            !(item.optionGroups ?? []).some((g) => g.mode === "FROM_MENU"),
+        ),
+      );
+      const consumables = Array.isArray(menuBody.consumables)
+        ? (menuBody.consumables as ConsumableItem[])
+        : [];
+      setConsumableItems(consumables);
     } catch (e) {
       toast.error(
         "โหลดไม่สำเร็จ",
@@ -205,11 +247,24 @@ export function StaffPackageInPanel({
     [rows],
   );
 
-  const itemById = useMemo(() => {
+  const menuById = useMemo(() => {
     const map = new Map<string, MenuItem>();
     for (const item of menuItems) map.set(item.id, item);
     return map;
   }, [menuItems]);
+
+  const consumableById = useMemo(() => {
+    const map = new Map<string, ConsumableItem>();
+    for (const item of consumableItems) map.set(item.id, item);
+    return map;
+  }, [consumableItems]);
+
+  const itemById = useMemo(() => {
+    const map = new Map<string, MenuItem | ConsumableItem>();
+    for (const item of menuItems) map.set(item.id, item);
+    for (const item of consumableItems) map.set(item.id, item);
+    return map;
+  }, [menuItems, consumableItems]);
 
   const applyItemToRows = useCallback((itemId: string, itemName: string) => {
     setRows((prev) => {
@@ -310,7 +365,7 @@ export function StaffPackageInPanel({
     });
   }, [initialScanQr, loading, lookupAndApplyScan, onInitialScanApplied]);
 
-  const filteredMenu = useMemo(() => {
+  const filteredSaleMenu = useMemo(() => {
     const q = menuQ.trim().toLowerCase();
     if (!q) return menuItems;
     return menuItems.filter((item) =>
@@ -319,6 +374,16 @@ export function StaffPackageInPanel({
         .includes(q),
     );
   }, [menuItems, menuQ]);
+
+  const filteredConsumables = useMemo(() => {
+    const q = menuQ.trim().toLowerCase();
+    if (!q) return consumableItems;
+    return consumableItems.filter((item) =>
+      `${item.name} ${item.itemCode ?? ""} ${item.unit}`
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [consumableItems, menuQ]);
 
   function rowSnapshot(row: PackageRow): Partial<PackageRow> {
     return {
@@ -533,7 +598,10 @@ export function StaffPackageInPanel({
           const displayName = item?.name ?? scanned?.name;
           const thumb = menuThumb(item);
           const productCode =
-            item?.itemCode?.trim() || scanned?.productCode || "—";
+            (item && "itemCode" in item ? item.itemCode?.trim() : null) ||
+            scanned?.productCode ||
+            "—";
+          const unit = rowItemUnit(row.itemId, menuById, consumableById);
           const lotPreview = lotByRowKey.get(row.key) ?? "—";
 
           return (
@@ -570,7 +638,7 @@ export function StaffPackageInPanel({
                           แพ็ก #{index + 1}
                         </p>
                         <span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-bold text-white">
-                          {row.quantity} ชิ้น
+                          {formatPackageQtyLabel(row.quantity, unit)}
                         </span>
                       </div>
                       <p className="mt-0.5 truncate text-[15px] font-extrabold text-slate-900">
@@ -648,7 +716,7 @@ export function StaffPackageInPanel({
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-bold text-site-primary">
-                        {item ? "เปลี่ยนเมนู" : "เลือกเมนู"}
+                        {item ? "เปลี่ยนรายการ" : "เลือกรายการ"}
                       </p>
                       <p className="truncate text-[14px] font-extrabold text-slate-900">
                         {displayName ?? "แตะเพื่อเลือก"}
@@ -699,7 +767,7 @@ export function StaffPackageInPanel({
 
                   <label className="block">
                     <span className="mb-1 block text-[12px] font-semibold text-slate-600">
-                      จำนวนในแพ็กนี้
+                      จำนวนในแพ็กนี้ ({unit})
                     </span>
                     <input
                       type="number"
@@ -803,18 +871,23 @@ export function StaffPackageInPanel({
           <div className="relative z-10 max-h-[80dvh] w-full max-w-lg overflow-hidden rounded-t-3xl bg-white shadow-xl">
             <div className="border-b border-slate-100 px-4 py-3">
               <p className="text-[16px] font-extrabold text-slate-900">
-                เลือกเมนู
+                เลือกรายการ
               </p>
               <input
                 value={menuQ}
                 onChange={(e) => setMenuQ(e.target.value)}
-                placeholder="ค้นหาชื่อเมนู"
+                placeholder="ค้นหาชื่อเมนูหรือของสิ้นเปลือง"
                 className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[14px] font-semibold"
                 autoFocus
               />
             </div>
             <ul className="max-h-[60dvh] overflow-y-auto p-2">
-              {filteredMenu.map((item) => {
+              {filteredSaleMenu.length > 0 ? (
+                <li className="px-2 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">
+                  เมนูขาย
+                </li>
+              ) : null}
+              {filteredSaleMenu.map((item) => {
                 const thumb = menuThumb(item);
                 return (
                   <li key={item.id}>
@@ -848,13 +921,66 @@ export function StaffPackageInPanel({
                           {item.name}
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          {item.itemCode ?? "—"} · {item.category?.name ?? "—"}
+                          {item.itemCode ?? "—"} · {item.category?.name ?? "—"} ·{" "}
+                          {resolveMenuItemPackageUnit(item)}
                         </p>
                       </div>
                     </button>
                   </li>
                 );
               })}
+              {filteredConsumables.length > 0 ? (
+                <li className="px-2 pb-1 pt-3 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">
+                  ของสิ้นเปลือง
+                </li>
+              ) : null}
+              {filteredConsumables.map((item) => {
+                const thumb = menuThumb(item);
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pickerRowKey) {
+                          updateRow(pickerRowKey, {
+                            itemId: item.id,
+                            expanded: true,
+                          });
+                        }
+                        setPickerOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl p-2 text-left active:bg-slate-50"
+                    >
+                      {thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={thumb}
+                          alt=""
+                          className="h-12 w-12 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100">
+                          📦
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px] font-extrabold text-slate-900">
+                          {item.name}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {item.itemCode ?? "—"} · {item.unit}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+              {filteredSaleMenu.length === 0 &&
+              filteredConsumables.length === 0 ? (
+                <li className="px-3 py-8 text-center text-[13px] font-medium text-slate-500">
+                  ไม่พบรายการ
+                </li>
+              ) : null}
             </ul>
           </div>
         </div>

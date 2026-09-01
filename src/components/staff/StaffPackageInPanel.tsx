@@ -59,6 +59,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
   const [rows, setRows] = useState<PackageRow[]>([
     { key: newRowKey(), itemId: "", quantity: 1 },
   ]);
+  const [printAfterSave, setPrintAfterSave] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -204,7 +205,7 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
       }
 
       const labels = Array.isArray(body.labels) ? body.labels : [];
-      if (labels.length > 0) {
+      if (printAfterSave && labels.length > 0) {
         await openPackageLabelPrint(labels);
       }
 
@@ -408,13 +409,29 @@ export function StaffPackageInPanel({ onBack, onHistory, onSuccess }: Props) {
         })}
       </div>
 
+      <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
+        <input
+          type="checkbox"
+          checked={printAfterSave}
+          onChange={(e) => setPrintAfterSave(e.target.checked)}
+          className="h-5 w-5 rounded border-slate-300 text-emerald-600"
+        />
+        <span className="text-[14px] font-bold text-slate-800">
+          พิมพ์ป้ายหลังบันทึก
+        </span>
+      </label>
+
       <button
         type="button"
         disabled={busy}
         onClick={() => void submit()}
-        className="mt-5 w-full rounded-2xl bg-emerald-600 py-4 text-[16px] font-extrabold text-white shadow-md disabled:opacity-60"
+        className="mt-3 w-full rounded-2xl bg-emerald-600 py-4 text-[16px] font-extrabold text-white shadow-md disabled:opacity-60"
       >
-        {busy ? "กำลังบันทึก…" : "บันทึกและพิมพ์ป้าย"}
+        {busy
+          ? "กำลังบันทึก…"
+          : printAfterSave
+            ? "บันทึกและพิมพ์ป้าย"
+            : "บันทึก"}
       </button>
 
       {pickerOpen ? (

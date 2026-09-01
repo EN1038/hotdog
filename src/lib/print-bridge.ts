@@ -58,6 +58,7 @@ function getBridge(): AndroidPrintBridge | null {
   if (typeof window === "undefined") return null;
   const bridge = window.Android;
   if (!bridge) return null;
+  if (typeof bridge.printPackageLabels === "function") return bridge;
   if (typeof bridge.printQueueTickets === "function") return bridge;
   if (typeof bridge.printQueueNumber === "function") return bridge;
   if (typeof bridge.isPrintBridge === "function") {
@@ -113,8 +114,16 @@ export function hasPackageLabelPrintBridge(): boolean {
 }
 
 export function canPrintPackageLabelsNative(): boolean {
-  if (!canUsePrintActions() || !hasPackageLabelPrintBridge()) return false;
-  return getSelectedPrinter()?.type === "TSC";
+  return (
+    canUsePrintActions() &&
+    hasPackageLabelPrintBridge() &&
+    getSelectedPrinter()?.type === "TSC"
+  );
+}
+
+/** In-app: try native print; never fall back to browser popup. */
+export function shouldUseBrowserPackageLabelPrint(): boolean {
+  return !hasPrintBridge();
 }
 
 export type PackageLabelBridgeInput = {

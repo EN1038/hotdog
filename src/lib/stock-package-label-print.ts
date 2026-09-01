@@ -1,8 +1,11 @@
 import QRCode from "qrcode";
 import { renderProductBarcodeSvg } from "@/lib/product-label-print";
 import {
-  canPrintPackageLabelsNative,
+  hasPackageLabelPrintBridge,
+  hasPrintBridge,
+  isPrinterConfigured,
   printPackageLabels,
+  shouldUseBrowserPackageLabelPrint,
 } from "@/lib/print-bridge";
 
 export type PackageLabelInput = {
@@ -97,14 +100,27 @@ export async function openPackageLabelPrint(
     return;
   }
 
-  if (canPrintPackageLabelsNative()) {
-    const result = printPackageLabels(items.map(toNativePayload));
-    if (result?.code === "1") return;
-    if (result) {
-      window.alert(result.message);
+  // Inside SkillSale Print APK: always use Bluetooth bridge (WebView blocks popups).
+  if (hasPrintBridge()) {
+    if (!isPrinterConfigured()) {
+      window.alert(
+        "ยังไม่ได้เชื่อมเครื่องพิมพ์ — แตะสถานะเครื่องพิมพ์ด้านบนเพื่อเลือก Bluetooth",
+      );
       return;
     }
+    if (!hasPackageLabelPrintBridge()) {
+      window.alert(
+        "แอปเวอร์ชันเก่า — กรุณาติดตั้ง SkillSale Print v1.2.0 ขึ้นไป",
+      );
+      return;
+    }
+    const result = printPackageLabels(items.map(toNativePayload));
+    if (result?.code === "1") return;
+    window.alert(result?.message ?? "พิมพ์ป้ายแพ็กไม่สำเร็จ");
+    return;
   }
+
+  if (!shouldUseBrowserPackageLabelPrint()) return;
 
   await openPackageLabelPrintInBrowser(items);
 }

@@ -8,6 +8,8 @@ on:
 jobs:
   npm-ci:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

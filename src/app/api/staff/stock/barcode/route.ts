@@ -1,8 +1,12 @@
 import { requireStaff } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import {
+  parseStockLabelQrPayload,
+  stockLabelQrPayload,
+} from "@/lib/stock-label";
 
-/** GET ?barcode= — lookup product by barcode for staff scan */
+/** GET ?barcode= — lookup product or package label by barcode / label code */
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
@@ -14,6 +18,41 @@ export async function GET(request: Request) {
       select: { brandId: true },
     });
     if (!branch?.brandId) return jsonError("สาขาไม่มีแบรนด์", 400);
+
+    const qrParsed = parseStockLabelQrPayload(barcode);
+    const labelCode = qrParsed?.labelCode ?? barcode;
+
+    const label = await prisma.stockLabel.findFirst({
+      where: {
+        branchId: session.branchId,
+        OR: [
+          { labelCode },
+          ...(qrParsed ? [{ id: qrParsed.id }] : []),
+        ],
+      },
+    });
+    if (label) {
+      return jsonOk({
+        type: "package_label" as const,
+        id: label.id,
+        labelCode: label.labelCode,
+        lotNumber: label.lotNumber,
+        productName: label.productName,
+        productCode: label.productCode,
+        brandName: label.brandName,
+        sourceBranchName: label.sourceBranchName,
+        quantity: label.quantity,
+        unit: label.unit,
+        status: label.status,
+        producedAt: label.producedAt?.toISOString() ?? null,
+        expiresAt: label.expiresAt?.toISOString() ?? null,
+        documentNo: label.documentNo,
+        qrPayload: stockLabelQrPayload({
+          id: label.id,
+          labelCode: label.labelCode,
+        }),
+      });
+    }
 
     const product = await prisma.brandProduct.findFirst({
       where: {
@@ -41,6 +80,7 @@ export async function GET(request: Request) {
 
     const qty = product.balances.reduce((s, b) => s + b.quantity, 0);
     return jsonOk({
+      type: "brand_product" as const,
       ...product,
       branchQty: qty,
     });

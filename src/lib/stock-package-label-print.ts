@@ -30,10 +30,10 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function formatThaiDate(iso: string | null | undefined): string {
+function formatPackageProducedDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
-    return new Intl.DateTimeFormat("th-TH", {
+    return new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Bangkok",
       day: "2-digit",
       month: "2-digit",
@@ -46,21 +46,26 @@ function formatThaiDate(iso: string | null | undefined): string {
 
 function labelHtml(label: PackageLabelInput, qrSvg: string): string {
   const name = escapeHtml(label.productName.trim() || "—");
-  const brand = label.brandName?.trim();
-  const source = label.sourceBranchName?.trim();
-  const barcode = renderProductBarcodeSvg(label.labelCode);
+  const brand = escapeHtml(label.brandName?.trim() || "SKILL SALE");
+  const productCode = escapeHtml(label.productCode.trim() || "—");
+  const unit = escapeHtml(label.unit.trim() || "ชิ้น");
+  const produced = formatPackageProducedDate(label.producedAt);
+  const lot = escapeHtml(label.lotNumber.trim() || "—");
+  const barcode = renderProductBarcodeSvg(label.productCode.trim() || label.labelCode);
 
   return `
     <article class="label">
-      ${brand ? `<p class="brand">${escapeHtml(brand)}</p>` : ""}
+      <p class="brand">${brand}</p>
       <p class="name">${name}</p>
-      <p class="meta">SKU ${escapeHtml(label.productCode)} · ${label.quantity} ${escapeHtml(label.unit)}</p>
-      <p class="meta">ผลิต ${formatThaiDate(label.producedAt)} · LOT ${escapeHtml(label.lotNumber)}</p>
-      ${source ? `<p class="source">จาก ${escapeHtml(source)}</p>` : ""}
-      <div class="codes">
+      <p class="row">รหัส: ${productCode}</p>
+      <p class="row">จำนวน: ${label.quantity} ${unit}</p>
+      <p class="row">วันที่ผลิต: ${produced}</p>
+      <p class="row">Lot: ${lot}</p>
+      <div class="barcode-wrap">
         <div class="barcode">${barcode}</div>
-        <div class="qr">${qrSvg}</div>
+        <p class="barcode-text">${productCode}</p>
       </div>
+      <div class="qr">${qrSvg}</div>
     </article>
   `;
 }
@@ -75,7 +80,7 @@ function toNativePayload(label: PackageLabelInput) {
     sourceBranchName: label.sourceBranchName ?? "",
     quantity: label.quantity,
     unit: label.unit,
-    producedAtLabel: formatThaiDate(label.producedAt),
+    producedAtLabel: formatPackageProducedDate(label.producedAt),
     lotNumber: label.lotNumber,
     copies: label.copies ?? 1,
   };
@@ -164,7 +169,7 @@ async function openPackageLabelPrintInBrowser(
   <meta charset="utf-8" />
   <title>พิมพ์ป้ายแพ็ก</title>
   <style>
-    @page { size: 60mm 40mm; margin: 2mm; }
+    @page { size: 60mm 50mm; margin: 2mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -179,51 +184,53 @@ async function openPackageLabelPrintInBrowser(
     }
     .label {
       width: 56mm;
-      min-height: 36mm;
-      border: 0.2mm dashed #ccc;
-      padding: 2mm;
+      min-height: 46mm;
+      border: 0.35mm solid #111;
+      border-radius: 1mm;
+      padding: 2.5mm 3mm;
       page-break-inside: avoid;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      text-align: center;
+      text-align: left;
     }
     .brand {
-      margin: 0 0 0.5mm;
-      font-size: 6.5pt;
-      font-weight: 700;
-      color: #333;
+      margin: 0 0 1.5mm;
+      font-size: 7pt;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
       line-height: 1.2;
     }
     .name {
-      margin: 0 0 0.5mm;
-      font-size: 7.5pt;
+      margin: 0 0 1.5mm;
+      font-size: 8pt;
       font-weight: 800;
-      line-height: 1.15;
-      max-height: 2.3em;
-      overflow: hidden;
-    }
-    .meta, .source {
-      margin: 0 0 0.5mm;
-      font-size: 6pt;
-      color: #444;
       line-height: 1.2;
     }
-    .source { color: #666; }
-    .codes {
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-      gap: 2mm;
-      width: 100%;
-      margin-top: 1mm;
+    .row {
+      margin: 0 0 0.8mm;
+      font-size: 6.5pt;
+      line-height: 1.25;
     }
-    .barcode { flex: 1; min-width: 0; }
+    .barcode-wrap {
+      margin-top: 1.5mm;
+      text-align: center;
+    }
+    .barcode { width: 100%; }
     .barcode svg { width: 100%; height: auto; }
-    .qr svg { width: 14mm; height: 14mm; }
+    .barcode-text {
+      margin: 0.5mm 0 0;
+      font-size: 6pt;
+      text-align: center;
+    }
+    .qr {
+      margin-top: 1mm;
+      text-align: center;
+    }
+    .qr svg { width: 16mm; height: 16mm; }
     @media print {
       .sheet { gap: 0; padding: 0; }
-      .label { border: none; }
     }
   </style>
 </head>

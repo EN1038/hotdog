@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { renderProductBarcodeSvg } from "@/lib/product-label-print";
+import { barcodeDigitsOnly } from "@/lib/stock-barcode-format";
 import {
   hasPackageLabelPrintBridge,
   hasPrintBridge,
@@ -48,14 +49,15 @@ function formatPackageProducedDate(iso: string | null | undefined): string {
 function labelHtml(label: PackageLabelInput, qrSvg: string): string {
   const name = escapeHtml(label.productName.trim() || "—");
   const brand = escapeHtml(label.brandName?.trim() || "SKILL SALE");
-  const productCode = escapeHtml(label.productCode.trim() || "—");
+  const productCode = escapeHtml(
+    barcodeDigitsOnly(label.productCode.trim()) || "—",
+  );
   const unit = escapeHtml(label.unit.trim() || "ชิ้น");
   const produced = formatPackageProducedDate(label.producedAt);
   const lot = escapeHtml(label.lotNumber.trim() || "—");
   const labelCode = escapeHtml(label.labelCode.trim() || "—");
-  const barcode = renderProductBarcodeSvg(
-    label.labelCode.trim() || label.productCode.trim(),
-  );
+  const barcodeValue = barcodeDigitsOnly(label.productCode.trim());
+  const barcode = renderProductBarcodeSvg(barcodeValue || "0");
 
   return `
     <article class="label">
@@ -68,7 +70,7 @@ function labelHtml(label: PackageLabelInput, qrSvg: string): string {
       <p class="row">รหัสป้าย: ${labelCode}</p>
       <div class="barcode-wrap">
         <div class="barcode">${barcode}</div>
-        <p class="barcode-text">${labelCode}</p>
+        <p class="barcode-text">${productCode}</p>
       </div>
       <div class="qr">${qrSvg}</div>
     </article>

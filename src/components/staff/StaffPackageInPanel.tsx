@@ -12,6 +12,7 @@ import {
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
 import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
+import { isStockMenuQrPayload } from "@/lib/stock-menu-qr";
 
 type MenuItem = {
   id: string;
@@ -83,6 +84,8 @@ type Props = {
   onSuccess?: (batchId: string) => void;
   prefillItem?: PackageInPrefill | null;
   onPrefillApplied?: () => void;
+  initialScanQr?: string | null;
+  onInitialScanApplied?: () => void;
 };
 
 export function StaffPackageInPanel({
@@ -91,6 +94,8 @@ export function StaffPackageInPanel({
   onSuccess,
   prefillItem,
   onPrefillApplied,
+  initialScanQr,
+  onInitialScanApplied,
 }: Props) {
   const toast = useToast();
   const [meta, setMeta] = useState<MetaPayload | null>(null);
@@ -113,6 +118,7 @@ export function StaffPackageInPanel({
   >({});
   const scanInputRef = useRef<HTMLInputElement>(null);
   const lastPrefillIdRef = useRef<string | null>(null);
+  const initialScanAppliedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -232,12 +238,19 @@ export function StaffPackageInPanel({
 
   const lookupAndApplyScan = useCallback(
     async (raw: string) => {
-      const code = raw.trim();
-      if (!code || scanBusy) return;
+      const qr = raw.trim();
+      if (!qr || scanBusy) return;
+      if (!isStockMenuQrPayload(qr)) {
+        toast.error(
+          "สแกนไม่สำเร็จ",
+          "กรุณาสแกน QR จากป้ายเมนู/สินค้า (ไม่ใช่บาร์โค้ด)",
+        );
+        return;
+      }
       setScanBusy(true);
       try {
         const res = await fetch(
-          `/api/staff/stock/menu-lookup?code=${encodeURIComponent(code)}`,
+          `/api/staff/stock/menu-lookup?qr=${encodeURIComponent(qr)}`,
         );
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -307,6 +320,14 @@ export function StaffPackageInPanel({
     onPrefillApplied,
     prefillItem,
   ]);
+
+  useEffect(() => {
+    if (loading || !initialScanQr || initialScanAppliedRef.current) return;
+    initialScanAppliedRef.current = true;
+    void lookupAndApplyScan(initialScanQr).finally(() => {
+      onInitialScanApplied?.();
+    });
+  }, [initialScanQr, loading, lookupAndApplyScan, onInitialScanApplied]);
 
   const filteredMenu = useMemo(() => {
     const q = menuQ.trim().toLowerCase();
@@ -474,29 +495,29 @@ export function StaffPackageInPanel({
       <StaffPrinterStatusChip showBrowserHint requirePackagePrint className="mb-3" />
 
       <form
-        className="mb-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-3 shadow-sm"
+        className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
         onSubmit={(e) => {
           e.preventDefault();
           void lookupAndApplyScan(scanValue);
         }}
       >
         <label className="block">
-          <span className="mb-1 block text-[12px] font-bold text-teal-900">
-            สแกนรหัสสินค้าเพื่อเพิ่มแพ็ก
+          <span className="mb-1 block text-[12px] font-semibold text-slate-600">
+            สแกน QR เพื่อเพิ่มแพ็ก
           </span>
           <input
             ref={scanInputRef}
             value={scanValue}
             onChange={(e) => setScanValue(e.target.value)}
-            placeholder="ยิงบาร์โค้ดเมนู / พิมพ์รหัสแล้ว Enter"
+            placeholder="สแกน QR บนป้ายเมนู/สินค้า"
             disabled={scanBusy}
-            className="w-full rounded-xl border border-teal-200 bg-white px-3 py-3 text-[15px] font-semibold text-slate-900 disabled:opacity-60"
+            className="w-full rounded-xl border border-slate-200 px-3 py-3 text-[15px] font-semibold text-slate-900 disabled:opacity-60"
             autoComplete="off"
             inputMode="text"
           />
         </label>
-        <p className="mt-1.5 text-[11px] font-medium text-teal-800/80">
-          สแกนซ้ำรายการเดิมจะเพิ่มจำนวน · เลือกจากเมนูด้านล่างได้เหมือนเดิม
+        <p className="mt-1.5 text-[11px] font-medium text-slate-500">
+          บาร์โค้ดบนป้ายใช้แสดงรหัสเท่านั้น · สแกนซ้ำเพิ่มจำนวน · เลือกเมนูด้านล่างได้
         </p>
       </form>
 

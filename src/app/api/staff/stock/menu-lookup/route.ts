@@ -1,14 +1,31 @@
 import { requireStaff } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { lookupStockItemByCode } from "@/lib/stock-menu-lookup";
+import { isStockLabelQrPayload } from "@/lib/stock-label-qr";
+import {
+  lookupStockItemByCode,
+  lookupStockItemById,
+} from "@/lib/stock-menu-lookup";
+import { parseStockMenuQrPayload } from "@/lib/stock-menu-qr";
 
-/** GET ?code= — resolve menu / stock item by product barcode or item code */
+/** GET ?qr= — resolve menu / stock item from menu sticker QR only */
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
-    const code = new URL(request.url).searchParams.get("code")?.trim();
-    if (!code) return jsonError("ต้องระบุรหัสสินค้า");
+    const qr = new URL(request.url).searchParams.get("qr")?.trim();
+    if (!qr) return jsonError("กรุณาสแกน QR");
+
+    if (isStockLabelQrPayload(qr)) {
+      return jsonError(
+        "นี่คือ QR ป้ายแพ็ก — ใช้เมนูจ่ายออกแพ็ก",
+        400,
+      );
+    }
+
+    const parsed = parseStockMenuQrPayload(qr);
+    if (!parsed) {
+      return jsonError("QR ไม่ถูกต้อง — สแกนจากป้ายเมนู/สินค้าเท่านั้น", 400);
+    }
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
@@ -19,12 +36,23 @@ export async function GET(request: Request) {
       return jsonError("สาขานี้ยังไม่เปิดระบบสต๊อก");
     }
 
-    const match = await lookupStockItemByCode({
-      branchId: branch.id,
-      code,
-    });
+    let match =
+      parsed.itemId != null
+        ? await lookupStockItemById({
+            branchId: branch.id,
+            itemId: parsed.itemId,
+          })
+        : null;
+
+    if (!match && parsed.productCode) {
+      match = await lookupStockItemByCode({
+        branchId: branch.id,
+        code: parsed.productCode,
+      });
+    }
+
     if (!match) {
-      return jsonError("ไม่พบรหัสสินค้าในสาขานี้", 404);
+      return jsonError("ไม่พบรายการเมนูในสาขานี้", 404);
     }
 
     return jsonOk(match);

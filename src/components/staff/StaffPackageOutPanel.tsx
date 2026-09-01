@@ -43,13 +43,18 @@ export function StaffPackageOutPanel({ onBack }: Props) {
     async (raw: string) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
+      if (!isStockLabelQrPayload(trimmed)) {
+        toast.error(
+          "สแกนไม่สำเร็จ",
+          "กรุณาสแกน QR บนป้ายแพ็ก (ไม่ใช่บาร์โค้ด)",
+        );
+        return;
+      }
       setLoading(true);
       try {
-        const isQr = isStockLabelQrPayload(trimmed);
-        const qs = isQr
-          ? `qr=${encodeURIComponent(trimmed)}`
-          : `code=${encodeURIComponent(trimmed)}`;
-        const res = await fetch(`/api/staff/stock/package-out?${qs}`);
+        const res = await fetch(
+          `/api/staff/stock/package-out?qr=${encodeURIComponent(trimmed)}`,
+        );
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(
@@ -130,7 +135,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
         <div className="min-w-0">
           <h2 className="text-lg font-extrabold text-slate-900">จ่ายออกแพ็ก</h2>
           <p className="text-xs font-semibold text-slate-600">
-            สแกนบาร์โค้ดหรือ QR บนป้ายแพ็ก
+            สแกน QR บนป้ายแพ็กเพื่อจ่ายออก
           </p>
         </div>
       </div>
@@ -141,13 +146,13 @@ export function StaffPackageOutPanel({ onBack }: Props) {
       >
         <label className="block">
           <span className="mb-1 block text-[12px] font-semibold text-slate-600">
-            สแกนหรือพิมพ์รหัสป้าย
+            สแกน QR บนป้ายแพ็ก
           </span>
           <input
             ref={inputRef}
             value={scanValue}
             onChange={(e) => setScanValue(e.target.value)}
-            placeholder="สแกนบาร์โค้ด / QR"
+            placeholder="สแกน QR บนป้ายแพ็ก"
             className="w-full rounded-xl border border-slate-200 px-3 py-3 font-mono text-[15px] font-bold"
             autoComplete="off"
           />

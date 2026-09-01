@@ -2,7 +2,6 @@ import type { Prisma } from "@prisma/client";
 import { bangkokDateKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { formatLotNumber, lotDayPrefix } from "@/lib/stock-label-format";
-import { normalizeBranchCode } from "@/lib/stock-document-no-format";
 
 export {
   isStockLabelQrPayload,
@@ -80,7 +79,23 @@ export async function generateLotNumber(input: {
   return formatLotNumber(dayKey, maxSeq + 1);
 }
 
-/** Unique scannable label code: {branchCode}-{lot}-{seq} */
+function lotNumberToDigits(lotNumber: string): string {
+  return lotNumber.replace(/\D/g, "");
+}
+
+function numericBranchPart(
+  branchCode: string | null | undefined,
+  branchId: string,
+): string {
+  const digits = (branchCode ?? "").replace(/\D/g, "");
+  if (digits.length >= 2) return digits.slice(-2).padStart(2, "0");
+  if (digits.length === 1) return `0${digits}`;
+  let hash = 0;
+  for (const ch of branchId) hash = (hash + ch.charCodeAt(0)) % 100;
+  return String(hash).padStart(2, "0");
+}
+
+/** Unique numeric label code: {branch2}{lotDigits}{seq3} */
 export async function generateLabelCode(input: {
   branchId: string;
   branchCode: string;
@@ -88,8 +103,9 @@ export async function generateLabelCode(input: {
   db?: Prisma.TransactionClient;
 }): Promise<string> {
   const client = resolveDb(input.db);
-  const code = normalizeBranchCode(input.branchCode, input.branchId);
-  const prefix = `${code}-${input.lotNumber}-`;
+  const branchPart = numericBranchPart(input.branchCode, input.branchId);
+  const lotDigits = lotNumberToDigits(input.lotNumber);
+  const prefix = `${branchPart}${lotDigits}`;
 
   const latest = await client.stockLabel.findFirst({
     where: {

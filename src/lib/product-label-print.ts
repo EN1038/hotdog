@@ -1,8 +1,12 @@
 import JsBarcode from "jsbarcode";
+import QRCode from "qrcode";
+import { barcodeDigitsOnly } from "@/lib/stock-barcode-format";
+import { stockMenuQrPayload } from "@/lib/stock-menu-qr";
 
 export type ProductLabelInput = {
   code: string;
   name: string;
+  itemId?: string | null;
   copies?: number;
   branchName?: string | null;
 };
@@ -21,7 +25,7 @@ export function renderProductBarcodeSvg(code: string): string {
     return "";
   }
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  JsBarcode(svg, code, {
+  JsBarcode(svg, barcodeDigitsOnly(code) || code, {
     format: "CODE128",
     displayValue: true,
     fontSize: 13,
@@ -32,8 +36,8 @@ export function renderProductBarcodeSvg(code: string): string {
   return svg.outerHTML;
 }
 
-function labelHtml(label: ProductLabelInput): string {
-  const code = label.code.trim();
+function labelHtml(label: ProductLabelInput, qrSvg: string): string {
+  const code = barcodeDigitsOnly(label.code.trim()) || label.code.trim();
   const name = escapeHtml(label.name.trim() || "—");
   const branch = label.branchName?.trim();
   const barcode = renderProductBarcodeSvg(code);
@@ -43,12 +47,16 @@ function labelHtml(label: ProductLabelInput): string {
       ${branch ? `<p class="branch">${escapeHtml(branch)}</p>` : ""}
       <p class="name">${name}</p>
       <div class="barcode">${barcode}</div>
+      <p class="code">${escapeHtml(code)}</p>
+      <div class="qr">${qrSvg}</div>
     </article>
   `;
 }
 
-/** Open browser print dialog for product barcode labels. */
-export function openProductLabelPrint(labels: ProductLabelInput[]): void {
+/** Open browser print dialog for product barcode + QR labels. */
+export async function openProductLabelPrint(
+  labels: ProductLabelInput[],
+): Promise<void> {
   if (typeof window === "undefined") return;
   const items = labels
     .map((label) => ({
@@ -63,15 +71,37 @@ export function openProductLabelPrint(labels: ProductLabelInput[]): void {
     return;
   }
 
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=720,height=900");
+  const qrSvgs = await Promise.all(
+    items.map((label) => {
+      const payload = stockMenuQrPayload({
+        itemId: label.itemId,
+        productCode: label.code,
+      });
+      if (!payload) return "";
+      return QRCode.toString(payload, {
+        type: "svg",
+        margin: 0,
+        width: 96,
+        errorCorrectionLevel: "M",
+      });
+    }),
+  );
+
+  const printWindow = window.open(
+    "",
+    "_blank",
+    "noopener,noreferrer,width=720,height=900",
+  );
   if (!printWindow) {
     window.alert("เปิดหน้าพิมพ์ไม่ได้ — กรุณาอนุญาต popup");
     return;
   }
 
   const body = items
-    .flatMap((label) =>
-      Array.from({ length: label.copies }, () => labelHtml(label)),
+    .flatMap((label, index) =>
+      Array.from({ length: label.copies }, () =>
+        labelHtml(label, qrSvgs[index] ?? ""),
+      ),
     )
     .join("");
 
@@ -81,7 +111,7 @@ export function openProductLabelPrint(labels: ProductLabelInput[]): void {
   <meta charset="utf-8" />
   <title>พิมพ์ป้ายสินค้า</title>
   <style>
-    @page { size: 50mm 30mm; margin: 2mm; }
+    @page { size: 50mm 40mm; margin: 2mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -96,7 +126,7 @@ export function openProductLabelPrint(labels: ProductLabelInput[]): void {
     }
     .label {
       width: 46mm;
-      min-height: 26mm;
+      min-height: 34mm;
       border: 0.2mm dashed #ccc;
       padding: 2mm;
       page-break-inside: avoid;
@@ -123,6 +153,16 @@ export function openProductLabelPrint(labels: ProductLabelInput[]): void {
     .barcode svg {
       width: 100%;
       height: auto;
+    }
+    .code {
+      margin: 0.5mm 0 0;
+      font-size: 7pt;
+      font-weight: 700;
+    }
+    .qr svg {
+      width: 18mm;
+      height: 18mm;
+      margin-top: 1mm;
     }
     @media print {
       .sheet { gap: 0; padding: 0; }

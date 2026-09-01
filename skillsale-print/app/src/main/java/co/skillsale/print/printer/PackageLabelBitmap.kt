@@ -51,11 +51,13 @@ object PackageLabelBitmap {
         val paddingH = 14f
         val contentWidth = LABEL_WIDTH - paddingH * 2
         val productCode = label.productCode.trim().ifBlank { "—" }
+        val barcodeValue =
+            productCode.filter { it.isDigit() }.ifBlank { productCode }
         val labelCode = label.labelCode.trim().ifBlank { "—" }
         val productName = label.productName.trim().ifBlank { "—" }
         val nameLines = wrapLines(productName, namePaint, contentWidth, maxLines = 2)
 
-        val barcodeBitmap = encodeBarcode(labelCode, 260, 50)
+        val barcodeBitmap = encodeBarcode(barcodeValue, 260, 50)
         val qrBitmap = encodeQr(label.qrPayload.trim().ifBlank { label.labelCode }, 140)
 
         var height = 8f
@@ -97,7 +99,7 @@ object PackageLabelBitmap {
         val barcodeLeft = (LABEL_WIDTH - barcodeBitmap.width) / 2f
         canvas.drawBitmap(barcodeBitmap, barcodeLeft, y, null)
         y += barcodeBitmap.height + 14f
-        canvas.drawText(labelCode, center, y, codePaint)
+        canvas.drawText(barcodeValue, center, y, codePaint)
         y += 10f
 
         val qrLeft = (LABEL_WIDTH - qrBitmap.width) / 2f

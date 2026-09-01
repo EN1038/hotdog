@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toPng } from "html-to-image";
 import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { StaffBranchStockHistoryPanel } from "@/components/staff/StaffBranchStockHistoryPanel";
+import { isStockMenuQrPayload } from "@/lib/stock-menu-qr";
 import { StaffPackageInHistoryPanel } from "@/components/staff/StaffPackageInHistoryPanel";
 import { StaffPackageInPanel } from "@/components/staff/StaffPackageInPanel";
 import { StaffPackageOutPanel } from "@/components/staff/StaffPackageOutPanel";
@@ -840,12 +841,19 @@ function StaffStockContent() {
 
   const stockInScanLookup = useCallback(
     async (raw: string) => {
-      const code = raw.trim();
-      if (!code || stockInScanBusy) return;
+      const qr = raw.trim();
+      if (!qr || stockInScanBusy) return;
+      if (!isStockMenuQrPayload(qr)) {
+        toast.error(
+          "สแกนไม่สำเร็จ",
+          "กรุณาสแกน QR จากป้ายเมนู/สินค้า (ไม่ใช่บาร์โค้ด)",
+        );
+        return;
+      }
       setStockInScanBusy(true);
       try {
         const res = await fetch(
-          `/api/staff/stock/menu-lookup?code=${encodeURIComponent(code)}`,
+          `/api/staff/stock/menu-lookup?qr=${encodeURIComponent(qr)}`,
         );
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -2589,27 +2597,27 @@ function StaffStockContent() {
 
                 {actionType === "stock_in" ? (
                   <form
-                    className="mb-4 rounded-2xl border border-teal-200 bg-teal-50/80 p-4 shadow-sm"
+                    className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                     onSubmit={(e) => {
                       e.preventDefault();
                       void stockInScanLookup(stockInScanValue);
                     }}
                   >
                     <label className="block">
-                      <span className="mb-1 block text-[13px] font-extrabold text-teal-900">
-                        สแกนรหัสสินค้า → รับเข้าแพ็ก
+                      <span className="mb-1 block text-[13px] font-extrabold text-slate-900">
+                        สแกน QR → รับเข้าแพ็ก
                       </span>
                       <input
                         ref={stockInScanRef}
                         value={stockInScanValue}
                         onChange={(e) => setStockInScanValue(e.target.value)}
-                        placeholder="ยิงบาร์โค้ดเมนู / พิมพ์รหัสแล้ว Enter"
+                        placeholder="สแกน QR บนป้ายเมนู/สินค้า"
                         disabled={stockInScanBusy}
-                        className="w-full rounded-xl border border-teal-200 bg-white px-3 py-3 text-[15px] font-semibold text-slate-900 disabled:opacity-60"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-3 text-[15px] font-semibold text-slate-900 disabled:opacity-60"
                         autoComplete="off"
                       />
                     </label>
-                    <p className="mt-1.5 text-[11px] font-medium text-teal-800/80">
+                    <p className="mt-1.5 text-[11px] font-medium text-slate-500">
                       ทางลัดไปรับเข้าแพ็ก · เลือกประเภทด้านล่างได้เหมือนเดิม
                     </p>
                   </form>
@@ -2675,15 +2683,15 @@ function StaffStockContent() {
                     <button
                       type="button"
                       onClick={() => setMode("package_in")}
-                      className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-teal-200 bg-teal-50/80 p-6 text-slate-700 shadow-sm hover:border-teal-500 transition-all active:scale-[0.98]"
+                      className="w-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary transition-all active:scale-[0.98]"
                     >
                       <div className="flex items-center gap-3">
                         <div className="text-3xl">🏷️</div>
-                        <h3 className="text-xl font-bold text-teal-900">
+                        <h3 className="text-xl font-bold text-slate-900">
                           รับเข้าแพ็ก
                         </h3>
                       </div>
-                      <p className="text-xs font-medium text-teal-800/80">
+                      <p className="text-xs font-medium text-slate-500">
                         สร้างป้ายหลายแพ็ก · พิมพ์บาร์โค้ด + QR
                       </p>
                     </button>

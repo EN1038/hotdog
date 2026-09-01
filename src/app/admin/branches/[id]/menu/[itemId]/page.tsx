@@ -1094,6 +1094,7 @@ export default function MenuItemEditorPage() {
               <ProductLabelPrintButton
                 code={previewProductCode}
                 name={form.name.trim() || item.name || "เมนู"}
+                itemId={item.id}
                 branchName={branchName}
                 disabled={!previewProductCode}
               />

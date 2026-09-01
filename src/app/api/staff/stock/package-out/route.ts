@@ -204,18 +204,17 @@ export async function POST(request: Request) {
   }
 }
 
-/** GET — lookup label by code for scan preview */
+/** GET — lookup label by QR for scan preview */
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
-    const code = searchParams.get("code")?.trim();
     const qr = searchParams.get("qr")?.trim();
+    if (!qr) return jsonError("กรุณาสแกน QR");
 
     const label = await resolveLabel({
       branchId: session.branchId,
-      labelCode: code ?? undefined,
-      qrPayload: qr ?? undefined,
+      qrPayload: qr,
     });
     if (!label) return jsonError("ไม่พบป้ายแพ็ก", 404);
 

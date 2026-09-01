@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
+import { barcodeDigitsOnly } from "@/lib/stock-barcode-format";
 
 export type StockMenuLookupStockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -19,7 +20,89 @@ function normalizeCode(code: string): string {
 function codesMatch(stored: string | null | undefined, scanned: string): boolean {
   const value = stored?.trim();
   if (!value) return false;
-  return value.toLowerCase() === scanned.toLowerCase();
+  if (value.toLowerCase() === scanned.toLowerCase()) return true;
+  const scannedDigits = barcodeDigitsOnly(scanned);
+  if (!scannedDigits) return false;
+  return barcodeDigitsOnly(value) === scannedDigits;
+}
+
+function mapMenuItem(
+  item: {
+    id: string;
+    name: string;
+    itemCode: string | null;
+    imageUrl: string | null;
+    brandProduct: { sku: string | null; barcode: string | null } | null;
+  },
+): StockMenuLookupMatch {
+  const productCode = resolveMenuItemProductCode({
+    id: item.id,
+    itemCode: item.itemCode,
+    brandProduct: item.brandProduct,
+  });
+  return {
+    kind: "menu",
+    itemId: item.id,
+    name: item.name,
+    productCode,
+    stockType: "SALE_ITEM",
+    imageUrl: item.imageUrl,
+  };
+}
+
+/** Resolve a branch menu / non-menu row by database id. */
+export async function lookupStockItemById(input: {
+  branchId: string;
+  itemId: string;
+}): Promise<StockMenuLookupMatch | null> {
+  const itemId = input.itemId.trim();
+  if (!itemId) return null;
+
+  const menuItem = await prisma.branchMenuItem.findFirst({
+    where: { branchId: input.branchId, id: itemId, isHidden: false },
+    select: {
+      id: true,
+      name: true,
+      itemCode: true,
+      imageUrl: true,
+      category: { select: { stockExempt: true } },
+      brandProduct: { select: { sku: true, barcode: true } },
+      optionGroupLinks: { select: { group: { select: { mode: true } } } },
+    },
+  });
+  if (menuItem) {
+    const isPromo = menuItem.optionGroupLinks.some(
+      (link) => link.group.mode === "FROM_MENU",
+    );
+    if (!isPromo && !menuItem.category?.stockExempt) {
+      return mapMenuItem(menuItem);
+    }
+  }
+
+  const nonMenu = await prisma.branchNonMenuItem.findFirst({
+    where: { branchId: input.branchId, id: itemId },
+    select: {
+      id: true,
+      name: true,
+      itemCode: true,
+      imageUrl: true,
+      stockType: true,
+    },
+  });
+  if (!nonMenu) return null;
+
+  const productCode =
+    nonMenu.itemCode?.trim() || nonMenu.id.slice(-8).toUpperCase();
+  const stockType: StockMenuLookupStockType =
+    nonMenu.stockType === "EQUIPMENT" ? "EQUIPMENT" : "CONSUMABLE";
+  return {
+    kind: stockType === "EQUIPMENT" ? "equipment" : "consumable",
+    itemId: nonMenu.id,
+    name: nonMenu.name,
+    productCode,
+    stockType,
+    imageUrl: nonMenu.imageUrl,
+  };
 }
 
 /** Resolve branch menu / non-menu stock row by product barcode or item code. */
@@ -61,14 +144,7 @@ export async function lookupStockItemByCode(input: {
       codesMatch(item.brandProduct?.barcode, code) ||
       codesMatch(productCode, code)
     ) {
-      return {
-        kind: "menu",
-        itemId: item.id,
-        name: item.name,
-        productCode,
-        stockType: "SALE_ITEM",
-        imageUrl: item.imageUrl,
-      };
+      return mapMenuItem(item);
     }
   }
 

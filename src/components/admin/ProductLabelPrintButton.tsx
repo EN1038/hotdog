@@ -6,6 +6,7 @@ import { openProductLabelPrint } from "@/lib/product-label-print";
 type Props = {
   code: string;
   name: string;
+  itemId?: string | null;
   branchName?: string | null;
   copies?: number;
   className?: string;
@@ -16,6 +17,7 @@ type Props = {
 export function ProductLabelPrintButton({
   code,
   name,
+  itemId,
   branchName,
   copies = 1,
   className,
@@ -29,9 +31,11 @@ export function ProductLabelPrintButton({
       type="button"
       className={className ?? `${btnOutline} text-xs`}
       disabled={!canPrint}
-      title={canPrint ? "พิมพ์ป้ายบาร์โค้ด" : "ยังไม่มีรหัสสินค้า"}
+      title={canPrint ? "พิมพ์ป้ายบาร์โค้ด + QR" : "ยังไม่มีรหัสสินค้า"}
       onClick={() =>
-        openProductLabelPrint([{ code, name, branchName, copies }])
+        void openProductLabelPrint([
+          { code, name, itemId, branchName, copies },
+        ])
       }
     >
       {label}

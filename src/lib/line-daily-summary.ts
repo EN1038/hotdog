@@ -596,6 +596,34 @@ export async function runLineDailySummaries(
         continue;
       }
 
+      if (!branch.brandId) {
+        result.skipped += 1;
+        result.details.push({
+          branchId: branch.id,
+          branchName: branch.name,
+          operatingDay: closedDay,
+          status: "skipped",
+          reason: "สาขาไม่มีแบรนด์",
+        });
+        continue;
+      }
+
+      const brandFlags = await prisma.brand.findUnique({
+        where: { id: branch.brandId },
+        select: { lineNotifyDailySummary: true },
+      });
+      if (!brandFlags?.lineNotifyDailySummary) {
+        result.skipped += 1;
+        result.details.push({
+          branchId: branch.id,
+          branchName: branch.name,
+          operatingDay: closedDay,
+          status: "skipped",
+          reason: "แบรนด์ปิดแจ้งเตือนสรุป LINE",
+        });
+        continue;
+      }
+
       const recipients = await recipientsForBrand(branch.brandId);
       const text = formatBranchDaySummaryMessage(summary);
 

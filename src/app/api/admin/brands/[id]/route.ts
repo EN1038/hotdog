@@ -42,6 +42,10 @@ const patchSchema = z.object({
   skewerEnabled: z.boolean().optional(),
   trialEndsAt: z.string().datetime().nullable().optional(),
   serviceStartsAt: z.string().datetime().nullable().optional(),
+  smsQuotaGranted: z.number().int().min(0).max(1_000_000).optional(),
+  lineNotifyNewOrder: z.boolean().optional(),
+  lineNotifySkewerOrder: z.boolean().optional(),
+  lineNotifyDailySummary: z.boolean().optional(),
 });
 
 function normalizeColor(input: string) {
@@ -101,7 +105,8 @@ export async function PATCH(request: Request, { params }: Params) {
       body.kitchenEnabled !== undefined ||
       body.bbqEnabled !== undefined ||
       body.skewerEnabled !== undefined ||
-      body.trialEndsAt !== undefined;
+      body.trialEndsAt !== undefined ||
+      body.smsQuotaGranted !== undefined;
 
     if (planFieldsTouched && !session.isPlatformAdmin) {
       return jsonError("เฉพาะผู้ดูแลแพลตฟอร์มที่ตั้งแพ็กเกจ/สถานะแบรนด์ได้", 403);
@@ -180,6 +185,18 @@ export async function PATCH(request: Request, { params }: Params) {
           serviceStartsAt: body.serviceStartsAt
             ? new Date(body.serviceStartsAt)
             : null,
+        }),
+        ...(body.smsQuotaGranted !== undefined && {
+          smsQuotaGranted: body.smsQuotaGranted,
+        }),
+        ...(body.lineNotifyNewOrder !== undefined && {
+          lineNotifyNewOrder: body.lineNotifyNewOrder,
+        }),
+        ...(body.lineNotifySkewerOrder !== undefined && {
+          lineNotifySkewerOrder: body.lineNotifySkewerOrder,
+        }),
+        ...(body.lineNotifyDailySummary !== undefined && {
+          lineNotifyDailySummary: body.lineNotifyDailySummary,
         }),
       },
     });

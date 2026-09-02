@@ -22,6 +22,7 @@ const patchSchema = z.object({
   lastPaidAt: z.string().datetime().nullable().optional(),
   nextDueAt: z.string().datetime().nullable().optional(),
   contactPhone: z.string().nullable().optional(),
+  smsQuotaGranted: z.number().int().min(0).max(1_000_000).optional(),
 });
 
 export async function GET(_request: Request, { params }: Params) {
@@ -53,6 +54,7 @@ export async function GET(_request: Request, { params }: Params) {
         billingNote: true,
         lastPaidAt: true,
         nextDueAt: true,
+        smsQuotaGranted: true,
         _count: {
           select: {
             branches: { where: { isTest: false, kind: { not: "WAREHOUSE" } } },
@@ -317,6 +319,9 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.contactPhone !== undefined && {
           contactPhone: body.contactPhone?.replace(/\D/g, "").trim() || null,
         }),
+        ...(body.smsQuotaGranted !== undefined && {
+          smsQuotaGranted: body.smsQuotaGranted,
+        }),
       },
       select: {
         id: true,
@@ -325,6 +330,7 @@ export async function PATCH(request: Request, { params }: Params) {
         lastPaidAt: true,
         nextDueAt: true,
         contactPhone: true,
+        smsQuotaGranted: true,
       },
     });
 

@@ -85,6 +85,7 @@ type BrandAccount = {
   billingNote: string | null;
   lastPaidAt: string | null;
   nextDueAt: string | null;
+  smsQuotaGranted?: number;
   suggestedPriceBaht: number | null;
   _count?: { branches: number; members: number };
 };
@@ -262,6 +263,7 @@ export default function BrandAdminsPage() {
     billingNote: "",
     lastPaidAt: "",
     nextDueAt: "",
+    smsQuotaGranted: "0",
   });
   const [planForm, setPlanForm] = useState({
     status: "TRIAL" as BrandStatusId,
@@ -333,6 +335,7 @@ export default function BrandAdminsPage() {
       billingNote: b.billingNote ?? "",
       lastPaidAt: toDateInput(b.lastPaidAt),
       nextDueAt: toDateInput(b.nextDueAt),
+      smsQuotaGranted: String(b.smsQuotaGranted ?? 0),
     });
     setPlanForm({
       status: b.status,
@@ -564,6 +567,14 @@ export default function BrandAdminsPage() {
           billingNote: billingForm.billingNote.trim() || null,
           lastPaidAt: dateInputToIso(billingForm.lastPaidAt),
           nextDueAt: dateInputToIso(billingForm.nextDueAt),
+          ...(isPlatform
+            ? {
+                smsQuotaGranted: Math.max(
+                  0,
+                  Math.floor(Number(billingForm.smsQuotaGranted) || 0),
+                ),
+              }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1161,6 +1172,23 @@ export default function BrandAdminsPage() {
                 placeholder="08x-xxx-xxxx"
               />
             </label>
+            {isPlatform ? (
+              <label>
+                <span className={adminLabelClass}>โควตา SMS แจ้งเตือน (ฉบับ)</span>
+                <input
+                  className={adminInputClass}
+                  type="number"
+                  min={0}
+                  value={billingForm.smsQuotaGranted}
+                  onChange={(e) =>
+                    setBillingForm((f) => ({
+                      ...f,
+                      smsQuotaGranted: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
             <label className="sm:col-span-2">
               <span className={adminLabelClass}>บันทึกการชำระ / หมายเหตุ</span>
               <textarea

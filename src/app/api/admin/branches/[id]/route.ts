@@ -56,6 +56,9 @@ const updateSchema = z.object({
   autoAcceptOrders: z.boolean().optional(),
   /// NORMAL only — enable BBQ weigh sales alongside mala queue
   weighSalesEnabled: z.boolean().optional(),
+  alertSmsPhone: z.string().nullable().optional(),
+  smsNotifyNewOrder: z.boolean().optional(),
+  smsNotifySkewerOrder: z.boolean().optional(),
   storefrontHours: weeklyScheduleSchema.optional(),
   deliveryHours: weeklyScheduleSchema.optional(),
 });
@@ -306,6 +309,17 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.longitude !== undefined && { longitude: body.longitude }),
         ...(body.phone !== undefined && {
           phone: body.phone ? normalizePhone(body.phone) : null,
+        }),
+        ...(body.alertSmsPhone !== undefined && {
+          alertSmsPhone: body.alertSmsPhone
+            ? normalizePhone(body.alertSmsPhone)
+            : null,
+        }),
+        ...(body.smsNotifyNewOrder !== undefined && {
+          smsNotifyNewOrder: body.smsNotifyNewOrder,
+        }),
+        ...(body.smsNotifySkewerOrder !== undefined && {
+          smsNotifySkewerOrder: body.smsNotifySkewerOrder,
         }),
         ...(body.primaryCategory !== undefined && {
           primaryCategory: body.primaryCategory,

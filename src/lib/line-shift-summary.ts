@@ -171,6 +171,14 @@ export async function sendShiftCloseLineSummary(
     return { sent: 0, skippedReason: "สาขาไม่มีแบรนด์" };
   }
 
+  const brand = await prisma.brand.findUnique({
+    where: { id: shiftRow.branch.brandId },
+    select: { lineNotifyDailySummary: true },
+  });
+  if (!brand?.lineNotifyDailySummary) {
+    return { sent: 0, skippedReason: "แบรนด์ปิดแจ้งเตือนสรุป LINE" };
+  }
+
   const recipients = await recipientsForBrand(shiftRow.branch.brandId);
   if (recipients.length === 0) {
     return { sent: 0, skippedReason: "ไม่มีผู้รับ LINE" };

@@ -141,6 +141,8 @@ enum SkewerOrderStatus {
 enum SmsSendPurpose {
   SKEWER_ORDER_CONFIRMED
   SKEWER_ORDER_CANCELLED
+  BRAND_ALERT_NEW_ORDER
+  BRAND_ALERT_SKEWER_ORDER
 }
 
 enum SmsSendStatus {
@@ -322,6 +324,12 @@ model Brand {
   billingNote        String?
   lastPaidAt         DateTime?
   nextDueAt          DateTime?
+  /// Platform-granted SMS quota for owner/branch alert messages (not OTP / customer skewer SMS)
+  smsQuotaGranted    Int                @default(0)
+  /// Brand-level LINE toggles (shared platform OA)
+  lineNotifyNewOrder       Boolean        @default(true)
+  lineNotifySkewerOrder    Boolean        @default(true)
+  lineNotifyDailySummary   Boolean        @default(true)
   createdAt          DateTime           @default(now())
   branches           Branch[]
   members            BrandMember[]
@@ -538,6 +546,10 @@ model Branch {
   weighSalesEnabled            Boolean                      @default(false)
   /// Staff new-order alert sound (from platform library)
   alertSoundId                 String?
+  /// SMS alert destination for this branch (owner-configured)
+  alertSmsPhone                String?
+  smsNotifyNewOrder            Boolean                      @default(false)
+  smsNotifySkewerOrder         Boolean                      @default(false)
   createdAt                    DateTime                     @default(now())
   brand                        Brand?                       @relation(fields: [brandId], references: [id])
   alertSound                   AlertSound?                  @relation(fields: [alertSoundId], references: [id], onDelete: SetNull)

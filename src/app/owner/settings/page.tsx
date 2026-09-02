@@ -30,6 +30,7 @@ import {
   type OwnerStartPreference,
 } from "@/lib/owner-sole-start";
 import { useToast } from "@/components/admin/Toast";
+import { OwnerNotificationSettings } from "@/components/owner/OwnerNotificationSettings";
 
 function OwnerSettingsInner() {
   const toast = useToast();
@@ -183,6 +184,8 @@ function OwnerSettingsInner() {
           })}
         </div>
       </div>
+
+      <OwnerNotificationSettings />
 
       <div className="rounded-3xl bg-white px-4 py-5 shadow-sm">
         <p className="text-[17px] font-extrabold text-slate-900">สีธีมร้าน</p>

@@ -15,6 +15,8 @@ import {
   SKEWER_MIN_QTY_PER_ITEM,
 } from "@/lib/skewer-order";
 import { assertBrandWriteAllowed } from "@/lib/brand-plan";
+import { notifyBranchSmsSkewerOrder } from "@/lib/brand-alert-sms";
+import { notifyBrandOwnersSkewerOrder } from "@/lib/brand-line-notify";
 
 const itemSchema = z.object({
   branchMenuItemId: z.string().min(1),
@@ -255,7 +257,7 @@ export async function POST(request: Request) {
             },
           },
           include: {
-            branch: { select: { id: true, name: true, code: true } },
+            branch: { select: { id: true, name: true, code: true, brandId: true } },
             items: { orderBy: { itemName: "asc" } },
           },
         });
@@ -273,6 +275,19 @@ export async function POST(request: Request) {
 
     if (!created) {
       return jsonError("สร้างออเดอร์ไม่สำเร็จ กรุณาลองใหม่", 500);
+    }
+
+    const brandId = created.branch.brandId;
+    if (brandId) {
+      void notifyBranchSmsSkewerOrder({
+        brandId,
+        branchId: created.branchId,
+        branchName: created.branch.name,
+        orderNumber: created.orderNumber,
+        customerPhone: created.customerPhone,
+        requestedDate: String(created.requestedDate),
+      });
+      void notifyBrandOwnersSkewerOrder(created.id);
     }
 
     return jsonOk(serializeSkewerOrder(created), 201);

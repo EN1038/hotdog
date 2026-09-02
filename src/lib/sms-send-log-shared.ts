@@ -3,6 +3,8 @@ import { SmsSendPurpose, SmsSendStatus } from "@prisma/client";
 export const SMS_SEND_PURPOSE_LABELS: Record<SmsSendPurpose, string> = {
   SKEWER_ORDER_CONFIRMED: "ยืนยันออเดอร์เสียบไม้",
   SKEWER_ORDER_CANCELLED: "ยกเลิกออเดอร์เสียบไม้",
+  BRAND_ALERT_NEW_ORDER: "แจ้งเตือนออเดอร์ลูกค้า (SMS)",
+  BRAND_ALERT_SKEWER_ORDER: "แจ้งเตือนสั่งเสียบไม้ (SMS)",
 };
 
 export const SMS_SEND_STATUS_LABELS: Record<SmsSendStatus, string> = {

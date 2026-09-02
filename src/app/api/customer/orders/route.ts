@@ -26,6 +26,11 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { notifyStaffNewOrder } from "@/lib/line";
+import {
+  notifyBranchSmsNewOrder,
+} from "@/lib/brand-alert-sms";
+import { notifyBrandOwnersNewOrder } from "@/lib/brand-line-notify";
+import { orderGrandTotal } from "@/lib/order-totals";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
 import { deductStockForOrder, StockError } from "@/lib/stock";
 import {
@@ -427,6 +432,28 @@ export async function POST(request: Request) {
       customerPhone: order.customerPhone,
       status: order.status,
     });
+
+    const brandId = branch.brandId;
+    if (brandId) {
+      const totalBaht = orderGrandTotal(
+        orderItems.map((it) => ({
+          quantity: it.quantity,
+          unitPrice: Number(it.unitPrice),
+          optionsPrice: Number(it.optionsPrice),
+        })),
+        Number(deliveryFee),
+        0,
+      );
+      void notifyBranchSmsNewOrder({
+        brandId,
+        branchId: order.branchId,
+        branchName: branch.name,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        totalBaht,
+      });
+      void notifyBrandOwnersNewOrder(order.id);
+    }
 
     return jsonOk(order, 201);
   } catch (error) {

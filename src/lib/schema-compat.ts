@@ -90,6 +90,13 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `CREATE UNIQUE INDEX IF NOT EXISTS "BranchTomorrowPlan_branchId_planDate_key" ON "${schema}"."BranchTomorrowPlan"("branchId", "planDate")`,
         `ALTER TABLE "${schema}"."BranchTomorrowPlanLine" ADD COLUMN IF NOT EXISTS "planId" TEXT`,
         `CREATE INDEX IF NOT EXISTS "BranchTomorrowPlanLine_planId_idx" ON "${schema}"."BranchTomorrowPlanLine"("planId")`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "smsQuotaGranted" INTEGER NOT NULL DEFAULT 0`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "lineNotifyNewOrder" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "lineNotifySkewerOrder" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "lineNotifyDailySummary" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "alertSmsPhone" TEXT`,
+        `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "smsNotifyNewOrder" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "smsNotifySkewerOrder" BOOLEAN NOT NULL DEFAULT false`,
       ];
       const enumSql = [
         `DO $$ BEGIN CREATE TYPE "BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED', 'DELETED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,

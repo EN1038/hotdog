@@ -32,13 +32,11 @@ function mapMenuItem(
     name: string;
     itemCode: string | null;
     imageUrl: string | null;
-    brandProduct: { sku: string | null; barcode: string | null } | null;
   },
 ): StockMenuLookupMatch {
   const productCode = resolveMenuItemProductCode({
     id: item.id,
     itemCode: item.itemCode,
-    brandProduct: item.brandProduct,
   });
   return {
     kind: "menu",
@@ -66,7 +64,6 @@ export async function lookupStockItemById(input: {
       itemCode: true,
       imageUrl: true,
       category: { select: { stockExempt: true } },
-      brandProduct: { select: { sku: true, barcode: true } },
       optionGroupLinks: { select: { group: { select: { mode: true } } } },
     },
   });
@@ -121,7 +118,6 @@ export async function lookupStockItemByCode(input: {
       itemCode: true,
       imageUrl: true,
       category: { select: { stockExempt: true } },
-      brandProduct: { select: { sku: true, barcode: true } },
       optionGroupLinks: { select: { group: { select: { mode: true } } } },
     },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -136,12 +132,9 @@ export async function lookupStockItemByCode(input: {
     const productCode = resolveMenuItemProductCode({
       id: item.id,
       itemCode: item.itemCode,
-      brandProduct: item.brandProduct,
     });
     if (
       codesMatch(item.itemCode, code) ||
-      codesMatch(item.brandProduct?.sku, code) ||
-      codesMatch(item.brandProduct?.barcode, code) ||
       codesMatch(productCode, code)
     ) {
       return mapMenuItem(item);

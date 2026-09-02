@@ -30,10 +30,10 @@ export const BRAND_STATUS_LABELS: Record<BrandStatus, string> = {
 };
 
 export const BRAND_PLAN_LABELS: Record<BrandPlan, string> = {
-  RETAIL: "Retail — ขายทั่วไป",
-  WEIGH_TABLE: "Weigh & Table — ชั่ง/โต๊ะ",
-  MALA: "Mala — หม่าล่า/ปิ้ง/ทอด/ชาบู",
-  MULTI: "Multi-mode — หลายรูปแบบ",
+  RETAIL: "แพ็กทั่วไป",
+  WEIGH_TABLE: "ชั่งโต๊ะ",
+  MALA: "แพ็กหมาล่า",
+  MULTI: "หลายรูปแบบ",
 };
 
 /** Suggested monthly price (THB) — billing not wired yet */
@@ -48,7 +48,7 @@ export const BRAND_PLAN_HINTS: Record<BrandPlan, string> = {
   RETAIL: "หน้าร้าน · คิว · รับออเดอร์ · ลูกค้าสั่งออนไลน์",
   WEIGH_TABLE: "ชั่งกิโล · เปิดบิลโต๊ะ · QR สั่งเพิ่ม",
   MALA: "คิวเคาน์เตอร์ · ชั่งกิโลคู่ได้ · เสียบไม้ · ครัวกลาง",
-  MULTI: "ทุก Sales Mode · สต็อกรวม · หลายสาขา",
+  MULTI: "ทุก Sales Mode · สต็อกสาขา · หลายสาขา",
 };
 
 export const BRAND_PLANS_ORDERED: BrandPlan[] = [
@@ -73,19 +73,19 @@ export const NEW_BRAND_DEFAULTS = {
   status: "TRIAL" as BrandStatus,
   plan: "RETAIL" as BrandPlan,
   maxBranches: 1,
-  maxStaff: 5,
+  maxStaff: 2,
   stockEnabled: false,
   kitchenEnabled: false,
   bbqEnabled: false,
   skewerEnabled: false,
-  trialDays: 30,
+  trialDays: 7,
 };
 
 export const BRAND_PLAN_PRESETS: Record<BrandPlan, BrandPlanPreset> = {
   RETAIL: {
     plan: "RETAIL",
     maxBranches: 1,
-    maxStaff: 5,
+    maxStaff: 2,
     stockEnabled: false,
     kitchenEnabled: false,
     bbqEnabled: false,
@@ -94,7 +94,7 @@ export const BRAND_PLAN_PRESETS: Record<BrandPlan, BrandPlanPreset> = {
   WEIGH_TABLE: {
     plan: "WEIGH_TABLE",
     maxBranches: 2,
-    maxStaff: 10,
+    maxStaff: 5,
     stockEnabled: false,
     kitchenEnabled: false,
     bbqEnabled: true,
@@ -103,16 +103,16 @@ export const BRAND_PLAN_PRESETS: Record<BrandPlan, BrandPlanPreset> = {
   MALA: {
     plan: "MALA",
     maxBranches: 2,
-    maxStaff: 15,
+    maxStaff: 5,
     stockEnabled: false,
     kitchenEnabled: true,
-    bbqEnabled: true,
+    bbqEnabled: false,
     skewerEnabled: true,
   },
   MULTI: {
     plan: "MULTI",
-    maxBranches: 5,
-    maxStaff: 20,
+    maxBranches: 2,
+    maxStaff: 5,
     stockEnabled: true,
     kitchenEnabled: true,
     bbqEnabled: true,

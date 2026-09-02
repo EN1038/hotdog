@@ -5,6 +5,19 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { slugifyCode } from "@/lib/slug";
 import { logAdminActivity } from "@/lib/admin-activity";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+
+const ownerRegisterFields = {
+  showInOwnerRegister: z.boolean().optional(),
+  ownerRegisterHint: z.string().trim().max(200).nullable().optional(),
+  ownerRegisterPlan: z
+    .enum(["RETAIL", "WEIGH_TABLE", "MALA", "MULTI"])
+    .optional(),
+  ownerRegisterOperatingMode: z
+    .enum(["NORMAL", "SKEWER", "BBQ_WEIGH"])
+    .optional(),
+  offersMasterImport: z.boolean().optional(),
+};
 
 const createSchema = z.object({
   name: z.string().trim().min(1),
@@ -16,6 +29,7 @@ const createSchema = z.object({
     .optional(),
   sortOrder: z.number().int().optional(),
   isActive: z.boolean().optional(),
+  ...ownerRegisterFields,
 });
 
 const patchSchema = z.object({
@@ -28,11 +42,13 @@ const patchSchema = z.object({
     .optional(),
   sortOrder: z.number().int().optional(),
   isActive: z.boolean().optional(),
+  ...ownerRegisterFields,
 });
 
 export async function GET(request: Request) {
   try {
     await requireAdmin();
+    await ensureProdSchemaCompat();
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get("active") === "1";
 
@@ -77,6 +93,11 @@ export async function POST(request: Request) {
         name: body.name.trim(),
         sortOrder: body.sortOrder ?? (maxSort._max.sortOrder ?? 0) + 1,
         isActive: body.isActive ?? true,
+        showInOwnerRegister: body.showInOwnerRegister ?? false,
+        ownerRegisterHint: body.ownerRegisterHint?.trim() || null,
+        ownerRegisterPlan: body.ownerRegisterPlan ?? "RETAIL",
+        ownerRegisterOperatingMode: body.ownerRegisterOperatingMode ?? "NORMAL",
+        offersMasterImport: body.offersMasterImport ?? false,
       },
     });
 

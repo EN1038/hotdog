@@ -16,6 +16,15 @@ const patchSchema = z.object({
     .optional(),
   sortOrder: z.number().int().optional(),
   isActive: z.boolean().optional(),
+  showInOwnerRegister: z.boolean().optional(),
+  ownerRegisterHint: z.string().trim().max(200).nullable().optional(),
+  ownerRegisterPlan: z
+    .enum(["RETAIL", "WEIGH_TABLE", "MALA", "MULTI"])
+    .optional(),
+  ownerRegisterOperatingMode: z
+    .enum(["NORMAL", "SKEWER", "BBQ_WEIGH"])
+    .optional(),
+  offersMasterImport: z.boolean().optional(),
 });
 
 export async function PATCH(request: Request, { params }: Params) {
@@ -41,6 +50,21 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.code !== undefined && { code: body.code }),
         ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
         ...(body.isActive !== undefined && { isActive: body.isActive }),
+        ...(body.showInOwnerRegister !== undefined && {
+          showInOwnerRegister: body.showInOwnerRegister,
+        }),
+        ...(body.ownerRegisterHint !== undefined && {
+          ownerRegisterHint: body.ownerRegisterHint?.trim() || null,
+        }),
+        ...(body.ownerRegisterPlan !== undefined && {
+          ownerRegisterPlan: body.ownerRegisterPlan,
+        }),
+        ...(body.ownerRegisterOperatingMode !== undefined && {
+          ownerRegisterOperatingMode: body.ownerRegisterOperatingMode,
+        }),
+        ...(body.offersMasterImport !== undefined && {
+          offersMasterImport: body.offersMasterImport,
+        }),
       },
     });
 

@@ -18,7 +18,6 @@ import {
   type StockFlowMetricKey,
 } from "@/components/merchant/StockFlowAnalyticsPanel";
 import { bangkokDateKey, bangkokMonthRangeToToday } from "@/lib/constants";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type BranchMeta = {
   id: string;
@@ -128,7 +127,6 @@ export default function AdminBrandStockFlowPage() {
   if (!loaded) return <AdminLoadingState />;
 
   const backHref = `/admin/brands/${brandId}`;
-  const stockManageHref = `/admin/brands/${brandId}/stock`;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -144,19 +142,8 @@ export default function AdminBrandStockFlowPage() {
         title="วิเคราะห์สต๊อก"
         description={
           brandName
-            ? WAREHOUSE_UI_ENABLED
-              ? `${brandName} · สต๊อกกลาง · รับเข้า · จ่าย · ขาย · เสีย · คงเหลือ · เทียบสาขา`
-              : `${brandName} · รับเข้า · จ่าย · ขาย · เสีย · คงเหลือ · เทียบสาขา`
-            : WAREHOUSE_UI_ENABLED
-              ? "สต๊อกกลาง · รับเข้า · จ่าย · ขาย · เสีย · คงเหลือ · มูลค่า · เทียบสาขา"
-              : "รับเข้า · จ่าย · ขาย · เสีย · คงเหลือ · มูลค่า · เทียบสาขา"
-        }
-        actions={
-          WAREHOUSE_UI_ENABLED ? (
-            <Link href={stockManageHref} className={btnOutline}>
-              จัดการสต๊อกคลัง
-            </Link>
-          ) : undefined
+            ? `${brandName} · รับเข้า · จ่าย · ขาย · เสีย · คงเหลือ · เทียบสาขา`
+            : "รับเข้า · จ่าย · ขาย · เสีย · คงเหลือ · มูลค่า · เทียบสาขา"
         }
       />
 
@@ -230,9 +217,6 @@ export default function AdminBrandStockFlowPage() {
             ? allBranchOptions.find((b) => b.id === filterBranchId)?.name
             : null
         }
-        links={{
-          manageStock: stockManageHref,
-        }}
       />
     </div>
   );

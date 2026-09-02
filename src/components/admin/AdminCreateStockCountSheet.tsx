@@ -34,12 +34,12 @@ const TYPE_OPTIONS: { id: StockType; label: string; hint: string }[] = [
   {
     id: "CONSUMABLE",
     label: "ของสิ้นเปลือง",
-    hint: "ปรับสต๊อกทันที",
+    hint: "รอ Convert หรือปรับทันที",
   },
   {
     id: "EQUIPMENT",
     label: "อุปกรณ์",
-    hint: "ปรับสต๊อกทันที",
+    hint: "รอ Convert หรือปรับทันที",
   },
 ];
 
@@ -478,27 +478,21 @@ export function AdminCreateStockCountSheet({
           >
             ยกเลิก
           </button>
-          {stockType === "SALE_ITEM" ? (
-            <button
-              type="button"
-              disabled={saving || loadingCatalog || typedItems.length === 0}
-              onClick={() => void submit(false)}
-              className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-            >
-              {saving ? "กำลังบันทึก…" : "บันทึกรอ Convert"}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            disabled={saving || loadingCatalog || typedItems.length === 0}
+            onClick={() => void submit(false)}
+            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+          >
+            {saving ? "กำลังบันทึก…" : "บันทึกรอ Convert"}
+          </button>
           <button
             type="button"
             disabled={saving || loadingCatalog || typedItems.length === 0}
             onClick={() => void submit(true)}
             className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-60"
           >
-            {saving
-              ? "กำลังบันทึก…"
-              : stockType === "SALE_ITEM"
-                ? "บันทึกและ Convert ทันที"
-                : "บันทึกและปรับสต๊อก"}
+            {saving ? "กำลังบันทึก…" : "บันทึกและ Convert ทันที"}
           </button>
         </div>
       </div>

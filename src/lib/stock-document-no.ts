@@ -37,11 +37,7 @@ function parseRunning(documentNo: string, prefix: string): number | null {
 async function collectDocumentNosWithPrefix(prefix: string): Promise<string[]> {
   const like = `${prefix}-%`;
   try {
-    const [movements, menuHist, nonMenuHist, stockLabels] = await Promise.all([
-      prisma.stockMovement.findMany({
-        where: { documentNo: { startsWith: like } },
-        select: { documentNo: true },
-      }),
+    const [menuHist, nonMenuHist, stockLabels] = await Promise.all([
       prisma.branchMenuItemStockHistory.findMany({
         where: { documentNo: { startsWith: like } },
         select: { documentNo: true },
@@ -56,7 +52,6 @@ async function collectDocumentNosWithPrefix(prefix: string): Promise<string[]> {
       }),
     ]);
     return [
-      ...movements.map((r) => r.documentNo),
       ...menuHist.map((r) => r.documentNo),
       ...nonMenuHist.map((r) => r.documentNo),
       ...stockLabels.map((r) => r.documentNo),
@@ -92,11 +87,7 @@ export async function generateStockDocumentNo(input: {
 export async function assertDocumentNoAvailable(documentNo: string): Promise<void> {
   const trimmed = documentNo.trim();
   try {
-    const [movement, menuHist, nonMenuHist, stockLabels] = await Promise.all([
-      prisma.stockMovement.findFirst({
-        where: { documentNo: trimmed },
-        select: { id: true },
-      }),
+    const [menuHist, nonMenuHist, stockLabels] = await Promise.all([
       prisma.branchMenuItemStockHistory.findFirst({
         where: { documentNo: trimmed },
         select: { id: true },
@@ -110,7 +101,7 @@ export async function assertDocumentNoAvailable(documentNo: string): Promise<voi
         select: { id: true },
       }),
     ]);
-    if (movement || menuHist || nonMenuHist || stockLabels) {
+    if (menuHist || nonMenuHist || stockLabels) {
       throw new StockError("เลขที่เอกสารนี้ถูกใช้แล้ว — กด Gen เพื่อสร้างเลขใหม่");
     }
   } catch (e) {

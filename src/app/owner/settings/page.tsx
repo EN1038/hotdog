@@ -8,7 +8,6 @@ import {
 import { logout } from "@/components/LoginForm";
 import { IconLogout } from "@/components/icons";
 import { BrandColorPicker } from "@/components/BrandColorPicker";
-import { PlatformSupportCard } from "@/components/PlatformSupportCard";
 import {
   OwnerAccountCards,
   OwnerShopMenuSection,
@@ -61,6 +60,7 @@ function OwnerSettingsInner() {
             ),
             kitchenEnabled: Boolean(subscription?.kitchenEnabled),
             bbqEnabled: Boolean(subscription?.bbqEnabled),
+            forSettings: true,
           })
         : [],
     [
@@ -220,6 +220,8 @@ function OwnerSettingsInner() {
           brandName={brandName}
           subscription={subscription}
           smsQuota={data?.smsQuota ?? null}
+          hideSmsQuota
+          hideSupport
         />
       ) : null}
 
@@ -276,11 +278,9 @@ function OwnerSettingsInner() {
         </div>
       ) : null}
 
-      <PlatformSupportCard />
-
       <button
         type="button"
-        onClick={() => logout("/owner/login")}
+        onClick={() => logout()}
         className="mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-4 text-[15px] font-extrabold text-red-600 shadow-sm"
       >
         <IconLogout size={20} />

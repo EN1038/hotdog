@@ -108,17 +108,10 @@ enum BranchOperatingMode {
   BBQ_WEIGH
 }
 
-/// STORE = หน้าร้านขาย; WAREHOUSE = สต๊อกกลาง (ไม่มีเมนูขาย)
+/// STORE = หน้าร้านขาย (legacy WAREHOUSE ถูกยุบแล้ว)
 enum BranchKind {
   STORE
   WAREHOUSE
-}
-
-/// How สต๊อกกลาง sends goods to store branches
-enum WarehouseIssueMode {
-  TRANSFER
-  ISSUE
-  BOTH
 }
 
 enum TableSessionStatus {
@@ -151,45 +144,6 @@ enum SmsSendStatus {
   SKIPPED
 }
 
-enum StockLocationType {
-  WAREHOUSE
-  BRANCH
-}
-
-enum StockType {
-  SALE_ITEM
-  CONSUMABLE
-  EQUIPMENT
-}
-
-enum StockMovementType {
-  RECEIVE
-  STOCK_IN
-  TRANSFER
-  SALE
-  FREE
-  DAMAGE
-  LOST
-  ADJUST
-  COUNT
-  RETURN
-  ISSUE
-  WASTE
-}
-
-enum StockTransferStatus {
-  PENDING
-  RECEIVED
-  CANCELLED
-}
-
-enum EquipmentStatus {
-  ACTIVE
-  DAMAGED
-  LOST
-  RETIRED
-}
-
 enum StockCountType {
   WEEKLY
   MONTHLY
@@ -200,31 +154,6 @@ enum StockCountStatus {
   DRAFT
   IN_PROGRESS
   COMPLETED
-  CANCELLED
-}
-
-enum PurchaseOrderStatus {
-  DRAFT
-  ORDERED
-  PARTIAL
-  RECEIVED
-  CANCELLED
-}
-
-enum StockTransferKind {
-  WAREHOUSE_TO_BRANCH
-  BRANCH_TO_BRANCH
-}
-
-enum KitchenProductionStatus {
-  COMPLETED
-  CANCELLED
-}
-
-enum BranchStockRequestStatus {
-  PENDING
-  FULFILLED
-  REJECTED
   CANCELLED
 }
 
@@ -257,13 +186,8 @@ model Admin {
   createdAt              DateTime           @default(now())
   brandMembers           BrandMember[]
   activityLogs           AdminActivityLog[]
-  stockMovements         StockMovement[]
-  stockTransfers         StockTransfer[]
-  stockCounts            StockCount[]
-  purchaseOrders         PurchaseOrder[]
+  branchStockSummaries   BranchStockSummary[]
   branchExpenses         BranchExpense[]
-  kitchenProductions     KitchenProduction[]
-  stockRequestsHandled   BranchStockRequest[] @relation("StockRequestFulfilledBy")
   confirmedSkewerOrders  SkewerOrder[]      @relation("SkewerOrderConfirmedByAdmin")
   closedTableSessions    TableSession[]     @relation("TableSessionClosedByAdmin")
   tableSessionLines      TableSessionLine[] @relation("TableSessionLineCreatedByAdmin")
@@ -298,7 +222,7 @@ model Brand {
   color              String             @default("#0B2A4A")
   /// How many queue tickets to print when opening a queue (1–5). 2 = shop + customer.
   queueTicketCopies  Int                @default(1)
-  /// Master switch: brand warehouse + branch stock features
+  /// Master switch: branch stock module (package permission)
   stockEnabled       Boolean            @default(false)
   /// When true, managers may push balances below zero
   allowNegativeStock Boolean            @default(false)
@@ -335,16 +259,7 @@ model Brand {
   members            BrandMember[]
   primaryAdmin       Admin?             @relation("BrandPrimaryAdmin", fields: [primaryAdminId], references: [id], onDelete: SetNull)
   activityLogs       AdminActivityLog[]
-  products           BrandProduct[]
-  stockLocations     StockLocation[]
-  stockMovements     StockMovement[]
-  stockTransfers     StockTransfer[]
-  stockCounts        StockCount[]
-  suppliers            Supplier[]
-  purchaseOrders       PurchaseOrder[]
-  stockLots            StockLot[]
-  kitchenProductions   KitchenProduction[]
-  branchStockRequests  BranchStockRequest[]
+  branchStockSummaries BranchStockSummary[]
   invoices             BrandInvoice[]
   smsSendLogs          SmsSendLog[]
   printLayouts         BrandPrintLayout[]
@@ -468,7 +383,30 @@ model SiteSettings {
   lineAdminRichMenuId         String?
   /// Default rich menu for guests (login / help) before admin link
   lineGuestRichMenuId         String?
+  /// Default trial length for new self-register / trial brands (days)
+  defaultTrialDays            Int      @default(7)
   updatedAt                   DateTime @updatedAt
+}
+
+/**
+ * Platform-managed subscription tier presets (maps to BrandPlan enum).
+ */
+model BrandPlanConfig {
+  id              String    @id @default(cuid())
+  plan            BrandPlan @unique
+  label           String
+  hint            String    @default("")
+  priceBaht       Int       @default(0)
+  maxBranches     Int       @default(1)
+  maxStaff        Int       @default(2)
+  stockEnabled    Boolean   @default(false)
+  kitchenEnabled  Boolean   @default(false)
+  bbqEnabled      Boolean   @default(false)
+  skewerEnabled   Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 /**
@@ -480,6 +418,14 @@ model RestaurantType {
   name      String
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
+  /// Show in owner self-register category step
+  showInOwnerRegister      Boolean              @default(false)
+  /// Short hint under the label on /owner/register
+  ownerRegisterHint        String?
+  ownerRegisterPlan        BrandPlan            @default(RETAIL)
+  ownerRegisterOperatingMode BranchOperatingMode @default(NORMAL)
+  /// Offer malawaiwai template import during self-register
+  offersMasterImport       Boolean              @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -520,12 +466,8 @@ model Branch {
   isHidden                     Boolean                      @default(false)
   /// Sandbox / QA branch for the brand — show “ทดลอง” badge; not production ops
   isTest                       Boolean                      @default(false)
-  /// STORE = ขายหน้าร้าน; WAREHOUSE = สต๊อกกลาง (ตั้งชื่อ + สิทธิ์พนักงาน ได้เหมือนสาขา)
+  /// STORE = หน้าร้านขาย
   kind                         BranchKind                   @default(STORE)
-  /// WAREHOUSE only: โอนรอรับ / จ่ายออกทันที / ทั้งสอง
-  warehouseIssueMode           WarehouseIssueMode           @default(TRANSFER)
-  /// WAREHOUSE only: empty = ทุกสาขาขาย; otherwise only these store branch ids
-  warehouseAllowedBranchIds    String[]                     @default([])
   /**
    * @deprecated Prefer storefrontHours / deliveryHours
    */
@@ -566,10 +508,7 @@ model Branch {
   shareCodes                   BranchShareCode[]
   lineDailySummaries           LineDailySummaryLog[]
   activityLogs                 AdminActivityLog[]
-  stockLocations               StockLocation[]
-  stockTransfersIn             StockTransfer[]              @relation("StockTransferDestination")
-  stockTransfersOut            StockTransfer[]              @relation("StockTransferSource")
-  stockCounts                  StockCount[]
+  branchStockSummaries         BranchStockSummary[]
   branchMenuItemStocks         BranchMenuItemStock[]
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
   branchMenuItemParStocks      BranchMenuItemParStock[]
@@ -578,7 +517,6 @@ model Branch {
   tomorrowPlans                BranchTomorrowPlan[]
   branchNonMenuItems           BranchNonMenuItem[]
   expenses                     BranchExpense[]
-  stockRequests                BranchStockRequest[]
   smsSendLogs                  SmsSendLog[]
   stockLabels                  StockLabel[]
   sourceStockLabels            StockLabel[]                 @relation("StockLabelSource")
@@ -614,7 +552,7 @@ model BranchShift {
   openedByStaff   Staff?       @relation("ShiftOpenedByStaff", fields: [openedByStaffId], references: [id], onDelete: SetNull)
   closedByStaff   Staff?       @relation("ShiftClosedByStaff", fields: [closedByStaffId], references: [id], onDelete: SetNull)
   orders          Order[]
-  stockCounts     StockCount[]
+  branchStockSummaries BranchStockSummary[]
   expenses        BranchExpense[]
 
   @@unique([branchId, calendarDate, roundNumber])
@@ -643,13 +581,10 @@ model Staff {
   createdOrders                Order[]                      @relation("OrderCreatedByStaff")
   openedShifts                 BranchShift[]                @relation("ShiftOpenedByStaff")
   closedShifts                 BranchShift[]                @relation("ShiftClosedByStaff")
-  receivedTransfers            StockTransfer[]              @relation("StockTransferReceivedBy")
-  stockMovements               StockMovement[]              @relation("StockMovementByStaff")
-  stockCounts                  StockCount[]                 @relation("StockCountByStaff")
   branchMenuItemStockHistories BranchMenuItemStockHistory[]
+  branchStockSummaries         BranchStockSummary[]         @relation("BranchStockSummaryByStaff")
   branchNonMenuItemHistories   BranchNonMenuItemHistory[]
   expenses                     BranchExpense[]
-  stockRequests                BranchStockRequest[]
   createdStockLabels           StockLabel[]                 @relation("StockLabelCreatedBy")
   consumedStockLabels          StockLabel[]                 @relation("StockLabelConsumedBy")
   receivedStockLabels          StockLabel[]                 @relation("StockLabelReceivedBy")
@@ -739,14 +674,11 @@ model BranchMenuItem {
   sellFry                      Boolean                      @default(false)
   /// Capability: shabu / hotpot
   sellShabu                    Boolean                      @default(false)
-  /// Link to brand SKU for quantity stock (null = manual sold-out only)
-  brandProductId               String?
   sortOrder                    Int                          @default(0)
   createdAt                    DateTime                     @default(now())
   updatedAt                    DateTime                     @updatedAt
   branch                       Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   category                     MenuCategory?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  brandProduct                 BrandProduct?                @relation(fields: [brandProductId], references: [id], onDelete: SetNull)
   optionGroupLinks             BranchMenuItemOptionGroup[]
   optionGroupMenuSources       BranchOptionGroupMenuItem[]
   orderItems                   OrderItem[]
@@ -759,7 +691,6 @@ model BranchMenuItem {
   tomorrowPlanLines            BranchTomorrowPlanLine[]
   stockLabels                  StockLabel[]
 
-  @@index([brandProductId])
   @@unique([branchId, itemCode])
 }
 
@@ -1106,7 +1037,6 @@ model Order {
   shift              BranchShift?      @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   items              OrderItem[]
   consumableLines    OrderConsumableLine[]
-  stockMovements     StockMovement[]
 
   @@unique([branchId, queueBusinessDate, queueNumber])
   @@index([branchId, queueBusinessDate])
@@ -1292,189 +1222,12 @@ model OrderItem {
   branchMenuItem   BranchMenuItem? @relation(fields: [branchMenuItemId], references: [id], onDelete: SetNull)
 }
 
-/// Brand-level SKU for SALE_ITEM / CONSUMABLE / EQUIPMENT
-model BrandProduct {
-  id                 String              @id @default(cuid())
-  brandId            String
-  sku                String?
-  barcode            String?
-  name               String
-  stockType          StockType           @default(SALE_ITEM)
-  category           String?
-  imageUrl           String?
-  description        String?
-  unit               String              @default("ชิ้น")
-  trackStock         Boolean             @default(true)
-  trackLots          Boolean             @default(false)
-  lowStockAlert      Int?
-  /** อายุเก็บ (วัน) หลังวันผลิต — ค่าเริ่มต้นตอนนำเข้า; null = ใช้ 5 */
-  defaultShelfLifeDays Int?              @default(5)
-  costPrice          Decimal?            @db.Decimal(10, 2)
-  sellingPrice       Decimal?            @db.Decimal(10, 2)
-  isActive           Boolean             @default(true)
-  equipmentStatus    EquipmentStatus?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  brand              Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  balances           StockBalance[]
-  movements          StockMovement[]
-  menuItems          BranchMenuItem[]
-  transfers          StockTransfer[]
-  countLines         StockCountLine[]
-  lots               StockLot[]
-  purchaseOrderLines PurchaseOrderLine[]
-  recipeLines          ProductRecipeLine[] @relation("RecipeParent")
-  usedInRecipes        ProductRecipeLine[] @relation("RecipeComponent")
-  kitchenProductions   KitchenProduction[]
-  kitchenComponents    KitchenProductionComponent[]
-  branchStockRequests  BranchStockRequest[]
-
-  @@unique([brandId, name])
-  @@index([brandId, stockType])
-  @@index([brandId, isActive])
-  @@index([brandId, barcode])
-}
-
-model StockLocation {
-  id             String            @id @default(cuid())
-  brandId        String
-  type           StockLocationType
-  branchId       String?
-  name           String
-  createdAt      DateTime          @default(now())
-  brand          Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  branch         Branch?           @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  balances       StockBalance[]
-  movementsFrom  StockMovement[]   @relation("StockMovementFrom")
-  movementsTo    StockMovement[]   @relation("StockMovementTo")
-  movementsAt    StockMovement[]   @relation("StockMovementAt")
-  counts         StockCount[]
-  lots           StockLot[]
-  purchaseOrders PurchaseOrder[]
-  kitchenProductions KitchenProduction[]
-
-  @@unique([branchId])
-  @@index([brandId, type])
-}
-
-model StockBalance {
-  id              String        @id @default(cuid())
-  stockLocationId String
-  brandProductId  String
-  quantity        Int           @default(0)
-  updatedAt       DateTime      @updatedAt
-  location        StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Cascade)
-  product         BrandProduct  @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
-
-  @@unique([stockLocationId, brandProductId])
-  @@index([brandProductId])
-}
-
-model StockLot {
-  id              String          @id @default(cuid())
-  brandId         String
-  brandProductId  String
-  stockLocationId String
-  lotNumber       String
-  expiresAt       DateTime?
-  quantity        Int             @default(0)
-  unitCost        Decimal?        @db.Decimal(10, 2)
-  receivedAt      DateTime        @default(now())
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  brand           Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  product         BrandProduct    @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
-  location        StockLocation   @relation(fields: [stockLocationId], references: [id], onDelete: Cascade)
-  movements       StockMovement[]
-
-  @@unique([stockLocationId, brandProductId, lotNumber])
-  @@index([brandId, expiresAt])
-  @@index([brandProductId, expiresAt])
-}
-
-model StockMovement {
-  id               String            @id @default(cuid())
-  brandId          String
-  brandProductId   String
-  type             StockMovementType
-  quantity         Int
-  beforeQty        Int?
-  afterQty         Int?
-  unitCost         Decimal?          @db.Decimal(10, 2)
-  totalCost        Decimal?          @db.Decimal(10, 2)
-  supplier         String?
-  stockLocationId  String?
-  fromLocationId   String?
-  toLocationId     String?
-  orderId          String?
-  referenceType    String?
-  referenceId      String?
-  note             String?
-  imageUrl         String?
-  lotId            String?
-  lotNumber        String?
-  expiresAt        DateTime?
-  /// User-facing document number (IN-/OUT- prefix); one bill may share across lines
-  documentNo       String?
-  createdByAdminId String?
-  createdByStaffId String?
-  createdAt        DateTime          @default(now())
-  brand            Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  product          BrandProduct      @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
-  stockLocation    StockLocation?    @relation("StockMovementAt", fields: [stockLocationId], references: [id], onDelete: SetNull)
-  fromLocation     StockLocation?    @relation("StockMovementFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
-  toLocation       StockLocation?    @relation("StockMovementTo", fields: [toLocationId], references: [id], onDelete: SetNull)
-  order            Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  lot              StockLot?         @relation(fields: [lotId], references: [id], onDelete: SetNull)
-  createdByAdmin   Admin?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  createdByStaff   Staff?            @relation("StockMovementByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
-
-  @@index([brandId, createdAt])
-  @@index([orderId])
-  @@index([brandProductId, createdAt])
-  @@index([stockLocationId, createdAt])
-  @@index([type, createdAt])
-  @@index([lotId])
-}
-
-model StockTransfer {
-  id                String              @id @default(cuid())
-  brandId           String
-  kind              StockTransferKind   @default(WAREHOUSE_TO_BRANCH)
-  branchId          String
-  sourceBranchId    String?
-  brandProductId    String
-  quantity          Int
-  status            StockTransferStatus @default(PENDING)
-  note              String?
-  lotNumber         String?
-  expiresAt         DateTime?
-  createdByAdminId  String?
-  receivedByStaffId String?
-  receivedQuantity  Int?
-  varianceQuantity  Int?
-  varianceNote      String?
-  createdAt         DateTime            @default(now())
-  receivedAt        DateTime?
-  brand             Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  branch            Branch              @relation("StockTransferDestination", fields: [branchId], references: [id], onDelete: Cascade)
-  sourceBranch      Branch?             @relation("StockTransferSource", fields: [sourceBranchId], references: [id], onDelete: SetNull)
-  product           BrandProduct        @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
-  createdByAdmin    Admin?              @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  receivedByStaff   Staff?              @relation("StockTransferReceivedBy", fields: [receivedByStaffId], references: [id], onDelete: SetNull)
-
-  @@index([branchId, status, createdAt])
-  @@index([sourceBranchId, status])
-  @@index([brandId, status, createdAt])
-  @@index([brandProductId])
-}
-
-model StockCount {
+/// Staff/admin stock summary documents at a branch (line items stored in note JSON)
+model BranchStockSummary {
   id               String           @id @default(cuid())
   brandId          String
-  branchId         String?
+  branchId         String
   shiftId          String?
-  stockLocationId  String
   name             String
   type             StockCountType   @default(CUSTOM)
   status           StockCountStatus @default(DRAFT)
@@ -1486,181 +1239,14 @@ model StockCount {
   completedAt      DateTime?
   createdAt        DateTime         @default(now())
   brand            Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  branch           Branch?          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch           Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
   shift            BranchShift?     @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  location         StockLocation    @relation(fields: [stockLocationId], references: [id], onDelete: Cascade)
   createdByAdmin   Admin?           @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  createdByStaff   Staff?           @relation("StockCountByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
-  lines            StockCountLine[]
+  createdByStaff   Staff?           @relation("BranchStockSummaryByStaff", fields: [createdByStaffId], references: [id], onDelete: SetNull)
 
   @@index([brandId, status, createdAt])
   @@index([branchId, status])
   @@index([shiftId])
-  @@index([stockLocationId])
-}
-
-model StockCountLine {
-  id             String       @id @default(cuid())
-  countId        String
-  brandProductId String
-  systemQty      Int
-  countedQty     Int?
-  openingQty     Int?
-  addedQty       Int?
-  salesQty       Int?
-  wasteQty       Int?
-  expectedQty    Int?
-  varianceQty    Int?
-  varianceReason String?
-  note           String?
-  count          StockCount   @relation(fields: [countId], references: [id], onDelete: Cascade)
-  product        BrandProduct @relation(fields: [brandProductId], references: [id], onDelete: Cascade)
-
-  @@unique([countId, brandProductId])
-  @@index([brandProductId])
-}
-
-model Supplier {
-  id             String          @id @default(cuid())
-  brandId        String
-  code           String?
-  name           String
-  phone          String?
-  email          String?
-  address        String?
-  note           String?
-  isActive       Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  brand          Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  purchaseOrders PurchaseOrder[]
-
-  @@unique([brandId, name])
-  @@index([brandId, isActive])
-}
-
-model PurchaseOrder {
-  id               String              @id @default(cuid())
-  brandId          String
-  supplierId       String
-  stockLocationId  String?
-  orderNumber      String
-  status           PurchaseOrderStatus @default(DRAFT)
-  expectedAt       DateTime?
-  note             String?
-  orderedAt        DateTime?
-  receivedAt       DateTime?
-  createdByAdminId String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  brand            Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  supplier         Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  location         StockLocation?      @relation(fields: [stockLocationId], references: [id], onDelete: SetNull)
-  createdByAdmin   Admin?              @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  lines            PurchaseOrderLine[]
-
-  @@unique([brandId, orderNumber])
-  @@index([brandId, status, createdAt])
-  @@index([supplierId])
-}
-
-model PurchaseOrderLine {
-  id               String        @id @default(cuid())
-  purchaseOrderId  String
-  brandProductId   String
-  quantityOrdered  Int
-  quantityReceived Int           @default(0)
-  unitCost         Decimal?      @db.Decimal(10, 2)
-  note             String?
-  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  product          BrandProduct  @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
-
-  @@unique([purchaseOrderId, brandProductId])
-  @@index([brandProductId])
-}
-
-model ProductRecipeLine {
-  id                 String       @id @default(cuid())
-  parentProductId    String
-  componentProductId String
-  quantityPerUnit    Decimal      @db.Decimal(12, 4)
-  note               String?
-  createdAt          DateTime     @default(now())
-  parent             BrandProduct @relation("RecipeParent", fields: [parentProductId], references: [id], onDelete: Cascade)
-  component          BrandProduct @relation("RecipeComponent", fields: [componentProductId], references: [id], onDelete: Restrict)
-
-  @@unique([parentProductId, componentProductId])
-  @@index([componentProductId])
-}
-
-/// Kitchen prep run: raw materials → finished skewers/sale items at warehouse
-model KitchenProduction {
-  id                  String                   @id @default(cuid())
-  brandId             String
-  stockLocationId     String
-  finishedProductId   String
-  /// Usable finished units added to warehouse stock
-  quantityProduced    Int
-  /// Finished units damaged during prep (not stocked)
-  quantityWasted      Int                      @default(0)
-  status              KitchenProductionStatus  @default(COMPLETED)
-  note                String?
-  lotNumber           String?
-  completedAt         DateTime                 @default(now())
-  createdByAdminId    String?
-  createdAt           DateTime                 @default(now())
-  brand               Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  location            StockLocation            @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
-  finishedProduct     BrandProduct             @relation(fields: [finishedProductId], references: [id], onDelete: Restrict)
-  createdByAdmin      Admin?                   @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  components          KitchenProductionComponent[]
-
-  @@index([brandId, completedAt])
-  @@index([finishedProductId, completedAt])
-  @@index([status, completedAt])
-}
-
-model KitchenProductionComponent {
-  id               String             @id @default(cuid())
-  productionId     String
-  brandProductId   String
-  /// Planned from recipe × (produced + waste)
-  quantityPlanned  Int
-  /// Actually deducted
-  quantityUsed     Int
-  production       KitchenProduction  @relation(fields: [productionId], references: [id], onDelete: Cascade)
-  product          BrandProduct       @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
-
-  @@unique([productionId, brandProductId])
-  @@index([brandProductId])
-}
-
-/// Branch asks kitchen/HQ for finished goods before production/shipping
-model BranchStockRequest {
-  id                 String                   @id @default(cuid())
-  brandId            String
-  branchId           String
-  brandProductId     String
-  quantityRequested  Int
-  quantityFulfilled  Int                      @default(0)
-  status             BranchStockRequestStatus @default(PENDING)
-  note               String?
-  adminNote          String?
-  requestedByStaffId String?
-  fulfilledByAdminId String?
-  transferId         String?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-  fulfilledAt        DateTime?
-  brand              Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  branch             Branch                   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  product            BrandProduct             @relation(fields: [brandProductId], references: [id], onDelete: Restrict)
-  requestedByStaff   Staff?                   @relation(fields: [requestedByStaffId], references: [id], onDelete: SetNull)
-  fulfilledByAdmin   Admin?                   @relation("StockRequestFulfilledBy", fields: [fulfilledByAdminId], references: [id], onDelete: SetNull)
-
-  @@index([brandId, status, createdAt])
-  @@index([branchId, status, createdAt])
-  @@index([brandProductId])
 }
 
 model BranchNonMenuItem {
@@ -1778,7 +1364,6 @@ model StockLabel {
   lotNumber          String
   menuItemId         String?
   nonMenuItemId      String?
-  brandProductId     String?
   productName        String
   productCode        String
   brandName          String?

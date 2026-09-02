@@ -17,9 +17,6 @@ import type {
   HqDailyPoint,
   HqMenuCompareRow,
 } from "@/lib/admin-hq-overview";
-import type { WarehouseStockFlow } from "@/lib/warehouse-stock-flow";
-import { WarehouseStockFlowCard } from "@/components/merchant/WarehouseStockFlowCard";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 export type StockFlowBranchMeta = {
   id: string;
@@ -43,7 +40,6 @@ export type StockFlowAnalyticsData = {
   branches: HqBranchRow[];
   daily?: HqDailyPoint[];
   menuCompare?: HqMenuCompareRow[];
-  warehouseFlow?: WarehouseStockFlow | null;
 };
 
 type SortKey =
@@ -555,17 +551,6 @@ export function StockFlowAnalyticsPanel({
 
   return (
     <div className={`space-y-3 ${loading ? "opacity-70" : ""}`}>
-      {WAREHOUSE_UI_ENABLED && data?.warehouseFlow?.enabled ? (
-        <>
-          <WarehouseStockFlowCard
-            data={data.warehouseFlow}
-            branchName={filterBranchName}
-          />
-          <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-            สาขาขาย · ไม่รวมสต๊อกกลาง
-          </p>
-        </>
-      ) : null}
       <section className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:thin]">
         <div className="flex w-max min-w-full gap-2">
           {(

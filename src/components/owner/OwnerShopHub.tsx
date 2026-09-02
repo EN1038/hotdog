@@ -12,7 +12,6 @@ import {
 import { useToast } from "@/components/admin/Toast";
 import { PlatformSupportCard } from "@/components/PlatformSupportCard";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 function formatDateLabel(iso: string | null) {
@@ -186,11 +185,16 @@ export function OwnerAccountCards({
   brandName,
   subscription,
   smsQuota,
+  hideSmsQuota,
+  hideSupport,
 }: {
   brandId: string;
   brandName: string;
   subscription: OwnerSubscriptionInfo | null;
   smsQuota?: BrandSmsQuotaSnapshot | null;
+  /** ซ่อนเมื่อแสดงโควตา SMS / ติดต่อ LINE ในส่วนแจ้งเตือนแล้ว */
+  hideSmsQuota?: boolean;
+  hideSupport?: boolean;
 }) {
   if (!subscription) return null;
 
@@ -405,11 +409,11 @@ export function OwnerAccountCards({
         </Link>
       </div>
 
-      {smsQuota ? (
+      {smsQuota && !hideSmsQuota ? (
         <OwnerSmsQuotaCard quota={smsQuota} />
       ) : null}
 
-      <PlatformSupportCard />
+      {!hideSupport ? <PlatformSupportCard /> : null}
     </section>
   );
 }
@@ -420,9 +424,19 @@ export function buildOwnerShopLinks(input: {
   stockEnabled: boolean;
   kitchenEnabled: boolean;
   bbqEnabled: boolean;
+  forSettings?: boolean;
 }): OwnerShopLink[] {
   const groups = buildOwnerShopLinkGroups(input);
-  return [...groups.setup, ...groups.stock, ...groups.more];
+  if (!input.forSettings) {
+    return [...groups.setup, ...groups.stock, ...groups.more];
+  }
+  const hiddenSetup = new Set([
+    "รวมทุกสาขา",
+    "รอบขาย",
+    "ค่าใช้จ่าย",
+    "โต๊ะ / BBQ",
+  ]);
+  return groups.setup.filter((l) => !hiddenSetup.has(l.label));
 }
 
 /** แยกเมนูร้าน: ตั้งค่า · สต๊อก · อื่นๆ */
@@ -489,14 +503,6 @@ export function buildOwnerShopLinkGroups(input: {
     }
   }
 
-  if (kitchenEnabled && WAREHOUSE_UI_ENABLED) {
-    setup.push({
-      href: `/admin/brands/${brandId}/kitchen`,
-      label: "ครัว / ผลิต",
-      hint: "ผลิตและจัดส่งตามคำขอสาขา",
-    });
-  }
-
   const stock: OwnerShopLink[] = [];
   if (stockEnabled) {
     if (firstBranchId) {
@@ -532,13 +538,6 @@ export function buildOwnerShopLinkGroups(input: {
       label: "วิเคราะห์สต๊อก",
       hint: "รับเข้า · ขาย · เสีย · เทียบสาขา",
     });
-    if (WAREHOUSE_UI_ENABLED) {
-      stock.push({
-        href: "/owner/stock",
-        label: "สต๊อกกลาง",
-        hint: "นำเข้า · จ่ายออก · สินค้าขาย/สิ้นเปลือง/อุปกรณ์",
-      });
-    }
     stock.push({
       href: "/owner/aging",
       label: "ค้างอายุ",

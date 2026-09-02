@@ -1091,7 +1091,7 @@ export function PlatformBrandsHome() {
         onClose={closeModal}
         busy={creating}
         title="สร้างแบรนด์ใหม่"
-        description="กรอกให้จบในหน้านี้ — เริ่ม Retail ทดลอง 30 วัน ปรับแพ็กทีหลังได้"
+        description="กรอกให้จบในหน้านี้ — เริ่ม Retail ทดลอง 7 วัน ปรับแพ็กทีหลังได้"
         maxWidthClassName="max-w-2xl"
       >
         <form onSubmit={createBrand} className="p-5">
@@ -1474,7 +1474,7 @@ export function PlatformBrandsHome() {
                       }`}
                     >
                       สาขา {preset.maxBranches} · พนักงาน {preset.maxStaff}
-                      {preset.stockEnabled ? " · สต็อกรวม" : ""}
+                      {preset.stockEnabled ? " · สต็อกสาขา" : ""}
                     </p>
                     <p
                       className={`mt-1 text-[11px] leading-snug ${

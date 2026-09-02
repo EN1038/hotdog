@@ -103,7 +103,6 @@ function mapDetailLine(line: {
     imageUrl: string | null;
     itemCode: string | null;
     category: { name: string } | null;
-    brandProduct: { sku: string | null; barcode: string | null } | null;
   };
 }): TomorrowPlanDetailLine {
   return {
@@ -112,7 +111,6 @@ function mapDetailLine(line: {
     productCode: resolveMenuItemProductCode({
       id: line.menuItem.id,
       itemCode: line.menuItem.itemCode,
-      brandProduct: line.menuItem.brandProduct,
     }),
     hasManualItemCode: isManualMenuItemCode({
       itemCode: line.menuItem.itemCode,
@@ -374,7 +372,6 @@ export async function getTomorrowPlanDetail(input: {
             imageUrl: true,
             itemCode: true,
             category: { select: { name: true } },
-            brandProduct: { select: { sku: true, barcode: true } },
           },
         },
       },

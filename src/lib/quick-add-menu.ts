@@ -63,34 +63,6 @@ function templateNamesForHint(hint: string | null, itemName: string): string[] {
   return [...BALL_TEMPLATES, ...SEAFOOD_TEMPLATES];
 }
 
-async function ensureBrandProduct(
-  brandId: string,
-  name: string,
-  price: number,
-  category: string | null,
-) {
-  const existing = await prisma.brandProduct.findFirst({
-    where: { brandId, name, stockType: "SALE_ITEM" },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
-
-  const created = await prisma.brandProduct.create({
-    data: {
-      brandId,
-      name,
-      stockType: "SALE_ITEM",
-      unit: "ชิ้น",
-      sellingPrice: price,
-      trackStock: true,
-      isActive: true,
-      category: category ?? undefined,
-    },
-    select: { id: true },
-  });
-  return created.id;
-}
-
 async function findTemplate(
   branchId: string,
   names: string[],
@@ -179,24 +151,16 @@ async function addToOneBranch(opts: {
   name: string;
   price: number;
   categoryHint: string | null;
-  brandProductId: string | null;
   templateNames: string[];
 }): Promise<QuickAddBranchResult> {
-  const { branch, name, price, categoryHint, brandProductId, templateNames } =
-    opts;
+  const { branch, name, price, categoryHint, templateNames } = opts;
 
   try {
     const existing = await prisma.branchMenuItem.findFirst({
       where: { branchId: branch.id, name, isHidden: false },
-      select: { id: true, brandProductId: true, stock: { select: { id: true } } },
+      select: { id: true, stock: { select: { id: true } } },
     });
     if (existing) {
-      if (brandProductId && existing.brandProductId !== brandProductId) {
-        await prisma.branchMenuItem.update({
-          where: { id: existing.id },
-          data: { brandProductId },
-        });
-      }
       if (branch.stockEnabled && !existing.stock) {
         await prisma.branchMenuItemStock.create({
           data: {
@@ -247,7 +211,6 @@ async function addToOneBranch(opts: {
         sortOrder,
         isHidden: false,
         hideFromStaff: false,
-        brandProductId,
       },
     });
 
@@ -345,13 +308,6 @@ export async function quickAddMenuToBranches(opts: {
     };
   }
 
-  const brandProductId = await ensureBrandProduct(
-    opts.brandId,
-    name,
-    price,
-    categoryHint,
-  );
-
   const results: QuickAddBranchResult[] = [];
   for (const branch of targets) {
     results.push(
@@ -365,7 +321,6 @@ export async function quickAddMenuToBranches(opts: {
         name,
         price,
         categoryHint,
-        brandProductId,
         templateNames,
       }),
     );

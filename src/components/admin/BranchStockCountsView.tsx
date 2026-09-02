@@ -13,6 +13,7 @@ import { AdminCreateStockCountSheet } from "@/components/admin/AdminCreateStockC
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { bangkokDateKey } from "@/lib/constants";
+import { isAutoAppliedNonSaleSummary } from "@/lib/stock-count-revert-shared";
 
 function downloadDataUrl(dataUrl: string, filename: string) {
   const a = document.createElement("a");
@@ -157,22 +158,19 @@ function displayStatusLabel(
   }
   if (status === "CANCELLED") return "ปฏิเสธแล้ว";
   if (status === "COMPLETED") {
-    if (stockType === "SALE_ITEM" && financial?.pendingAdminApply === false) {
-      return "Convert แล้ว";
+    if (financial?.source === "ADMIN" && financial?.pendingAdminApply === false) {
+      return "แอดมิน Convert แล้ว";
     }
-    if (
-      stockType === "SALE_ITEM" &&
-      financial?.pendingAdminApply == null &&
-      !financial?.lines?.some((l) => l.menuItemId)
-    ) {
-      return "ระบบเก่า (ปรับแล้ว)";
-    }
-    if (financial?.source === "ADMIN" && stockType !== "SALE_ITEM") {
-      return "แอดมินปรับแล้ว";
-    }
-    return stockType === "SALE_ITEM" ? "Convert แล้ว" : "บันทึกแล้ว";
+    return "Convert แล้ว";
   }
   return status;
+}
+
+function canRevertAutoAppliedSummary(
+  status: string,
+  note: string | null | undefined,
+): boolean {
+  return isAutoAppliedNonSaleSummary(status, note ?? null);
 }
 
 function inferCountStockType(
@@ -696,7 +694,7 @@ export function BranchStockCountsView({
       title: action === "apply" ? "Convert ยอดนับเป็น ADJUST?" : "ปฏิเสธสรุปยอด?",
       message:
         action === "apply"
-          ? "ระบบจะตั้งยอดเมนูขายตามจำนวนที่นับได้ และสร้างประวัติ ADJUST"
+          ? "ระบบจะตั้งยอดสต๊อกตามจำนวนที่นับได้ และสร้างประวัติ ADJUST"
           : "สรุปยอดนี้จะไม่ถูกนำไปปรับสต๊อก",
       confirmLabel: action === "apply" ? "Convert สต๊อก" : "ปฏิเสธ",
     });
@@ -724,6 +722,42 @@ export function BranchStockCountsView({
                 : ""
             }`
           : "ปฏิเสธสรุปยอดแล้ว",
+      );
+      await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function revertCount(countId: string) {
+    const ok = await confirm({
+      title: "ย้อนกลับรอ Convert?",
+      message:
+        "ระบบจะคืนยอดสต๊อกเป็นค่าก่อนสรุป (ตามคอลัมน์ระบบ) และเปลี่ยนสถานะเป็นรอ Convert — จากนั้นกด Convert อีกครั้งเมื่อพร้อม",
+      confirmLabel: "ย้อนกลับ",
+    });
+    if (!ok) return;
+    setBusyId(countId);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/stock/counts/${countId}/revert`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body.error || "ย้อนกลับไม่สำเร็จ");
+        return;
+      }
+      toast.success(
+        `ย้อนกลับรอ Convert แล้ว${
+          typeof body.restoredItemCount === "number"
+            ? ` · คืนยอด ${body.restoredItemCount} รายการ`
+            : ""
+        }`,
       );
       await load();
     } finally {
@@ -989,9 +1023,12 @@ export function BranchStockCountsView({
             const includesSales = stockType === "SALE_ITEM";
             const status = count.status || "COMPLETED";
             const canApply =
-              includesSales &&
               status === "IN_PROGRESS" &&
               Boolean(financialData?.lines?.length);
+            const canRevert = canRevertAutoAppliedSummary(
+              status,
+              count.note,
+            );
             const displayLines = getDisplayLines(
               count,
               stockType,
@@ -1025,12 +1062,14 @@ export function BranchStockCountsView({
                     financialData,
                   )
                 : null;
-            const statusLabel = displayStatusLabel(
-              status,
-              financialData,
-              stockType,
-              Boolean(count.createdByAdmin),
-            );
+            const statusLabel = canRevert
+              ? "ปรับอัตโนมัติ · ย้อนกลับได้"
+              : displayStatusLabel(
+                  status,
+                  financialData,
+                  stockType,
+                  Boolean(count.createdByAdmin),
+                );
             const salesTotal =
               (financialData?.cash || 0) + (financialData?.transfer || 0);
             const fromAdmin =
@@ -1100,6 +1139,18 @@ export function BranchStockCountsView({
 
                   {/* Always-visible actions for pending */}
                   <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                    {canRevert ? (
+                      <button
+                        type="button"
+                        disabled={busyId === count.id}
+                        onClick={() => void revertCount(count.id)}
+                        className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        {busyId === count.id
+                          ? "กำลังย้อนกลับ…"
+                          : "ย้อนกลับรอ Convert"}
+                      </button>
+                    ) : null}
                     {canApply ? (
                       <>
                         <button

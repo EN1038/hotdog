@@ -106,8 +106,6 @@ export async function importBranchCatalog(opts: {
   overwriteMenu?: boolean;
   includeLocations?: boolean;
   includeNonMenuItems?: boolean;
-  /** Remap brand-level SKU ids when cloning to another brand */
-  brandProductIdMap?: Map<string, string>;
   /** Keep source isOutOfStock flags (default resets to false) */
   preserveOutOfStock?: boolean;
   /** Keep source non-menu quantities (default resets to 0) */
@@ -119,7 +117,6 @@ export async function importBranchCatalog(opts: {
     overwriteMenu = false,
     includeLocations = false,
     includeNonMenuItems = false,
-    brandProductIdMap,
     preserveOutOfStock = false,
     preserveNonMenuQuantities = false,
   } = opts;
@@ -246,9 +243,6 @@ export async function importBranchCatalog(opts: {
         sellGrill: item.sellGrill,
         sellFry: item.sellFry,
         sellShabu: item.sellShabu,
-        brandProductId: item.brandProductId
-          ? (brandProductIdMap?.get(item.brandProductId) ?? item.brandProductId)
-          : null,
         sortOrder: item.sortOrder,
       },
     });

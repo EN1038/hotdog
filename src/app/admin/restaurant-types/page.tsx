@@ -29,6 +29,11 @@ type RestaurantType = {
   name: string;
   sortOrder: number;
   isActive: boolean;
+  showInOwnerRegister: boolean;
+  ownerRegisterHint: string | null;
+  ownerRegisterPlan: "RETAIL" | "WEIGH_TABLE" | "MALA" | "MULTI";
+  ownerRegisterOperatingMode: "NORMAL" | "SKEWER" | "BBQ_WEIGH";
+  offersMasterImport: boolean;
 };
 
 export default function RestaurantTypesPage() {
@@ -40,6 +45,7 @@ export default function RestaurantTypesPage() {
 
   const [types, setTypes] = useState<RestaurantType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLegacy, setShowLegacy] = useState(false);
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [codeManual, setCodeManual] = useState(false);
@@ -61,9 +67,35 @@ export default function RestaurantTypesPage() {
       setLoading(false);
       return;
     }
-    setTypes(await res.json());
+    const raw = (await res.json()) as Partial<RestaurantType>[];
+    setTypes(
+      raw.map((row) => ({
+        id: row.id!,
+        code: row.code!,
+        name: row.name!,
+        sortOrder: row.sortOrder ?? 0,
+        isActive: row.isActive ?? false,
+        showInOwnerRegister: row.showInOwnerRegister ?? false,
+        ownerRegisterHint: row.ownerRegisterHint ?? null,
+        ownerRegisterPlan: row.ownerRegisterPlan ?? "RETAIL",
+        ownerRegisterOperatingMode: row.ownerRegisterOperatingMode ?? "NORMAL",
+        offersMasterImport: row.offersMasterImport ?? false,
+      })),
+    );
     setLoading(false);
   }
+
+  const focusCodes = new Set([
+    "mala_hotpot",
+    "fish_ball",
+    "weigh_bbq",
+    "made_to_order",
+  ]);
+  const visibleTypes = types.filter((row) => {
+    if (showLegacy) return true;
+    return row.showInOwnerRegister || focusCodes.has(row.code);
+  });
+  const hiddenLegacyCount = types.length - visibleTypes.length;
 
   useEffect(() => {
     if (!loaded) return;
@@ -146,7 +178,7 @@ export default function RestaurantTypesPage() {
     <div>
       <AdminPageHeader
         title="ประเภทร้าน"
-        description="ใช้ตั้งค่าสาขาในหัวข้อประเภทหลัก / ประเภทรอง — ประเภทเดียวกันเลือกซ้ำกันไม่ได้"
+        description="ใช้ตั้งค่าสาขา (ประเภทหลัก/รอง) และเลือกประเภทที่แสดงตอนสมัคร owner — แนะนำขึ้นต้นชื่อด้วย «ร้าน» เช่น ร้านหมาล่า/ย่าง/ทอด/ชาบู"
       />
 
       <form
@@ -164,7 +196,7 @@ export default function RestaurantTypesPage() {
                 setCode(slugifyCode(e.target.value).replace(/-/g, "_"));
               }
             }}
-            placeholder="เช่น อาหารไทย"
+            placeholder="เช่น ร้านหมาล่า/ย่าง/ทอด/ชาบู"
             required
           />
         </div>
@@ -177,7 +209,7 @@ export default function RestaurantTypesPage() {
               setCodeManual(true);
               setCode(e.target.value.toLowerCase());
             }}
-            placeholder="thai"
+            placeholder="mala_hotpot"
             pattern="[a-z0-9_]+"
             required
           />
@@ -192,24 +224,45 @@ export default function RestaurantTypesPage() {
       {types.length === 0 ? (
         <AdminEmptyState
           title="ยังไม่มีประเภทร้าน"
-          description="เพิ่มประเภทด้านบน หรือรัน seed เพื่อใส่รายการเริ่มต้น"
+          description="เพิ่มประเภทด้านบน หรือรัน migration/seed"
         />
       ) : (
-        <div className={adminTableWrapClass}>
-          <table className={adminTableClass}>
+        <>
+          {hiddenLegacyCount > 0 ? (
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-slate-600">
+                แสดง {visibleTypes.length} ประเภทหลัก
+                {hiddenLegacyCount > 0
+                  ? ` · ซ่อนประเภทเก่า ${hiddenLegacyCount} รายการ`
+                  : ""}
+              </p>
+              <button
+                type="button"
+                className={btnOutline}
+                onClick={() => setShowLegacy((v) => !v)}
+              >
+                {showLegacy ? "ซ่อนประเภทเก่า" : "แสดงประเภทเก่า"}
+              </button>
+            </div>
+          ) : null}
+        <div className={`${adminTableWrapClass} overflow-x-auto`}>
+          <table className={`${adminTableClass} min-w-[960px]`}>
             <thead className={adminTheadClass}>
               <tr>
-                <th className="px-4 py-3">ชื่อ</th>
+                <th className="px-4 py-3">ชื่อ (แสดงตอนสมัคร)</th>
                 <th className="px-4 py-3">รหัส</th>
+                <th className="px-4 py-3">คำอธิบายสั้น</th>
                 <th className="px-4 py-3">ลำดับ</th>
-                <th className="px-4 py-3">สถานะ</th>
+                <th className="px-4 py-3">ใช้งาน</th>
+                <th className="px-4 py-3">สมัคร owner</th>
+                <th className="px-4 py-3">นำเข้าเมนู</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {types.map((row) => (
+              {visibleTypes.map((row) => (
                 <tr key={row.id} className={adminTrClass}>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 min-w-[220px]">
                     <input
                       className={adminInputClass}
                       defaultValue={row.name}
@@ -224,7 +277,22 @@ export default function RestaurantTypesPage() {
                   <td className="px-4 py-3 font-mono text-xs text-slate-600">
                     {row.code}
                   </td>
-                  <td className="px-4 py-3 w-24">
+                  <td className="px-4 py-3 min-w-[180px]">
+                    <input
+                      className={adminInputClass}
+                      defaultValue={row.ownerRegisterHint ?? ""}
+                      placeholder="คิวหน้าร้าน · ครัว · …"
+                      onBlur={(e) => {
+                        const next = e.target.value.trim();
+                        if (next !== (row.ownerRegisterHint ?? "")) {
+                          patchType(row.id, {
+                            ownerRegisterHint: next || null,
+                          });
+                        }
+                      }}
+                    />
+                  </td>
+                  <td className="px-4 py-3 w-20">
                     <input
                       type="number"
                       className={adminInputClass}
@@ -243,7 +311,26 @@ export default function RestaurantTypesPage() {
                       onChange={(next) =>
                         patchType(row.id, { isActive: next })
                       }
-                      label={row.isActive ? "ใช้งาน" : "ปิด"}
+                      label={row.isActive ? "เปิด" : "ปิด"}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <AdminToggle
+                      checked={row.showInOwnerRegister}
+                      onChange={(next) =>
+                        patchType(row.id, { showInOwnerRegister: next })
+                      }
+                      label={row.showInOwnerRegister ? "แสดง" : "ซ่อน"}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <AdminToggle
+                      checked={row.offersMasterImport}
+                      disabled={!row.showInOwnerRegister}
+                      onChange={(next) =>
+                        patchType(row.id, { offersMasterImport: next })
+                      }
+                      label={row.offersMasterImport ? "ได้" : "ไม่"}
                     />
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -260,6 +347,7 @@ export default function RestaurantTypesPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

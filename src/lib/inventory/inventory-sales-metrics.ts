@@ -57,7 +57,6 @@ export async function loadBranchMenuItemIdsForInventory(branchId: string) {
     include: {
       category: { select: { name: true, stockExempt: true } },
       stock: { select: { quantity: true, updatedAt: true } },
-      brandProduct: { select: { sku: true, barcode: true } },
       optionGroupLinks: {
         include: { group: { select: { mode: true } } },
       },

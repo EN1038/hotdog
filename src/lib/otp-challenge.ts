@@ -6,6 +6,7 @@ export const OTP_PURPOSES = [
   "staff",
   "owner",
   "owner_register",
+  "owner_alert_sms",
 ] as const;
 export type OtpPurpose = (typeof OTP_PURPOSES)[number];
 

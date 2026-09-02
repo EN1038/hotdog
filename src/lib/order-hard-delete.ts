@@ -56,8 +56,6 @@ export async function hardDeleteOrderWithStockRestore(
     await prisma.$transaction(async (tx: Tx) => {
       await restoreStockForOrder(orderId, tx);
 
-      await tx.stockMovement.deleteMany({ where: { orderId } });
-
       await tx.branchMenuItemStockHistory.deleteMany({
         where: { note: { contains: orderId } },
       });

@@ -2,18 +2,16 @@ import type { PrismaClient } from "@prisma/client";
 import { resolveSkewerMenuImageUrl } from "@/lib/skewer-order";
 
 export type BrandSkewerImageLookup = {
-  byProductId: Map<string, string>;
   byItemCode: Map<string, string>;
 };
 
 type MenuImageSource = {
   skewerImageUrl?: string | null;
   imageUrl?: string | null;
-  brandProductId?: string | null;
   itemCode?: string | null;
 };
 
-/** Load skewer photos from any branch in the brand (for stock hubs missing skewerImageUrl). */
+/** Load skewer photos from any branch in the brand. */
 export async function loadBrandSkewerImageLookup(
   prisma: PrismaClient,
   brandId: string,
@@ -25,28 +23,23 @@ export async function loadBrandSkewerImageLookup(
       NOT: { skewerImageUrl: "" },
     },
     select: {
-      brandProductId: true,
       itemCode: true,
       skewerImageUrl: true,
     },
   });
 
-  const byProductId = new Map<string, string>();
   const byItemCode = new Map<string, string>();
 
   for (const row of rows) {
     const url = row.skewerImageUrl?.trim();
     if (!url) continue;
-    if (row.brandProductId && !byProductId.has(row.brandProductId)) {
-      byProductId.set(row.brandProductId, url);
-    }
     const code = row.itemCode?.trim();
     if (code && !byItemCode.has(code)) {
       byItemCode.set(code, url);
     }
   }
 
-  return { byProductId, byItemCode };
+  return { byItemCode };
 }
 
 export function resolveMenuItemSkewerImageUrl(
@@ -57,10 +50,6 @@ export function resolveMenuItemSkewerImageUrl(
   if (own) return own;
 
   if (lookup) {
-    if (item.brandProductId) {
-      const fromProduct = lookup.byProductId.get(item.brandProductId);
-      if (fromProduct) return fromProduct;
-    }
     const code = item.itemCode?.trim();
     if (code) {
       const fromCode = lookup.byItemCode.get(code);

@@ -39,7 +39,6 @@ import {
   type StockOutboundPurpose,
 } from "@/lib/stock-outbound";
 import { StockDocumentNoField } from "@/components/stock/StockDocumentNoField";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   provisionalStockDocumentNo,
   type StockDocumentKind,
@@ -435,13 +434,6 @@ function StaffStockContent() {
   }, [openAsHistory, loading, data?.stockActive]);
 
   useEffect(() => {
-    if (!WAREHOUSE_UI_ENABLED) return;
-    if (!openAsPending || loading || !data?.stockActive) return;
-    setActionType("pending");
-    setMode("pending");
-  }, [openAsPending, loading, data?.stockActive]);
-
-  useEffect(() => {
     if (!openAsView || loading || !data?.stockActive) return;
     setActionType("view");
     setMode("items");
@@ -774,12 +766,6 @@ function StaffStockContent() {
     }
     if (action === "stock_in" || action === "issue") {
       startCreateFromHistory(action);
-      return;
-    }
-    if (action === "pending") {
-      if (!WAREHOUSE_UI_ENABLED) return;
-      setActionType("pending");
-      setMode("pending");
       return;
     }
     if (action === "summary") {
@@ -1569,24 +1555,6 @@ function StaffStockContent() {
                 </div>
                 <StaffPrepTipBanner />
                 <div className="space-y-4 mt-6">
-                  {WAREHOUSE_UI_ENABLED && (data.pending?.length ?? 0) > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => handleActionClick("pending")}
-                      className="w-full flex items-center justify-between rounded-2xl bg-teal-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
-                    >
-                      <div className="text-left">
-                        <h3 className="text-2xl font-black">มีของรอรับ</h3>
-                        <p className="mt-1 text-teal-100 text-sm">
-                          {data.pending.length} รายการ — กดเพื่อยืนยันรับเข้าสาขา
-                        </p>
-                      </div>
-                      <div className="rounded-full bg-white px-3 py-1.5 text-sm font-bold text-teal-800">
-                        {data.pending.length}
-                      </div>
-                    </button>
-                  ) : null}
-
                   {canConvertStockSummary && pendingConvertCount > 0 ? (
                     <button
                       type="button"
@@ -1744,76 +1712,6 @@ function StaffStockContent() {
                 initialTo={historyToParam}
                 openBatchId={historyBatchIdParam ?? pendingHistoryBatchId}
               />
-            ) : mode === "pending" && WAREHOUSE_UI_ENABLED ? (
-              <>
-                <div className="flex items-center gap-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={handleBack}
-                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
-                  >
-                    ← กลับ
-                  </button>
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-extrabold text-slate-900">
-                      รอรับของ
-                    </h2>
-                    <p className="text-xs font-semibold text-slate-600">
-                      {(data.pending?.length ?? 0).toLocaleString("th-TH")} รายการ
-                    </p>
-                  </div>
-                </div>
-                {(data.pending?.length ?? 0) === 0 ? (
-                  <div className="rounded-2xl bg-white p-5 text-center shadow-sm">
-                    <p className="text-sm font-bold text-slate-800">ไม่มีของรอรับ</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      เมื่อมีการส่งของมา จะโผล่ที่นี่ให้กดรับ
-                    </p>
-                  </div>
-                ) : (
-                  <ul className="space-y-3">
-                    {data.pending.map((row) => (
-                      <li
-                        key={row.id}
-                        className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-base font-extrabold text-slate-900">
-                              {row.product.productCode ? (
-                                <>
-                                  <MenuItemCodeBadge
-                                    code={row.product.productCode}
-                                    className="mr-1.5 align-middle text-xs"
-                                  />
-                                </>
-                              ) : null}
-                              {row.product.name}
-                            </p>
-                            <p className="mt-1 text-sm font-semibold text-teal-700">
-                              {row.quantity.toLocaleString("th-TH")} {row.product.unit}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {row.sourceBranch
-                                ? `จากสาขา ${row.sourceBranch.name}`
-                                : "จากคลัง"}
-                              {row.note ? ` · ${row.note}` : ""}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={receiveBusyId === row.id || busy}
-                            onClick={() => void confirmPendingReceive(row.id)}
-                            className="shrink-0 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                          >
-                            {receiveBusyId === row.id ? "กำลังรับ…" : "รับเข้า"}
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
             ) : mode === "summary" ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
@@ -2354,16 +2252,14 @@ function StaffStockContent() {
                             สรุปยอดสต๊อก · {summaryTypeLabel} · วันที่{" "}
                             {summaryTodayLabel} ·{" "}
                             {summaryItems.length.toLocaleString("th-TH")} รายการ
-                            — ระบบจะปรับยอดตามที่นับได้
+                            — ส่งให้แอดมินตรวจก่อน ระบบยังไม่ปรับสต๊อก
                           </>
                         )}
                       </p>
                       {summaryDiffItems.length > 0 ? (
                         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
                           มี {summaryDiffItems.length} รายการที่ยอดนับได้ต่างจากสต๊อกปัจจุบัน
-                          {summaryIncludesSales
-                            ? " — แอดมินจะปรับยอดเมื่อกด Convert"
-                            : " — ระบบจะปรับยอดตามที่นับได้"}
+                          {" — แอดมินจะปรับยอดเมื่อกด Convert"}
                         </p>
                       ) : null}
                       <div className="mt-6 flex gap-3">

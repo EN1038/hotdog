@@ -17,6 +17,7 @@ const branchPatchSchema = z.object({
 });
 
 const patchSchema = z.object({
+  notificationChannel: z.enum(["sms", "line"]).optional(),
   lineNotifyNewOrder: z.boolean().optional(),
   lineNotifySkewerOrder: z.boolean().optional(),
   lineNotifyDailySummary: z.boolean().optional(),
@@ -120,6 +121,25 @@ export async function PATCH(request: Request) {
     }
 
     const body = patchSchema.parse(await request.json());
+
+    if (body.notificationChannel === "line") {
+      await prisma.brand.update({
+        where: { id: brandId },
+        data: {
+          lineNotifyNewOrder: true,
+          lineNotifySkewerOrder: true,
+          lineNotifyDailySummary: true,
+        },
+      });
+      await prisma.branch.updateMany({
+        where: { brandId, isHidden: false },
+        data: {
+          alertSmsPhone: null,
+          smsNotifyNewOrder: false,
+          smsNotifySkewerOrder: false,
+        },
+      });
+    }
 
     if (
       body.lineNotifyNewOrder !== undefined ||

@@ -77,7 +77,7 @@ export async function GET(request: Request) {
     let resolvedSummaryId: string | null = null;
 
     if (idParam || nameParam) {
-      const found = await prisma.stockCount.findFirst({
+      const found = await prisma.branchStockSummary.findFirst({
         where: {
           branchId: session.branchId,
           status: { in: ["IN_PROGRESS", "COMPLETED", "CANCELLED"] },
@@ -105,7 +105,7 @@ export async function GET(request: Request) {
 
     const [shifts, counts, menuItems] = await Promise.all([
       listShiftsForBranchDate(session.branchId, dateStr),
-      prisma.stockCount.findMany({
+      prisma.branchStockSummary.findMany({
         where: {
           branchId: session.branchId,
           status: { in: ["IN_PROGRESS", "COMPLETED", "CANCELLED"] },

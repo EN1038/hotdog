@@ -226,7 +226,6 @@ export async function loadBranchTomorrowPlan(
       productCode: resolveMenuItemProductCode({
         id: menu.id,
         itemCode: menu.itemCode,
-        brandProduct: menu.brandProduct,
       }),
       hasManualItemCode: isManualMenuItemCode({ itemCode: menu.itemCode }),
       name: menu.name,

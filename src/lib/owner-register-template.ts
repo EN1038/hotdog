@@ -2,7 +2,6 @@ import { prisma } from "@/lib/db";
 import { importBranchCatalog } from "@/lib/branch-import";
 import { MALAWAIWAI_SOURCE_BRAND_CODE } from "@/lib/malawaiwai-demo-setup";
 import { OWNER_REGISTER_BILLING_NOTE } from "@/lib/owner-register-shared";
-import { ensureBranchStockLocation } from "@/lib/stock";
 
 export type RegisterTemplateBranch = {
   id: string;
@@ -25,42 +24,6 @@ const TEMPLATE_BRANCH_CODES = [
   () => "khlong-6-hnahmuban-demo",
   () => "main",
 ] as const;
-
-async function cloneBrandProducts(
-  sourceBrandId: string,
-  targetBrandId: string,
-): Promise<Map<string, string>> {
-  const products = await prisma.brandProduct.findMany({
-    where: { brandId: sourceBrandId },
-    orderBy: { createdAt: "asc" },
-  });
-  const map = new Map<string, string>();
-  for (const p of products) {
-    const created = await prisma.brandProduct.create({
-      data: {
-        brandId: targetBrandId,
-        sku: p.sku,
-        barcode: p.barcode,
-        name: p.name,
-        stockType: p.stockType,
-        category: p.category,
-        imageUrl: p.imageUrl,
-        description: p.description,
-        unit: p.unit,
-        trackStock: p.trackStock,
-        trackLots: p.trackLots,
-        lowStockAlert: p.lowStockAlert,
-        defaultShelfLifeDays: p.defaultShelfLifeDays,
-        costPrice: p.costPrice,
-        sellingPrice: p.sellingPrice,
-        isActive: p.isActive,
-        equipmentStatus: p.equipmentStatus,
-      },
-    });
-    map.set(p.id, created.id);
-  }
-  return map;
-}
 
 export async function resolveRegisterTemplateBranch(): Promise<RegisterTemplateBranch | null> {
   const envBranchId = process.env.OWNER_REGISTER_MENU_TEMPLATE_BRANCH_ID?.trim();
@@ -166,7 +129,6 @@ export type RegisterTemplateImportResult = {
   categories: number;
   nonMenuItems: number;
   locations: number;
-  brandProducts: number;
 };
 
 export async function importRegisterTemplateFromMalawaiwai(input: {
@@ -208,11 +170,6 @@ export async function importRegisterTemplateFromMalawaiwai(input: {
   }
   if (!resolved) return null;
 
-  const brandProductIdMap =
-    resolved.brandId === input.targetBrandId
-      ? new Map<string, string>()
-      : await cloneBrandProducts(resolved.brandId, input.targetBrandId);
-
   const includeExtras = input.importLevel !== "menu";
 
   const imported = await importBranchCatalog({
@@ -221,22 +178,9 @@ export async function importRegisterTemplateFromMalawaiwai(input: {
     overwriteMenu: false,
     includeLocations: includeExtras,
     includeNonMenuItems: includeExtras,
-    brandProductIdMap,
     preserveOutOfStock: false,
     preserveNonMenuQuantities: false,
   });
-
-  const branch = await prisma.branch.findUnique({
-    where: { id: input.targetBranchId },
-    select: { brandId: true, name: true },
-  });
-  if (branch?.brandId) {
-    await ensureBranchStockLocation({
-      brandId: branch.brandId,
-      branchId: input.targetBranchId,
-      branchName: input.targetBranchName || branch.name,
-    });
-  }
 
   return {
     sourceBranchName: resolved.name,
@@ -246,7 +190,6 @@ export async function importRegisterTemplateFromMalawaiwai(input: {
     nonMenuItems:
       imported.nonMenuItems.created + imported.nonMenuItems.updated,
     locations: imported.locations,
-    brandProducts: brandProductIdMap.size,
   };
 }
 
@@ -276,9 +219,6 @@ export async function syncOwnerRegisterTemplateIfEmpty(
     },
   });
   if (!branch || branch._count.menuItems > 0) return null;
-
-  const productCount = await prisma.brandProduct.count({ where: { brandId } });
-  if (!isSelfRegister && productCount > 0) return null;
 
   return importRegisterTemplateFromMalawaiwai({
     targetBrandId: brandId,

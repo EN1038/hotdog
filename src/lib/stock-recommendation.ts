@@ -61,7 +61,6 @@ export async function loadBranchStockRecommendations(input: {
     include: {
       category: true,
       stock: true,
-      brandProduct: { select: { sku: true, barcode: true } },
       optionGroupLinks: {
         include: { group: { select: { mode: true } } },
       },
@@ -152,7 +151,6 @@ export async function loadBranchStockRecommendations(input: {
       productCode: resolveMenuItemProductCode({
         id: item.id,
         itemCode: item.itemCode,
-        brandProduct: item.brandProduct,
       }),
       category: item.category?.name ?? null,
       imageUrl: item.imageUrl,

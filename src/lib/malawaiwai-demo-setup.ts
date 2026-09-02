@@ -2,14 +2,12 @@ import {
   BrandMemberRole,
   Prisma,
   StaffRole,
-  StockLocationType,
   type PrismaClient,
 } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { importBranchCatalog } from "@/lib/branch-import";
 import { hashAndSealPassword } from "@/lib/admin-password";
 import { normalizePhone } from "@/lib/constants";
-import { ensureBranchStockLocation } from "@/lib/stock";
 
 export const MALAWAIWAI_SOURCE_BRAND_CODE = "hma-la-hna-pak-sxy-phed-lin-cha";
 export const MALAWAIWAI_DEMO_BRAND_CODE = "malawaiwai-demo";
@@ -108,133 +106,19 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-async function cloneBrandProducts(
-  prisma: PrismaClient,
-  sourceBrandId: string,
-  targetBrandId: string,
-) {
-  const products = await prisma.brandProduct.findMany({
-    where: { brandId: sourceBrandId },
-    orderBy: { createdAt: "asc" },
-  });
-  const map = new Map<string, string>();
-  for (const p of products) {
-    const created = await prisma.brandProduct.create({
-      data: {
-        brandId: targetBrandId,
-        sku: p.sku,
-        barcode: p.barcode,
-        name: p.name,
-        stockType: p.stockType,
-        category: p.category,
-        imageUrl: p.imageUrl,
-        description: p.description,
-        unit: p.unit,
-        trackStock: p.trackStock,
-        trackLots: p.trackLots,
-        lowStockAlert: p.lowStockAlert,
-        defaultShelfLifeDays: p.defaultShelfLifeDays,
-        costPrice: p.costPrice,
-        sellingPrice: p.sellingPrice,
-        isActive: p.isActive,
-        equipmentStatus: p.equipmentStatus,
-      },
-    });
-    map.set(p.id, created.id);
-  }
-  return map;
-}
-
 async function cloneBranchStockCounts(
-  prisma: PrismaClient,
-  opts: {
+  _prisma: PrismaClient,
+  _opts: {
     sourceBrandId: string;
     targetBrandId: string;
     sourceBranchId: string;
     targetBranchId: string;
     targetBranchName: string;
-    brandProductIdMap: Map<string, string>;
     shiftIdMap: Map<string, string>;
     demoStaffId: string | null;
   },
 ) {
-  const {
-    sourceBrandId,
-    targetBrandId,
-    sourceBranchId,
-    targetBranchId,
-    targetBranchName,
-    brandProductIdMap,
-    shiftIdMap,
-    demoStaffId,
-  } = opts;
-
-  const sourceLocation = await prisma.stockLocation.findFirst({
-    where: { branchId: sourceBranchId },
-  });
-  if (!sourceLocation) {
-    return { stockCounts: 0, stockCountLines: 0 };
-  }
-
-  const targetLocation = await ensureBranchStockLocation(
-    {
-      brandId: targetBrandId,
-      branchId: targetBranchId,
-      branchName: targetBranchName,
-    },
-    prisma,
-  );
-
-  const counts = await prisma.stockCount.findMany({
-    where: { branchId: sourceBranchId, brandId: sourceBrandId },
-    include: { lines: true },
-    orderBy: { createdAt: "asc" },
-  });
-
-  let lineTotal = 0;
-  for (const count of counts) {
-    const lines = count.lines
-      .map((line) => {
-        const brandProductId = brandProductIdMap.get(line.brandProductId);
-        if (!brandProductId) return null;
-        return {
-          brandProductId,
-          systemQty: line.systemQty,
-          countedQty: line.countedQty,
-          openingQty: line.openingQty,
-          addedQty: line.addedQty,
-          salesQty: line.salesQty,
-          wasteQty: line.wasteQty,
-          expectedQty: line.expectedQty,
-          varianceQty: line.varianceQty,
-          varianceReason: line.varianceReason,
-          note: line.note,
-        };
-      })
-      .filter((row): row is NonNullable<typeof row> => row != null);
-
-    await prisma.stockCount.create({
-      data: {
-        brandId: targetBrandId,
-        branchId: targetBranchId,
-        shiftId: count.shiftId ? (shiftIdMap.get(count.shiftId) ?? null) : null,
-        stockLocationId: targetLocation.id,
-        name: count.name,
-        type: count.type,
-        status: count.status,
-        startsAt: count.startsAt,
-        endsAt: count.endsAt,
-        note: count.note,
-        completedAt: count.completedAt,
-        createdAt: count.createdAt,
-        createdByStaffId: demoStaffId,
-        lines: lines.length > 0 ? { create: lines } : undefined,
-      },
-    });
-    lineTotal += lines.length;
-  }
-
-  return { stockCounts: counts.length, stockCountLines: lineTotal };
+  return { stockCounts: 0, stockCountLines: 0 };
 }
 
 async function cloneSkewerOrders(
@@ -303,148 +187,17 @@ async function cloneSkewerOrders(
 }
 
 async function cloneBrandWarehouseStock(
-  prisma: PrismaClient,
-  opts: {
+  _prisma: PrismaClient,
+  _opts: {
     sourceBrandId: string;
     targetBrandId: string;
     sourceWarehouseBranchId: string;
     targetWarehouseBranchId: string;
     targetWarehouseName: string;
-    brandProductIdMap: Map<string, string>;
     branchIdMap: Map<string, string>;
   },
 ) {
-  const {
-    sourceBrandId,
-    targetBrandId,
-    sourceWarehouseBranchId,
-    targetWarehouseBranchId,
-    targetWarehouseName,
-    brandProductIdMap,
-    branchIdMap,
-  } = opts;
-
-  const locationIdMap = new Map<string, string>();
-  const sourceLocations = await prisma.stockLocation.findMany({
-    where: { brandId: sourceBrandId },
-  });
-
-  for (const loc of sourceLocations) {
-    let targetLocId: string | null = null;
-    if (loc.branchId === sourceWarehouseBranchId) {
-      let targetLoc = await prisma.stockLocation.findFirst({
-        where: { branchId: targetWarehouseBranchId },
-      });
-      if (!targetLoc) {
-        targetLoc = await prisma.stockLocation.create({
-          data: {
-            brandId: targetBrandId,
-            branchId: targetWarehouseBranchId,
-            type: StockLocationType.WAREHOUSE,
-            name: targetWarehouseName,
-          },
-        });
-      }
-      targetLocId = targetLoc.id;
-    } else if (loc.branchId) {
-      const demoBranchId = branchIdMap.get(loc.branchId);
-      if (demoBranchId) {
-        const demoBranch = await prisma.branch.findUnique({
-          where: { id: demoBranchId },
-          select: { name: true },
-        });
-        if (demoBranch) {
-          const targetLoc = await ensureBranchStockLocation(
-            {
-              brandId: targetBrandId,
-              branchId: demoBranchId,
-              branchName: demoBranch.name,
-            },
-            prisma,
-          );
-          targetLocId = targetLoc.id;
-        }
-      }
-    }
-    if (targetLocId) {
-      locationIdMap.set(loc.id, targetLocId);
-    }
-  }
-
-  const sourceWarehouseLoc = sourceLocations.find(
-    (l) => l.branchId === sourceWarehouseBranchId,
-  );
-  let balancesCopied = 0;
-  if (sourceWarehouseLoc) {
-    const targetLocId = locationIdMap.get(sourceWarehouseLoc.id);
-    if (targetLocId) {
-      const balances = await prisma.stockBalance.findMany({
-        where: { stockLocationId: sourceWarehouseLoc.id },
-      });
-      if (balances.length > 0) {
-        await prisma.stockBalance.createMany({
-          data: balances
-            .map((b) => {
-              const brandProductId = brandProductIdMap.get(b.brandProductId);
-              if (!brandProductId) return null;
-              return {
-                stockLocationId: targetLocId,
-                brandProductId,
-                quantity: b.quantity,
-              };
-            })
-            .filter((row): row is NonNullable<typeof row> => row != null),
-          skipDuplicates: true,
-        });
-        balancesCopied = balances.length;
-      }
-    }
-  }
-
-  const movements = await prisma.stockMovement.findMany({
-    where: { brandId: sourceBrandId },
-    orderBy: { createdAt: "asc" },
-  });
-
-  let movementsCopied = 0;
-  for (const move of movements) {
-    const brandProductId = brandProductIdMap.get(move.brandProductId);
-    if (!brandProductId) continue;
-
-    const mapLoc = (id: string | null | undefined) =>
-      id ? (locationIdMap.get(id) ?? null) : null;
-
-    await prisma.stockMovement.create({
-      data: {
-        brandId: targetBrandId,
-        brandProductId,
-        type: move.type,
-        quantity: move.quantity,
-        beforeQty: move.beforeQty,
-        afterQty: move.afterQty,
-        unitCost: move.unitCost,
-        totalCost: move.totalCost,
-        supplier: move.supplier,
-        stockLocationId: mapLoc(move.stockLocationId),
-        fromLocationId: mapLoc(move.fromLocationId),
-        toLocationId: mapLoc(move.toLocationId),
-        referenceType: move.referenceType,
-        referenceId: move.referenceId,
-        note: move.note,
-        imageUrl: move.imageUrl,
-        lotNumber: move.lotNumber,
-        expiresAt: move.expiresAt,
-        documentNo: move.documentNo,
-        createdAt: move.createdAt,
-      },
-    });
-    movementsCopied += 1;
-  }
-
-  return {
-    warehouseBalances: balancesCopied,
-    stockMovements: movementsCopied,
-  };
+  return { warehouseBalances: 0, stockMovements: 0 };
 }
 
 async function cloneBranchOperationalData(
@@ -459,7 +212,6 @@ async function cloneBranchOperationalData(
     menuItemIdMap: Map<string, string>;
     locationIdMap: Map<string, string>;
     nonMenuItemIdMap: Map<string, string>;
-    brandProductIdMap: Map<string, string>;
     demoStaffId: string | null;
     cloneSkewer?: boolean;
   },
@@ -474,7 +226,6 @@ async function cloneBranchOperationalData(
     menuItemIdMap,
     locationIdMap,
     nonMenuItemIdMap,
-    brandProductIdMap,
     demoStaffId,
     cloneSkewer = false,
   } = opts;
@@ -795,7 +546,6 @@ async function cloneBranchOperationalData(
     sourceBranchId,
     targetBranchId,
     targetBranchName,
-    brandProductIdMap,
     shiftIdMap,
     demoStaffId,
   });
@@ -988,15 +738,8 @@ export async function setupMalawaiwaiDemo(
     },
   });
 
-  const brandProductIdMap = await cloneBrandProducts(
-    prisma,
-    source.id,
-    demoBrand.id,
-  );
-
   const branchResults: MalawaiwaiDemoSetupResult["branches"] = [];
   const branchIdMap = new Map<string, string>();
-  let warehouseTargetId: string | null = null;
 
   for (const spec of MALAWAIWAI_DEMO_BRANCHES) {
     console.log(`  → สาขา ${spec.demoName} …`);
@@ -1007,7 +750,11 @@ export async function setupMalawaiwaiDemo(
       throw new Error(`ไม่พบสาขาต้นทาง: ${spec.sourceBranchId}`);
     }
 
-    const isWarehouse = sourceBranch.kind === "WAREHOUSE";
+    if (sourceBranch.kind === "WAREHOUSE") {
+      console.log("     ข้ามสต๊อกกลาง (ไม่ใช้แล้ว)");
+      continue;
+    }
+
     const isSkewer = sourceBranch.operatingMode === "SKEWER";
 
     const demoBranch = await prisma.branch.create({
@@ -1028,11 +775,9 @@ export async function setupMalawaiwaiDemo(
         ownerMessage: sourceBranch.ownerMessage,
         extraMessage: sourceBranch.extraMessage,
         isOpen: sourceBranch.isOpen,
-        isHidden: isWarehouse ? true : false,
+        isHidden: false,
         isTest: false,
-        kind: sourceBranch.kind,
-        warehouseIssueMode: sourceBranch.warehouseIssueMode,
-        warehouseAllowedBranchIds: [],
+        kind: "STORE",
         storefrontHours: sourceBranch.storefrontHours ?? undefined,
         deliveryHours: sourceBranch.deliveryHours ?? undefined,
         allowAdvanceOrder: sourceBranch.allowAdvanceOrder,
@@ -1045,9 +790,6 @@ export async function setupMalawaiwaiDemo(
     });
 
     branchIdMap.set(spec.sourceBranchId, demoBranch.id);
-    if (isWarehouse) {
-      warehouseTargetId = demoBranch.id;
-    }
 
     const imported = await importBranchCatalog({
       sourceBranchId: spec.sourceBranchId,
@@ -1055,7 +797,6 @@ export async function setupMalawaiwaiDemo(
       overwriteMenu: true,
       includeLocations: true,
       includeNonMenuItems: true,
-      brandProductIdMap,
       preserveOutOfStock: true,
       preserveNonMenuQuantities: true,
     });
@@ -1080,7 +821,6 @@ export async function setupMalawaiwaiDemo(
       menuItemIdMap: imported.menuItemIdMap,
       locationIdMap: imported.locationIdMap,
       nonMenuItemIdMap: imported.nonMenuItemIdMap,
-      brandProductIdMap,
       demoStaffId,
       cloneSkewer: isSkewer,
     });
@@ -1097,25 +837,7 @@ export async function setupMalawaiwaiDemo(
     );
   }
 
-  let warehouseStats = { warehouseBalances: 0, stockMovements: 0 };
-  const warehouseSource = MALAWAIWAI_DEMO_EXTRA_BRANCHES.find(
-    (b) => b.demoCode === "stock-center-demo",
-  );
-  if (warehouseSource && warehouseTargetId) {
-    console.log("  → สต๊อกกลาง (ยอดคงเหลือ + ประวัตินำเข้า) …");
-    warehouseStats = await cloneBrandWarehouseStock(prisma, {
-      sourceBrandId: source.id,
-      targetBrandId: demoBrand.id,
-      sourceWarehouseBranchId: warehouseSource.sourceBranchId,
-      targetWarehouseBranchId: warehouseTargetId,
-      targetWarehouseName: "สต๊อกกลาง - Demo",
-      brandProductIdMap,
-      branchIdMap,
-    });
-    console.log(
-      `     เสร็จ balances=${warehouseStats.warehouseBalances} movements=${warehouseStats.stockMovements}`,
-    );
-  }
+  const warehouseStats = { warehouseBalances: 0, stockMovements: 0 };
 
   await ensureDemoAdmin(prisma, {
     phone: MALAWAIWAI_DEMO_OWNER_PHONE,

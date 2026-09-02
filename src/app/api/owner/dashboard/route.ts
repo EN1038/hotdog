@@ -349,7 +349,7 @@ export async function GET(request: Request) {
           ? loadShopAgingAttention(branchIds)
           : Promise.resolve(null),
         stockEnabled && branchIds.length > 0
-          ? prisma.stockCount.count({
+          ? prisma.branchStockSummary.count({
               where: {
                 branchId: { in: branchIds },
                 status: "IN_PROGRESS",

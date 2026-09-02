@@ -22,7 +22,6 @@ import {
   IconUser,
 } from "@/components/icons";
 import { getBrandProfileGaps } from "@/lib/brand-profile";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   brandHqHref,
   parseBrandHqSection,
@@ -69,8 +68,6 @@ type NavItem = {
   platformOnly?: boolean;
   /** Hide from platform admins (brand operator pages) */
   brandAdminOnly?: boolean;
-  /** สต๊อกกลาง — ซ่อนเมื่อ WAREHOUSE_UI_ENABLED = false */
-  requiresWarehouseUi?: boolean;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   badge?: string;
   badgeTone?: "warn" | "info";
@@ -121,16 +118,6 @@ const NAV_GROUPS: NavGroup[] = [
         icon: IconPrinter,
       },
       {
-        href: "/admin/stock",
-        label: "สต๊อกกลาง",
-        brandAdminOnly: true,
-        requiresWarehouseUi: true,
-        match: (pathname) =>
-          pathname === "/admin/stock" ||
-          /^\/admin\/brands\/[^/]+\/stock(\/.*)?$/.test(pathname),
-        icon: IconPackage,
-      },
-      {
         href: "/admin/team",
         label: "บัญชีเจ้าของ",
         brandAdminOnly: true,
@@ -164,6 +151,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "ระบบ",
     items: [
+      {
+        href: "/admin/packages",
+        label: "แพ็กเกจ",
+        platformOnly: true,
+        icon: IconReceipt,
+      },
       {
         href: "/admin/restaurant-types",
         label: "ประเภทร้าน",
@@ -413,7 +406,6 @@ function filterNavGroups(
       items: group.items.filter((item) => {
         if (item.platformOnly && !isPlatformAdmin) return false;
         if (item.brandAdminOnly && isPlatformAdmin) return false;
-        if (item.requiresWarehouseUi && !WAREHOUSE_UI_ENABLED) return false;
         return true;
       }),
     };

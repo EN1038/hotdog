@@ -9,7 +9,6 @@ import {
 import { isTestBranch } from "@/lib/branch-test";
 import { getCalendarDayState } from "@/lib/operating-day";
 import { buildHqOverview } from "@/lib/admin-hq-overview";
-import { buildWarehouseStockFlow } from "@/lib/warehouse-stock-flow";
 
 export async function GET(request: Request) {
   try {
@@ -63,20 +62,11 @@ export async function GET(request: Request) {
       orderBy: { name: "asc" },
     });
 
-    const [data, warehouseFlow] = await Promise.all([
-      buildHqOverview(session, rangeFrom, rangeTo, {
-        brandId,
-        includeTest,
-        branchId: branchIdParam,
-      }),
-      buildWarehouseStockFlow({
-        brandId,
-        from: rangeFrom,
-        to: rangeTo,
-        branchId: branchIdParam,
-        includeTest,
-      }),
-    ]);
+    const data = await buildHqOverview(session, rangeFrom, rangeTo, {
+      brandId,
+      includeTest,
+      branchId: branchIdParam,
+    });
 
     const filterBranches = (includeTest
       ? branches
@@ -86,7 +76,6 @@ export async function GET(request: Request) {
     return jsonOk({
       brandId,
       ...data,
-      warehouseFlow,
       branchesMeta: filterBranches.map((b) => ({
         id: b.id,
         name: b.name,

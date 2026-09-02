@@ -145,7 +145,6 @@ export async function GET(request: Request) {
         id: true,
         name: true,
         price: true,
-        brandProductId: true,
         promoEnabled: true,
         promoType: true,
         promoValue: true,
@@ -170,52 +169,6 @@ export async function GET(request: Request) {
     });
 
     const menuIds = tracked.map((m) => m.id);
-    const brandProductIds = tracked
-      .map((m) => m.brandProductId)
-      .filter((id): id is string => Boolean(id));
-
-    const lotsByProduct = new Map<
-      string,
-      Array<{
-        receivedAt: Date;
-        expiresAt: Date | null;
-        quantity: number;
-      }>
-    >();
-
-    if (brandProductIds.length > 0) {
-      try {
-        const lots = await prisma.stockLot.findMany({
-          where: {
-            brandId: branch.brandId,
-            brandProductId: { in: brandProductIds },
-            quantity: { gt: 0 },
-            location: { branchId: branch.id },
-          },
-          select: {
-            brandProductId: true,
-            receivedAt: true,
-            expiresAt: true,
-            quantity: true,
-          },
-          orderBy: [{ expiresAt: "asc" }, { receivedAt: "asc" }],
-        });
-        for (const lot of lots) {
-          const list = lotsByProduct.get(lot.brandProductId) ?? [];
-          list.push({
-            receivedAt: lot.receivedAt,
-            expiresAt: lot.expiresAt,
-            quantity: Math.max(0, lot.quantity),
-          });
-          lotsByProduct.set(lot.brandProductId, list);
-        }
-      } catch (e) {
-        console.error(
-          "[staff/stock/aging] lots skipped",
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
 
     const historyByMenu = new Map<
       string,
@@ -292,61 +245,28 @@ export async function GET(request: Request) {
       const quantity = Math.max(0, Number(item.stock?.quantity ?? 0));
       if (quantity <= 0) continue;
       const unitPrice = Number(item.price ?? 0);
-      const productId = item.brandProductId;
-      const lots = productId ? (lotsByProduct.get(productId) ?? []) : [];
 
       let ageDays: number | null = null;
       let oldestReceivedAt: string | null = null;
       let lastReceivedAt: string | null = null;
       let expiresAt: string | null = null;
       let daysToExpiry: number | null = null;
-      let source: "lot" | "history" = "history";
+      const source: "history" = "history";
       let layers: StockAgingLayer[] = [];
 
-      if (lots.length > 0) {
-        source = "lot";
-        let remain = quantity;
-        const lotLayers: StockAgingLayer[] = [];
-        for (const lot of lots) {
-          if (remain <= 0) break;
-          const take = Math.min(lot.quantity, remain);
-          if (take <= 0) continue;
-          lotLayers.push({
-            receivedAt: lot.receivedAt.toISOString(),
-            quantity: take,
-            ageDays: ageDaysFromIso(lot.receivedAt, todayKey),
-          });
-          if (lot.expiresAt) {
-            const expKey = bangkokDateKey(lot.expiresAt);
-            const dte = bangkokDayDiff(todayKey, expKey);
-            if (daysToExpiry == null || dte < daysToExpiry) {
-              daysToExpiry = dte;
-              expiresAt = lot.expiresAt.toISOString();
-            }
-          }
-          remain -= take;
-        }
-        layers = lotLayers;
-        if (lotLayers.length > 0) {
-          ageDays = Math.max(...lotLayers.map((l) => l.ageDays));
-          oldestReceivedAt = lotLayers[0]!.receivedAt;
-          lastReceivedAt = lotLayers[lotLayers.length - 1]!.receivedAt;
-        }
-      } else {
-        const allocated = allocateInboundLayers({
-          currentQty: quantity,
-          inbounds: historyByMenu.get(item.id) ?? [],
-          todayKey,
-        });
-        layers = allocated.layers;
-        ageDays = allocated.ageDays;
-        oldestReceivedAt = allocated.oldestReceivedAt;
-        lastReceivedAt = allocated.lastReceivedAt;
-        expiresAt = allocated.expiresAt;
-        daysToExpiry = allocated.daysToExpiry;
-        if (allocated.unknownQty > 0 && allocated.layers.length === 0) {
-          ageDays = null;
-        }
+      const allocated = allocateInboundLayers({
+        currentQty: quantity,
+        inbounds: historyByMenu.get(item.id) ?? [],
+        todayKey,
+      });
+      layers = allocated.layers;
+      ageDays = allocated.ageDays;
+      oldestReceivedAt = allocated.oldestReceivedAt;
+      lastReceivedAt = allocated.lastReceivedAt;
+      expiresAt = allocated.expiresAt;
+      daysToExpiry = allocated.daysToExpiry;
+      if (allocated.unknownQty > 0 && allocated.layers.length === 0) {
+        ageDays = null;
       }
 
       const level = classifyAgingLevel(

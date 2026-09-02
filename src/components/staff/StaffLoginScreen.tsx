@@ -1,15 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { PhoneInput } from "@/components/PhoneInput";
-import { PlatformMark } from "@/components/PlatformMark";
+import { MerchantAuthShell } from "@/components/MerchantAuthShell";
 import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 import {
-  merchantButtonClass,
-  merchantInputClass,
-  merchantLabelClass,
-} from "@/components/merchant-login-ui";
+  AuthBranchOption,
+  AuthHintBanner,
+  AuthOtpMetaRow,
+  AuthSecondaryButton,
+  AuthSectionHeading,
+  authErrorClass,
+  authLabelClass,
+} from "@/components/merchant-auth-register-ui";
+import {
+  RegisterPhoneField,
+  RegisterPrimaryButton,
+} from "@/components/owner/owner-register-ui";
+import { OtpDigitInput } from "@/components/OtpDigitInput";
 import { formatThaiPhone } from "@/lib/constants";
 import { getStaffDeviceId } from "@/lib/staff-device";
 import {
@@ -22,7 +29,6 @@ import {
 } from "@/lib/staff-session-limits";
 import { StaffLoginNotice } from "@/components/staff/StaffLoginNotice";
 import type { StaffLoginNoticeKind } from "@/components/staff/StaffLoginNotice";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 type BranchChoice = {
   staffId: string;
@@ -209,220 +215,176 @@ export function StaffLoginScreen() {
     await completeLogin();
   }
 
+  function handleHeaderBack() {
+    setError("");
+    if (branches) {
+      setBranches(null);
+      resetOtp();
+      return;
+    }
+    if (otpStep) {
+      resetOtp();
+    }
+  }
+
+  const showFlowBack = Boolean(branches) || otpStep;
+
+  const primaryLabel = loading
+    ? otpStep
+      ? "กำลังยืนยัน..."
+      : "กำลังเข้าสู่ระบบ..."
+    : otpStep
+      ? expiresIn <= 0
+        ? "รหัสหมดอายุ"
+        : "ยืนยันรหัส"
+      : "ถัดไป";
+
   return (
-    <main className="flex min-h-dvh flex-col bg-[#f4f5f7]">
-      <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-2 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <Link
-          href="/"
-          className="flex h-12 w-12 items-center justify-center rounded-xl text-gray-700"
-          aria-label="กลับ"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M15 5l-7 7 7 7"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </Link>
-        <h1 className="flex-1 pr-12 text-center text-base font-bold text-gray-900">
-          เข้าใช้งาน SkillSale
-        </h1>
-      </header>
-
-      <div className="mx-auto w-full max-w-md flex-1 px-5 py-8">
-        <PlatformMark placement="login" height={36} priority />
-
+    <>
+      <MerchantAuthShell
+        title="เข้าใช้งานพนักงาน"
+        subtitle="ใช้เบอร์ที่เจ้าของร้านลงทะเบียนไว้"
+        onBack={showFlowBack ? handleHeaderBack : undefined}
+        backHref="/"
+      >
         {branches ? (
-          <div className="mt-10 space-y-4">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">เลือกสาขา</h2>
-              <p className="mt-1 text-sm text-gray-600">
-                เบอร์นี้ทำงานได้หลายสาขา — เลือกสาขาที่ต้องการเข้าวันนี้
-              </p>
-            </div>
+          <div className="space-y-4">
+            <AuthSectionHeading
+              title="เลือกสาขา"
+              description="เบอร์นี้ทำงานได้หลายสาขา — เลือกสาขาที่ต้องการเข้าวันนี้"
+            />
             <ul className="space-y-2">
               {branches
-                .filter(
-                  (b) =>
-                    WAREHOUSE_UI_ENABLED || b.branchKind !== "WAREHOUSE",
-                )
+                .filter((b) => b.branchKind !== "WAREHOUSE")
                 .map((b) => (
-                <li key={b.branchId}>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() =>
-                      void completeLogin({ selectedBranchId: b.branchId })
-                    }
-                    className="flex w-full flex-col rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-left shadow-sm transition active:scale-[0.99] disabled:opacity-50"
-                  >
-                    <span className="text-base font-semibold text-gray-900">
-                      {b.branchName.replace(/^สาขา\s*/, "")}
-                    </span>
-                    {b.branchKind === "WAREHOUSE" ? (
-                      <span className="mt-0.5 text-xs font-semibold text-teal-700">
-                        สต๊อกกลาง
-                      </span>
-                    ) : null}
-                    {b.brandName ? (
-                      <span className="mt-0.5 text-xs text-gray-500">
-                        {b.brandName}
-                      </span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
+                  <li key={b.branchId}>
+                    <AuthBranchOption
+                      branchName={b.branchName}
+                      brandName={b.brandName}
+                      branchKind={b.branchKind}
+                      disabled={loading}
+                      onClick={() =>
+                        void completeLogin({ selectedBranchId: b.branchId })
+                      }
+                    />
+                  </li>
+                ))}
             </ul>
-            <button
-              type="button"
+            <AuthSecondaryButton
               disabled={loading}
               onClick={() => {
                 setBranches(null);
                 resetOtp();
                 setError("");
               }}
-              className="w-full py-2 text-sm font-medium text-gray-600"
             >
               ใช้เบอร์อื่น
-            </button>
+            </AuthSecondaryButton>
             {error ? (
-              <p className="text-base text-red-600" role="alert">
+              <p className={authErrorClass} role="alert">
                 {error}
               </p>
             ) : null}
             {loading ? (
-              <p className="text-center text-sm text-gray-500">กำลังเข้าสู่ระบบ...</p>
+              <p className="text-center text-[14px] text-slate-500">
+                กำลังเข้าสู่ระบบ...
+              </p>
             ) : null}
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-10 space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {otpStep ? (
               <>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">
-                    ยืนยันเบอร์ {formatThaiPhone(phone)}
-                  </h2>
-                  <p className="mt-1 text-sm text-gray-600">
-                    {otpRefNo
+                <AuthSectionHeading
+                  title={`ยืนยันเบอร์ ${formatThaiPhone(phone)}`}
+                  description={
+                    otpRefNo
                       ? `เลขอ้างอิง ${otpRefNo} — เทียบกับข้อความ SMS`
-                      : "กรอกรหัส 4–6 หลักจากข้อความ SMS — ยืนยันครั้งเดียวต่อเบอร์"}
-                  </p>
-                </div>
+                      : "กรอกรหัส 4 หลักจากข้อความ SMS — ยืนยันครั้งเดียวต่อเบอร์"
+                  }
+                />
                 <div>
-                  <label htmlFor="staff-otp" className={merchantLabelClass}>
+                  <label
+                    id="staff-otp-label"
+                    htmlFor="staff-otp"
+                    className={authLabelClass}
+                  >
                     รหัส OTP
                   </label>
-                  <input
+                  <OtpDigitInput
                     id="staff-otp"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={8}
-                    className={`${merchantInputClass} text-center tracking-[0.35em]`}
                     value={otpCode}
-                    onChange={(e) =>
-                      setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 8))
-                    }
-                    placeholder="••••••"
-                    required
+                    onChange={setOtpCode}
                     autoFocus
+                    className="mt-2"
                   />
                   <p
-                    className={`mt-2 text-center text-sm font-medium ${
-                      expiresIn <= 0 ? "text-red-600" : "text-gray-500"
+                    className={`mt-2 text-center text-[15px] font-medium ${
+                      expiresIn <= 0 ? "text-red-600" : "text-slate-500"
                     }`}
                   >
                     {expiresIn > 0
                       ? `รหัสใช้ได้ 5 นาที — หมดอายุใน ${formatOtpCountdown(expiresIn)}`
                       : "รหัสหมดอายุแล้ว — กดขอรหัสใหม่"}
                   </p>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-sm">
-                    <button
-                      type="button"
-                      className="font-medium text-gray-500"
-                      onClick={() => {
-                        resetOtp();
+                  <AuthOtpMetaRow
+                    left="เปลี่ยนเบอร์"
+                    right={resendIn > 0 ? `ขอรหัสใหม่ใน ${resendIn}s` : "ขอรหัสใหม่"}
+                    onLeftClick={() => {
+                      resetOtp();
+                      setError("");
+                    }}
+                    onRightClick={() => {
+                      void (async () => {
                         setError("");
-                      }}
-                    >
-                      เปลี่ยนเบอร์
-                    </button>
-                    <button
-                      type="button"
-                      disabled={loading || resendIn > 0}
-                      className="font-medium text-site-primary disabled:opacity-40"
-                      onClick={() => {
-                        void (async () => {
-                          setError("");
-                          setLoading(true);
-                          const sendErr = await sendStaffOtp();
-                          if (sendErr) setError(sendErr);
-                          setLoading(false);
-                        })();
-                      }}
-                    >
-                      {resendIn > 0 ? `ขอรหัสใหม่ใน ${resendIn}s` : "ขอรหัสใหม่"}
-                    </button>
-                  </div>
+                        setLoading(true);
+                        const sendErr = await sendStaffOtp();
+                        if (sendErr) setError(sendErr);
+                        setLoading(false);
+                      })();
+                    }}
+                    rightDisabled={loading || resendIn > 0}
+                  />
                 </div>
               </>
             ) : (
               <>
-                <div>
-                  <label htmlFor="staff-phone" className={merchantLabelClass}>
-                    เบอร์โทรสำหรับเข้าใช้งาน
-                  </label>
-                  <PhoneInput
-                    id="staff-phone"
-                    value={phone}
-                    onChange={setPhone}
-                    className={merchantInputClass}
-                    required
-                  />
-                </div>
+                <RegisterPhoneField
+                  id="staff-phone"
+                  label="เบอร์โทรสำหรับเข้าใช้งาน"
+                  hint="ใช้เบอร์ที่เจ้าของร้านลงทะเบียนไว้"
+                  value={phone}
+                  onChange={setPhone}
+                  className="mt-0"
+                />
 
-                <div className="flex gap-2 rounded-2xl bg-sky-50 px-4 py-4 text-sm leading-relaxed text-sky-950">
-                  <span className="mt-0.5 text-lg" aria-hidden>
-                    💡
-                  </span>
-                  <div className="space-y-1">
-                    <p>ขอเบอร์ที่ลงทะเบียนได้ที่เจ้าของร้าน</p>
-                    <p>
-                      ครั้งแรกจะส่งรหัส OTP เพื่อยืนยันว่าเป็นเจ้าของเบอร์
-                      — ครั้งถัดไปเข้าได้เลย
-                    </p>
-                    <p>เข้าใช้งานได้พร้อมกันสูงสุด 3 เครื่องต่อเบอร์</p>
-                  </div>
-                </div>
+                <AuthHintBanner>
+                  <p>ขอเบอร์ที่ลงทะเบียนได้ที่เจ้าของร้าน</p>
+                  <p>
+                    ครั้งแรกจะส่งรหัส OTP เพื่อยืนยันว่าเป็นเจ้าของเบอร์
+                    — ครั้งถัดไปเข้าได้เลย
+                  </p>
+                  <p>เข้าใช้งานได้พร้อมกันสูงสุด 3 เครื่องต่อเบอร์</p>
+                </AuthHintBanner>
               </>
             )}
 
             {error ? (
-              <p className="text-base text-red-600" role="alert">
+              <p className={authErrorClass} role="alert">
                 {error}
               </p>
             ) : null}
 
-            <button
+            <RegisterPrimaryButton
               type="submit"
-              disabled={loading || (otpStep && expiresIn <= 0)}
-              className={merchantButtonClass}
+              disabled={loading || (otpStep && expiresIn <= 0) || (!otpStep && phone.length < 9)}
+              loading={loading}
             >
-              {loading
-                ? otpStep
-                  ? "กำลังยืนยัน..."
-                  : "กำลังเข้าสู่ระบบ..."
-                : otpStep
-                  ? expiresIn <= 0
-                    ? "รหัสหมดอายุ"
-                    : "ยืนยันรหัส"
-                  : "ถัดไป"}
-            </button>
+              {primaryLabel}
+            </RegisterPrimaryButton>
           </form>
         )}
-      </div>
+      </MerchantAuthShell>
       {notice ? (
         <StaffLoginNotice
           kind={notice}
@@ -430,6 +392,6 @@ export function StaffLoginScreen() {
           onClose={() => setNotice(null)}
         />
       ) : null}
-    </main>
+    </>
   );
 }

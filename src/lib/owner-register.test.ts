@@ -2,26 +2,35 @@ import { describe, expect, it } from "vitest";
 import {
   OWNER_REGISTER_TRIAL_DAYS,
   OWNER_TRIAL_FULL_MODULES,
-  categoryAllowsMasterImport,
-  resolveOwnerShopCategory,
 } from "@/lib/owner-register-shared";
+import { categoryAllowsMasterImportFrom } from "@/lib/owner-register-category";
 
 describe("owner register shared", () => {
-  it("trial is 30 days", () => {
-    expect(OWNER_REGISTER_TRIAL_DAYS).toBe(30);
+  it("trial is 7 days", () => {
+    expect(OWNER_REGISTER_TRIAL_DAYS).toBe(7);
   });
 
-  it("maps mala category to MALA plan", () => {
-    const cat = resolveOwnerShopCategory("mala_hotpot");
-    expect(cat.plan).toBe("MALA");
-    expect(cat.operatingMode).toBe("NORMAL");
-    expect(categoryAllowsMasterImport("mala_hotpot")).toBe(true);
-  });
-
-  it("skewer category disables master import", () => {
-    const cat = resolveOwnerShopCategory("skewer");
-    expect(cat.operatingMode).toBe("SKEWER");
-    expect(categoryAllowsMasterImport("skewer")).toBe(false);
+  it("categoryAllowsMasterImportFrom respects flag", () => {
+    expect(
+      categoryAllowsMasterImportFrom({
+        code: "mala_hotpot",
+        label: "ร้านหมาล่า/ย่าง/ทอด/ชาบู",
+        hint: "",
+        plan: "MALA",
+        operatingMode: "NORMAL",
+        offersMasterImport: true,
+      }),
+    ).toBe(true);
+    expect(
+      categoryAllowsMasterImportFrom({
+        code: "made_to_order",
+        label: "ร้านอาหารตามสั่ง",
+        hint: "",
+        plan: "RETAIL",
+        operatingMode: "NORMAL",
+        offersMasterImport: false,
+      }),
+    ).toBe(false);
   });
 
   it("trial enables all modules including stock", () => {

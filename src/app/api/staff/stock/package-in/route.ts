@@ -308,9 +308,6 @@ export async function POST(request: Request) {
           where: { id: line.itemId, branchId: branch.id },
           include: {
             stock: true,
-            brandProduct: {
-              select: { id: true, sku: true, barcode: true },
-            },
           },
         });
         if (!menuItem) {
@@ -375,7 +372,6 @@ export async function POST(request: Request) {
           const productCode = resolveMenuItemProductCode({
             id: menuItem.id,
             itemCode: menuItem.itemCode,
-            brandProduct: menuItem.brandProduct,
           });
 
           const label = await tx.stockLabel.create({
@@ -385,7 +381,6 @@ export async function POST(request: Request) {
               labelCode,
               lotNumber,
               menuItemId: menuItem.id,
-              brandProductId: menuItem.brandProductId,
               productName: menuItem.name,
               productCode,
               brandName,
@@ -412,7 +407,6 @@ export async function POST(request: Request) {
           const productCode = resolveMenuItemProductCode({
             id: menuItem.id,
             itemCode: menuItem.itemCode,
-            brandProduct: menuItem.brandProduct,
           });
           const label = await tx.stockLabel.create({
             data: {
@@ -421,7 +415,6 @@ export async function POST(request: Request) {
               labelCode,
               lotNumber,
               menuItemId: menuItem.id,
-              brandProductId: menuItem.brandProductId,
               productName: menuItem.name,
               productCode,
               brandName,

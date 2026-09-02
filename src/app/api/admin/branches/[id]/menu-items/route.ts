@@ -23,7 +23,6 @@ const reorderSchema = z.object({
 
 const itemInclude = {
   category: { select: { id: true, name: true, sortOrder: true } },
-  brandProduct: { select: { sku: true, barcode: true } },
   ...menuItemOptionGroupInclude,
 } as const;
 

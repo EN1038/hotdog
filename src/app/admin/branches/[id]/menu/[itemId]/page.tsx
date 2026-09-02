@@ -75,7 +75,6 @@ type MenuItemDetail = {
   isOutOfStock: boolean;
   sortOrder: number;
   defaultShelfLifeDays?: number | null;
-  brandProduct?: { sku?: string | null; barcode?: string | null } | null;
   optionGroups: BranchOptionGroup[];
   optionGroupIds?: string[];
 };
@@ -145,7 +144,6 @@ const EMPTY_ITEM: MenuItemDetail = {
   isOutOfStock: false,
   sortOrder: 0,
   defaultShelfLifeDays: null,
-  brandProduct: null,
   optionGroups: [],
   optionGroupIds: [],
 };
@@ -424,7 +422,6 @@ export default function MenuItemEditorPage() {
     return resolveMenuItemProductCode({
       id: item.id,
       itemCode: null,
-      brandProduct: item.brandProduct ?? null,
     });
   }, [form.itemCode, item]);
 

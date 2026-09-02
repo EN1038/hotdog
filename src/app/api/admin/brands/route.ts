@@ -11,10 +11,14 @@ import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { hashAndSealPassword } from "@/lib/admin-password";
 import {
-  applyPlanPreset,
   NEW_BRAND_DEFAULTS,
   trialEndsAtFromNow,
 } from "@/lib/brand-plan";
+import {
+  applyPlanPresetFromCatalog,
+  getDefaultTrialDays,
+} from "@/lib/brand-plan-catalog";
+import { syncBrandStockModule } from "@/lib/brand-stock-activation";
 import { normalizePhone } from "@/lib/constants";
 
 const brandSchema = z.object({
@@ -153,8 +157,9 @@ export async function POST(request: Request) {
 
     const plan = body.plan ?? NEW_BRAND_DEFAULTS.plan;
     const usePreset = body.applyPlanPreset !== false;
-    const preset = usePreset ? applyPlanPreset(plan) : null;
+    const preset = usePreset ? await applyPlanPresetFromCatalog(plan) : null;
     const status = body.status ?? NEW_BRAND_DEFAULTS.status;
+    const trialDays = await getDefaultTrialDays();
     const serviceStartsAt = body.serviceStartsAt
       ? new Date(body.serviceStartsAt)
       : new Date();
@@ -164,7 +169,7 @@ export async function POST(request: Request) {
           ? new Date(body.trialEndsAt)
           : null
         : status === "TRIAL"
-          ? trialEndsAtFromNow()
+          ? trialEndsAtFromNow(trialDays)
           : null;
 
     const brand = await prisma.$transaction(async (tx) => {
@@ -243,6 +248,10 @@ export async function POST(request: Request) {
       entityName: brand.name,
       metadata: { code: brand.code, adminUsername: username, phone: phone || null },
     });
+
+    if (brand.stockEnabled) {
+      await syncBrandStockModule(brand.id, true);
+    }
 
     return jsonOk(
       {

@@ -32,7 +32,11 @@ import {
 import { notifyBrandOwnersNewOrder } from "@/lib/brand-line-notify";
 import { orderGrandTotal } from "@/lib/order-totals";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
-import { deductStockForOrder, StockError } from "@/lib/stock";
+import {
+  deductBranchMenuStockForOrder,
+  deductBranchNonMenuStockForOrder,
+  StockError,
+} from "@/lib/stock";
 import {
   computeLineGiftQuantity,
   optionGroupDetailInclude,
@@ -405,7 +409,21 @@ export async function POST(request: Request) {
 
     if (order.status === OrderStatus.PREPARING) {
       try {
-        await deductStockForOrder(order.id);
+        await deductBranchMenuStockForOrder({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          branchId: order.branchId,
+          lines: orderItems.map((i) => ({
+            branchMenuItemId: i.branchMenuItemId,
+            quantity: i.quantity + i.giftQuantity,
+            optionIds: [],
+          })),
+        });
+        await deductBranchNonMenuStockForOrder({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          branchId: order.branchId,
+        });
       } catch (e) {
         if (e instanceof StockError) {
           await prisma.order.update({

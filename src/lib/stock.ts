@@ -1,14 +1,12 @@
-import {
-  EquipmentStatus,
-  Prisma,
-  StockCountStatus,
-  StockCountType,
-  StockLocationType,
-  StockMovementType,
-  StockType,
-} from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { assertBrandWriteAllowedByBrandId } from "@/lib/brand-plan";
+import {
+  BRANCH_MENU_ORDER_NOTE_PREFIX,
+  branchMenuOrderNote,
+  parseBranchMenuOrderNote,
+} from "@/lib/branch-menu-order-note";
+
+export { parseBranchMenuOrderNote };
 
 export class StockError extends Error {
   status: number;
@@ -21,27 +19,7 @@ export class StockError extends Error {
 
 type Tx = Prisma.TransactionClient;
 
-export const STOCK_TYPE_LABELS: Record<StockType, string> = {
-  SALE_ITEM: "สินค้าขาย",
-  CONSUMABLE: "ของสิ้นเปลือง",
-  EQUIPMENT: "อุปกรณ์",
-};
-
-export const MOVEMENT_TYPE_LABELS: Record<string, string> = {
-  RECEIVE: "รับเข้า",
-  STOCK_IN: "รับเข้า",
-  TRANSFER: "โอน/ส่งสาขา",
-  SALE: "ขาย",
-  FREE: "ของแถม",
-  DAMAGE: "เสียหาย",
-  LOST: "สูญหาย",
-  ADJUST: "ปรับยอด",
-  COUNT: "ตรวจนับ",
-  RETURN: "คืนสต๊อก",
-  ISSUE: "เบิกใช้",
-  WASTE: "ของเสีย",
-};
-
+/** สต็อกสาขาใช้งานได้เมื่อแพ็กเกจเปิดสต็อกและสาขาเปิดสต็อก */
 export function isBranchStockActive(input: {
   brandId: string | null | undefined;
   brandStockEnabled: boolean | null | undefined;
@@ -50,96 +28,6 @@ export function isBranchStockActive(input: {
   return Boolean(
     input.brandId && input.brandStockEnabled && input.branchStockEnabled,
   );
-}
-
-import { ensureWarehouseBranch } from "@/lib/warehouse-branch";
-import {
-  BRANCH_MENU_ORDER_NOTE_PREFIX,
-  branchMenuOrderNote,
-  parseBranchMenuOrderNote,
-} from "@/lib/branch-menu-order-note";
-
-export { parseBranchMenuOrderNote };
-
-export async function ensureWarehouseLocation(
-  brandId: string,
-  tx: Tx | typeof prisma = prisma,
-) {
-  if (tx === prisma) {
-    const warehouseBranch = await ensureWarehouseBranch(brandId);
-    const linked = await prisma.stockLocation.findFirst({
-      where: {
-        brandId,
-        type: StockLocationType.WAREHOUSE,
-        branchId: warehouseBranch.id,
-      },
-    });
-    if (linked) return linked;
-  }
-
-  const existing = await tx.stockLocation.findFirst({
-    where: { brandId, type: StockLocationType.WAREHOUSE },
-  });
-  if (existing) {
-    if (existing.name === "บ้านกลาง") {
-      return tx.stockLocation.update({
-        where: { id: existing.id },
-        data: { name: "สต๊อกกลาง" },
-      });
-    }
-    return existing;
-  }
-  return tx.stockLocation.create({
-    data: {
-      brandId,
-      type: StockLocationType.WAREHOUSE,
-      name: "สต๊อกกลาง",
-    },
-  });
-}
-
-export async function ensureBranchStockLocation(
-  input: { brandId: string; branchId: string; branchName: string },
-  tx: Tx | typeof prisma = prisma,
-) {
-  const existing = await tx.stockLocation.findFirst({
-    where: { branchId: input.branchId },
-  });
-  if (existing) return existing;
-  return tx.stockLocation.create({
-    data: {
-      brandId: input.brandId,
-      branchId: input.branchId,
-      type: StockLocationType.BRANCH,
-      name: input.branchName,
-    },
-  });
-}
-
-export async function setBrandStockEnabled(input: {
-  brandId: string;
-  enabled: boolean;
-}) {
-  await assertBrandWriteAllowedByBrandId(input.brandId);
-  const brand = await prisma.$transaction(async (tx) => {
-    const updated = await tx.brand.update({
-      where: { id: input.brandId },
-      data: { stockEnabled: input.enabled },
-    });
-    if (input.enabled) {
-      await ensureWarehouseLocation(input.brandId, tx);
-    } else {
-      await tx.branch.updateMany({
-        where: { brandId: input.brandId, stockEnabled: true, kind: { not: "WAREHOUSE" } },
-        data: { stockEnabled: false },
-      });
-    }
-    return updated;
-  });
-  if (input.enabled) {
-    await ensureWarehouseBranch(input.brandId);
-  }
-  return brand;
 }
 
 export async function setBranchStockEnabled(input: {
@@ -157,1383 +45,18 @@ export async function setBranchStockEnabled(input: {
     }
     if (input.enabled && !branch.brand.stockEnabled) {
       throw new StockError(
-        "ต้องเปิดระบบสต๊อกที่แบรนด์ก่อน แล้วค่อยเปิดที่สาขา",
+        "แพ็กเกจยังไม่เปิดโมดูลสต๊อก — เปิดที่แพ็กเกจแบรนด์ก่อน",
       );
     }
 
-    const updated = await tx.branch.update({
+    return tx.branch.update({
       where: { id: input.branchId },
       data: { stockEnabled: input.enabled },
       include: { brand: true },
     });
-
-    if (input.enabled) {
-      await ensureBranchStockLocation(
-        {
-          brandId: branch.brandId,
-          branchId: branch.id,
-          branchName: branch.name,
-        },
-        tx,
-      );
-    }
-
-    return updated;
   });
 }
 
-async function getOrCreateBalance(
-  tx: Tx,
-  stockLocationId: string,
-  brandProductId: string,
-) {
-  const existing = await tx.stockBalance.findUnique({
-    where: {
-      stockLocationId_brandProductId: { stockLocationId, brandProductId },
-    },
-  });
-  if (existing) return existing;
-  return tx.stockBalance.create({
-    data: { stockLocationId, brandProductId, quantity: 0 },
-  });
-}
-
-async function readQty(
-  tx: Tx,
-  stockLocationId: string,
-  brandProductId: string,
-) {
-  const bal = await getOrCreateBalance(tx, stockLocationId, brandProductId);
-  return bal.quantity;
-}
-
-export async function changeBalance(
-  tx: Tx,
-  input: {
-    stockLocationId: string;
-    brandProductId: string;
-    delta: number;
-    allowNegative?: boolean;
-  },
-): Promise<{ beforeQty: number; afterQty: number }> {
-  const beforeQty = await readQty(
-    tx,
-    input.stockLocationId,
-    input.brandProductId,
-  );
-  const afterQty = beforeQty + input.delta;
-
-  if (afterQty < 0 && !input.allowNegative) {
-    const product = await tx.brandProduct.findUnique({
-      where: { id: input.brandProductId },
-      select: { name: true },
-    });
-    throw new StockError(
-      `สต๊อกไม่พอ: ${product?.name ?? "สินค้า"} (เหลือ ${beforeQty} ต้องการ ${Math.abs(input.delta)})`,
-    );
-  }
-
-  if (input.delta < 0 && !input.allowNegative) {
-    const need = Math.abs(input.delta);
-    const moved = await tx.stockBalance.updateMany({
-      where: {
-        stockLocationId: input.stockLocationId,
-        brandProductId: input.brandProductId,
-        quantity: { gte: need },
-      },
-      data: { quantity: { decrement: need } },
-    });
-    if (moved.count === 0) {
-      throw new StockError(
-        `สต๊อกไม่พอ (เหลือ ${beforeQty} ต้องการ ${need})`,
-      );
-    }
-  } else {
-    await tx.stockBalance.update({
-      where: {
-        stockLocationId_brandProductId: {
-          stockLocationId: input.stockLocationId,
-          brandProductId: input.brandProductId,
-        },
-      },
-      data: { quantity: afterQty },
-    });
-  }
-
-  return { beforeQty, afterQty };
-}
-
-export async function syncMenuOutOfStockForBranchProduct(
-  tx: Tx,
-  input: { branchId: string; brandProductId: string; quantity: number },
-) {
-  await tx.branchMenuItem.updateMany({
-    where: {
-      branchId: input.branchId,
-      brandProductId: input.brandProductId,
-    },
-    data: { isOutOfStock: input.quantity <= 0 },
-  });
-}
-
-export async function syncAfterBranchQtyChange(
-  tx: Tx,
-  location: { id: string; type: StockLocationType; branchId: string | null },
-  brandProductId: string,
-  afterQty: number,
-) {
-  if (location.type !== StockLocationType.BRANCH || !location.branchId) return;
-  const product = await tx.brandProduct.findUnique({
-    where: { id: brandProductId },
-    select: { stockType: true },
-  });
-  // Only sale items drive menu sold-out
-  if (product?.stockType !== StockType.SALE_ITEM) return;
-  await syncMenuOutOfStockForBranchProduct(tx, {
-    branchId: location.branchId,
-    brandProductId,
-    quantity: afterQty,
-  });
-}
-
-/**
- * When warehouse/store transfer credits a BrandProduct, also bump the store's
- * BranchMenuItemStock so staff stock screens stay in sync. Auto-links by name
- * when the menu item is not yet linked to the SKU.
- */
-export async function creditLinkedStoreStock(
-  tx: Tx,
-  input: {
-    branchId: string;
-    brandProductId: string;
-    quantity: number;
-    staffId?: string | null;
-    note: string;
-  },
-) {
-  if (input.quantity <= 0) return;
-
-  const product = await tx.brandProduct.findUnique({
-    where: { id: input.brandProductId },
-    select: { id: true, name: true, stockType: true },
-  });
-  if (!product || product.stockType !== StockType.SALE_ITEM) return;
-
-  let menuItems = await tx.branchMenuItem.findMany({
-    where: {
-      branchId: input.branchId,
-      brandProductId: input.brandProductId,
-    },
-    select: { id: true },
-  });
-
-  if (menuItems.length === 0) {
-    const byName = await tx.branchMenuItem.findMany({
-      where: { branchId: input.branchId, name: product.name },
-      select: { id: true, brandProductId: true },
-    });
-    for (const item of byName) {
-      if (item.brandProductId !== product.id) {
-        await tx.branchMenuItem.update({
-          where: { id: item.id },
-          data: { brandProductId: product.id },
-        });
-      }
-    }
-    menuItems = byName.map((item) => ({ id: item.id }));
-  }
-
-  for (const item of menuItems) {
-    const existing = await tx.branchMenuItemStock.findUnique({
-      where: { menuItemId: item.id },
-      select: { quantity: true },
-    });
-    const newQty = (existing?.quantity ?? 0) + input.quantity;
-    await tx.branchMenuItemStock.upsert({
-      where: { menuItemId: item.id },
-      update: { quantity: newQty },
-      create: {
-        branchId: input.branchId,
-        menuItemId: item.id,
-        quantity: newQty,
-      },
-    });
-    await tx.branchMenuItem.update({
-      where: { id: item.id },
-      data: { isOutOfStock: newQty <= 0 },
-    });
-    await tx.branchMenuItemStockHistory.create({
-      data: {
-        branchId: input.branchId,
-        menuItemId: item.id,
-        quantity: input.quantity,
-        type: "STOCK_IN",
-        note: input.note,
-        createdByStaffId: input.staffId ?? null,
-      },
-    });
-  }
-}
-
-async function brandAllowsNegative(tx: Tx, brandId: string) {
-  const brand = await tx.brand.findUnique({
-    where: { id: brandId },
-    select: { allowNegativeStock: true },
-  });
-  return Boolean(brand?.allowNegativeStock);
-}
-
-export { brandAllowsNegative };
-
-type Actor = { adminId?: string | null; staffId?: string | null };
-
-/** Stock in (รับเข้า) to a location — SALE_ITEM / CONSUMABLE / EQUIPMENT */
-export async function stockIn(input: {
-  brandId: string;
-  stockLocationId: string;
-  brandProductId: string;
-  quantity: number;
-  unitCost?: number | null;
-  supplier?: string | null;
-  note?: string | null;
-  receivedAt?: Date | null;
-  documentNo?: string | null;
-} & Actor) {
-  if (input.quantity <= 0) throw new StockError("จำนวนต้องมากกว่า 0");
-  if (input.unitCost != null && input.unitCost < 0) {
-    throw new StockError("ราคาต้องไม่ติดลบ");
-  }
-  await assertBrandWriteAllowedByBrandId(input.brandId);
-
-  return prisma.$transaction(async (tx) => {
-    const product = await tx.brandProduct.findFirst({
-      where: {
-        id: input.brandProductId,
-        brandId: input.brandId,
-        isActive: true,
-      },
-    });
-    if (!product) throw new StockError("ไม่พบสินค้าที่ใช้งานได้", 404);
-
-    const location = await tx.stockLocation.findFirst({
-      where: { id: input.stockLocationId, brandId: input.brandId },
-    });
-    if (!location) throw new StockError("ไม่พบตำแหน่งสต๊อก", 404);
-
-    const { beforeQty, afterQty } = await changeBalance(tx, {
-      stockLocationId: location.id,
-      brandProductId: product.id,
-      delta: input.quantity,
-    });
-    await syncAfterBranchQtyChange(tx, location, product.id, afterQty);
-
-    const unitCost =
-      input.unitCost != null
-        ? new Prisma.Decimal(input.unitCost)
-        : product.costPrice;
-    const totalCost = unitCost
-      ? unitCost.mul(input.quantity)
-      : null;
-
-    return tx.stockMovement.create({
-      data: {
-        brandId: input.brandId,
-        brandProductId: product.id,
-        type: StockMovementType.STOCK_IN,
-        quantity: input.quantity,
-        beforeQty,
-        afterQty,
-        unitCost,
-        totalCost,
-        supplier: input.supplier?.trim() || null,
-        stockLocationId: location.id,
-        toLocationId: location.id,
-        note: input.note?.trim() || null,
-        documentNo: input.documentNo?.trim() || null,
-        referenceType: "STOCK_IN",
-        createdByAdminId: input.adminId ?? null,
-        createdByStaffId: input.staffId ?? null,
-      },
-    });
-  });
-}
-
-/** @deprecated prefer stockIn — keeps warehouse receive for brand admin */
-export async function receiveToWarehouse(input: {
-  brandId: string;
-  brandProductId: string;
-  quantity: number;
-  note?: string | null;
-  adminId?: string | null;
-  unitCost?: number | null;
-  supplier?: string | null;
-}) {
-  const warehouse = await ensureWarehouseLocation(input.brandId);
-  return stockIn({
-    brandId: input.brandId,
-    stockLocationId: warehouse.id,
-    brandProductId: input.brandProductId,
-    quantity: input.quantity,
-    note: input.note,
-    adminId: input.adminId,
-    unitCost: input.unitCost,
-    supplier: input.supplier,
-  });
-}
-
-export async function transferWarehouseToBranch(input: {
-  brandId: string;
-  branchId: string;
-  brandProductId: string;
-  quantity: number;
-  note?: string | null;
-  documentNo?: string | null;
-  imageUrl?: string | null;
-  adminId?: string | null;
-  staffId?: string | null;
-  sourceLocationId?: string | null;
-  /** true = จ่ายเข้าสาขาทันที ไม่รอรับ */
-  autoReceive?: boolean;
-}) {
-  if (input.quantity <= 0) throw new StockError("จำนวนต้องมากกว่า 0");
-  await assertBrandWriteAllowedByBrandId(input.brandId);
-
-  return prisma.$transaction(async (tx) => {
-    const branch = await tx.branch.findFirst({
-      where: { id: input.branchId, brandId: input.brandId },
-      include: { brand: true },
-    });
-    if (!branch) throw new StockError("ไม่พบสาขาในแบรนด์นี้", 404);
-    if (branch.kind === "WAREHOUSE") {
-      throw new StockError("ส่งได้เฉพาะสาขาขาย ไม่ใช่สต๊อกกลาง");
-    }
-    if (!branch.brand?.stockEnabled) {
-      throw new StockError("ต้องเปิดสต๊อกกลางก่อนส่งสาขา");
-    }
-
-    const hq = await tx.branch.findFirst({
-      where: { brandId: input.brandId, kind: "WAREHOUSE" },
-      select: { warehouseAllowedBranchIds: true, warehouseIssueMode: true },
-    });
-    const allowed = hq?.warehouseAllowedBranchIds ?? [];
-    if (allowed.length > 0 && !allowed.includes(branch.id)) {
-      throw new StockError("สาขานี้ยังไม่มีสิทธิ์รับของจากสต๊อกกลาง");
-    }
-    if (hq?.warehouseIssueMode === "TRANSFER" && input.autoReceive) {
-      throw new StockError("สต๊อกกลางนี้ตั้งโหมดโอนรอรับ — ใช้ส่งสาขาแบบรอนับรับ");
-    }
-    if (hq?.warehouseIssueMode === "ISSUE" && input.autoReceive === false) {
-      // still allow pending if explicitly false; default ISSUE to auto
-    }
-    const autoReceive =
-      input.autoReceive === true ||
-      (input.autoReceive !== false && hq?.warehouseIssueMode === "ISSUE");
-    if (!branch.stockEnabled) {
-      await tx.branch.update({
-        where: { id: branch.id },
-        data: { stockEnabled: true },
-      });
-    }
-
-    const product = await tx.brandProduct.findFirst({
-      where: {
-        id: input.brandProductId,
-        brandId: input.brandId,
-        isActive: true,
-      },
-    });
-    if (!product) throw new StockError("ไม่พบสินค้า", 404);
-
-    let warehouse;
-    if (input.sourceLocationId) {
-      warehouse = await tx.stockLocation.findFirst({
-        where: { id: input.sourceLocationId, brandId: input.brandId, type: StockLocationType.WAREHOUSE },
-      });
-    }
-    if (!warehouse) {
-      warehouse = await ensureWarehouseLocation(input.brandId, tx);
-    }
-
-    const branchLoc = await ensureBranchStockLocation(
-      {
-        brandId: input.brandId,
-        branchId: branch.id,
-        branchName: branch.name,
-      },
-      tx,
-    );
-
-    const allowNeg = await brandAllowsNegative(tx, input.brandId);
-    const { beforeQty, afterQty } = await changeBalance(tx, {
-      stockLocationId: warehouse.id,
-      brandProductId: input.brandProductId,
-      delta: -input.quantity,
-      allowNegative: allowNeg,
-    });
-
-    await tx.stockMovement.create({
-      data: {
-        brandId: input.brandId,
-        brandProductId: input.brandProductId,
-        type: StockMovementType.TRANSFER,
-        quantity: input.quantity,
-        beforeQty,
-        afterQty,
-        stockLocationId: warehouse.id,
-        fromLocationId: warehouse.id,
-        note:
-          input.note?.trim() ||
-          (autoReceive ? "จ่ายเข้าสาขา" : "ส่งให้สาขา (รอรับ)"),
-        documentNo: input.documentNo?.trim() || null,
-        imageUrl: input.imageUrl?.trim() || null,
-        referenceType: autoReceive ? "TRANSFER_RECEIVED" : "TRANSFER_PENDING",
-        createdByAdminId: input.adminId ?? null,
-        createdByStaffId: input.staffId ?? null,
-      },
-    });
-
-    if (autoReceive) {
-      const receiveNote = input.note?.trim() || "รับจากสต๊อกกลาง";
-      const received = await changeBalance(tx, {
-        stockLocationId: branchLoc.id,
-        brandProductId: input.brandProductId,
-        delta: input.quantity,
-      });
-      await syncAfterBranchQtyChange(
-        tx,
-        branchLoc,
-        input.brandProductId,
-        received.afterQty,
-      );
-      await creditLinkedStoreStock(tx, {
-        branchId: branch.id,
-        brandProductId: input.brandProductId,
-        quantity: input.quantity,
-        staffId: input.staffId,
-        note: receiveNote,
-      });
-      await tx.stockMovement.create({
-        data: {
-          brandId: input.brandId,
-          brandProductId: input.brandProductId,
-          type: StockMovementType.TRANSFER,
-          quantity: input.quantity,
-          beforeQty: received.beforeQty,
-          afterQty: received.afterQty,
-          stockLocationId: branchLoc.id,
-          toLocationId: branchLoc.id,
-          fromLocationId: warehouse.id,
-          note: receiveNote,
-          documentNo: input.documentNo?.trim() || null,
-          imageUrl: input.imageUrl?.trim() || null,
-          referenceType: "TRANSFER_RECEIVED",
-          createdByAdminId: input.adminId ?? null,
-          createdByStaffId: input.staffId ?? null,
-        },
-      });
-    }
-
-    return tx.stockTransfer.create({
-      data: {
-        brandId: input.brandId,
-        branchId: branch.id,
-        brandProductId: input.brandProductId,
-        quantity: input.quantity,
-        status: autoReceive ? "RECEIVED" : "PENDING",
-        receivedAt: autoReceive ? new Date() : null,
-        receivedQuantity: autoReceive ? input.quantity : null,
-        note: input.note?.trim() || null,
-        createdByAdminId: input.adminId ?? null,
-      },
-      include: {
-        product: true,
-        branch: { select: { id: true, name: true } },
-      },
-    });
-  });
-}
-
-export async function confirmStockTransfer(input: {
-  transferId: string;
-  branchId: string;
-  staffId: string;
-  receivedQuantity?: number | null;
-  varianceNote?: string | null;
-}) {
-  const transferBrand = await prisma.stockTransfer.findUnique({
-    where: { id: input.transferId },
-    select: { brandId: true },
-  });
-  if (transferBrand?.brandId) {
-    await assertBrandWriteAllowedByBrandId(transferBrand.brandId);
-  }
-  return prisma.$transaction(async (tx) => {
-    const transfer = await tx.stockTransfer.findFirst({
-      where: {
-        id: input.transferId,
-        branchId: input.branchId,
-        status: "PENDING",
-      },
-      include: {
-        branch: { include: { brand: true } },
-        product: true,
-      },
-    });
-    if (!transfer) throw new StockError("ไม่พบรายการรอรับ หรือรับแล้ว", 404);
-    if (
-      !isBranchStockActive({
-        brandId: transfer.branch.brandId,
-        brandStockEnabled: transfer.branch.brand?.stockEnabled,
-        branchStockEnabled: transfer.branch.stockEnabled,
-      })
-    ) {
-      throw new StockError("สาขานี้ยังไม่ได้เปิดระบบสต๊อก");
-    }
-
-    const actualReceived =
-      typeof input.receivedQuantity === "number" && input.receivedQuantity >= 0
-        ? input.receivedQuantity
-        : transfer.quantity;
-    const varianceQty = actualReceived - transfer.quantity;
-
-    const branchLoc = await ensureBranchStockLocation(
-      {
-        brandId: transfer.brandId,
-        branchId: transfer.branchId,
-        branchName: transfer.branch.name,
-      },
-      tx,
-    );
-
-    let fromLocationId: string | null = null;
-    let receiveNote = transfer.note || "รับของจากสต๊อกกลาง";
-    if (transfer.sourceBranchId) {
-      const source = await tx.branch.findUnique({
-        where: { id: transfer.sourceBranchId },
-      });
-      if (source) {
-        const sourceLoc = await ensureBranchStockLocation(
-          {
-            brandId: transfer.brandId,
-            branchId: source.id,
-            branchName: source.name,
-          },
-          tx,
-        );
-        fromLocationId = sourceLoc.id;
-        receiveNote = transfer.note || `รับโอนจากสาขา ${source.name}`;
-      }
-    } else {
-      const warehouse = await ensureWarehouseLocation(transfer.brandId, tx);
-      fromLocationId = warehouse.id;
-    }
-
-    const { beforeQty, afterQty } = await changeBalance(tx, {
-      stockLocationId: branchLoc.id,
-      brandProductId: transfer.brandProductId,
-      delta: actualReceived,
-    });
-    await syncAfterBranchQtyChange(
-      tx,
-      branchLoc,
-      transfer.brandProductId,
-      afterQty,
-    );
-    await creditLinkedStoreStock(tx, {
-      branchId: transfer.branchId,
-      brandProductId: transfer.brandProductId,
-      quantity: actualReceived,
-      staffId: input.staffId,
-      note: receiveNote,
-    });
-
-    let finalNote = receiveNote;
-    if (varianceQty !== 0) {
-      finalNote += ` (นับรับจริง ${actualReceived}/${transfer.quantity} ผลต่าง ${
-        varianceQty > 0 ? `+${varianceQty}` : varianceQty
-      }${input.varianceNote ? `: ${input.varianceNote}` : ""})`;
-    }
-
-    await tx.stockMovement.create({
-      data: {
-        brandId: transfer.brandId,
-        brandProductId: transfer.brandProductId,
-        type: StockMovementType.TRANSFER,
-        quantity: actualReceived,
-        beforeQty,
-        afterQty,
-        stockLocationId: branchLoc.id,
-        fromLocationId,
-        toLocationId: branchLoc.id,
-        note: finalNote,
-        referenceType: "STOCK_TRANSFER",
-        referenceId: transfer.id,
-        lotNumber: transfer.lotNumber,
-        expiresAt: transfer.expiresAt,
-        createdByStaffId: input.staffId,
-      },
-    });
-
-    return tx.stockTransfer.update({
-      where: { id: transfer.id },
-      data: {
-        status: "RECEIVED",
-        receivedAt: new Date(),
-        receivedByStaffId: input.staffId,
-        receivedQuantity: actualReceived,
-        varianceQuantity: varianceQty,
-        varianceNote: input.varianceNote || null,
-      },
-      include: { product: true },
-    });
-  });
-}
-
-export async function cancelStockTransfer(input: {
-  transferId: string;
-  brandId: string;
-}) {
-  await assertBrandWriteAllowedByBrandId(input.brandId);
-  return prisma.$transaction(async (tx) => {
-    const transfer = await tx.stockTransfer.findFirst({
-      where: {
-        id: input.transferId,
-        brandId: input.brandId,
-        status: "PENDING",
-      },
-    });
-    if (!transfer) throw new StockError("ไม่พบรายการรอรับ หรือยกเลิกไม่ได้", 404);
-
-    let restoreLoc;
-    if (transfer.sourceBranchId) {
-      const source = await tx.branch.findUnique({
-        where: { id: transfer.sourceBranchId },
-      });
-      if (!source) throw new StockError("ไม่พบสาขาต้นทาง", 404);
-      restoreLoc = await ensureBranchStockLocation(
-        {
-          brandId: input.brandId,
-          branchId: source.id,
-          branchName: source.name,
-        },
-        tx,
-      );
-    } else {
-      restoreLoc = await ensureWarehouseLocation(input.brandId, tx);
-    }
-
-    const { beforeQty, afterQty } = await changeBalance(tx, {
-      stockLocationId: restoreLoc.id,
-      brandProductId: transfer.brandProductId,
-      delta: transfer.quantity,
-    });
-
-    await tx.stockMovement.create({
-      data: {
-        brandId: input.brandId,
-        brandProductId: transfer.brandProductId,
-        type: StockMovementType.ADJUST,
-        quantity: transfer.quantity,
-        beforeQty,
-        afterQty,
-        stockLocationId: restoreLoc.id,
-        toLocationId: restoreLoc.id,
-        note: transfer.sourceBranchId
-          ? "ยกเลิกโอนสาขา — คืนต้นทาง"
-          : "ยกเลิกการส่งสาขา — คืนสต๊อกกลาง",
-        referenceType: "TRANSFER_CANCEL",
-        referenceId: transfer.id,
-      },
-    });
-
-    return tx.stockTransfer.update({
-      where: { id: transfer.id },
-      data: { status: "CANCELLED" },
-    });
-  });
-}
-
-export async function adjustStock(input: {
-  brandId: string;
-  stockLocationId: string;
-  brandProductId: string;
-  quantity: number;
-  note?: string | null;
-} & Actor) {
-  if (input.quantity < 0) throw new StockError("จำนวนต้องไม่ติดลบ");
-  await assertBrandWriteAllowedByBrandId(input.brandId);
-
-  return prisma.$transaction(async (tx) => {
-    const location = await tx.stockLocation.findFirst({
-      where: { id: input.stockLocationId, brandId: input.brandId },
-    });
-    if (!location) throw new StockError("ไม่พบตำแหน่งสต๊อก", 404);
-
-    const product = await tx.brandProduct.findFirst({
-      where: { id: input.brandProductId, brandId: input.brandId },
-    });
-    if (!product) throw new StockError("ไม่พบสินค้า", 404);
-
-    const beforeQty = await readQty(tx, location.id, product.id);
-    const delta = input.quantity - beforeQty;
-    if (delta === 0) return null;
-
-    const allowNeg = await brandAllowsNegative(tx, input.brandId);
-    const { afterQty } = await changeBalance(tx, {
-      stockLocationId: location.id,
-      brandProductId: product.id,
-      delta,
-      allowNegative: allowNeg,
-    });
-    await syncAfterBranchQtyChange(tx, location, product.id, afterQty);
-
-    return tx.stockMovement.create({
-      data: {
-        brandId: input.brandId,
-        brandProductId: product.id,
-        type: StockMovementType.ADJUST,
-        quantity: Math.abs(delta),
-        beforeQty,
-        afterQty,
-        stockLocationId: location.id,
-        fromLocationId: delta < 0 ? location.id : null,
-        toLocationId: delta > 0 ? location.id : null,
-        note:
-          input.note?.trim() ||
-          `ปรับยอดจาก ${beforeQty} เป็น ${input.quantity}`,
-        referenceType: "ADJUST",
-        createdByAdminId: input.adminId ?? null,
-        createdByStaffId: input.staffId ?? null,
-      },
-    });
-  });
-}
-
-/** DAMAGE / LOST / ISSUE / WASTE / SALE — outbound from a location */
-export async function stockOutbound(input: {
-  brandId: string;
-  stockLocationId: string;
-  brandProductId: string;
-  quantity: number;
-  type: "DAMAGE" | "LOST" | "ISSUE" | "WASTE" | "SALE";
-  note?: string | null;
-  imageUrl?: string | null;
-  reason?: string | null;
-  documentNo?: string | null;
-} & Actor) {
-  if (input.quantity <= 0) throw new StockError("จำนวนต้องมากกว่า 0");
-
-  return prisma.$transaction(async (tx) => {
-    const product = await tx.brandProduct.findFirst({
-      where: { id: input.brandProductId, brandId: input.brandId },
-    });
-    if (!product) throw new StockError("ไม่พบสินค้า", 404);
-
-    const location = await tx.stockLocation.findFirst({
-      where: { id: input.stockLocationId, brandId: input.brandId },
-    });
-    if (!location) throw new StockError("ไม่พบตำแหน่งสต๊อก", 404);
-
-    const allowNeg = await brandAllowsNegative(tx, input.brandId);
-    const { beforeQty, afterQty } = await changeBalance(tx, {
-      stockLocationId: location.id,
-      brandProductId: product.id,
-      delta: -input.quantity,
-      allowNegative: allowNeg,
-    });
-    await syncAfterBranchQtyChange(tx, location, product.id, afterQty);
-
-    if (
-      product.stockType === StockType.EQUIPMENT &&
-      (input.type === "DAMAGE" || input.type === "LOST")
-    ) {
-      await tx.brandProduct.update({
-        where: { id: product.id },
-        data: {
-          equipmentStatus:
-            input.type === "DAMAGE"
-              ? EquipmentStatus.DAMAGED
-              : EquipmentStatus.LOST,
-        },
-      });
-    }
-
-    const typeMap = {
-      DAMAGE: StockMovementType.DAMAGE,
-      LOST: StockMovementType.LOST,
-      ISSUE: StockMovementType.ISSUE,
-      WASTE: StockMovementType.WASTE,
-      SALE: StockMovementType.SALE,
-    } as const;
-
-    return tx.stockMovement.create({
-      data: {
-        brandId: input.brandId,
-        brandProductId: product.id,
-        type: typeMap[input.type],
-        quantity: input.quantity,
-        beforeQty,
-        afterQty,
-        stockLocationId: location.id,
-        fromLocationId: location.id,
-        note: [input.reason, input.note].filter(Boolean).join(" — ") || null,
-        documentNo: input.documentNo?.trim() || null,
-        imageUrl: input.imageUrl || null,
-        referenceType: input.type,
-        createdByAdminId: input.adminId ?? null,
-        createdByStaffId: input.staffId ?? null,
-      },
-    });
-  });
-}
-
-export async function deductStockForOrder(orderId: string, tx?: Tx) {
-  const run = async (client: Tx) => {
-    const order = await client.order.findUnique({
-      where: { id: orderId },
-      include: {
-        items: {
-          include: {
-            branchMenuItem: {
-              select: { id: true, brandProductId: true, name: true },
-            },
-          },
-        },
-        branch: {
-          include: {
-            brand: {
-              select: {
-                id: true,
-                stockEnabled: true,
-                allowNegativeStock: true,
-              },
-            },
-          },
-        },
-      },
-    });
-    if (!order) return;
-    if (order.stockDeducted) return;
-    if (order.awaitingPhotoKey) return;
-    if (
-      !isBranchStockActive({
-        brandId: order.branch.brandId,
-        brandStockEnabled: order.branch.brand?.stockEnabled,
-        branchStockEnabled: order.branch.stockEnabled,
-      })
-    ) {
-      return;
-    }
-
-    const brandId = order.branch.brandId!;
-    const location = await client.stockLocation.findFirst({
-      where: {
-        brandId,
-        branchId: order.branchId,
-        type: StockLocationType.BRANCH,
-      },
-    });
-    if (!location) {
-      throw new StockError(
-        "สาขานี้เปิดสต๊อกแล้วแต่ยังไม่มีตำแหน่งสต๊อก — ลองปิด/เปิดสต๊อกสาขาอีกครั้ง",
-      );
-    }
-
-    type Need = { saleQty: number; freeQty: number; name: string };
-    const needs = new Map<string, Need>();
-
-    for (const item of order.items) {
-      const productId = item.branchMenuItem?.brandProductId;
-      if (!productId) continue;
-      const product = await client.brandProduct.findFirst({
-        where: {
-          id: productId,
-          brandId,
-          trackStock: true,
-          isActive: true,
-          stockType: StockType.SALE_ITEM,
-        },
-      });
-      if (!product) continue;
-      const saleQty = item.quantity;
-      const freeQty = item.giftQuantity ?? 0;
-      if (saleQty + freeQty <= 0) continue;
-      const prev = needs.get(productId);
-      needs.set(productId, {
-        saleQty: (prev?.saleQty ?? 0) + saleQty,
-        freeQty: (prev?.freeQty ?? 0) + freeQty,
-        name: product.name,
-      });
-    }
-
-    const allowNeg = Boolean(order.branch.brand?.allowNegativeStock);
-
-    for (const [brandProductId, { saleQty, freeQty }] of needs) {
-      const totalSold = saleQty + freeQty;
-      // Finished SALE_ITEM goods sold as branch menu lines are inventoried in
-      // BranchMenuItemStock (staff stock UI) and deducted by
-      // deductBranchMenuStockForOrder. StockBalance here is often empty and was
-      // blocking key-order even when menu stock had quantity.
-      // Only auto-deduct recipe/BOM components from StockBalance below.
-
-      // BOM / recipe: auto-deduct components (usually consumables)
-      if (totalSold > 0) {
-        const recipe = await client.productRecipeLine.findMany({
-          where: { parentProductId: brandProductId },
-          include: { component: true },
-        });
-        for (const line of recipe) {
-          if (!line.component.trackStock || !line.component.isActive) continue;
-          const needQty = Math.ceil(
-            Number(line.quantityPerUnit) * totalSold,
-          );
-          if (needQty <= 0) continue;
-          if (line.component.trackLots) {
-            const { deductFromLotsFefo } = await import("@/lib/stock-advanced");
-            await deductFromLotsFefo(client, {
-              stockLocationId: location.id,
-              brandProductId: line.componentProductId,
-              quantity: needQty,
-              allowNegative: allowNeg,
-            });
-          }
-          const { beforeQty, afterQty } = await changeBalance(client, {
-            stockLocationId: location.id,
-            brandProductId: line.componentProductId,
-            delta: -needQty,
-            allowNegative: allowNeg,
-          });
-          await client.stockMovement.create({
-            data: {
-              brandId,
-              brandProductId: line.componentProductId,
-              type: StockMovementType.ISSUE,
-              quantity: needQty,
-              beforeQty,
-              afterQty,
-              stockLocationId: location.id,
-              fromLocationId: location.id,
-              orderId: order.id,
-              referenceType: "BOM",
-              referenceId: brandProductId,
-              note: `สูตรจาก ${needs.get(brandProductId)?.name ?? "เมนู"} ×${totalSold} (ออเดอร์ ${order.orderNumber})`,
-            },
-          });
-        }
-      }
-    }
-
-    await client.order.update({
-      where: { id: order.id },
-      data: { stockDeducted: true },
-    });
-  };
-
-  if (tx) return run(tx);
-  return prisma.$transaction(run);
-}
-
-export async function restoreStockForOrder(orderId: string, tx?: Tx) {
-  const run = async (client: Tx) => {
-    const order = await client.order.findUnique({
-      where: { id: orderId },
-      include: {
-        branch: {
-          include: { brand: { select: { id: true, stockEnabled: true } } },
-        },
-      },
-    });
-    if (!order?.stockDeducted) return false;
-
-    if (
-      !isBranchStockActive({
-        brandId: order.branch.brandId,
-        brandStockEnabled: order.branch.brand?.stockEnabled,
-        branchStockEnabled: order.branch.stockEnabled,
-      })
-    ) {
-      await client.order.update({
-        where: { id: orderId },
-        data: { stockDeducted: false },
-      });
-      return true;
-    }
-
-    const brandId = order.branch.brandId!;
-    const location = await client.stockLocation.findFirst({
-      where: {
-        brandId,
-        branchId: order.branchId,
-        type: StockLocationType.BRANCH,
-      },
-    });
-    if (!location) {
-      await client.order.update({
-        where: { id: orderId },
-        data: { stockDeducted: false },
-      });
-      return true;
-    }
-
-    // SALE/FREE from direct sale lines; ISSUE from recipe/BOM components.
-    const sales = await client.stockMovement.findMany({
-      where: {
-        orderId,
-        type: {
-          in: [
-            StockMovementType.SALE,
-            StockMovementType.FREE,
-            StockMovementType.ISSUE,
-          ],
-        },
-      },
-    });
-
-    for (const sale of sales) {
-      const { beforeQty, afterQty } = await changeBalance(client, {
-        stockLocationId: location.id,
-        brandProductId: sale.brandProductId,
-        delta: sale.quantity,
-      });
-      await client.stockMovement.create({
-        data: {
-          brandId,
-          brandProductId: sale.brandProductId,
-          type: StockMovementType.RETURN,
-          quantity: sale.quantity,
-          beforeQty,
-          afterQty,
-          stockLocationId: location.id,
-          toLocationId: location.id,
-          orderId,
-          referenceType: "ORDER_CANCEL",
-          referenceId: orderId,
-          note: `คืนสต๊อกจากยกเลิกออเดอร์ ${order.orderNumber}`,
-        },
-      });
-      await syncAfterBranchQtyChange(
-        client,
-        location,
-        sale.brandProductId,
-        afterQty,
-      );
-    }
-
-    await client.order.update({
-      where: { id: orderId },
-      data: { stockDeducted: false },
-    });
-    return true;
-  };
-
-  const doAll = async (client: Tx) => {
-    const restored = await run(client);
-    if (!restored) return;
-    await restoreBranchMenuStockForOrder(orderId, client);
-    await restoreBranchNonMenuStockForOrder(orderId, client);
-  };
-
-  if (tx) {
-    await doAll(tx);
-    return;
-  }
-  await prisma.$transaction(async (client) => {
-    await doAll(client);
-  });
-}
-
-/**
- * Reverse a prior stock restore so the order is deducted again.
- * Used when undoing "ยกเลิกรอบ" (orders go back to their previous status).
- * Does NOT create new SALE/ISSUE rows — only adjusts qty and sets stockDeducted,
- * so a later cancel still restores against the original history once.
- */
-export async function reapplyStockForOrder(orderId: string, tx?: Tx) {
-  const run = async (client: Tx) => {
-    const order = await client.order.findUnique({
-      where: { id: orderId },
-      include: {
-        branch: {
-          include: {
-            brand: {
-              select: {
-                id: true,
-                stockEnabled: true,
-                allowNegativeStock: true,
-              },
-            },
-          },
-        },
-      },
-    });
-    if (!order) return;
-    if (order.stockDeducted) return;
-    if (order.awaitingPhotoKey) return;
-
-    if (
-      !isBranchStockActive({
-        brandId: order.branch.brandId,
-        brandStockEnabled: order.branch.brand?.stockEnabled,
-        branchStockEnabled: order.branch.stockEnabled,
-      })
-    ) {
-      return;
-    }
-
-    const brandId = order.branch.brandId!;
-    const allowNeg = Boolean(order.branch.brand?.allowNegativeStock);
-    const location = await client.stockLocation.findFirst({
-      where: {
-        brandId,
-        branchId: order.branchId,
-        type: StockLocationType.BRANCH,
-      },
-    });
-
-    let reapplied = false;
-
-    if (location) {
-      const outbounds = await client.stockMovement.findMany({
-        where: {
-          orderId,
-          type: {
-            in: [
-              StockMovementType.SALE,
-              StockMovementType.FREE,
-              StockMovementType.ISSUE,
-            ],
-          },
-        },
-      });
-      // Net that was previously sold: sum outbound qty. After cancel, RETURNs
-      // put inventory back — re-deduct the same outbound quantity without
-      // writing new SALE/ISSUE (avoids double-restore on a later cancel).
-      const byProduct = new Map<string, number>();
-      for (const m of outbounds) {
-        byProduct.set(
-          m.brandProductId,
-          (byProduct.get(m.brandProductId) ?? 0) + m.quantity,
-        );
-      }
-      for (const [brandProductId, qty] of byProduct) {
-        if (qty <= 0) continue;
-        const { beforeQty, afterQty } = await changeBalance(client, {
-          stockLocationId: location.id,
-          brandProductId,
-          delta: -qty,
-          allowNegative: allowNeg,
-        });
-        await client.stockMovement.create({
-          data: {
-            brandId,
-            brandProductId,
-            type: StockMovementType.ADJUST,
-            quantity: qty,
-            beforeQty,
-            afterQty,
-            stockLocationId: location.id,
-            fromLocationId: location.id,
-            orderId,
-            referenceType: "SHIFT_RESTORE",
-            referenceId: orderId,
-            note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ (ออเดอร์ ${order.orderNumber})`,
-          },
-        });
-        await syncAfterBranchQtyChange(
-          client,
-          location,
-          brandProductId,
-          afterQty,
-        );
-        reapplied = true;
-      }
-    }
-
-    // Branch menu: re-deduct from original SALE history rows (no new SALE).
-    const menuSales = await client.branchMenuItemStockHistory.findMany({
-      where: {
-        type: "SALE",
-        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
-      },
-    });
-    for (const h of menuSales) {
-      const deductQty = Math.abs(h.quantity);
-      if (deductQty <= 0) continue;
-      const stock = await client.branchMenuItemStock.findUnique({
-        where: { menuItemId: h.menuItemId },
-      });
-      const oldQty = stock?.quantity ?? 0;
-      const newQty = oldQty - deductQty;
-      if (!allowNeg && newQty < 0) {
-        throw new StockError(
-          `สต๊อกไม่พอตอนกู้คืนรอบ (เมนูในออเดอร์ ${order.orderNumber})`,
-        );
-      }
-      await client.branchMenuItemStock.upsert({
-        where: { menuItemId: h.menuItemId },
-        update: { quantity: newQty },
-        create: {
-          branchId: h.branchId,
-          menuItemId: h.menuItemId,
-          quantity: newQty,
-        },
-      });
-      await client.branchMenuItem.update({
-        where: { id: h.menuItemId },
-        data: { isOutOfStock: newQty <= 0 },
-      });
-      await client.branchMenuItemStockHistory.create({
-        data: {
-          branchId: h.branchId,
-          menuItemId: h.menuItemId,
-          quantity: -deductQty,
-          type: "ADJUST",
-          note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ ${orderId}`,
-          createdByStaffId: null,
-        },
-      });
-      reapplied = true;
-    }
-
-    // Non-menu consumables: re-issue from original ISSUE history (no new ISSUE).
-    const issues = await client.branchNonMenuItemHistory.findMany({
-      where: {
-        type: "ISSUE",
-        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
-      },
-      include: { item: { select: { id: true, quantity: true, name: true } } },
-    });
-    for (const h of issues) {
-      const need = Math.abs(h.quantity);
-      if (need <= 0) continue;
-      if (!allowNeg && h.item.quantity < need) {
-        throw new StockError(
-          `สต๊อกสิ้นเปลืองไม่พอตอนกู้คืน: ${h.item.name}`,
-        );
-      }
-      const newQty = h.item.quantity - need;
-      await client.branchNonMenuItem.update({
-        where: { id: h.branchNonMenuItemId },
-        data: { quantity: newQty },
-      });
-      await client.branchNonMenuItemHistory.create({
-        data: {
-          branchNonMenuItemId: h.branchNonMenuItemId,
-          quantity: -need,
-          type: "ADJUST",
-          note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ ${orderId}`,
-          createdByStaffId: null,
-        },
-      });
-      reapplied = true;
-    }
-
-    if (reapplied) {
-      await client.order.update({
-        where: { id: orderId },
-        data: { stockDeducted: true },
-      });
-    }
-  };
-
-  if (tx) return run(tx);
-  return prisma.$transaction(run);
-}
-
-export type BranchMenuStockSaleAgg = {
-  menuItemId: string;
-  name: string;
-  /** Positive units deducted */
-  quantity: number;
-  orders: Array<{ id: string; orderNumber: string }>;
-};
-
-/**
- * Aggregate SALE histories for the given orders (still stock-deducted sales).
- * quantity on history rows is negative for SALE.
- */
-export async function aggregateBranchMenuStockSalesByOrders(
-  branchId: string,
-  orders: Array<{ id: string; orderNumber: string }>,
-): Promise<BranchMenuStockSaleAgg[]> {
-  if (orders.length === 0) return [];
-
-  const orderById = new Map(orders.map((o) => [o.id, o]));
-  const orFilters = orders.map((o) => ({
-    note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${o.id}` },
-  }));
-
-  const histories: Array<{
-    menuItemId: string;
-    quantity: number;
-    note: string | null;
-    menuItem: { id: string; name: string };
-  }> = [];
-
-  const chunkSize = 40;
-  for (let i = 0; i < orFilters.length; i += chunkSize) {
-    const chunk = orFilters.slice(i, i + chunkSize);
-    const rows = await prisma.branchMenuItemStockHistory.findMany({
-      where: {
-        branchId,
-        type: "SALE",
-        OR: chunk,
-      },
-      select: {
-        menuItemId: true,
-        quantity: true,
-        note: true,
-        menuItem: { select: { id: true, name: true } },
-      },
-    });
-    histories.push(...rows);
-  }
-
-  type Acc = {
-    menuItemId: string;
-    name: string;
-    quantity: number;
-    orderMap: Map<string, string>;
-  };
-  const byMenu = new Map<string, Acc>();
-
-  for (const h of histories) {
-    const parsed = parseBranchMenuOrderNote(h.note);
-    if (!parsed || !orderById.has(parsed.orderId)) continue;
-    const order = orderById.get(parsed.orderId)!;
-    const deducted = Math.abs(h.quantity);
-    if (deducted <= 0) continue;
-
-    let acc = byMenu.get(h.menuItemId);
-    if (!acc) {
-      acc = {
-        menuItemId: h.menuItemId,
-        name: h.menuItem.name,
-        quantity: 0,
-        orderMap: new Map(),
-      };
-      byMenu.set(h.menuItemId, acc);
-    }
-    acc.quantity += deducted;
-    acc.orderMap.set(order.id, order.orderNumber);
-  }
-
-  return [...byMenu.values()]
-    .map((a) => ({
-      menuItemId: a.menuItemId,
-      name: a.name,
-      quantity: a.quantity,
-      orders: [...a.orderMap.entries()]
-        .map(([id, orderNumber]) => ({ id, orderNumber }))
-        .sort((x, y) => x.orderNumber.localeCompare(y.orderNumber, "th")),
-    }))
-    .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name, "th"));
-}
-
-/**
- * Deduct BranchMenuItemStock for staff/customer orders.
- * Prefers FROM_MENU option picks (promo skewers); otherwise deducts the line item itself.
- */
 export async function deductBranchMenuStockForOrder(input: {
   orderId: string;
   orderNumber: string;
@@ -1598,7 +121,6 @@ export async function deductBranchMenuStockForOrder(input: {
       );
 
       if (fromMenuOptionIds.size > 0 && (line.optionIds?.length ?? 0) > 0) {
-        // Promo pack: deduct selected skewers only (ignore MANUAL option ids)
         const counts = new Map<string, number>();
         for (const optId of line.optionIds ?? []) {
           if (!fromMenuOptionIds.has(optId)) continue;
@@ -1613,7 +135,6 @@ export async function deductBranchMenuStockForOrder(input: {
           });
         }
       } else if (menu.category?.stockExempt) {
-        // Category exempt from stock — skip pack/line deduction
         continue;
       } else {
         const prev = needs.get(menu.id);
@@ -1626,7 +147,6 @@ export async function deductBranchMenuStockForOrder(input: {
 
     if (needs.size === 0) return;
 
-    // Resolve names for option picks
     const needIds = [...needs.keys()];
     const named = await client.branchMenuItem.findMany({
       where: { id: { in: needIds }, branchId: input.branchId },
@@ -1640,8 +160,6 @@ export async function deductBranchMenuStockForOrder(input: {
         throw new StockError(`ไม่พบเมนูสำหรับตัดสต๊อก`, 400);
       }
       need.name = item.name;
-      // No BranchMenuItemStock row = not tracked yet (same as isMenuItemSoldOut).
-      // Do not treat missing rows as quantity 0.
       if (!item.stock) continue;
       const have = item.stock.quantity;
       if (have < need.qty) {
@@ -1709,7 +227,7 @@ export async function restoreBranchMenuStockForOrder(
         where: { menuItemId: h.menuItemId },
       });
       const oldQty = stock?.quantity ?? 0;
-      const newQty = oldQty - h.quantity; // h.quantity is negative for SALE
+      const newQty = oldQty - h.quantity;
 
       await client.branchMenuItemStock.upsert({
         where: { menuItemId: h.menuItemId },
@@ -1743,16 +261,11 @@ export async function restoreBranchMenuStockForOrder(
   return prisma.$transaction(run);
 }
 
-/**
- * Deduct CONSUMABLE quantities linked on OrderConsumableLine.
- * Idempotent via history note prefix ORDER:{orderId}.
- */
 export async function deductBranchNonMenuStockForOrder(input: {
   orderId: string;
   orderNumber: string;
   branchId: string;
   staffId?: string | null;
-  /** If omitted, load lines from OrderConsumableLine */
   lines?: Array<{ branchNonMenuItemId: string; quantity: number }>;
   tx?: Tx;
 }) {
@@ -1846,7 +359,6 @@ export async function restoreBranchNonMenuStockForOrder(
     if (histories.length === 0) return;
 
     for (const h of histories) {
-      // h.quantity is negative for ISSUE
       const restoreQty = -h.quantity;
       if (restoreQty <= 0) continue;
       const newQty = h.item.quantity + restoreQty;
@@ -1870,6 +382,151 @@ export async function restoreBranchNonMenuStockForOrder(
   return prisma.$transaction(run);
 }
 
+export async function restoreStockForOrder(orderId: string, tx?: Tx) {
+  const run = async (client: Tx) => {
+    const order = await client.order.findUnique({
+      where: { id: orderId },
+      select: { stockDeducted: true },
+    });
+    if (!order?.stockDeducted) return false;
+
+    await restoreBranchMenuStockForOrder(orderId, client);
+    await restoreBranchNonMenuStockForOrder(orderId, client);
+    await client.order.update({
+      where: { id: orderId },
+      data: { stockDeducted: false },
+    });
+    return true;
+  };
+
+  if (tx) return run(tx);
+  return prisma.$transaction(run);
+}
+
+export async function reapplyStockForOrder(orderId: string, tx?: Tx) {
+  const run = async (client: Tx) => {
+    const order = await client.order.findUnique({
+      where: { id: orderId },
+      include: {
+        branch: {
+          include: {
+            brand: {
+              select: {
+                id: true,
+                stockEnabled: true,
+                allowNegativeStock: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!order) return;
+    if (order.stockDeducted) return;
+    if (order.awaitingPhotoKey) return;
+
+    if (
+      !isBranchStockActive({
+        brandId: order.branch.brandId,
+        brandStockEnabled: order.branch.brand?.stockEnabled,
+        branchStockEnabled: order.branch.stockEnabled,
+      })
+    ) {
+      return;
+    }
+
+    const allowNeg = Boolean(order.branch.brand?.allowNegativeStock);
+    let reapplied = false;
+
+    const menuSales = await client.branchMenuItemStockHistory.findMany({
+      where: {
+        type: "SALE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
+      },
+    });
+    for (const h of menuSales) {
+      const deductQty = Math.abs(h.quantity);
+      if (deductQty <= 0) continue;
+      const stock = await client.branchMenuItemStock.findUnique({
+        where: { menuItemId: h.menuItemId },
+      });
+      const oldQty = stock?.quantity ?? 0;
+      const newQty = oldQty - deductQty;
+      if (!allowNeg && newQty < 0) {
+        throw new StockError(
+          `สต๊อกไม่พอตอนกู้คืนรอบ (เมนูในออเดอร์ ${order.orderNumber})`,
+        );
+      }
+      await client.branchMenuItemStock.upsert({
+        where: { menuItemId: h.menuItemId },
+        update: { quantity: newQty },
+        create: {
+          branchId: h.branchId,
+          menuItemId: h.menuItemId,
+          quantity: newQty,
+        },
+      });
+      await client.branchMenuItem.update({
+        where: { id: h.menuItemId },
+        data: { isOutOfStock: newQty <= 0 },
+      });
+      await client.branchMenuItemStockHistory.create({
+        data: {
+          branchId: h.branchId,
+          menuItemId: h.menuItemId,
+          quantity: -deductQty,
+          type: "ADJUST",
+          note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ ${orderId}`,
+          createdByStaffId: null,
+        },
+      });
+      reapplied = true;
+    }
+
+    const issues = await client.branchNonMenuItemHistory.findMany({
+      where: {
+        type: "ISSUE",
+        note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${orderId}` },
+      },
+      include: { item: { select: { id: true, quantity: true, name: true } } },
+    });
+    for (const h of issues) {
+      const need = Math.abs(h.quantity);
+      if (need <= 0) continue;
+      if (!allowNeg && h.item.quantity < need) {
+        throw new StockError(
+          `สต๊อกสิ้นเปlืองไม่พอตอนกู้คืน: ${h.item.name}`,
+        );
+      }
+      const newQty = h.item.quantity - need;
+      await client.branchNonMenuItem.update({
+        where: { id: h.branchNonMenuItemId },
+        data: { quantity: newQty },
+      });
+      await client.branchNonMenuItemHistory.create({
+        data: {
+          branchNonMenuItemId: h.branchNonMenuItemId,
+          quantity: -need,
+          type: "ADJUST",
+          note: `ตัดสต๊อกใหม่หลังกู้คืนรอบ ${orderId}`,
+          createdByStaffId: null,
+        },
+      });
+      reapplied = true;
+    }
+
+    if (reapplied) {
+      await client.order.update({
+        where: { id: orderId },
+        data: { stockDeducted: true },
+      });
+    }
+  };
+
+  if (tx) return run(tx);
+  return prisma.$transaction(run);
+}
+
 export async function maybeDeductOnAccept(input: {
   orderId: string;
   previousStatus: import("@prisma/client").OrderStatus;
@@ -1880,311 +537,113 @@ export async function maybeDeductOnAccept(input: {
     input.previousStatus === OrderStatus.WAITING_FOR_STORE_ACCEPTANCE &&
     input.nextStatus === OrderStatus.PREPARING
   ) {
-    await deductStockForOrder(input.orderId);
     const order = await prisma.order.findUnique({
       where: { id: input.orderId },
       include: { items: true },
     });
-    if (order) {
-      await deductBranchMenuStockForOrder({
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        branchId: order.branchId,
-        lines: order.items
-          .filter((i) => i.branchMenuItemId)
-          .map((i) => ({
-            branchMenuItemId: i.branchMenuItemId!,
-            quantity: i.quantity + (i.giftQuantity ?? 0),
-            optionIds: [],
-          })),
-      });
-      await deductBranchNonMenuStockForOrder({
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        branchId: order.branchId,
-      });
-    }
+    if (!order) return;
+
+    await deductBranchMenuStockForOrder({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      branchId: order.branchId,
+      lines: order.items
+        .filter((i) => i.branchMenuItemId)
+        .map((i) => ({
+          branchMenuItemId: i.branchMenuItemId!,
+          quantity: i.quantity + (i.giftQuantity ?? 0),
+          optionIds: [],
+        })),
+    });
+    await deductBranchNonMenuStockForOrder({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      branchId: order.branchId,
+    });
   }
 }
 
-/** Create a stock count session with snapshot system qty */
-export async function createStockCount(input: {
-  brandId: string;
-  stockLocationId: string;
+export type BranchMenuStockSaleAgg = {
+  menuItemId: string;
   name: string;
-  type?: StockCountType;
-  stockTypes?: StockType[];
-  note?: string | null;
-} & Actor) {
-  return prisma.$transaction(async (tx) => {
-    const location = await tx.stockLocation.findFirst({
-      where: { id: input.stockLocationId, brandId: input.brandId },
-    });
-    if (!location) throw new StockError("ไม่พบตำแหน่งสต๊อก", 404);
+  quantity: number;
+  orders: Array<{ id: string; orderNumber: string }>;
+};
 
-    const typeFilter = input.stockTypes?.length
-      ? { stockType: { in: input.stockTypes } }
-      : {};
+export async function aggregateBranchMenuStockSalesByOrders(
+  branchId: string,
+  orders: Array<{ id: string; orderNumber: string }>,
+): Promise<BranchMenuStockSaleAgg[]> {
+  if (orders.length === 0) return [];
 
-    const products = await tx.brandProduct.findMany({
+  const orderById = new Map(orders.map((o) => [o.id, o]));
+  const orFilters = orders.map((o) => ({
+    note: { startsWith: `${BRANCH_MENU_ORDER_NOTE_PREFIX}${o.id}` },
+  }));
+
+  const histories: Array<{
+    menuItemId: string;
+    quantity: number;
+    note: string | null;
+    menuItem: { id: string; name: string };
+  }> = [];
+
+  const chunkSize = 40;
+  for (let i = 0; i < orFilters.length; i += chunkSize) {
+    const chunk = orFilters.slice(i, i + chunkSize);
+    const rows = await prisma.branchMenuItemStockHistory.findMany({
       where: {
-        brandId: input.brandId,
-        isActive: true,
-        trackStock: true,
-        ...typeFilter,
+        branchId,
+        type: "SALE",
+        OR: chunk,
       },
-      orderBy: { name: "asc" },
-    });
-
-    const count = await tx.stockCount.create({
-      data: {
-        brandId: input.brandId,
-        branchId: location.branchId,
-        stockLocationId: location.id,
-        name: input.name.trim(),
-        type: input.type ?? StockCountType.CUSTOM,
-        status: StockCountStatus.IN_PROGRESS,
-        note: input.note?.trim() || null,
-        createdByAdminId: input.adminId ?? null,
-        createdByStaffId: input.staffId ?? null,
-        lines: {
-          create: await Promise.all(
-            products.map(async (p) => {
-              const qty = await readQty(tx, location.id, p.id);
-              return {
-                brandProductId: p.id,
-                systemQty: qty,
-              };
-            }),
-          ),
-        },
-      },
-      include: {
-        lines: { include: { product: true }, orderBy: { product: { name: "asc" } } },
-        location: true,
+      select: {
+        menuItemId: true,
+        quantity: true,
+        note: true,
+        menuItem: { select: { id: true, name: true } },
       },
     });
-
-    return count;
-  });
-}
-
-export async function updateStockCountLines(input: {
-  countId: string;
-  brandId: string;
-  lines: { brandProductId: string; countedQty: number; note?: string | null }[];
-}) {
-  const count = await prisma.stockCount.findFirst({
-    where: {
-      id: input.countId,
-      brandId: input.brandId,
-      status: { in: [StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS] },
-    },
-  });
-  if (!count) throw new StockError("ไม่พบรอบตรวจนับ หรือปิดแล้ว", 404);
-
-  await prisma.$transaction(
-    input.lines.map((line) =>
-      prisma.stockCountLine.updateMany({
-        where: {
-          countId: input.countId,
-          brandProductId: line.brandProductId,
-        },
-        data: {
-          countedQty: line.countedQty,
-          note: line.note?.trim() || null,
-        },
-      }),
-    ),
-  );
-
-  return prisma.stockCount.findUnique({
-    where: { id: input.countId },
-    include: {
-      lines: { include: { product: true }, orderBy: { product: { name: "asc" } } },
-    },
-  });
-}
-
-/** Complete count: create COUNT + ADJUST movements for diffs */
-export async function completeStockCount(input: {
-  countId: string;
-  brandId: string;
-} & Actor) {
-  return prisma.$transaction(async (tx) => {
-    const count = await tx.stockCount.findFirst({
-      where: {
-        id: input.countId,
-        brandId: input.brandId,
-        status: { in: [StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS] },
-      },
-      include: { lines: true, location: true },
-    });
-    if (!count) throw new StockError("ไม่พบรอบตรวจนับ หรือปิดแล้ว", 404);
-
-    const missing = count.lines.filter((l) => l.countedQty == null);
-    if (missing.length > 0) {
-      throw new StockError(`ยังนับไม่ครบ ${missing.length} รายการ`);
-    }
-
-    const allowNeg = await brandAllowsNegative(tx, input.brandId);
-
-    for (const line of count.lines) {
-      const counted = line.countedQty ?? line.systemQty;
-      const delta = counted - line.systemQty;
-
-      await tx.stockMovement.create({
-        data: {
-          brandId: input.brandId,
-          brandProductId: line.brandProductId,
-          type: StockMovementType.COUNT,
-          quantity: Math.abs(delta),
-          beforeQty: line.systemQty,
-          afterQty: counted,
-          stockLocationId: count.stockLocationId,
-          note: line.note || `ตรวจนับ ${count.name}`,
-          referenceType: "STOCK_COUNT",
-          referenceId: count.id,
-          createdByAdminId: input.adminId ?? null,
-          createdByStaffId: input.staffId ?? null,
-        },
-      });
-
-      if (delta !== 0) {
-        const { beforeQty, afterQty } = await changeBalance(tx, {
-          stockLocationId: count.stockLocationId,
-          brandProductId: line.brandProductId,
-          delta,
-          allowNegative: allowNeg,
-        });
-        await syncAfterBranchQtyChange(
-          tx,
-          count.location,
-          line.brandProductId,
-          afterQty,
-        );
-        await tx.stockMovement.create({
-          data: {
-            brandId: input.brandId,
-            brandProductId: line.brandProductId,
-            type: StockMovementType.ADJUST,
-            quantity: Math.abs(delta),
-            beforeQty,
-            afterQty,
-            stockLocationId: count.stockLocationId,
-            fromLocationId: delta < 0 ? count.stockLocationId : null,
-            toLocationId: delta > 0 ? count.stockLocationId : null,
-            note: `ปรับจากตรวจนับ ${count.name}`,
-            referenceType: "STOCK_COUNT",
-            referenceId: count.id,
-            createdByAdminId: input.adminId ?? null,
-            createdByStaffId: input.staffId ?? null,
-          },
-        });
-      }
-    }
-
-    return tx.stockCount.update({
-      where: { id: count.id },
-      data: {
-        status: StockCountStatus.COMPLETED,
-        completedAt: new Date(),
-        endsAt: new Date(),
-      },
-      include: {
-        lines: { include: { product: true } },
-      },
-    });
-  });
-}
-
-export async function getStockDashboard(brandId: string) {
-  const [products, warehouse, branches, todayDamage, pendingTransfers] =
-    await Promise.all([
-      prisma.brandProduct.findMany({
-        where: { brandId },
-        include: {
-          balances: { include: { location: true } },
-        },
-      }),
-      prisma.stockLocation.findFirst({
-        where: { brandId, type: StockLocationType.WAREHOUSE },
-      }),
-      prisma.branch.findMany({
-        where: { brandId, stockEnabled: true },
-        select: { id: true, name: true },
-      }),
-      prisma.stockMovement.findMany({
-        where: {
-          brandId,
-          type: { in: [StockMovementType.DAMAGE, StockMovementType.LOST, StockMovementType.WASTE] },
-          createdAt: { gte: startOfBangkokDay() },
-        },
-        include: { product: { select: { name: true, unit: true } } },
-      }),
-      prisma.stockTransfer.count({
-        where: { brandId, status: "PENDING" },
-      }),
-    ]);
-
-  let totalSku = products.filter((p) => p.isActive).length;
-  let lowStock = 0;
-  let outOfStock = 0;
-  let stockValue = 0;
-  let consumableLow = 0;
-  let equipmentDue = 0;
-
-  const lowItems: { id: string; name: string; qty: number; type: StockType }[] =
-    [];
-
-  for (const p of products) {
-    if (!p.isActive || !p.trackStock) continue;
-    const totalQty = p.balances.reduce((s, b) => s + b.quantity, 0);
-    const cost = p.costPrice ? Number(p.costPrice) : 0;
-    stockValue += totalQty * cost;
-
-    if (totalQty <= 0) {
-      outOfStock += 1;
-      lowItems.push({ id: p.id, name: p.name, qty: totalQty, type: p.stockType });
-    } else if (p.lowStockAlert != null && totalQty <= p.lowStockAlert) {
-      lowStock += 1;
-      lowItems.push({ id: p.id, name: p.name, qty: totalQty, type: p.stockType });
-      if (p.stockType === StockType.CONSUMABLE) consumableLow += 1;
-    }
-
-    if (
-      p.stockType === StockType.EQUIPMENT &&
-      (p.equipmentStatus === EquipmentStatus.DAMAGED ||
-        p.equipmentStatus === EquipmentStatus.LOST)
-    ) {
-      equipmentDue += 1;
-    }
+    histories.push(...rows);
   }
 
-  return {
-    totalSku,
-    lowStock,
-    outOfStock,
-    stockValue,
-    damageLostToday: todayDamage.length,
-    damageLostTodayItems: todayDamage.slice(0, 20),
-    consumableLow,
-    equipmentAttention: equipmentDue,
-    pendingTransfers,
-    branchCount: branches.length,
-    warehouseName: warehouse?.name ?? "สต๊อกกลาง",
-    lowItems: lowItems.slice(0, 30),
+  type Acc = {
+    menuItemId: string;
+    name: string;
+    quantity: number;
+    orderMap: Map<string, string>;
   };
-}
+  const byMenu = new Map<string, Acc>();
 
-function startOfBangkokDay() {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const day = fmt.format(new Date()); // YYYY-MM-DD
-  // Approximate UTC instant for Bangkok midnight
-  return new Date(`${day}T00:00:00+07:00`);
+  for (const h of histories) {
+    const parsed = parseBranchMenuOrderNote(h.note);
+    if (!parsed || !orderById.has(parsed.orderId)) continue;
+    const order = orderById.get(parsed.orderId)!;
+    const deducted = Math.abs(h.quantity);
+    if (deducted <= 0) continue;
+
+    let acc = byMenu.get(h.menuItemId);
+    if (!acc) {
+      acc = {
+        menuItemId: h.menuItemId,
+        name: h.menuItem.name,
+        quantity: 0,
+        orderMap: new Map(),
+      };
+      byMenu.set(h.menuItemId, acc);
+    }
+    acc.quantity += deducted;
+    acc.orderMap.set(order.id, order.orderNumber);
+  }
+
+  return [...byMenu.values()]
+    .map((a) => ({
+      menuItemId: a.menuItemId,
+      name: a.name,
+      quantity: a.quantity,
+      orders: [...a.orderMap.entries()]
+        .map(([id, orderNumber]) => ({ id, orderNumber }))
+        .sort((x, y) => x.orderNumber.localeCompare(y.orderNumber, "th")),
+    }))
+    .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name, "th"));
 }

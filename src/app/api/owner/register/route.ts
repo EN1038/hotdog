@@ -5,19 +5,18 @@ import { handleApiError, jsonError } from "@/lib/api";
 import { normalizePhone } from "@/lib/constants";
 import { attachSessionCookie } from "@/lib/auth";
 import { consumeOtpChallenge } from "@/lib/otp-challenge";
-import {
-  OWNER_REGISTER_IMPORT_OPTIONS,
-  OWNER_REGISTER_TRIAL_DAYS,
-  OWNER_SHOP_CATEGORY_IDS,
-  categoryAllowsMasterImport,
-} from "@/lib/owner-register-shared";
+import { getDefaultTrialDays } from "@/lib/brand-plan-catalog";
 import { createOwnerRegistration } from "@/lib/owner-register-setup";
-import { findExistingStaffBrandsForPhone } from "@/lib/owner-register-staff-check";
+import { OWNER_REGISTER_IMPORT_OPTIONS } from "@/lib/owner-register-shared";
+import {
+  categoryAllowsMasterImportFrom,
+  resolveOwnerRegisterCategory,
+} from "@/lib/owner-register-category";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 const importIds = OWNER_REGISTER_IMPORT_OPTIONS.map((o) => o.id) as [
-  "none",
-  "menu",
   "full",
+  "none",
 ];
 
 const schema = z.object({
@@ -25,18 +24,22 @@ const schema = z.object({
   challengeId: z.string().min(1),
   otpCode: z.string().min(4).max(8),
   shopName: z.string().trim().min(2, "กรุณากรอกชื่อร้าน").max(80),
-  shopCategory: z.enum(OWNER_SHOP_CATEGORY_IDS),
+  shopCategory: z.string().trim().min(2).max(64),
   importMaster: z.enum(importIds).optional().default("none"),
-  /** Required when phone is already staff on another brand. */
-  acknowledgeExistingStaff: z.boolean().optional().default(false),
 });
 
 export async function POST(request: Request) {
   try {
+    await ensureProdSchemaCompat();
     const body = schema.parse(await request.json());
     const phone = normalizePhone(body.phone);
     if (phone.length < 9) {
       return jsonError("เบอร์โทรไม่ถูกต้อง");
+    }
+
+    const category = await resolveOwnerRegisterCategory(body.shopCategory);
+    if (!category) {
+      return jsonError("ประเภทร้านไม่ถูกต้องหรือปิดใช้งานแล้ว", 400);
     }
 
     const dup = await prisma.admin.findFirst({
@@ -52,19 +55,6 @@ export async function POST(request: Request) {
       });
     }
 
-    const existingStaffBrands = await findExistingStaffBrandsForPhone(phone);
-    if (existingStaffBrands.length > 0 && !body.acknowledgeExistingStaff) {
-      const brandNames = existingStaffBrands.map((b) => b.brandName).join(", ");
-      return jsonError(
-        `เบอร์นี้เป็นพนักงานของ ${brandNames} อยู่แล้ว — ยืนยันเพื่อเปิดร้านใหม่แยกจากร้านเดิม`,
-        409,
-        {
-          code: "EXISTING_STAFF",
-          existingStaffBrands,
-        },
-      );
-    }
-
     const otp = await consumeOtpChallenge({
       phone,
       challengeId: body.challengeId,
@@ -76,7 +66,7 @@ export async function POST(request: Request) {
     }
 
     let importMaster = body.importMaster;
-    if (!categoryAllowsMasterImport(body.shopCategory)) {
+    if (!categoryAllowsMasterImportFrom(category)) {
       importMaster = "none";
     }
 
@@ -85,20 +75,23 @@ export async function POST(request: Request) {
       shopName: body.shopName,
       shopCategory: body.shopCategory,
       importMaster,
+      category,
     });
 
     const importRequested =
-      importMaster !== "none" && categoryAllowsMasterImport(body.shopCategory);
+      importMaster !== "none" && categoryAllowsMasterImportFrom(category);
     const importWarning =
       importRequested && !result.importSummary
         ? "ไม่พบต้นแบบหมาล่าไวไวในระบบ — กรุณาติดต่อทีมงานหรือตั้งค่า OWNER_REGISTER_MENU_TEMPLATE_BRANCH_ID"
         : null;
 
+    const trialDays = await getDefaultTrialDays();
+
     const res = NextResponse.json({
       ok: true,
       shopName: result.brandName,
       brandCode: result.brandCode,
-      trialDays: OWNER_REGISTER_TRIAL_DAYS,
+      trialDays,
       trialEndsAt: result.trialEndsAt.toISOString(),
       branchId: result.branchId,
       importSummary: result.importSummary,

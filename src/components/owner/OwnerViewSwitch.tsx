@@ -302,7 +302,7 @@ export function OwnerProfileMenuButton({
               </Link>
               <button
                 type="button"
-                onClick={() => logout("/owner/login")}
+                onClick={() => logout()}
                 className="flex w-full items-center gap-2 border-t border-slate-200/80 px-4 py-3.5 text-left text-[14px] font-extrabold text-rose-600 active:bg-rose-50"
               >
                 <IconLogout size={18} />

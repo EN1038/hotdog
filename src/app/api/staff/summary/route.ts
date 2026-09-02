@@ -107,7 +107,7 @@ export async function GET(request: Request) {
             },
           },
         }),
-        prisma.stockCount.findFirst({
+        prisma.branchStockSummary.findFirst({
           where: {
             branchId: session.branchId,
             status: { in: ["IN_PROGRESS", "COMPLETED"] },

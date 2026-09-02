@@ -1,25 +1,32 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { PlatformMark } from "@/components/PlatformMark";
-import { PhoneInput } from "@/components/PhoneInput";
+import { useEffect, useRef, useState } from "react";
+import { OtpDigitInput, OTP_DIGIT_LENGTH } from "@/components/OtpDigitInput";
 import {
-  merchantButtonClass,
-  merchantInputClass,
-  merchantLabelClass,
-} from "@/components/merchant-login-ui";
+  OwnerRegisterShell,
+  RegisterCreateProgress,
+  RegisterLoginFooter,
+  RegisterModeSelector,
+  RegisterPhoneField,
+  RegisterOtpExpiredModal,
+  RegisterPrimaryButton,
+  RegisterProgressSteps,
+  RegisterWizardBackButton,
+  TrialBanner,
+  IconLine,
+  registerErrorClass,
+  registerInputClass,
+  registerLabelClass,
+  registerOptionCardClass,
+} from "@/components/owner/owner-register-ui";
 import {
+  OTP_RESEND_COOLDOWN_SECONDS,
   OTP_TTL_SECONDS,
   formatOtpCountdown,
 } from "@/lib/otp-ttl";
 import {
   OWNER_REGISTER_IMPORT_OPTIONS,
-  OWNER_REGISTER_TRIAL_DAYS,
-  OWNER_SHOP_CATEGORIES,
-  categoryAllowsMasterImport,
   type OwnerRegisterImportLevel,
-  type OwnerShopCategoryId,
 } from "@/lib/owner-register-shared";
 import {
   PLATFORM_LINE_ADD_URL,
@@ -28,13 +35,13 @@ import {
 
 type RegisterMode = "self" | "line";
 
-type Step = "phone" | "otp" | "staff_ack" | "category" | "shop" | "creating" | "done";
+type Step = "phone" | "otp" | "category" | "shop" | "creating" | "done";
 
-type ExistingStaffBrand = {
-  brandId: string;
-  brandName: string;
-  brandCode: string;
-  branches: { branchId: string; branchName: string }[];
+type RegisterCategory = {
+  code: string;
+  label: string;
+  hint: string;
+  offersMasterImport: boolean;
 };
 
 type CreateStage =
@@ -54,6 +61,26 @@ const CREATE_STAGES: { id: CreateStage; label: string }[] = [
   { id: "complete", label: "เสร็จสิ้น" },
 ];
 
+function progressStateForStep(
+  step: Step,
+): { activeIndex: number; completedThrough: number } {
+  if (step === "phone") return { activeIndex: 0, completedThrough: -1 };
+  if (step === "otp") return { activeIndex: 1, completedThrough: 0 };
+  if (step === "category" || step === "shop") {
+    return { activeIndex: 2, completedThrough: 1 };
+  }
+  if (step === "creating") return { activeIndex: 3, completedThrough: 2 };
+  return { activeIndex: 3, completedThrough: 3 };
+}
+
+function isOtpSessionExpiredMessage(message: string) {
+  return (
+    message.includes("หมดอายุ") ||
+    message.includes("ถูกใช้แล้ว") ||
+    message.includes("ไม่พบคำขอรหัส OTP")
+  );
+}
+
 export function OwnerRegisterWizard() {
   const [registerMode, setRegisterMode] = useState<RegisterMode>("self");
   const [step, setStep] = useState<Step>("phone");
@@ -62,18 +89,20 @@ export function OwnerRegisterWizard() {
   const [challengeId, setChallengeId] = useState("");
   const [otpRefNo, setOtpRefNo] = useState("");
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
-  const [shopCategory, setShopCategory] =
-    useState<OwnerShopCategoryId>("mala_hotpot");
+  const [otpResendIn, setOtpResendIn] = useState(0);
+  const [shopCategory, setShopCategory] = useState("");
+  const [registerCategories, setRegisterCategories] = useState<
+    RegisterCategory[]
+  >([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [shopName, setShopName] = useState("");
   const [importMaster, setImportMaster] =
     useState<OwnerRegisterImportLevel>("full");
   const [createStage, setCreateStage] = useState<CreateStage>("verify");
   const [error, setError] = useState("");
+  const [otpExpiredModalOpen, setOtpExpiredModalOpen] = useState(false);
+  const otpCountdownWasActiveRef = useRef(false);
   const [loading, setLoading] = useState(false);
-  const [existingStaffBrands, setExistingStaffBrands] = useState<
-    ExistingStaffBrand[]
-  >([]);
-  const [staffAcknowledged, setStaffAcknowledged] = useState(false);
   const [resultSummary, setResultSummary] = useState<{
     shopName: string;
     trialEndsAt: string;
@@ -84,11 +113,79 @@ export function OwnerRegisterWizard() {
   } | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/owner/register/categories", {
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          categories?: RegisterCategory[];
+        };
+        if (cancelled) return;
+        const list = Array.isArray(data.categories) ? data.categories : [];
+        setRegisterCategories(list);
+        if (list[0]?.code) {
+          setShopCategory((prev) => prev || list[0]!.code);
+        }
+      } catch {
+        if (!cancelled) setRegisterCategories([]);
+      } finally {
+        if (!cancelled) setCategoriesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function selectedCategoryAllowsImport(code: string) {
+    return (
+      registerCategories.find((c) => c.code === code)?.offersMasterImport ??
+      false
+    );
+  }
+
+  useEffect(() => {
     if (step !== "otp" || otpSecondsLeft <= 0) return;
     const id = window.setInterval(() => {
       setOtpSecondsLeft((s) => Math.max(0, s - 1));
     }, 1000);
     return () => window.clearInterval(id);
+  }, [step, otpSecondsLeft]);
+
+  useEffect(() => {
+    if (step !== "otp" || otpResendIn <= 0) return;
+    const id = window.setInterval(() => {
+      setOtpResendIn((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [step, otpResendIn]);
+
+  function handleOtpExpired() {
+    setError("");
+    setOtpCode("");
+    setChallengeId("");
+    setOtpRefNo("");
+    setOtpSecondsLeft(0);
+    setOtpResendIn(0);
+    otpCountdownWasActiveRef.current = false;
+    setStep("phone");
+    setOtpExpiredModalOpen(true);
+  }
+
+  useEffect(() => {
+    if (step !== "otp") {
+      otpCountdownWasActiveRef.current = false;
+      return;
+    }
+    if (otpSecondsLeft > 0) {
+      otpCountdownWasActiveRef.current = true;
+      return;
+    }
+    if (otpCountdownWasActiveRef.current) {
+      handleOtpExpired();
+    }
   }, [step, otpSecondsLeft]);
 
   async function sendOtp() {
@@ -104,7 +201,14 @@ export function OwnerRegisterWizard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, purpose: "owner_register" }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as {
+        challengeId?: string;
+        otpRefNo?: string;
+        expiresIn?: number;
+        resendIn?: number;
+        error?: string;
+        redirect?: string;
+      };
       if (!res.ok) {
         setError(data.error ?? "ส่ง OTP ไม่สำเร็จ");
         if (data.redirect) {
@@ -114,16 +218,16 @@ export function OwnerRegisterWizard() {
       }
       setChallengeId(data.challengeId ?? "");
       setOtpRefNo(data.otpRefNo ?? "");
-      setExistingStaffBrands(
-        Array.isArray(data.existingStaffBrands)
-          ? (data.existingStaffBrands as ExistingStaffBrand[])
-          : [],
-      );
-      setStaffAcknowledged(false);
       setOtpSecondsLeft(
         typeof data.expiresIn === "number" ? data.expiresIn : OTP_TTL_SECONDS,
       );
+      setOtpResendIn(
+        typeof data.resendIn === "number" && data.resendIn > 0
+          ? data.resendIn
+          : OTP_RESEND_COOLDOWN_SECONDS,
+      );
       setOtpCode("");
+      setOtpExpiredModalOpen(false);
       setStep("otp");
     } catch {
       setError("เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่");
@@ -160,25 +264,21 @@ export function OwnerRegisterWizard() {
           otpCode: otpCode.trim(),
           shopName: shopName.trim(),
           shopCategory,
-          importMaster: categoryAllowsMasterImport(shopCategory)
+          importMaster: selectedCategoryAllowsImport(shopCategory)
             ? importMaster
             : "none",
-          acknowledgeExistingStaff:
-            existingStaffBrands.length === 0 || staffAcknowledged,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         clearInterval(stageTimer);
-        if (data.code === "EXISTING_STAFF" && Array.isArray(data.existingStaffBrands)) {
-          setExistingStaffBrands(data.existingStaffBrands as ExistingStaffBrand[]);
-          setStaffAcknowledged(false);
-          setStep("staff_ack");
+        const message = data.error ?? "สมัครไม่สำเร็จ";
+        if (isOtpSessionExpiredMessage(message)) {
+          handleOtpExpired();
+          return;
         }
-        setError(data.error ?? "สมัครไม่สำเร็จ");
-        if (data.code !== "EXISTING_STAFF") {
-          setStep("shop");
-        }
+        setError(message);
+        setStep("shop");
         return;
       }
       setCreateStage("complete");
@@ -208,7 +308,7 @@ export function OwnerRegisterWizard() {
     }
     if (step === "otp") {
       if (otpSecondsLeft <= 0) {
-        setError("รหัสหมดอายุ — กดขอรหัสใหม่");
+        handleOtpExpired();
         return;
       }
       if (otpCode.trim().length < 4) {
@@ -216,19 +316,14 @@ export function OwnerRegisterWizard() {
         return;
       }
       setError("");
-      setStep(existingStaffBrands.length > 0 ? "staff_ack" : "category");
-      return;
-    }
-    if (step === "staff_ack") {
-      if (!staffAcknowledged) {
-        setError("กรุณายืนยันว่าเข้าใจว่าเป็นการเปิดร้านใหม่แยกจากงานพนักงานเดิม");
-        return;
-      }
-      setError("");
       setStep("category");
       return;
     }
     if (step === "category") {
+      if (!shopCategory || registerCategories.length === 0) {
+        setError("กรุณาเลือกประเภทร้าน");
+        return;
+      }
       setError("");
       setStep("shop");
       return;
@@ -238,96 +333,63 @@ export function OwnerRegisterWizard() {
     }
   }
 
-  const stepIndex =
+  function handleWizardBack() {
+    setError("");
+    if (step === "otp") setStep("phone");
+    else if (step === "category") setStep("otp");
+    else if (step === "shop") setStep("category");
+  }
+
+  const showWizardBack =
+    registerMode === "self" &&
+    step !== "phone" &&
+    step !== "creating" &&
+    step !== "done";
+
+  const primaryLabel =
     step === "phone"
-      ? 0
+      ? "ส่งรหัส OTP"
       : step === "otp"
-        ? 1
-        : step === "staff_ack"
-          ? 2
-          : step === "category"
-            ? 3
-            : step === "shop"
-              ? 4
-              : 5;
+        ? "ถัดไป"
+        : step === "category"
+          ? "ถัดไป"
+          : "เปิดร้านเลย";
+
+  const primaryDisabled =
+    loading ||
+    (step === "phone" && phone.length < 9) ||
+    (step === "otp" &&
+      (otpCode.trim().length < OTP_DIGIT_LENGTH || otpSecondsLeft <= 0)) ||
+    (step === "shop" && shopName.trim().length < 2);
 
   return (
-    <main className="flex min-h-dvh flex-col bg-[#f4f5f7]">
-      <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-2 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <Link
-          href="/"
-          className="flex h-12 w-12 items-center justify-center rounded-xl text-gray-700"
-          aria-label="กลับ"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M15 5l-7 7 7 7"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </Link>
-        <h1 className="flex-1 pr-12 text-center text-base font-bold text-gray-900">
-          สมัครเป็นร้านค้า
-        </h1>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 py-6">
-        <PlatformMark placement="login" height={36} priority />
-
+    <OwnerRegisterShell
+      backHref="/"
+      hideBack={step !== "phone"}
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
         {step !== "creating" && step !== "done" ? (
-          <div
-            role="tablist"
-            aria-label="วิธีสมัคร"
-            className="relative z-20 mt-5 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={registerMode === "self"}
-              onClick={() => {
-                setRegisterMode("self");
-                setError("");
-              }}
-              className={`rounded-xl py-2.5 text-[13px] font-extrabold transition ${
-                registerMode === "self"
-                  ? "bg-emerald-700 text-white shadow-sm"
-                  : "text-slate-600"
-              }`}
-            >
-              สมัครเอง
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={registerMode === "line"}
-              onClick={() => {
-                setRegisterMode("line");
-                setError("");
-              }}
-              className={`rounded-xl py-2.5 text-[13px] font-extrabold transition ${
-                registerMode === "line"
-                  ? "bg-[#06C755] text-white shadow-sm"
-                  : "text-slate-600"
-              }`}
-            >
-              ติดต่อทีมงาน
-            </button>
-          </div>
+          <RegisterModeSelector
+            mode={registerMode}
+            onChange={(mode) => {
+              setRegisterMode(mode);
+              setError("");
+            }}
+          />
         ) : null}
 
         {registerMode === "line" && step !== "creating" && step !== "done" ? (
-          <>
-            <p className="mt-5 text-lg font-bold text-gray-900">
-              แอดไลน์ แล้วแอดมินสมัครให้
-            </p>
-            <p className="mt-1 text-sm leading-relaxed text-gray-600">
-              ไม่ต้องกรอกฟอร์มเอง — ส่งชื่อร้านมาทาง LINE ทีมงานจะเปิดบัญชีให้
-            </p>
+          <div className="mt-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                แอดไลน์ แล้วแอดมินสมัครให้
+              </h2>
+              <p className="mt-1 text-base text-slate-600">
+                ไม่ต้องกรอกฟอร์มเอง — ส่งชื่อร้านมาทาง LINE ทีมงานจะเปิดบัญชีให้
+              </p>
+            </div>
 
-            <div className="mt-6 rounded-3xl bg-white p-6 text-center shadow-sm">
+            <div className="rounded-2xl bg-slate-50 p-5 text-center ring-1 ring-slate-200/80">
               <a
                 href={PLATFORM_LINE_ADD_URL}
                 target="_blank"
@@ -342,7 +404,7 @@ export function OwnerRegisterWizard() {
                   className="mx-auto h-56 w-56 object-contain"
                 />
               </a>
-              <p className="mt-3 text-sm font-medium text-gray-700">
+              <p className="mt-3 text-base font-medium text-slate-700">
                 สแกน QR ด้วยแอป LINE
               </p>
             </div>
@@ -351,318 +413,228 @@ export function OwnerRegisterWizard() {
               href={PLATFORM_LINE_ADD_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-6 flex min-h-14 w-full items-center justify-center rounded-2xl bg-[#06C755] px-4 py-4 text-base font-extrabold text-white shadow-sm active:scale-[0.99]"
+              className="flex min-h-[3.75rem] w-full items-center justify-center gap-2.5 rounded-2xl bg-[#06C755] px-4 text-base font-extrabold text-white shadow-sm transition-all duration-200 hover:brightness-105 hover:shadow-md active:scale-[0.99]"
             >
+              <IconLine aria-hidden />
               เพิ่มเพื่อนใน LINE
             </a>
 
-            <p className="mt-6 text-center text-sm text-gray-500">
-              มีบัญชีแล้ว?{" "}
-              <Link href="/owner/login" className="font-semibold text-site-primary">
-                เข้าสู่ระบบ
-              </Link>
-            </p>
-            <p className="mt-3 text-center text-xs text-gray-400">
-              หรือ{" "}
-              <button
-                type="button"
-                onClick={() => setRegisterMode("self")}
-                className="font-semibold text-emerald-700 underline"
-              >
-                สมัครด้วยตัวเอง (OTP)
-              </button>
-            </p>
-          </>
+            <RegisterLoginFooter />
+          </div>
         ) : null}
 
-        {registerMode === "self" && step !== "creating" && step !== "done" ? (
-          <>
-            <p className="mt-4 text-lg font-bold text-gray-900">
-              เปิดร้านด้วยตัวเอง
-            </p>
-            <p className="mt-1 text-sm text-gray-600">
-              ทดลองใช้ฟรี {OWNER_REGISTER_TRIAL_DAYS} วัน · สร้างสาขาหลักให้อัตโนมัติ
-            </p>
+        {registerMode === "self" && step === "phone" ? <TrialBanner /> : null}
 
-            <div className="mt-4 flex gap-1">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className={`h-1 flex-1 rounded-full ${
-                    i <= stepIndex ? "bg-emerald-600" : "bg-gray-200"
-                  }`}
-                />
-              ))}
-            </div>
-          </>
+        {registerMode === "self" && step !== "creating" && step !== "done" ? (
+          <RegisterProgressSteps {...progressStateForStep(step)} />
         ) : null}
 
         {registerMode === "self" && step === "phone" ? (
-          <div className="mt-6">
-            <label className={merchantLabelClass}>เบอร์โทรเจ้าของร้าน</label>
-            <PhoneInput
+          <>
+            <RegisterPhoneField
               value={phone}
               onChange={setPhone}
-              className={merchantInputClass}
               autoFocus
             />
-            <p className="mt-2 text-xs text-gray-500">
-              ใช้เบอร์นี้เข้าระบบด้วย OTP ในครั้งถัดไป
-            </p>
-          </div>
+          </>
         ) : null}
 
         {registerMode === "self" && step === "otp" ? (
           <div className="mt-6">
-            <p className="text-sm text-gray-600">
+            <p className="text-base text-slate-600">
               ส่งรหัสไปที่ {phone}
               {otpRefNo ? ` (Ref: ${otpRefNo})` : ""}
             </p>
-            <label className={`${merchantLabelClass} mt-4`}>รหัส OTP</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={8}
-              value={otpCode}
-              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-              className={merchantInputClass}
-              autoFocus
-            />
-            <p className="mt-2 text-xs text-gray-500">
-              {otpSecondsLeft > 0
-                ? `หมดอายุใน ${formatOtpCountdown(otpSecondsLeft)}`
-                : "รหัสหมดอายุแล้ว — กดขอรหัสใหม่"}
-            </p>
-            <button
-              type="button"
-              onClick={() => void sendOtp()}
-              disabled={loading || otpSecondsLeft > OTP_TTL_SECONDS - 30}
-              className="mt-3 text-sm font-semibold text-site-primary disabled:opacity-40"
+            <label
+              id="owner-register-otp-label"
+              htmlFor="owner-register-otp"
+              className={`${registerLabelClass} mt-4`}
             >
-              ขอรหัสใหม่
-            </button>
-          </div>
-        ) : null}
-
-        {registerMode === "self" && step === "staff_ack" ? (
-          <div className="mt-6 space-y-4">
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-amber-950">
-              <p className="text-[15px] font-bold">เบอร์นี้เป็นพนักงานอยู่แล้ว</p>
-              <p className="mt-2 text-sm leading-relaxed">
-                การสมัครครั้งนี้จะ<span className="font-semibold">เปิดร้านใหม่แยก</span>
-                จากงานพนักงานเดิม — บัญชีเจ้าของและหน้าร้านพนักงานเป็นคนละส่วน
-              </p>
-              <ul className="mt-3 space-y-2 text-sm">
-                {existingStaffBrands.map((brand) => (
-                  <li
-                    key={brand.brandId}
-                    className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-amber-200"
-                  >
-                    <p className="font-semibold">{brand.brandName}</p>
-                    <p className="text-xs text-amber-900/80">
-                      {brand.branches.map((b) => b.branchName).join(" · ")}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3">
-              <input
-                type="checkbox"
-                checked={staffAcknowledged}
-                onChange={(e) => setStaffAcknowledged(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300"
-              />
-              <span className="text-sm leading-relaxed text-gray-800">
-                เข้าใจแล้ว — ต้องการเปิดร้านใหม่ด้วยเบอร์นี้ และจะใช้{" "}
-                <span className="font-semibold">/owner/login</span> สำหรับหลังบ้าน{" "}
-                <span className="font-semibold">/staff/login</span> สำหรับงานพนักงานเดิม
-              </span>
+              รหัส OTP
             </label>
+            <OtpDigitInput
+              id="owner-register-otp"
+              value={otpCode}
+              onChange={setOtpCode}
+              autoFocus
+              className="mt-2"
+            />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p
+                className={`text-sm ${
+                  otpSecondsLeft <= 0 ? "text-red-600" : "text-slate-500"
+                }`}
+              >
+                {otpSecondsLeft > 0
+                  ? `หมดอายุใน ${formatOtpCountdown(otpSecondsLeft)}`
+                  : "รหัสหมดอายุแล้ว"}
+              </p>
+              <button
+                type="button"
+                onClick={() => void sendOtp()}
+                disabled={loading || otpResendIn > 0}
+                className="shrink-0 text-sm font-semibold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-40"
+              >
+                ขอรหัสใหม่
+              </button>
+            </div>
           </div>
         ) : null}
 
         {registerMode === "self" && step === "category" ? (
           <div className="mt-6 space-y-2">
-            <p className="text-sm font-semibold text-gray-800">ประเภทร้าน</p>
-            {OWNER_SHOP_CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setShopCategory(cat.id)}
-                className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                  shopCategory === cat.id
-                    ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-200"
-                    : "border-gray-200 bg-white"
-                }`}
-              >
-                <p className="text-[15px] font-bold text-gray-900">{cat.label}</p>
-                <p className="mt-0.5 text-xs text-gray-500">{cat.hint}</p>
-              </button>
-            ))}
+            <p className={registerLabelClass}>ประเภทร้าน</p>
+            {categoriesLoading ? (
+              <p className="text-sm text-slate-500">กำลังโหลดประเภทร้าน…</p>
+            ) : registerCategories.length === 0 ? (
+              <div className="space-y-3">
+                <p className="rounded-2xl bg-amber-50 px-4 py-3 text-base text-amber-900 ring-1 ring-amber-100">
+                  ยังไม่ได้ตั้งประเภทร้านสำหรับสมัคร — ติดต่อทีม SkillSale
+                </p>
+                <button
+                  type="button"
+                  className="text-base font-semibold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                  onClick={() => {
+                    setCategoriesLoading(true);
+                    void fetch("/api/owner/register/categories", {
+                      cache: "no-store",
+                    })
+                      .then((r) => r.json())
+                      .then((data: { categories?: RegisterCategory[] }) => {
+                        const list = Array.isArray(data.categories)
+                          ? data.categories
+                          : [];
+                        setRegisterCategories(list);
+                        if (list[0]?.code) setShopCategory(list[0].code);
+                      })
+                      .finally(() => setCategoriesLoading(false));
+                  }}
+                >
+                  โหลดใหม่
+                </button>
+              </div>
+            ) : (
+              registerCategories.map((cat) => (
+                <button
+                  key={cat.code}
+                  type="button"
+                  onClick={() => setShopCategory(cat.code)}
+                  className={registerOptionCardClass(shopCategory === cat.code)}
+                >
+                  <p className="text-base font-bold text-slate-900">{cat.label}</p>
+                  {cat.hint ? (
+                    <p className="mt-0.5 text-sm text-slate-500">{cat.hint}</p>
+                  ) : null}
+                </button>
+              ))
+            )}
           </div>
         ) : null}
 
         {registerMode === "self" && step === "shop" ? (
           <div className="mt-6 space-y-4">
             <div>
-              <label className={merchantLabelClass}>ชื่อร้าน</label>
+              <label htmlFor="owner-shop-name" className={registerLabelClass}>
+                ชื่อร้าน
+              </label>
               <input
+                id="owner-shop-name"
                 type="text"
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
                 placeholder="เช่น หม่าล่าบ้านสวน"
-                className={merchantInputClass}
+                className={registerInputClass}
                 autoFocus
                 maxLength={80}
               />
             </div>
 
-            {categoryAllowsMasterImport(shopCategory) ? (
+            {selectedCategoryAllowsImport(shopCategory) ? (
               <div>
-                <p className="mb-2 text-sm font-semibold text-gray-800">
-                  เมนูตั้งต้น (ไม่บังคับ)
-                </p>
+                <p className={registerLabelClass}>เมนูตั้งต้น</p>
                 <div className="space-y-2">
                   {OWNER_REGISTER_IMPORT_OPTIONS.map((opt) => (
                     <button
                       key={opt.id}
                       type="button"
                       onClick={() => setImportMaster(opt.id)}
-                      className={`w-full rounded-xl border px-3 py-2.5 text-left ${
-                        importMaster === opt.id
-                          ? "border-emerald-500 bg-emerald-50"
-                          : "border-gray-200 bg-white"
-                      }`}
+                      className={registerOptionCardClass(importMaster === opt.id)}
                     >
-                      <p className="text-sm font-bold text-gray-900">{opt.label}</p>
-                      <p className="text-xs text-gray-500">{opt.hint}</p>
+                      <p className="flex flex-wrap items-center gap-2 text-base font-bold text-slate-900">
+                        <span>{opt.label}</span>
+                        {opt.recommended ? (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold leading-none text-emerald-700 ring-1 ring-emerald-200/80">
+                            แนะนำ
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-500">{opt.hint}</p>
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <p className="rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-600">
+              <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600 ring-1 ring-slate-200/80">
                 ประเภทนี้เริ่มเมนูว่าง — เพิ่มรายการขายได้หลังเข้าระบบ
               </p>
             )}
-
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-950">
-              ทดลองใช้ฟรี {OWNER_REGISTER_TRIAL_DAYS} วัน · เปิดครบทุกฟีเจอร์ · สร้างสาขา &quot;สาขาหลัก&quot;
-              ให้อัตโนมัติ
-            </div>
           </div>
         ) : null}
 
         {step === "creating" || step === "done" ? (
-          <div className="mt-8 rounded-3xl bg-white p-6 shadow-sm">
-            <p className="text-center text-lg font-bold text-gray-900">
-              {step === "done" ? "สมัครสำเร็จ!" : "กำลังสร้างร้าน…"}
-            </p>
-            <ul className="mt-5 space-y-3">
-              {CREATE_STAGES.map((stage) => {
-                const stageIdx = CREATE_STAGES.findIndex((s) => s.id === stage.id);
-                const currentIdx = CREATE_STAGES.findIndex(
-                  (s) => s.id === createStage,
-                );
-                const done = stageIdx < currentIdx || createStage === "complete";
-                const active = stage.id === createStage && createStage !== "complete";
-                const skipImport =
-                  stage.id === "import" &&
-                  (!categoryAllowsMasterImport(shopCategory) ||
-                    importMaster === "none");
-                if (skipImport && !done) return null;
-                return (
-                  <li
-                    key={stage.id}
-                    className={`flex items-center gap-3 text-sm ${
-                      done
-                        ? "font-semibold text-emerald-700"
-                        : active
-                          ? "font-bold text-gray-900"
-                          : "text-gray-400"
-                    }`}
-                  >
-                    <span
-                      className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                        done
-                          ? "bg-emerald-600 text-white"
-                          : active
-                            ? "bg-gray-900 text-white"
-                            : "bg-gray-200 text-gray-500"
-                      }`}
-                    >
-                      {done ? "✓" : stageIdx + 1}
-                    </span>
-                    {stage.label}
-                  </li>
-                );
-              })}
-            </ul>
-            {resultSummary?.importSummary ? (
-              <p className="mt-4 text-center text-xs text-gray-600">
-                นำเข้า {resultSummary.importSummary.menuItems} เมนู ·{" "}
-                {resultSummary.importSummary.categories} หมวด
-              </p>
-            ) : null}
+          <div className="mt-2 space-y-4">
+            <RegisterProgressSteps activeIndex={3} completedThrough={3} />
+            <RegisterCreateProgress
+              complete={step === "done"}
+              stages={CREATE_STAGES}
+              currentStageId={createStage}
+              skipStageIds={
+                !selectedCategoryAllowsImport(shopCategory) ||
+                importMaster === "none"
+                  ? ["import"]
+                  : []
+              }
+              footer={
+                resultSummary?.importSummary ? (
+                  <>
+                    นำเข้า {resultSummary.importSummary.menuItems} เมนู ·{" "}
+                    {resultSummary.importSummary.categories} หมวด
+                  </>
+                ) : undefined
+              }
+            />
           </div>
         ) : null}
 
         {registerMode === "self" && error ? (
-          <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className={registerErrorClass} role="alert">
             {error}
           </p>
         ) : null}
 
         {registerMode === "self" && step !== "creating" && step !== "done" ? (
-          <div className="mt-auto space-y-3 pt-6">
-            {step !== "phone" ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setError("");
-                  if (step === "otp") setStep("phone");
-                  else if (step === "staff_ack") setStep("otp");
-                  else if (step === "category") {
-                    setStep(existingStaffBrands.length > 0 ? "staff_ack" : "otp");
-                  } else if (step === "shop") setStep("category");
-                }}
-                className="w-full py-2 text-sm font-semibold text-gray-500"
-              >
-                ← ย้อนกลับ
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={loading}
+          <div className="mt-auto space-y-3 pt-8">
+            <RegisterPrimaryButton
+              loading={loading}
+              disabled={primaryDisabled}
               onClick={handlePrimaryAction}
-              className={merchantButtonClass}
             >
-              {loading
-                ? "กำลังดำเนินการ…"
-                : step === "phone"
-                  ? "ส่งรหัส OTP"
-                : step === "otp"
-                  ? "ถัดไป"
-                  : step === "staff_ack"
-                    ? "ถัดไป"
-                    : step === "category"
-                      ? "ถัดไป"
-                      : "เปิดร้านเลย"}
-            </button>
+              {primaryLabel}
+            </RegisterPrimaryButton>
+            {showWizardBack ? (
+              <RegisterWizardBackButton
+                onClick={handleWizardBack}
+                disabled={loading}
+              />
+            ) : null}
+            {step === "phone" ? <RegisterLoginFooter /> : null}
           </div>
         ) : null}
-
-        {registerMode === "self" && step === "phone" ? (
-          <p className="mt-6 text-center text-sm text-gray-500">
-            มีบัญชีแล้ว?{" "}
-            <Link href="/owner/login" className="font-semibold text-site-primary">
-              เข้าสู่ระบบ
-            </Link>
-          </p>
-        ) : null}
       </div>
-    </main>
+      <RegisterOtpExpiredModal
+        open={otpExpiredModalOpen}
+        onAcknowledge={() => setOtpExpiredModalOpen(false)}
+      />
+    </OwnerRegisterShell>
   );
 }

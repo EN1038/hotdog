@@ -545,51 +545,6 @@ export async function GET() {
       };
       sourceBranch: { id: string; name: string } | null;
     }> = [];
-    try {
-      const pendingRows = await prisma.stockTransfer.findMany({
-        where: {
-          branchId: branch.id,
-          status: "PENDING",
-        },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-        select: {
-          id: true,
-          quantity: true,
-          note: true,
-          createdAt: true,
-          kind: true,
-          product: {
-            select: {
-              id: true,
-              name: true,
-              unit: true,
-              stockType: true,
-            },
-          },
-          sourceBranch: { select: { id: true, name: true } },
-        },
-      });
-      pending = pendingRows.map((row) => ({
-        id: row.id,
-        quantity: row.quantity,
-        note: row.note,
-        createdAt: row.createdAt.toISOString(),
-        kind: row.kind,
-        product: {
-          id: row.product.id,
-          name: row.product.name,
-          unit: row.product.unit,
-          stockType: row.product.stockType,
-        },
-        sourceBranch: row.sourceBranch,
-      }));
-    } catch (e) {
-      console.error(
-        "[staff/stock] pending transfers skipped",
-        e instanceof Error ? e.message : e,
-      );
-    }
 
     const canConvertStockSummary = session.staffPhone
       ? await staffCanConvertStockSummary({
@@ -599,7 +554,7 @@ export async function GET() {
       : false;
 
     const pendingConvertCount = canConvertStockSummary
-      ? await prisma.stockCount.count({
+      ? await prisma.branchStockSummary.count({
           where: {
             branchId: branch.id,
             status: "IN_PROGRESS",
@@ -620,7 +575,7 @@ export async function GET() {
     };
     try {
       const [recentCounts, lastSale] = await Promise.all([
-        prisma.stockCount.findMany({
+        prisma.branchStockSummary.findMany({
           where: {
             branchId: branch.id,
             status: { in: ["IN_PROGRESS", "COMPLETED"] },
@@ -868,49 +823,24 @@ export async function POST(request: Request) {
           a.name.localeCompare(b.name, "th"),
         );
         const seqById = new Map(sorted.map((item, i) => [item.id, i + 1]));
-        const adjustBatchId = crypto.randomUUID();
 
-        await prisma.$transaction(
-          async (tx) => {
-            for (const line of body.lines) {
-              const item = itemMap.get(line.brandProductId)!;
-              const oldQty = item.quantity;
-              const newQty = line.countedQty;
-              const actualDiff = newQty - oldQty;
-              const unitPrice = Number(item.price ?? 0);
+        for (const line of body.lines) {
+          const item = itemMap.get(line.brandProductId)!;
+          const oldQty = item.quantity;
+          const newQty = line.countedQty;
+          const unitPrice = Number(item.price ?? 0);
 
-              if (actualDiff !== 0) {
-                await tx.branchNonMenuItem.update({
-                  where: { id: item.id },
-                  data: { quantity: newQty },
-                });
-
-                await tx.branchNonMenuItemHistory.create({
-                  data: {
-                    branchNonMenuItemId: item.id,
-                    quantity: actualDiff,
-                    type: "ADJUST",
-                    batchId: adjustBatchId,
-                    note: `สรุปยอดสต๊อก · ${timingLabel} · ${typeLabel} (นับได้ ${newQty})`,
-                    createdByStaffId: session.staffId,
-                  },
-                });
-              }
-
-              countLinesPayload.push({
-                nonMenuItemId: item.id,
-                name: item.name,
-                systemQty: oldQty,
-                countedQty: newQty,
-                unitPrice,
-                unit: item.unit,
-                stockType,
-                seq: seqById.get(item.id) ?? 0,
-              });
-            }
-          },
-          { timeout: 120_000, maxWait: 20_000 },
-        );
+          countLinesPayload.push({
+            nonMenuItemId: item.id,
+            name: item.name,
+            systemQty: oldQty,
+            countedQty: newQty,
+            unitPrice,
+            unit: item.unit,
+            stockType,
+            seq: seqById.get(item.id) ?? 0,
+          });
+        }
       }
 
       countLinesPayload.sort((a, b) => {
@@ -920,20 +850,6 @@ export async function POST(request: Request) {
 
       if (!branch.brandId) {
         return jsonError("สาขานี้ยังไม่ได้ผูกแบรนด์ ไม่สามารถบันทึกสรุปยอดได้");
-      }
-
-      let location = await prisma.stockLocation.findFirst({
-        where: { branchId: branch.id, type: "BRANCH" },
-      });
-      if (!location) {
-        location = await prisma.stockLocation.create({
-          data: {
-            brandId: branch.brandId,
-            branchId: branch.id,
-            type: "BRANCH",
-            name: branch.name || "สาขา",
-          },
-        });
       }
 
       const roundLabel = activeShift?.roundNumber ?? "—";
@@ -947,14 +863,13 @@ export async function POST(request: Request) {
         stockType === "SALE_ITEM"
           ? "สรุปยอดสต๊อกและขายราย"
           : "สรุปยอดสต๊อก";
-      // SALE_ITEM waits for admin convert; other types apply stock immediately
-      const pendingAdmin = stockType === "SALE_ITEM";
-      const count = await prisma.stockCount.create({
+      // All summary types wait for Convert before stock adjusts
+      const pendingAdmin = true;
+      const count = await prisma.branchStockSummary.create({
         data: {
           brandId: branch.brandId,
           branchId: branch.id,
           shiftId: activeShift?.id ?? null,
-          stockLocationId: location.id,
           name: `${titlePrefix} · ${timingLabel} · ${typeLabel} · รอบที่ ${roundLabel} (${dateLabel})`,
           status: pendingAdmin ? "IN_PROGRESS" : "COMPLETED",
           completedAt: pendingAdmin ? null : new Date(),

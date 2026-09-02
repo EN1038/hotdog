@@ -26,7 +26,6 @@ import {
 } from "@/components/icons";
 import { slugifyCode } from "@/lib/slug";
 import { DEFAULT_BRAND_COLOR, rgba } from "@/lib/color";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   defaultWeeklyHours,
   type WeeklySchedule,
@@ -368,9 +367,7 @@ function BranchListDashboardInner({
     typeof selectedBrand?.maxBranches === "number" &&
     liveBranchCount >= selectedBrand.maxBranches;
   const atBranchLimit = liveAtLimit && hasTestBranch;
-  const visibleBranches = WAREHOUSE_UI_ENABLED
-    ? branches
-    : branches.filter((b) => b.kind !== "WAREHOUSE");
+  const visibleBranches = branches.filter((b) => b.kind !== "WAREHOUSE");
 
   return (
     <div>

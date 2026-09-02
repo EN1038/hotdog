@@ -88,6 +88,44 @@ input[type="time"]:not(:focus):invalid {
   }
 }
 
+@keyframes register-stage-pop {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.4;
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes register-check-stroke {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.register-stage-pop {
+  animation: register-stage-pop 0.35s ease-out;
+}
+
+.register-check-stroke {
+  animation: register-check-stroke 0.4s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .register-stage-pop,
+  .register-check-stroke {
+    animation: none;
+  }
+}
+
 .bg-site-primary-soft {
   background-color: color-mix(in srgb, var(--site-primary) 12%, white);
 }

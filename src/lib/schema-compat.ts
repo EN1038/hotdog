@@ -20,8 +20,6 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "isTest" BOOLEAN NOT NULL DEFAULT false`,
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "weighSalesEnabled" BOOLEAN NOT NULL DEFAULT false`,
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "kind" "BranchKind" NOT NULL DEFAULT 'STORE'`,
-        `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "warehouseIssueMode" "WarehouseIssueMode" NOT NULL DEFAULT 'TRANSFER'`,
-        `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "warehouseAllowedBranchIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]`,
         `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "allowNegativeStock" BOOLEAN NOT NULL DEFAULT false`,
         `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "stockAgingWarnDays" INTEGER NOT NULL DEFAULT 3`,
         `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "stockAgingCriticalDays" INTEGER NOT NULL DEFAULT 5`,
@@ -37,14 +35,10 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `CREATE UNIQUE INDEX IF NOT EXISTS "BranchMenuItem_branchId_itemCode_key" ON "${schema}"."BranchMenuItem"("branchId", "itemCode")`,
         `ALTER TABLE "${schema}"."BranchNonMenuItem" ADD COLUMN IF NOT EXISTS "itemCode" TEXT`,
         `CREATE UNIQUE INDEX IF NOT EXISTS "BranchNonMenuItem_branchId_itemCode_key" ON "${schema}"."BranchNonMenuItem"("branchId", "itemCode")`,
-        `ALTER TABLE "${schema}"."BrandProduct" ADD COLUMN IF NOT EXISTS "defaultShelfLifeDays" INTEGER DEFAULT 5`,
-        `UPDATE "${schema}"."BrandProduct" SET "defaultShelfLifeDays" = 5 WHERE "defaultShelfLifeDays" IS NULL`,
         `ALTER TABLE "${schema}"."BranchMenuItemStockHistory" ADD COLUMN IF NOT EXISTS "receivedAt" TIMESTAMP(3)`,
         `ALTER TABLE "${schema}"."BranchMenuItemStockHistory" ADD COLUMN IF NOT EXISTS "expiresAt" TIMESTAMP(3)`,
-        `ALTER TABLE "${schema}"."StockMovement" ADD COLUMN IF NOT EXISTS "documentNo" TEXT`,
         `ALTER TABLE "${schema}"."BranchMenuItemStockHistory" ADD COLUMN IF NOT EXISTS "documentNo" TEXT`,
         `ALTER TABLE "${schema}"."BranchNonMenuItemHistory" ADD COLUMN IF NOT EXISTS "documentNo" TEXT`,
-        `CREATE INDEX IF NOT EXISTS "StockMovement_documentNo_idx" ON "${schema}"."StockMovement"("documentNo") WHERE "documentNo" IS NOT NULL`,
         `CREATE INDEX IF NOT EXISTS "BranchMenuItemStockHistory_documentNo_idx" ON "${schema}"."BranchMenuItemStockHistory"("documentNo") WHERE "documentNo" IS NOT NULL`,
         `CREATE INDEX IF NOT EXISTS "BranchNonMenuItemHistory_documentNo_idx" ON "${schema}"."BranchNonMenuItemHistory"("documentNo") WHERE "documentNo" IS NOT NULL`,
         // Legacy inbound: treat recorded day as receive day (same as วันรับเข้า)
@@ -103,9 +97,6 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `DO $$ BEGIN CREATE TYPE "BrandPlan" AS ENUM ('RETAIL', 'WEIGH_TABLE', 'MALA', 'MULTI'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
         `DO $$ BEGIN CREATE TYPE "${schema}"."BrandStatus" AS ENUM ('TRIAL', 'ACTIVE', 'PAUSED', 'EXPIRED', 'DELETED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
         `DO $$ BEGIN CREATE TYPE "BranchKind" AS ENUM ('STORE', 'WAREHOUSE'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-        `DO $$ BEGIN CREATE TYPE "WarehouseIssueMode" AS ENUM ('TRANSFER', 'ISSUE', 'BOTH'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-        `DO $$ BEGIN CREATE TYPE "${schema}"."BranchKind" AS ENUM ('STORE', 'WAREHOUSE'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-        `DO $$ BEGIN CREATE TYPE "${schema}"."WarehouseIssueMode" AS ENUM ('TRANSFER', 'ISSUE', 'BOTH'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
         `DO $$ BEGIN CREATE TYPE "BrandInvoiceStatus" AS ENUM ('DRAFT', 'ISSUED', 'PAID', 'VOID'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
         `DO $$ BEGIN CREATE TYPE "${schema}"."BrandInvoiceStatus" AS ENUM ('DRAFT', 'ISSUED', 'PAID', 'VOID'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
         `DO $$ BEGIN ALTER TYPE "BrandStatus" ADD VALUE IF NOT EXISTS 'DELETED'; EXCEPTION WHEN others THEN NULL; END $$`,
@@ -151,6 +142,63 @@ export async function ensureProdSchemaCompat(): Promise<void> {
           if (!/already exists|duplicate/i.test(msg)) {
             console.error("[schema-compat] brand plan col", msg);
           }
+        }
+      }
+      const restaurantTypeOwnerCols = [
+        `ALTER TABLE "${schema}"."RestaurantType" ADD COLUMN IF NOT EXISTS "showInOwnerRegister" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."RestaurantType" ADD COLUMN IF NOT EXISTS "ownerRegisterHint" TEXT`,
+        `ALTER TABLE "${schema}"."RestaurantType" ADD COLUMN IF NOT EXISTS "ownerRegisterPlan" "BrandPlan" NOT NULL DEFAULT 'RETAIL'`,
+        `ALTER TABLE "${schema}"."RestaurantType" ADD COLUMN IF NOT EXISTS "ownerRegisterOperatingMode" "BranchOperatingMode" NOT NULL DEFAULT 'NORMAL'`,
+        `ALTER TABLE "${schema}"."RestaurantType" ADD COLUMN IF NOT EXISTS "offersMasterImport" BOOLEAN NOT NULL DEFAULT false`,
+      ];
+      for (const sql of restaurantTypeOwnerCols) {
+        try {
+          await prisma.$executeRawUnsafe(sql);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!/already exists|duplicate/i.test(msg)) {
+            console.error("[schema-compat] RestaurantType owner cols", msg);
+          }
+        }
+      }
+      try {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "defaultTrialDays" INTEGER NOT NULL DEFAULT 7`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error("[schema-compat] SiteSettings defaultTrialDays", msg);
+        }
+      }
+      try {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "${schema}"."BrandPlanConfig" (
+            "id" TEXT NOT NULL,
+            "plan" "BrandPlan" NOT NULL,
+            "label" TEXT NOT NULL,
+            "hint" TEXT NOT NULL DEFAULT '',
+            "priceBaht" INTEGER NOT NULL DEFAULT 0,
+            "maxBranches" INTEGER NOT NULL DEFAULT 1,
+            "maxStaff" INTEGER NOT NULL DEFAULT 2,
+            "stockEnabled" BOOLEAN NOT NULL DEFAULT false,
+            "kitchenEnabled" BOOLEAN NOT NULL DEFAULT false,
+            "bbqEnabled" BOOLEAN NOT NULL DEFAULT false,
+            "skewerEnabled" BOOLEAN NOT NULL DEFAULT false,
+            "isActive" BOOLEAN NOT NULL DEFAULT true,
+            "sortOrder" INTEGER NOT NULL DEFAULT 0,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL,
+            CONSTRAINT "BrandPlanConfig_pkey" PRIMARY KEY ("id")
+          )
+        `);
+        await prisma.$executeRawUnsafe(
+          `CREATE UNIQUE INDEX IF NOT EXISTS "BrandPlanConfig_plan_key" ON "${schema}"."BrandPlanConfig"("plan")`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error("[schema-compat] BrandPlanConfig", msg);
         }
       }
       try {

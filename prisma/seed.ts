@@ -135,18 +135,39 @@ async function main() {
     },
   });
 
-  for (const [i, t] of DEFAULT_RESTAURANT_TYPES.entries()) {
+  for (const t of DEFAULT_RESTAURANT_TYPES) {
     await prisma.restaurantType.upsert({
       where: { code: t.code },
-      update: { name: t.name, sortOrder: i + 1, isActive: true },
+      update: {
+        name: t.name,
+        sortOrder: t.sortOrder,
+        isActive: true,
+        showInOwnerRegister: t.showInOwnerRegister,
+        ownerRegisterHint: t.ownerRegisterHint,
+        ownerRegisterPlan: t.ownerRegisterPlan,
+        ownerRegisterOperatingMode: t.ownerRegisterOperatingMode,
+        offersMasterImport: t.offersMasterImport,
+      },
       create: {
         code: t.code,
         name: t.name,
-        sortOrder: i + 1,
+        sortOrder: t.sortOrder,
         isActive: true,
+        showInOwnerRegister: t.showInOwnerRegister,
+        ownerRegisterHint: t.ownerRegisterHint,
+        ownerRegisterPlan: t.ownerRegisterPlan,
+        ownerRegisterOperatingMode: t.ownerRegisterOperatingMode,
+        offersMasterImport: t.offersMasterImport,
       },
     });
   }
+
+  await prisma.restaurantType.updateMany({
+    where: {
+      code: { notIn: DEFAULT_RESTAURANT_TYPES.map((t) => t.code) },
+    },
+    data: { showInOwnerRegister: false },
+  });
 
   const brand = await prisma.brand.upsert({
     where: { code: "malawaiwai" },

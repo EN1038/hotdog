@@ -1,14 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { PlatformMark } from "@/components/PlatformMark";
-import { PhoneInput } from "@/components/PhoneInput";
+import { MerchantAuthShell } from "@/components/MerchantAuthShell";
+import { OtpDigitInput, OTP_DIGIT_LENGTH } from "@/components/OtpDigitInput";
 import {
-  merchantButtonClass,
-  merchantInputClass,
-  merchantLabelClass,
-} from "@/components/merchant-login-ui";
+  AuthFooterLink,
+  AuthHintBanner,
+  AuthOwnerLoginHint,
+  AuthPasswordField,
+  AuthTextField,
+  LoginMethodSelector,
+  authErrorClass,
+  authLabelClass,
+} from "@/components/merchant-auth-register-ui";
+import {
+  RegisterPhoneField,
+  RegisterPrimaryButton,
+} from "@/components/owner/owner-register-ui";
 import {
   OTP_TTL_SECONDS,
   formatOtpCountdown,
@@ -22,10 +30,10 @@ const LOGIN_COPY: Record<
   { title: string; description: string; usernameLabel: string; hint: string }
 > = {
   owner: {
-    title: "เข้าใช้งาน SkillSale",
+    title: "เข้าใช้งานร้านค้า",
     description: "ใช้เบอร์โทรที่ลงทะเบียนตอนเปิดร้าน",
     usernameLabel: "เบอร์โทร",
-    hint: "รับ OTP หรือใส่รหัสผ่านก็ได้ — รหัสเริ่มต้นมักเป็นเบอร์โทร",
+    hint: "",
   },
   platform: {
     title: "เข้าใช้งานแพลตฟอร์ม",
@@ -166,143 +174,116 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
     }
   }
 
+  function handleHeaderBack() {
+    setOtpStep(false);
+    setOtpCode("");
+    setError("");
+  }
+
+  function switchOwnerMethod(next: "otp" | "password") {
+    setOwnerMethod(next);
+    setOtpStep(false);
+    setOtpCode("");
+    setError("");
+  }
+
+  const showOtpBack =
+    mode === "owner" && ownerMethod === "otp" && otpStep;
+
+  const primaryLabel =
+    mode === "owner" && ownerMethod === "otp" && !otpStep
+      ? "ส่งรหัส OTP"
+      : "เข้าสู่ระบบ";
+
+  const phoneReady = phone.length >= 9;
+  const passwordReady = password.trim().length > 0;
+  const usernameReady = username.trim().length > 0;
+  const otpReady = otpCode.replace(/\D/g, "").length >= OTP_DIGIT_LENGTH;
+
+  const primaryDisabled =
+    loading ||
+    (mode === "platform"
+      ? !usernameReady || !passwordReady
+      : ownerMethod === "password"
+        ? !phoneReady || !passwordReady
+        : otpStep
+          ? otpSecondsLeft <= 0 || !otpReady
+          : !phoneReady);
+
   return (
-    <main className="flex min-h-dvh flex-col bg-[#f4f5f7]">
-      <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-2 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <Link
-          href="/"
-          className="flex h-12 w-12 items-center justify-center rounded-xl text-gray-700"
-          aria-label="กลับ"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M15 5l-7 7 7 7"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </Link>
-        <h1 className="flex-1 pr-12 text-center text-base font-bold text-gray-900">
-          {copy.title}
-        </h1>
-      </header>
+    <MerchantAuthShell
+      title={copy.title}
+      subtitle={copy.description}
+      onBack={showOtpBack ? handleHeaderBack : undefined}
+      backHref="/"
+    >
+      {mode === "owner" ? (
+        <LoginMethodSelector method={ownerMethod} onChange={switchOwnerMethod} />
+      ) : null}
 
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-5 py-8">
-        <PlatformMark placement="login" height={36} priority />
-        <p className="mt-3 text-sm text-gray-600">{copy.description}</p>
-
-        {mode === "owner" ? (
-          <div
-            role="tablist"
-            aria-label="วิธีเข้าสู่ระบบ"
-            className="relative z-20 mt-6 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200"
-          >
-            {(
-              [
-                { id: "otp", label: "รับ OTP" },
-                { id: "password", label: "รหัสผ่าน" },
-              ] as const
-            ).map((opt) => {
-              const active = ownerMethod === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setOwnerMethod(opt.id);
-                    setOtpStep(false);
-                    setOtpCode("");
-                    setError("");
-                  }}
-                  className={`relative z-10 min-h-11 touch-manipulation rounded-xl py-2.5 text-sm font-bold transition-colors ${
-                    active
-                      ? "bg-site-primary text-white shadow-sm"
-                      : "bg-transparent text-slate-600 hover:bg-slate-50 active:bg-slate-100"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
+      <form
+        onSubmit={handleSubmit}
+        className={mode === "owner" ? "mt-6 space-y-6" : "space-y-6"}
+      >
+        {mode === "platform" ? (
+          <AuthTextField
+            id="admin-username"
+            label={copy.usernameLabel}
+            value={username}
+            onChange={setUsername}
+            autoComplete="username"
+          />
+        ) : ownerMethod === "password" || !otpStep ? (
+          <RegisterPhoneField
+            id="owner-phone"
+            label="เบอร์โทร"
+            hint={
+              ownerMethod === "otp"
+                ? "ใช้เบอร์นี้รับรหัส OTP เพื่อเข้าสู่ระบบ"
+                : "ใช้เบอร์ที่ลงทะเบียนตอนเปิดร้าน"
+            }
+            value={phone}
+            onChange={setPhone}
+            disabled={otpStep && ownerMethod === "otp"}
+            className={mode === "owner" ? "mt-0" : "mt-8"}
+          />
         ) : null}
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-          {mode === "platform" ? (
-            <div>
-              <label htmlFor="admin-username" className={merchantLabelClass}>
-                {copy.usernameLabel}
-              </label>
-              <input
-                id="admin-username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className={merchantInputClass}
-                autoComplete="username"
-                required
-              />
-            </div>
-          ) : (
-            <div>
-              <label htmlFor="owner-phone" className={merchantLabelClass}>
-                เบอร์โทร
-              </label>
-              <PhoneInput
-                id="owner-phone"
-                value={phone}
-                onChange={setPhone}
-                className={merchantInputClass}
-                required
-                disabled={otpStep && ownerMethod === "otp"}
-              />
-            </div>
-          )}
+        {mode === "platform" || ownerMethod === "password" ? (
+          <AuthPasswordField
+            id="admin-password"
+            label="รหัสผ่าน"
+            value={password}
+            onChange={setPassword}
+          />
+        ) : null}
 
-          {mode === "platform" || ownerMethod === "password" ? (
-            <div>
-              <label htmlFor="admin-password" className={merchantLabelClass}>
-                รหัสผ่าน
-              </label>
-              <input
-                id="admin-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={merchantInputClass}
-                autoComplete="current-password"
-                required
-              />
-            </div>
-          ) : null}
-
-          {mode === "owner" && ownerMethod === "otp" && otpStep ? (
-            <div>
-              <label htmlFor="owner-otp" className={merchantLabelClass}>
-                รหัส OTP
-              </label>
-              <input
-                id="owner-otp"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={8}
-                className={`${merchantInputClass} text-center tracking-[0.35em]`}
-                value={otpCode}
-                onChange={(e) =>
-                  setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 8))
-                }
-                placeholder="••••••"
-                required
-                autoFocus
-              />
-              <p className="mt-2 text-sm text-gray-600">
-                {otpRefNo ? `เลขอ้างอิง ${otpRefNo} · ` : ""}
+        {mode === "owner" && ownerMethod === "otp" && otpStep ? (
+          <div>
+            <p className="text-[15px] text-slate-600">
+              ส่งรหัสไปที่ {phone}
+              {otpRefNo ? ` (Ref: ${otpRefNo})` : ""}
+            </p>
+            <label
+              id="owner-otp-label"
+              htmlFor="owner-otp"
+              className={`${authLabelClass} mt-4`}
+            >
+              รหัส OTP
+            </label>
+            <OtpDigitInput
+              id="owner-otp"
+              value={otpCode}
+              onChange={setOtpCode}
+              autoFocus
+              className="mt-2"
+            />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p
+                className={`text-sm ${
+                  otpSecondsLeft <= 0 ? "text-red-600" : "text-slate-500"
+                }`}
+              >
                 {otpSecondsLeft > 0
                   ? `หมดอายุใน ${formatOtpCountdown(otpSecondsLeft)}`
                   : "รหัสหมดอายุแล้ว"}
@@ -311,68 +292,44 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
                 type="button"
                 disabled={loading || otpSecondsLeft > 0}
                 onClick={() => void sendOwnerOtp()}
-                className="mt-2 text-sm font-semibold text-site-primary disabled:opacity-40"
+                className="shrink-0 text-sm font-semibold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-40"
               >
                 ขอรหัสใหม่
               </button>
             </div>
-          ) : null}
-
-          <div className="flex gap-2 rounded-2xl bg-sky-50 px-4 py-4 text-sm leading-relaxed text-sky-950">
-            <span className="mt-0.5 text-lg" aria-hidden>
-              💡
-            </span>
-            <p>{copy.hint}</p>
           </div>
-
-          {error ? (
-            <p className="text-base text-red-600" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={
-              loading ||
-              (mode === "owner" &&
-                ownerMethod === "otp" &&
-                otpStep &&
-                otpSecondsLeft <= 0)
-            }
-            className={merchantButtonClass}
-          >
-            {loading
-              ? "กำลังเข้าสู่ระบบ..."
-              : mode === "owner" && ownerMethod === "otp" && !otpStep
-                ? "รับรหัส OTP"
-                : "เข้าสู่ระบบ"}
-          </button>
-
-          {mode === "owner" && ownerMethod === "otp" && otpStep ? (
-            <button
-              type="button"
-              className="w-full text-sm font-medium text-gray-600"
-              onClick={() => {
-                setOtpStep(false);
-                setOtpCode("");
-                setError("");
-              }}
-            >
-              เปลี่ยนเบอร์
-            </button>
-          ) : null}
-        </form>
+        ) : null}
 
         {mode === "owner" ? (
-          <p className="mt-6 text-center text-sm text-gray-500">
-            ยังไม่มีบัญชี?{" "}
-            <Link href="/owner/register" className="font-semibold text-site-primary">
-              สมัครเป็นร้านค้า
-            </Link>
+          <AuthOwnerLoginHint />
+        ) : (
+          <AuthHintBanner>
+            <p>{copy.hint}</p>
+          </AuthHintBanner>
+        )}
+
+        {error ? (
+          <p className={authErrorClass} role="alert">
+            {error}
           </p>
         ) : null}
-      </div>
-    </main>
+
+        <RegisterPrimaryButton
+          type="submit"
+          disabled={primaryDisabled}
+          loading={loading}
+        >
+          {primaryLabel}
+        </RegisterPrimaryButton>
+      </form>
+
+      {mode === "owner" ? (
+        <AuthFooterLink
+          prompt="ยังไม่มีบัญชี?"
+          href="/owner/register"
+          linkLabel="สมัครเป็นร้านค้า"
+        />
+      ) : null}
+    </MerchantAuthShell>
   );
 }

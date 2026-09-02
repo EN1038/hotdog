@@ -17,7 +17,6 @@ import {
   canReturnToOwnerFromStaff,
   returnToOwnerFromStaff,
 } from "@/lib/owner-enter-staff";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 
 export type StaffShellTab = "home" | "key" | "orders" | "summary" | "stock" | "shift-stock" | "settings";
 
@@ -210,16 +209,9 @@ function StaffAppShellInner({
     if (!meta) return;
     const warehouse = meta.branchKind === "WAREHOUSE";
     const path = pathname || "";
-    if (warehouse && !WAREHOUSE_UI_ENABLED) {
+    if (warehouse) {
       router.replace("/staff/login");
       return;
-    }
-    const warehouseOk =
-      path.startsWith("/staff/warehouse") ||
-      path.startsWith("/staff/settings") ||
-      path.startsWith("/staff/login");
-    if (warehouse && !warehouseOk) {
-      router.replace("/staff/warehouse");
     }
   }, [meta, pathname, router]);
 
@@ -547,10 +539,7 @@ function StaffAppShellInner({
             ) : null}
             <ul className="mt-3 max-h-[55vh] space-y-2 overflow-y-auto pb-1">
               {branchChoices
-                .filter(
-                  (b) =>
-                    WAREHOUSE_UI_ENABLED || b.branchKind !== "WAREHOUSE",
-                )
+                .filter((b) => b.branchKind !== "WAREHOUSE")
                 .map((b) => {
                 const activeBranch = b.branchId === currentBranchId;
                 return (

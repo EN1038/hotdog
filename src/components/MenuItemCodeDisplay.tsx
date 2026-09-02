@@ -3,7 +3,6 @@ import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code"
 export type MenuItemCodeSource = {
   id: string;
   itemCode?: string | null;
-  brandProduct?: { sku?: string | null; barcode?: string | null } | null;
 };
 
 const codeBadgeClass =

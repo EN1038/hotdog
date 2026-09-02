@@ -15,7 +15,6 @@ import { isMenuItemSoldOut } from "@/lib/staff-key-order";
 import {
   deductBranchMenuStockForOrder,
   deductBranchNonMenuStockForOrder,
-  deductStockForOrder,
   restoreStockForOrder,
   StockError,
 } from "@/lib/stock";
@@ -49,7 +48,6 @@ export function shouldHaveStockDeducted(status: OrderStatus): boolean {
 }
 
 async function purgeOrderStockHistory(orderId: string, tx: Tx) {
-  await tx.stockMovement.deleteMany({ where: { orderId } });
   await tx.branchMenuItemStockHistory.deleteMany({
     where: { note: { contains: orderId } },
   });
@@ -211,7 +209,6 @@ export async function rewriteOrderItemsWithStock(input: {
       });
 
       if (shouldDeduct) {
-        await deductStockForOrder(order.id, tx);
         await deductBranchMenuStockForOrder({
           orderId: order.id,
           orderNumber: order.orderNumber,

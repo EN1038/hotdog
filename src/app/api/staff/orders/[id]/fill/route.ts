@@ -28,7 +28,11 @@ import {
 } from "@/lib/menu-pricing";
 import { orderGrandTotal } from "@/lib/order-totals";
 import { validateOrderDiscount } from "@/lib/order-discount";
-import { deductStockForOrder, deductBranchMenuStockForOrder, deductBranchNonMenuStockForOrder, StockError } from "@/lib/stock";
+import {
+  deductBranchMenuStockForOrder,
+  deductBranchNonMenuStockForOrder,
+  StockError,
+} from "@/lib/stock";
 import { isMenuItemSoldOut, isPromoMenuItem } from "@/lib/staff-key-order";
 
 type Params = { params: Promise<{ id: string }> };
@@ -407,7 +411,6 @@ export async function PUT(request: Request, { params }: Params) {
 
     if (nextStatus === OrderStatus.PREPARING) {
       try {
-        await deductStockForOrder(updated.id);
         await deductBranchMenuStockForOrder({
           orderId: updated.id,
           orderNumber: updated.orderNumber,

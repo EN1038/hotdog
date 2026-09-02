@@ -68,7 +68,7 @@ export function ownerStockHref(opts: {
   if (opts.branchId) {
     return `${branchAdminBasePath(opts.branchId, { ownerShell: true })}?tab=stock&view=manage`;
   }
-  return "/owner/stock";
+  return "/owner";
 }
 
 export function ownerTopSellersHref(opts: {

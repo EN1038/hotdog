@@ -1,24 +1,45 @@
 /** Default store types — seeded into RestaurantType; kept for fallback labels. */
 export const DEFAULT_RESTAURANT_TYPES = [
-  { code: "mala", name: "หม่าล่า / หม้อไฟ" },
-  { code: "bbq", name: "ปิ้งย่าง / หมูกระทะ" },
-  { code: "fried", name: "ของทอด / ลูกชิ้น" },
-  { code: "shabu", name: "ชาบู / สุกี้" },
-  { code: "thai", name: "อาหารไทย" },
-  { code: "coffee", name: "ร้านกาแฟ" },
-  { code: "single_dish", name: "อาหารจานเดียว" },
-  { code: "isaan", name: "อาหารอีสาน" },
-  { code: "japanese", name: "อาหารญี่ปุ่น" },
-  { code: "chinese", name: "อาหารจีน" },
-  { code: "korean", name: "อาหารเกาหลี" },
-  { code: "western", name: "อาหารฝรั่ง" },
-  { code: "seafood", name: "อาหารทะเล" },
-  { code: "dessert", name: "ของหวาน / เบเกอรี่" },
-  { code: "drink", name: "เครื่องดื่ม" },
-  { code: "fast_food", name: "ฟาสต์ฟู้ด" },
-  { code: "noodles", name: "ก๋วยเตี๋ยว" },
-  { code: "vegetarian", name: "มังสวิรัติ / เจ" },
-  { code: "other", name: "อื่นๆ" },
+  {
+    code: "mala_hotpot",
+    name: "ร้านหมาล่า/ย่าง/ทอด",
+    sortOrder: 1,
+    showInOwnerRegister: true,
+    ownerRegisterHint: "คิวเคาน์เตอร์ · ครัว · เสียบไม้",
+    ownerRegisterPlan: "MALA" as const,
+    ownerRegisterOperatingMode: "NORMAL" as const,
+    offersMasterImport: true,
+  },
+  {
+    code: "fish_ball",
+    name: "ร้านลูกชิ้น/ย่าง/ทอด",
+    sortOrder: 2,
+    showInOwnerRegister: true,
+    ownerRegisterHint: "ขายทั่วไป · คิวหน้าร้าน",
+    ownerRegisterPlan: "RETAIL" as const,
+    ownerRegisterOperatingMode: "NORMAL" as const,
+    offersMasterImport: true,
+  },
+  {
+    code: "weigh_bbq",
+    name: "ร้านหมูกระทะชั่งกิโล",
+    sortOrder: 3,
+    showInOwnerRegister: true,
+    ownerRegisterHint: "ชั่งกิโล · เปิดบิลโต๊ะ",
+    ownerRegisterPlan: "WEIGH_TABLE" as const,
+    ownerRegisterOperatingMode: "BBQ_WEIGH" as const,
+    offersMasterImport: false,
+  },
+  {
+    code: "made_to_order",
+    name: "ร้านอาหารตามสั่ง",
+    sortOrder: 4,
+    showInOwnerRegister: true,
+    ownerRegisterHint: "เริ่มว่าง · ตั้งเมนูเอง",
+    ownerRegisterPlan: "RETAIL" as const,
+    ownerRegisterOperatingMode: "NORMAL" as const,
+    offersMasterImport: false,
+  },
 ] as const;
 
 export type RestaurantTypeRow = {
@@ -27,6 +48,11 @@ export type RestaurantTypeRow = {
   name: string;
   sortOrder: number;
   isActive: boolean;
+  showInOwnerRegister?: boolean;
+  ownerRegisterHint?: string | null;
+  ownerRegisterPlan?: string;
+  ownerRegisterOperatingMode?: string;
+  offersMasterImport?: boolean;
 };
 
 export function restaurantTypeLabel(

@@ -19,7 +19,6 @@ type Params = { params: Promise<{ id: string; itemId: string }> };
 
 const itemInclude = {
   category: { select: { id: true, name: true, sortOrder: true } },
-  brandProduct: { select: { sku: true, barcode: true } },
   ...menuItemOptionGroupInclude,
 } as const;
 
@@ -54,20 +53,6 @@ export async function PATCH(request: Request, { params }: Params) {
         where: { id: body.categoryId, branchId },
       });
       if (!cat) return jsonError("ไม่พบหมวดหมู่", 404);
-    }
-
-    if (body.brandProductId) {
-      const branch = await prisma.branch.findUnique({
-        where: { id: branchId },
-        select: { brandId: true },
-      });
-      if (!branch?.brandId) {
-        return jsonError("สาขานี้ไม่มีแบรนด์ จึงผูกสินค้าสต๊อกไม่ได้");
-      }
-      const product = await prisma.brandProduct.findFirst({
-        where: { id: body.brandProductId, brandId: branch.brandId },
-      });
-      if (!product) return jsonError("ไม่พบสินค้าสต๊อกในแบรนด์นี้", 404);
     }
 
     if (body.itemCode) {
@@ -143,9 +128,6 @@ export async function PATCH(request: Request, { params }: Params) {
         }),
         ...(body.isOutOfStock !== undefined && {
           isOutOfStock: body.isOutOfStock,
-        }),
-        ...(body.brandProductId !== undefined && {
-          brandProductId: body.brandProductId,
         }),
         ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
         ...(body.sellDelivery !== undefined && {

@@ -7,7 +7,8 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { DEFAULT_BRAND_COLOR, parseHexColor } from "@/lib/color";
 import { logAdminActivity } from "@/lib/admin-activity";
-import { applyPlanPreset } from "@/lib/brand-plan";
+import { applyPlanPresetFromCatalog } from "@/lib/brand-plan-catalog";
+import { syncBrandStockModule } from "@/lib/brand-stock-activation";
 import {
   BRAND_STATUS_LABELS,
   getBrandSubscriptionState,
@@ -120,7 +121,10 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const usePreset = Boolean(body.plan) && body.applyPlanPreset === true;
-    const preset = usePreset && body.plan ? applyPlanPreset(body.plan) : null;
+    const preset =
+      usePreset && body.plan
+        ? await applyPlanPresetFromCatalog(body.plan)
+        : null;
 
     const brand = await prisma.brand.update({
       where: { id },
@@ -211,6 +215,10 @@ export async function PATCH(request: Request, { params }: Params) {
       entityName: brand.name,
       metadata: body,
     });
+
+    if (body.stockEnabled !== undefined || (usePreset && preset)) {
+      await syncBrandStockModule(brand.id, brand.stockEnabled);
+    }
 
     return jsonOk(brand);
   } catch (error) {

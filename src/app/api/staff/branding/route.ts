@@ -108,12 +108,7 @@ export async function GET() {
             status: OrderStatus.WAITING_FOR_STORE_ACCEPTANCE,
           },
         }),
-        prisma.stockTransfer.count({
-          where: {
-            branchId: session.branchId,
-            status: "PENDING",
-          },
-        }),
+        Promise.resolve(0),
       ]);
     const day = getCalendarDayState();
     const canSell = Boolean(activeShift);

@@ -17,7 +17,7 @@ const createLineSchema = z.object({
 
 const createSchema = z.object({
   stockType: z.enum(["SALE_ITEM", "CONSUMABLE", "EQUIPMENT"]),
-  /** SALE_ITEM only: convert to ADJUST in the same request */
+  /** Convert to ADJUST in the same request (default: wait for Convert) */
   applyNow: z.boolean().optional().default(false),
   name: z.string().trim().min(1).max(160).optional(),
   note: z.string().trim().max(300).nullable().optional(),
@@ -193,7 +193,7 @@ export async function GET(
     }
 
     const [counts, dayActivityItems] = await Promise.all([
-      prisma.stockCount.findMany({
+      prisma.branchStockSummary.findMany({
         where: {
           branchId: branchId,
           status: { in: ["IN_PROGRESS", "COMPLETED", "CANCELLED"] },
@@ -203,13 +203,6 @@ export async function GET(
         include: {
           createdByStaff: { select: { name: true } },
           createdByAdmin: { select: { username: true } },
-          lines: {
-            include: {
-              product: {
-                select: { name: true, stockType: true, unit: true },
-              },
-            },
-          },
         },
       }),
       loadDayMenuActivity(branchId, dateStr),
@@ -218,6 +211,7 @@ export async function GET(
     return jsonOk({
       counts: counts.map((c) => ({
         ...c,
+        lines: [],
         completedAt: c.completedAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),
       })),
@@ -233,8 +227,7 @@ export async function GET(
 
 /**
  * POST — admin creates a stock-count document (same shape as staff end-of-day summary).
- * SALE_ITEM: pending Convert by default, or applyNow → ADJUST immediately.
- * CONSUMABLE / EQUIPMENT: always adjust stock immediately.
+ * Default: pending Convert; applyNow → ADJUST immediately.
  */
 export async function POST(
   request: Request,
@@ -324,20 +317,6 @@ export async function POST(
 
     countLinesPayload.sort((a, b) => a.name.localeCompare(b.name, "th"));
 
-    let location = await prisma.stockLocation.findFirst({
-      where: { branchId, type: "BRANCH" },
-    });
-    if (!location) {
-      location = await prisma.stockLocation.create({
-        data: {
-          brandId: branch.brandId,
-          branchId,
-          type: "BRANCH",
-          name: branch.name || "สาขา",
-        },
-      });
-    }
-
     const dateLabel = new Intl.DateTimeFormat("th-TH", {
       timeZone: "Asia/Bangkok",
       day: "2-digit",
@@ -350,8 +329,7 @@ export async function POST(
       body.name?.trim() ||
       `${titlePrefix} · ${typeLabel} · แอดมินสร้าง (${dateLabel})`;
 
-    // Non-sale always apply; SALE_ITEM pending unless applyNow
-    const applyNow = stockType !== "SALE_ITEM" || body.applyNow;
+    const applyNow = body.applyNow;
     let adjusted = 0;
     const adjustBatchId = applyNow ? crypto.randomUUID() : null;
 
@@ -438,11 +416,10 @@ export async function POST(
           }
         }
 
-        return tx.stockCount.create({
+        return tx.branchStockSummary.create({
           data: {
             brandId: branch.brandId!,
             branchId,
-            stockLocationId: location!.id,
             name: docName,
             status: applyNow ? "COMPLETED" : "IN_PROGRESS",
             completedAt: applyNow ? new Date() : null,

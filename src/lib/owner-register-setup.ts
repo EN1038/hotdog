@@ -3,7 +3,10 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hashAndSealPassword } from "@/lib/admin-password";
 import {
-  applyPlanPreset,
+  applyPlanPresetFromCatalog,
+  getDefaultTrialDays,
+} from "@/lib/brand-plan-catalog";
+import {
   NEW_BRAND_DEFAULTS,
   trialEndsAtFromNow,
 } from "@/lib/brand-plan-shared";
@@ -12,21 +15,22 @@ import {
   importRegisterTemplateFromMalawaiwai,
 } from "@/lib/owner-register-template";
 import {
-  OWNER_REGISTER_TRIAL_DAYS,
   OWNER_REGISTER_BILLING_NOTE,
   OWNER_TRIAL_FULL_MODULES,
-  resolveOwnerShopCategory,
   type OwnerRegisterImportLevel,
-  type OwnerShopCategoryId,
 } from "@/lib/owner-register-shared";
+import {
+  type OwnerRegisterCategory,
+} from "@/lib/owner-register-category";
 import { slugifyCode, withUniqueSuffix } from "@/lib/slug";
-import { ensureWarehouseBranch } from "@/lib/warehouse-branch";
+import { syncBrandStockModule } from "@/lib/brand-stock-activation";
 
 export type OwnerRegisterSetupInput = {
   phone: string;
   shopName: string;
-  shopCategory: OwnerShopCategoryId;
+  shopCategory: string;
   importMaster: OwnerRegisterImportLevel;
+  category: OwnerRegisterCategory;
 };
 
 export type OwnerRegisterSetupResult = {
@@ -95,7 +99,7 @@ export async function syncOwnerTrialFullAccess(brandId: string): Promise<boolean
   });
 
   if (!brand.stockEnabled) {
-    await ensureWarehouseBranch(brandId);
+    await syncBrandStockModule(brandId, true);
   }
   return true;
 }
@@ -103,12 +107,13 @@ export async function syncOwnerTrialFullAccess(brandId: string): Promise<boolean
 export async function createOwnerRegistration(
   input: OwnerRegisterSetupInput,
 ): Promise<OwnerRegisterSetupResult> {
-  const category = resolveOwnerShopCategory(input.shopCategory);
-  const preset = applyPlanPreset(category.plan);
+  const category = input.category;
+  const preset = await applyPlanPresetFromCatalog(category.plan);
   const code = await uniqueBrandCode(input.shopName);
   const randomPassword = randomBytes(18).toString("base64url");
   const { passwordHash, passwordEnc } = await hashAndSealPassword(randomPassword);
-  const trialEndsAt = trialEndsAtFromNow(OWNER_REGISTER_TRIAL_DAYS);
+  const trialDays = await getDefaultTrialDays();
+  const trialEndsAt = trialEndsAtFromNow(trialDays);
 
   const created = await prisma.$transaction(async (tx) => {
     const brand = await tx.brand.create({
@@ -119,8 +124,8 @@ export async function createOwnerRegistration(
         color: DEFAULT_BRAND_COLOR,
         status: NEW_BRAND_DEFAULTS.status,
         plan: preset.plan,
-        maxBranches: Math.max(preset.maxBranches, 2),
-        maxStaff: Math.max(preset.maxStaff, 15),
+        maxBranches: preset.maxBranches,
+        maxStaff: preset.maxStaff,
         ...OWNER_TRIAL_FULL_MODULES,
         trialEndsAt,
         billingNote: OWNER_REGISTER_BILLING_NOTE,
@@ -158,6 +163,7 @@ export async function createOwnerRegistration(
         phone: input.phone,
         isOpen: false,
         operatingMode: category.operatingMode,
+        primaryCategory: input.shopCategory,
         stockEnabled: true,
       },
     });
@@ -165,7 +171,7 @@ export async function createOwnerRegistration(
     return { brand, admin, branch };
   });
 
-  await ensureWarehouseBranch(created.brand.id);
+  await syncBrandStockModule(created.brand.id, created.brand.stockEnabled);
 
   let importSummary: OwnerRegisterSetupResult["importSummary"] = null;
 
@@ -177,7 +183,7 @@ export async function createOwnerRegistration(
       targetBrandId: created.brand.id,
       targetBranchId: created.branch.id,
       targetBranchName: created.branch.name,
-      importLevel: input.importMaster === "menu" ? "menu" : "full",
+      importLevel: "full",
     });
     if (imported) {
       importSummary = {

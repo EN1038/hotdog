@@ -35,7 +35,11 @@ import {
   resolveSellPrice,
 } from "@/lib/menu-pricing";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
-import { deductStockForOrder, deductBranchMenuStockForOrder, deductBranchNonMenuStockForOrder, StockError } from "@/lib/stock";
+import {
+  deductBranchMenuStockForOrder,
+  deductBranchNonMenuStockForOrder,
+  StockError,
+} from "@/lib/stock";
 import { isMenuItemSoldOut, isPromoMenuItem } from "@/lib/staff-key-order";
 import {
   getBranchServiceStatus,
@@ -800,7 +804,6 @@ export async function POST(request: Request) {
 
     if (shouldDeductStock) {
       try {
-        await deductStockForOrder(order.id);
         await deductBranchMenuStockForOrder({
           orderId: order.id,
           orderNumber: order.orderNumber,

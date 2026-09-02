@@ -21,7 +21,6 @@ import { AddToHomeScreenBanner } from "@/components/staff/AddToHomeScreenBanner"
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
-import { WAREHOUSE_UI_ENABLED } from "@/lib/warehouse-ui";
 import {
   autoPrintQueueTickets,
   clampTicketCopies,
@@ -827,25 +826,6 @@ export default function StaffHomePage() {
             )}
           </div>
         </section>
-
-        {WAREHOUSE_UI_ENABLED &&
-        stockOn &&
-        (meta?.pendingStockCount ?? 0) > 0 ? (
-          <a
-            href="/staff/stock?action=pending"
-            className="flex shrink-0 items-center justify-between rounded-2xl bg-teal-600 px-4 py-3.5 text-white shadow-sm active:brightness-95"
-          >
-            <div>
-              <p className="text-base font-extrabold">มีของรอรับ</p>
-              <p className="mt-0.5 text-sm font-medium text-white/85">
-                {meta?.pendingStockCount} รายการ — กดเพื่อยืนยันรับเข้าสาขา
-              </p>
-            </div>
-            <span className="rounded-full bg-white px-3.5 py-1.5 text-sm font-bold text-teal-800">
-              รับของ
-            </span>
-          </a>
-        ) : null}
 
         <StaffExpensesSheet
           open={expensesOpen}

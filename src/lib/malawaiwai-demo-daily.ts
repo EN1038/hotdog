@@ -31,7 +31,6 @@ import {
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
 import {
   deductBranchMenuStockForOrder,
-  deductStockForOrder,
 } from "@/lib/stock";
 import { isPromoMenuItem } from "@/lib/staff-key-order";
 import { MALAWAIWAI_DEMO_BRAND_CODE } from "@/lib/malawaiwai-demo-setup";
@@ -397,7 +396,6 @@ async function createDemoSaleOrder(opts: {
   if (!order) return null;
 
   try {
-    await deductStockForOrder(order.id);
     await deductBranchMenuStockForOrder({
       orderId: order.id,
       orderNumber: order.orderNumber,

@@ -831,16 +831,11 @@ function OwnerHomeInner() {
     await goStaff(path, branchId);
   }
 
-  // แม่ค้าคนเดียว / เริ่มที่หน้าร้าน — พาเข้า staff อัตโนมัติ (ไม่ลูปหลังกดบัญชีร้าน)
+  // เริ่มที่หน้าร้าน — เฉพาะเมื่อตั้งค่า「เริ่มที่หน้าร้านเสมอ」
   useEffect(() => {
     if (!data || loading) return;
     if (autoShopAttempted.current) return;
     if (!shouldPreferShopFloor()) return;
-    const sole = Boolean(data.soleOperator);
-    const prefShop =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem("skillsale_owner_start_v1") === "shop";
-    if (!sole && !prefShop) return;
     if (data.subscription?.writeAllowed === false) return;
 
     autoShopAttempted.current = true;

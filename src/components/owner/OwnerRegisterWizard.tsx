@@ -28,7 +28,14 @@ import {
 
 type RegisterMode = "self" | "line";
 
-type Step = "phone" | "otp" | "category" | "shop" | "creating" | "done";
+type Step = "phone" | "otp" | "staff_ack" | "category" | "shop" | "creating" | "done";
+
+type ExistingStaffBrand = {
+  brandId: string;
+  brandName: string;
+  brandCode: string;
+  branches: { branchId: string; branchName: string }[];
+};
 
 type CreateStage =
   | "verify"
@@ -63,6 +70,10 @@ export function OwnerRegisterWizard() {
   const [createStage, setCreateStage] = useState<CreateStage>("verify");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [existingStaffBrands, setExistingStaffBrands] = useState<
+    ExistingStaffBrand[]
+  >([]);
+  const [staffAcknowledged, setStaffAcknowledged] = useState(false);
   const [resultSummary, setResultSummary] = useState<{
     shopName: string;
     trialEndsAt: string;
@@ -103,6 +114,12 @@ export function OwnerRegisterWizard() {
       }
       setChallengeId(data.challengeId ?? "");
       setOtpRefNo(data.otpRefNo ?? "");
+      setExistingStaffBrands(
+        Array.isArray(data.existingStaffBrands)
+          ? (data.existingStaffBrands as ExistingStaffBrand[])
+          : [],
+      );
+      setStaffAcknowledged(false);
       setOtpSecondsLeft(
         typeof data.expiresIn === "number" ? data.expiresIn : OTP_TTL_SECONDS,
       );
@@ -146,13 +163,22 @@ export function OwnerRegisterWizard() {
           importMaster: categoryAllowsMasterImport(shopCategory)
             ? importMaster
             : "none",
+          acknowledgeExistingStaff:
+            existingStaffBrands.length === 0 || staffAcknowledged,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         clearInterval(stageTimer);
+        if (data.code === "EXISTING_STAFF" && Array.isArray(data.existingStaffBrands)) {
+          setExistingStaffBrands(data.existingStaffBrands as ExistingStaffBrand[]);
+          setStaffAcknowledged(false);
+          setStep("staff_ack");
+        }
         setError(data.error ?? "สมัครไม่สำเร็จ");
-        setStep("shop");
+        if (data.code !== "EXISTING_STAFF") {
+          setStep("shop");
+        }
         return;
       }
       setCreateStage("complete");
@@ -190,6 +216,15 @@ export function OwnerRegisterWizard() {
         return;
       }
       setError("");
+      setStep(existingStaffBrands.length > 0 ? "staff_ack" : "category");
+      return;
+    }
+    if (step === "staff_ack") {
+      if (!staffAcknowledged) {
+        setError("กรุณายืนยันว่าเข้าใจว่าเป็นการเปิดร้านใหม่แยกจากงานพนักงานเดิม");
+        return;
+      }
+      setError("");
       setStep("category");
       return;
     }
@@ -208,11 +243,13 @@ export function OwnerRegisterWizard() {
       ? 0
       : step === "otp"
         ? 1
-        : step === "category"
+        : step === "staff_ack"
           ? 2
-          : step === "shop"
+          : step === "category"
             ? 3
-            : 4;
+            : step === "shop"
+              ? 4
+              : 5;
 
   return (
     <main className="flex min-h-dvh flex-col bg-[#f4f5f7]">
@@ -348,7 +385,7 @@ export function OwnerRegisterWizard() {
             </p>
 
             <div className="mt-4 flex gap-1">
-              {[0, 1, 2, 3].map((i) => (
+              {[0, 1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
                   className={`h-1 flex-1 rounded-full ${
@@ -405,6 +442,44 @@ export function OwnerRegisterWizard() {
             >
               ขอรหัสใหม่
             </button>
+          </div>
+        ) : null}
+
+        {registerMode === "self" && step === "staff_ack" ? (
+          <div className="mt-6 space-y-4">
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-amber-950">
+              <p className="text-[15px] font-bold">เบอร์นี้เป็นพนักงานอยู่แล้ว</p>
+              <p className="mt-2 text-sm leading-relaxed">
+                การสมัครครั้งนี้จะ<span className="font-semibold">เปิดร้านใหม่แยก</span>
+                จากงานพนักงานเดิม — บัญชีเจ้าของและหน้าร้านพนักงานเป็นคนละส่วน
+              </p>
+              <ul className="mt-3 space-y-2 text-sm">
+                {existingStaffBrands.map((brand) => (
+                  <li
+                    key={brand.brandId}
+                    className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-amber-200"
+                  >
+                    <p className="font-semibold">{brand.brandName}</p>
+                    <p className="text-xs text-amber-900/80">
+                      {brand.branches.map((b) => b.branchName).join(" · ")}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3">
+              <input
+                type="checkbox"
+                checked={staffAcknowledged}
+                onChange={(e) => setStaffAcknowledged(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300"
+              />
+              <span className="text-sm leading-relaxed text-gray-800">
+                เข้าใจแล้ว — ต้องการเปิดร้านใหม่ด้วยเบอร์นี้ และจะใช้{" "}
+                <span className="font-semibold">/owner/login</span> สำหรับหลังบ้าน{" "}
+                <span className="font-semibold">/staff/login</span> สำหรับงานพนักงานเดิม
+              </span>
+            </label>
           </div>
         ) : null}
 
@@ -548,8 +623,10 @@ export function OwnerRegisterWizard() {
                 onClick={() => {
                   setError("");
                   if (step === "otp") setStep("phone");
-                  else if (step === "category") setStep("otp");
-                  else if (step === "shop") setStep("category");
+                  else if (step === "staff_ack") setStep("otp");
+                  else if (step === "category") {
+                    setStep(existingStaffBrands.length > 0 ? "staff_ack" : "otp");
+                  } else if (step === "shop") setStep("category");
                 }}
                 className="w-full py-2 text-sm font-semibold text-gray-500"
               >
@@ -566,7 +643,9 @@ export function OwnerRegisterWizard() {
                 ? "กำลังดำเนินการ…"
                 : step === "phone"
                   ? "ส่งรหัส OTP"
-                  : step === "otp"
+                : step === "otp"
+                  ? "ถัดไป"
+                  : step === "staff_ack"
                     ? "ถัดไป"
                     : step === "category"
                       ? "ถัดไป"

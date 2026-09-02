@@ -14,6 +14,7 @@ import {
   staffLoginSelect,
 } from "@/lib/staff-login";
 import { STAFF_LOGIN_UNREGISTERED } from "@/lib/staff-session-limits";
+import { findExistingStaffBrandsForPhone } from "@/lib/owner-register-staff-check";
 
 const schema = z.object({
   phone: z.string().min(9),
@@ -35,6 +36,9 @@ export async function POST(request: Request) {
     }
 
     let pendingName: string | null = null;
+    let existingStaffBrands:
+      | Awaited<ReturnType<typeof findExistingStaffBrandsForPhone>>
+      | undefined;
     if (body.purpose === "staff") {
       const memberships = await prisma.staff.findMany({
         where: { phone },
@@ -80,6 +84,7 @@ export async function POST(request: Request) {
           redirect: "/owner/login",
         });
       }
+      existingStaffBrands = await findExistingStaffBrandsForPhone(phone);
     } else {
       const existing = await prisma.customer.findUnique({ where: { phone } });
       if (!existing && !body.name) {
@@ -124,6 +129,9 @@ export async function POST(request: Request) {
       otpRefNo: challenge.otpRefNo,
       expiresIn: Math.floor(OTP_TTL_MS / 1000),
       resendIn: Math.floor(OTP_RESEND_COOLDOWN_MS / 1000),
+      ...(existingStaffBrands?.length
+        ? { existingStaffBrands }
+        : {}),
     });
   } catch (error) {
     return handleApiError(error);

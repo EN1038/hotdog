@@ -551,7 +551,7 @@ model Branch {
   smsNotifyNewOrder            Boolean                      @default(false)
   smsNotifySkewerOrder         Boolean                      @default(false)
   createdAt                    DateTime                     @default(now())
-  brand                        Brand?                       @relation(fields: [brandId], references: [id])
+  brand                        Brand?                       @relation(fields: [brandId], references: [id], onDelete: Cascade)
   alertSound                   AlertSound?                  @relation(fields: [alertSoundId], references: [id], onDelete: SetNull)
   staff                        Staff[]
   menuItems                    BranchMenuItem[]

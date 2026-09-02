@@ -12,6 +12,7 @@ import {
   markStaffPhoneVerified,
 } from "@/lib/otp-challenge";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+import { clearOwnerStashCookie } from "@/lib/owner-staff-bridge";
 import {
   issueStaffAuthSession,
   staffDeviceSlotAvailable,
@@ -94,6 +95,7 @@ export async function POST(request: Request) {
           isPlatformAdmin: false,
           brandIds,
         });
+        clearOwnerStashCookie(res);
         return res;
       }
 
@@ -146,6 +148,9 @@ export async function POST(request: Request) {
         isPlatformAdmin,
         brandIds,
       });
+      if (!isPlatformAdmin) {
+        clearOwnerStashCookie(res);
+      }
       return res;
     }
 

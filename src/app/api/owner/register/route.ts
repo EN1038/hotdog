@@ -12,6 +12,7 @@ import {
   categoryAllowsMasterImport,
 } from "@/lib/owner-register-shared";
 import { createOwnerRegistration } from "@/lib/owner-register-setup";
+import { findExistingStaffBrandsForPhone } from "@/lib/owner-register-staff-check";
 
 const importIds = OWNER_REGISTER_IMPORT_OPTIONS.map((o) => o.id) as [
   "none",
@@ -26,6 +27,8 @@ const schema = z.object({
   shopName: z.string().trim().min(2, "กรุณากรอกชื่อร้าน").max(80),
   shopCategory: z.enum(OWNER_SHOP_CATEGORY_IDS),
   importMaster: z.enum(importIds).optional().default("none"),
+  /** Required when phone is already staff on another brand. */
+  acknowledgeExistingStaff: z.boolean().optional().default(false),
 });
 
 export async function POST(request: Request) {
@@ -47,6 +50,19 @@ export async function POST(request: Request) {
       return jsonError("เบอร์นี้สมัครแล้ว — กรุณาเข้าสู่ระบบ", 409, {
         redirect: "/owner/login",
       });
+    }
+
+    const existingStaffBrands = await findExistingStaffBrandsForPhone(phone);
+    if (existingStaffBrands.length > 0 && !body.acknowledgeExistingStaff) {
+      const brandNames = existingStaffBrands.map((b) => b.brandName).join(", ");
+      return jsonError(
+        `เบอร์นี้เป็นพนักงานของ ${brandNames} อยู่แล้ว — ยืนยันเพื่อเปิดร้านใหม่แยกจากร้านเดิม`,
+        409,
+        {
+          code: "EXISTING_STAFF",
+          existingStaffBrands,
+        },
+      );
     }
 
     const otp = await consumeOtpChallenge({

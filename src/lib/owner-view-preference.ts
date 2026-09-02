@@ -1,5 +1,7 @@
 /** Owner portal display preference — mobile shell vs full admin */
 
+import { clearSkipAutoShopFloor } from "@/lib/owner-sole-start";
+
 export type OwnerViewPreference = "auto" | "mobile" | "desktop";
 export type OwnerViewMode = "mobile" | "desktop";
 
@@ -57,35 +59,14 @@ export function ownerViewHomePath(view: OwnerViewMode): string {
 }
 
 /**
- * After owner login — desktop → /admin; mobile → try shop floor (sole/single branch)
- * then fall back to /owner.
+ * After owner login — desktop → /admin; mobile → /owner.
+ * Shop-floor auto-switch only happens later when preference is "shop".
  */
 export async function assignOwnerViewHome() {
   if (typeof window === "undefined") return;
+  clearSkipAutoShopFloor();
   const view = resolveOwnerView();
-  if (view === "desktop") {
-    window.location.assign("/admin");
-    return;
-  }
-
-  const { shouldPreferShopFloor } = await import("@/lib/owner-sole-start");
-  if (shouldPreferShopFloor()) {
-    const { enterOwnerStaffMode } = await import("@/lib/owner-enter-staff");
-    try {
-      const result = await enterOwnerStaffMode();
-      if (
-        result.ok &&
-        !("needsBranchSelect" in result && result.needsBranchSelect)
-      ) {
-        window.location.assign("/staff");
-        return;
-      }
-    } catch {
-      /* fall through to /owner */
-    }
-  }
-
-  window.location.assign("/owner");
+  window.location.assign(ownerViewHomePath(view));
 }
 
 export const OWNER_VIEW_LABELS: Record<OwnerViewPreference, string> = {

@@ -60,20 +60,19 @@ export function shouldSkipAutoShopFloor(): boolean {
 }
 
 /**
- * Prefer landing on staff sell home for sole / single-branch shops.
- * `office` keeps /owner; `shop` always tries staff; `auto` tries staff
- * (enter-staff will ask for branch if many).
+ * Prefer landing on staff sell home only when the owner explicitly chose
+ * "เริ่มที่หน้าร้านเสมอ". Auto mode stays on /owner after login.
  */
 export function shouldPreferShopFloor(
   preference: OwnerStartPreference = getOwnerStartPreference(),
 ): boolean {
   if (preference === "office") return false;
   if (shouldSkipAutoShopFloor()) return false;
-  return preference === "shop" || preference === "auto";
+  return preference === "shop";
 }
 
 export const OWNER_START_LABELS: Record<OwnerStartPreference, string> = {
-  auto: "อัตโนมัติ (สาขาเดียวเข้าหน้าร้าน)",
+  auto: "เริ่มที่หลังบ้าน (ค่าเริ่มต้น)",
   shop: "เริ่มที่หน้าร้านเสมอ",
   office: "เริ่มที่หลังบ้านเสมอ",
 };

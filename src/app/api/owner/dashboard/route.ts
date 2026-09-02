@@ -29,6 +29,7 @@ import {
 } from "@/lib/brand-plan-shared";
 import type { BrandPlan, BrandStatus } from "@prisma/client";
 import { getBrandSmsQuota } from "@/lib/brand-sms-quota";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 import { pendingConvertNotiCreatedAtGte } from "@/lib/stock-count-pending-noti";
 import { syncOwnerTrialFullAccess, syncOwnerRegisterTemplateIfEmpty } from "@/lib/owner-register-setup";
 
@@ -91,6 +92,7 @@ async function loadBrandSaleStockSnapshot(branchIds: string[]) {
 
 export async function GET(request: Request) {
   try {
+    await ensureProdSchemaCompat();
     const session = await requireAdmin();
     if (session.isPlatformAdmin) {
       return jsonError("หน้านี้สำหรับเจ้าของร้าน", 403, { redirect: "/admin" });

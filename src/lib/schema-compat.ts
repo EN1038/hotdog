@@ -112,6 +112,10 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `DO $$ BEGIN ALTER TYPE "${schema}"."BrandStatus" ADD VALUE IF NOT EXISTS 'DELETED'; EXCEPTION WHEN others THEN NULL; END $$`,
         `DO $$ BEGIN ALTER TYPE "SkewerOrderStatus" ADD VALUE IF NOT EXISTS 'DELIVERED'; EXCEPTION WHEN others THEN NULL; END $$`,
         `DO $$ BEGIN ALTER TYPE "${schema}"."SkewerOrderStatus" ADD VALUE IF NOT EXISTS 'DELIVERED'; EXCEPTION WHEN others THEN NULL; END $$`,
+        `DO $$ BEGIN ALTER TYPE "SmsSendPurpose" ADD VALUE IF NOT EXISTS 'BRAND_ALERT_NEW_ORDER'; EXCEPTION WHEN others THEN NULL; END $$`,
+        `DO $$ BEGIN ALTER TYPE "SmsSendPurpose" ADD VALUE IF NOT EXISTS 'BRAND_ALERT_SKEWER_ORDER'; EXCEPTION WHEN others THEN NULL; END $$`,
+        `DO $$ BEGIN ALTER TYPE "${schema}"."SmsSendPurpose" ADD VALUE IF NOT EXISTS 'BRAND_ALERT_NEW_ORDER'; EXCEPTION WHEN others THEN NULL; END $$`,
+        `DO $$ BEGIN ALTER TYPE "${schema}"."SmsSendPurpose" ADD VALUE IF NOT EXISTS 'BRAND_ALERT_SKEWER_ORDER'; EXCEPTION WHEN others THEN NULL; END $$`,
       ];
       for (const sql of enumSql) {
         try {

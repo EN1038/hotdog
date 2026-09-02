@@ -1601,6 +1601,7 @@ function OwnerHomeInner() {
               brandId={brand.id}
               brandName={brand.nameTh || brand.name}
               subscription={subscription}
+              smsQuota={data?.smsQuota ?? null}
             />
           ) : null}
         </>

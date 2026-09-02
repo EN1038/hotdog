@@ -28,6 +28,7 @@ import {
   getBrandSubscriptionState,
 } from "@/lib/brand-plan-shared";
 import type { BrandPlan, BrandStatus } from "@prisma/client";
+import { getBrandSmsQuota } from "@/lib/brand-sms-quota";
 import { pendingConvertNotiCreatedAtGte } from "@/lib/stock-count-pending-noti";
 import { syncOwnerTrialFullAccess, syncOwnerRegisterTemplateIfEmpty } from "@/lib/owner-register-setup";
 
@@ -137,7 +138,7 @@ export async function GET(request: Request) {
     await syncOwnerTrialFullAccess(brandId);
     await syncOwnerRegisterTemplateIfEmpty(brandId);
 
-    const [brand, branches] = await Promise.all([
+    const [brand, branches, smsQuota] = await Promise.all([
       prisma.brand.findUnique({
         where: { id: brandId },
         select: {
@@ -174,6 +175,7 @@ export async function GET(request: Request) {
         },
         orderBy: { name: "asc" },
       }),
+      getBrandSmsQuota(brandId),
     ]);
 
     if (!brand) return jsonError("ไม่พบร้าน", 404);
@@ -430,6 +432,7 @@ export async function GET(request: Request) {
         color: brand.color,
       },
       subscription,
+      smsQuota,
       branches: branches.map((b) => ({
         id: b.id,
         name: b.name,

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { OwnerSubscriptionInfo } from "@/lib/owner-dashboard";
+import type { BrandSmsQuotaSnapshot } from "@/lib/brand-sms-quota";
+import { OwnerSmsQuotaCard } from "@/components/owner/OwnerSmsQuotaCard";
 import {
   enterOwnerStaffMode,
   type OwnerEnterStaffBranch,
@@ -183,10 +185,12 @@ export function OwnerAccountCards({
   brandId,
   brandName,
   subscription,
+  smsQuota,
 }: {
   brandId: string;
   brandName: string;
   subscription: OwnerSubscriptionInfo | null;
+  smsQuota?: BrandSmsQuotaSnapshot | null;
 }) {
   if (!subscription) return null;
 
@@ -400,6 +404,10 @@ export function OwnerAccountCards({
           ดูใบแจ้งหนี้ / ประวัติชำระ ›
         </Link>
       </div>
+
+      {smsQuota ? (
+        <OwnerSmsQuotaCard quota={smsQuota} />
+      ) : null}
 
       <PlatformSupportCard />
     </section>

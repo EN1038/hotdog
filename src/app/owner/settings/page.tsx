@@ -219,6 +219,7 @@ function OwnerSettingsInner() {
           brandId={brandId}
           brandName={brandName}
           subscription={subscription}
+          smsQuota={data?.smsQuota ?? null}
         />
       ) : null}
 

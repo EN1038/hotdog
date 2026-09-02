@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/admin/Toast";
+import { OwnerSmsQuotaCard } from "@/components/owner/OwnerSmsQuotaCard";
 
 type BranchRow = {
   id: string;
@@ -139,16 +140,7 @@ export function OwnerNotificationSettings() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
-        <p className="text-sm font-semibold text-emerald-900">โควตา SMS แจ้งเตือน</p>
-        <p className="mt-1 text-sm text-emerald-800">
-          ใช้ไป {data.sms.used} / {data.sms.granted} ฉบับ · คงเหลือ{" "}
-          <span className="font-semibold">{data.sms.remaining}</span> ฉบับ
-        </p>
-        <p className="mt-1 text-xs text-emerald-700">
-          ติดต่อทีม SkillSale เพื่อเติมโควตา SMS (ไม่รวม OTP และ SMS ถึงลูกค้า)
-        </p>
-      </div>
+      <OwnerSmsQuotaCard quota={data.sms} manageHref={undefined} />
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-slate-900">SMS ต่อสาขา</h3>

@@ -9,6 +9,7 @@ import type {
   ShopHourlyPoint,
   ShopWeekdayPoint,
 } from "@/lib/shop-overview-metrics";
+import type { BrandSmsQuotaSnapshot } from "@/lib/brand-sms-quota";
 
 export type OwnerPeriod = "day" | "month";
 
@@ -126,6 +127,8 @@ export type OwnerDailyPoint = {
 export type OwnerDashboardPayload = {
   brand: OwnerBrandRow | null;
   subscription: OwnerSubscriptionInfo | null;
+  /** SMS alert quota for brand owners (read-only). */
+  smsQuota?: BrandSmsQuotaSnapshot | null;
   branches: OwnerBranchRow[];
   hasTestBranch?: boolean;
   includeTest?: boolean;

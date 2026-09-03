@@ -1,5 +1,6 @@
 "use client";
 
+import { IconLine } from "@/components/owner/owner-register-ui";
 import {
   PLATFORM_APP_NAME,
   PLATFORM_APP_VERSION,
@@ -39,7 +40,7 @@ export function PlatformSupportCard() {
         rel="noopener noreferrer"
         className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#06C755] px-4 py-3 text-[15px] font-extrabold text-white shadow-sm active:brightness-95"
       >
-        <span aria-hidden>💬</span>
+        <IconLine className="h-5 w-5 shrink-0" />
         แอดไลน์สอบถาม / แจ้งปัญหา
       </a>
     </section>

@@ -543,7 +543,7 @@ export default function StaffSettingsPage() {
 
         <button
           type="button"
-          onClick={() => logout("/staff/login")}
+          onClick={() => logout("/")}
           className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-4 text-[15px] font-extrabold text-slate-700 shadow-sm"
         >
           <IconLogout size={20} /> ออกจากระบบ

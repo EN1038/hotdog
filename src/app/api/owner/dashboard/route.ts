@@ -183,7 +183,7 @@ export async function GET(request: Request) {
     const hasTestBranch = branches.some((b) => b.isTest);
     const scopedBranches = (includeTest
       ? branches
-      : branches.filter((b) => !b.isTest)
+      : branches.filter((b) => !isTestBranch(b))
     ).filter((b) => b.kind !== "WAREHOUSE");
     const selectedBranch =
       branchIdParam != null
@@ -195,7 +195,10 @@ export async function GET(request: Request) {
     const filterBranchId = selectedBranch?.id ?? null;
 
     const liveBranchIds = branches
-      .filter((b) => !b.isTest && b.kind !== "WAREHOUSE")
+      .filter(
+        (b) =>
+          b.kind !== "WAREHOUSE" && (includeTest || !isTestBranch(b)),
+      )
       .map((b) => b.id);
 
     const openShiftRows =

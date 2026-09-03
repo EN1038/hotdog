@@ -19,6 +19,7 @@ import { OwnerAccountModal } from "@/components/owner/OwnerAccountModal";
 import { OwnerBranchesManageModal } from "@/components/owner/OwnerBranchesManageModal";
 import { OwnerBranchTaskModal } from "@/components/owner/OwnerBranchTaskModal";
 import { OwnerNotificationSettings } from "@/components/owner/OwnerNotificationSettings";
+import { PlatformSupportCard } from "@/components/PlatformSupportCard";
 
 function OwnerSettingsInner() {
   const router = useRouter();
@@ -173,6 +174,8 @@ function OwnerSettingsInner() {
         <IconLogout size={20} />
         ออกจากระบบ
       </button>
+
+      <PlatformSupportCard />
 
       {brandId ? (
         <>

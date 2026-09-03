@@ -14,26 +14,17 @@ import {
   IconChevronRight,
   IconClipboard,
   IconExpense,
-  IconGear,
   IconGridView,
   IconLink,
   IconLinkSuffix,
   IconReceipt,
   IconStore,
-  IconWallet,
   IconWaste,
 } from "@/components/icons";
 import type {
   OwnerBranchRow,
   OwnerDashboardPayload,
 } from "@/lib/owner-dashboard";
-import {
-  OwnerAccountCards,
-  OwnerShopMenuSection,
-  buildOwnerShopLinkGroups,
-  type OwnerBranchTask,
-} from "@/components/owner/OwnerShopHub";
-import { OwnerBranchTaskModal } from "@/components/owner/OwnerBranchTaskModal";
 import {
   enterOwnerStaffMode,
   type OwnerEnterStaffBranch,
@@ -54,25 +45,40 @@ import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
 import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
 import { SalesShareSection } from "@/components/merchant/SalesSummaryView";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
-import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, ownerParStockHref, ownerTomorrowPlansHref, ownerSalesDaysHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
+import {
+  ownerExpensesHref,
+  ownerSummaryHref,
+  ownerWasteHref,
+  ownerAgingHref,
+  ownerCancelsHref,
+  ownerStockHref,
+  ownerStockFlowHref,
+  ownerStockHistoryHref,
+  ownerTopSellersHref,
+  ownerParStockHref,
+  ownerTomorrowPlansHref,
+  ownerSalesDaysHref,
+  readOwnerViewRangeParams,
+} from "@/lib/owner-view-query";
 import { OwnerBrandProfileSetupModal } from "@/components/owner/OwnerBrandProfileSetupModal";
-import { OwnerAccountModal } from "@/components/owner/OwnerAccountModal";
-import { OwnerBranchesManageModal } from "@/components/owner/OwnerBranchesManageModal";
 import {
   isOwnerBrandSetupDismissed,
   OWNER_BRAND_SETUP_FORCE_SHOW_ON_LOAD,
 } from "@/lib/owner-brand-setup";
 import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
-
 const OWNER_HOME_TAB_KEY = "skillsale_owner_home_tab_v2";
 
 function ownerLiveBranches(branches: OwnerBranchRow[]) {
-  return branches.filter(
-    (b) => !b.isHidden && !b.isTest && b.kind !== "WAREHOUSE",
-  );
+  /** รวมสาขาที่ซ่อนจากลูกค้า — เจ้าของยังต้องเห็นยอด; ตัดเฉพาะคลังและสาขาทดลอง */
+  return branches.filter((b) => !b.isTest && b.kind !== "WAREHOUSE");
 }
 
-type OwnerHomeTab = "overview" | "sell" | "stock" | "setup";
+/** การ์ดยอดขายตามสาขา — โชว์ครบทุกสาขาของร้าน (ยกเว้นคลัง) */
+function ownerOverviewBranches(branches: OwnerBranchRow[]) {
+  return branches.filter((b) => b.kind !== "WAREHOUSE");
+}
+
+type OwnerHomeTab = "overview" | "sell" | "stock";
 
 const OWNER_HOME_TABS: {
   id: OwnerHomeTab;
@@ -100,26 +106,13 @@ const OWNER_HOME_TABS: {
       <IconBoxes size={size} className={className} />
     ),
   },
-  {
-    id: "setup",
-    label: "ตั้งค่า",
-    icon: ({ size = 20, className }) => (
-      <IconGear size={size} className={className} />
-    ),
-  },
 ];
 
 function readStoredHomeTab(): OwnerHomeTab | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(OWNER_HOME_TAB_KEY);
-    if (raw === "more") return "setup";
-    if (
-      raw === "overview" ||
-      raw === "sell" ||
-      raw === "stock" ||
-      raw === "setup"
-    ) {
+    if (raw === "overview" || raw === "sell" || raw === "stock") {
       return raw;
     }
   } catch {
@@ -141,7 +134,7 @@ function OwnerHomeTabBar({
       role="tablist"
       aria-label="หมวดงานเจ้าของร้าน"
     >
-      <div className="grid grid-cols-4 gap-1 rounded-[1.25rem] bg-slate-200/60 p-1 shadow-inner">
+      <div className="grid grid-cols-3 gap-1 rounded-[1.25rem] bg-slate-200/60 p-1 shadow-inner">
         {OWNER_HOME_TABS.map((tab) => {
           const selected = active === tab.id;
           return (
@@ -471,7 +464,6 @@ function OwnerHomeInner() {
   const [overviewPayload, setOverviewPayload] =
     useState<OwnerDashboardPayload | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [enteringStaff, setEnteringStaff] = useState(false);
   const [staffTargetHref, setStaffTargetHref] = useState(
     "/staff/key-order/regular",
@@ -487,12 +479,6 @@ function OwnerHomeInner() {
   const skipAutoShopForBrandSetup = useRef(false);
   const [shopRedirecting, setShopRedirecting] = useState(false);
   const [brandSetupOpen, setBrandSetupOpen] = useState(false);
-  const [ownerAccountOpen, setOwnerAccountOpen] = useState(false);
-  const [manageBranchesOpen, setManageBranchesOpen] = useState(false);
-  const [branchTask, setBranchTask] = useState<{
-    task: OwnerBranchTask;
-    branchId: string;
-  } | null>(null);
 
   useEffect(() => {
     if (homeTabReady.current) return;
@@ -614,6 +600,7 @@ function OwnerHomeInner() {
         const params = new URLSearchParams({
           from: rangeFrom,
           to: rangeTo,
+          includeTest: "1",
         });
         if (filterBranchId) params.set("branchId", filterBranchId);
         const res = await fetch(`/api/owner/dashboard?${params}`, {
@@ -635,10 +622,11 @@ function OwnerHomeInner() {
   const brand = data?.brand;
   const subscription = data?.subscription ?? null;
   const pulseSource = overviewPayload ?? data;
-  const branches = pulseSource?.branches ?? data?.branches ?? [];
+  const branches = data?.branches ?? pulseSource?.branches ?? [];
   const liveBranches = ownerLiveBranches(branches);
+  const overviewBranches = ownerOverviewBranches(branches);
   const firstBranchId = liveBranches[0]?.id ?? branches[0]?.id ?? null;
-  const openBranchCount = liveBranches.filter((b) => b.activeShift).length;
+  const openBranchCount = overviewBranches.filter((b) => b.activeShift).length;
 
   const shellStats = data?.stats;
   const overviewStats = pulseSource?.stats ?? shellStats;
@@ -681,15 +669,20 @@ function OwnerHomeInner() {
     const statsById = new Map(
       (pulseSource?.byBranch ?? []).map((row) => [row.branchId, row]),
     );
+    const shiftSource = pulseSource?.branches ?? data?.branches ?? [];
+    const shiftById = new Map(shiftSource.map((b) => [b.id, b]));
 
-    return liveBranches
+    return overviewBranches
       .map((branch) => {
         const stats = statsById.get(branch.id);
+        const live = shiftById.get(branch.id) ?? branch;
         return {
           branchId: branch.id,
           branchName: branch.name,
-          activeShift: branch.activeShift ?? null,
-          lastClosedShift: branch.lastClosedShift ?? null,
+          isTest: Boolean(branch.isTest),
+          isHidden: Boolean(branch.isHidden),
+          activeShift: live.activeShift ?? null,
+          lastClosedShift: live.lastClosedShift ?? null,
           completedRevenue: stats?.completedRevenue ?? 0,
           completedCount: stats?.completedCount ?? 0,
           cashRevenue: stats?.cashRevenue ?? 0,
@@ -700,12 +693,12 @@ function OwnerHomeInner() {
         const aOpen = a.activeShift ? 1 : 0;
         const bOpen = b.activeShift ? 1 : 0;
         if (bOpen !== aOpen) return bOpen - aOpen;
+        if (a.isTest !== b.isTest) return a.isTest ? 1 : -1;
         return b.completedRevenue - a.completedRevenue;
       });
-  }, [pulseSource?.byBranch, liveBranches]);
-  const closedBranchCount = liveBranches.length - openBranchCount;
-  const overviewByBranchMore = overviewByBranchAll.length > 10;
-  const overviewByBranch = overviewByBranchAll.slice(0, 10);
+  }, [pulseSource?.byBranch, pulseSource?.branches, data?.branches, overviewBranches]);
+  const closedBranchCount = overviewBranches.length - openBranchCount;
+  const overviewByBranch = overviewByBranchAll;
 
   const summaryHref = ownerSummaryHref({
     branchId: filterBranchId,
@@ -762,56 +755,6 @@ function OwnerHomeInner() {
       ? `?from=${encodeURIComponent(rangeFrom)}&to=${encodeURIComponent(rangeTo)}`
       : ""
   }`;
-
-  const shopLinkGroups = useMemo(
-    () =>
-      brand
-        ? buildOwnerShopLinkGroups({
-            brandId: brand.id,
-            firstBranchId,
-            stockEnabled: Boolean(
-              subscription?.stockEnabled ?? data?.stockEnabled,
-            ),
-            kitchenEnabled: Boolean(subscription?.kitchenEnabled),
-            bbqEnabled: Boolean(subscription?.bbqEnabled),
-          })
-        : { setup: [], stock: [], more: [] },
-    [
-      brand,
-      firstBranchId,
-      subscription?.stockEnabled,
-      subscription?.kitchenEnabled,
-      subscription?.bbqEnabled,
-      data?.stockEnabled,
-    ],
-  );
-
-  async function toggleOpen(branch: OwnerBranchRow) {
-    setTogglingId(branch.id);
-    try {
-      const res = await fetch(`/api/admin/branches/${branch.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isOpen: !branch.isOpen }),
-      });
-      if (!res.ok) {
-        toast.error("เปลี่ยนสถานะร้านไม่สำเร็จ");
-        return;
-      }
-      toast.success(branch.isOpen ? "ปิดร้านแล้ว" : "เปิดร้านแล้ว", branch.name);
-      reload();
-    } catch {
-      toast.error("เชื่อมต่อไม่ได้");
-    } finally {
-      setTogglingId(null);
-    }
-  }
-
-  function scrollToBranches() {
-    document
-      .getElementById("owner-branch-open")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 
   async function goStaff(href: string, branchId?: string) {
     if (enteringStaff) return;
@@ -1029,9 +972,6 @@ function OwnerHomeInner() {
               href={summaryHref}
               className="rounded-[1.15rem] bg-sky-50 px-2.5 py-3 shadow-sm ring-1 ring-sky-100 active:bg-sky-100"
             >
-              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sky-700">
-                <IconWallet size={18} />
-              </span>
               <p className="text-[11px] font-bold text-sky-800">เหลือสุทธิ</p>
               <p className="mt-1 text-[16px] font-black tabular-nums leading-tight text-sky-950">
                 ฿{formatPrice(overviewNetAfterWaste)}
@@ -1044,9 +984,6 @@ function OwnerHomeInner() {
               href={expensesHref}
               className="rounded-[1.15rem] bg-rose-50 px-2.5 py-3 shadow-sm ring-1 ring-rose-100 active:bg-rose-100"
             >
-              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-rose-100 text-rose-600">
-                <IconExpense size={18} />
-              </span>
               <p className="text-[11px] font-bold text-rose-800">ค่าใช้จ่าย</p>
               <p className="mt-1 text-[16px] font-black tabular-nums leading-tight text-rose-950">
                 ฿{formatPrice(overviewExpenseTotal)}
@@ -1061,9 +998,6 @@ function OwnerHomeInner() {
               href={wasteHref}
               className="rounded-[1.15rem] bg-orange-50 px-2.5 py-3 shadow-sm ring-1 ring-orange-100 active:bg-orange-100"
             >
-              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600">
-                <IconWaste size={18} />
-              </span>
               <p className="text-[11px] font-bold text-orange-800">ของเสีย</p>
               <p className="mt-1 text-[16px] font-black tabular-nums leading-tight text-orange-950">
                 {overviewWasteQty > 0
@@ -1170,7 +1104,7 @@ function OwnerHomeInner() {
           ) : null}
 
           {/* 4) สาขา — แสดงเมื่อไม่ได้กรองสาขา (รวมบัญชีสาขาเดียว) */}
-          {!filterBranchId && liveBranches.length > 0 ? (
+          {!filterBranchId && overviewBranches.length > 0 ? (
             <section
               className="overflow-hidden rounded-[1.25rem] bg-white shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100"
               aria-label="ยอดขายตามสาขา"
@@ -1184,7 +1118,7 @@ function OwnerHomeInner() {
                   {closedBranchCount > 0
                     ? ` · ปิดรอบ ${closedBranchCount}`
                     : ""}{" "}
-                  · รวม {liveBranches.length} สาขา
+                  · รวม {overviewBranches.length} สาขา
                 </p>
               </div>
               {overviewByBranch.length > 0 ? (
@@ -1202,6 +1136,16 @@ function OwnerHomeInner() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[14px] font-semibold text-site-primary">
                             {row.branchName}
+                            {row.isTest ? (
+                              <span className="ml-1.5 text-[11px] font-bold text-amber-600">
+                                · ทดลอง
+                              </span>
+                            ) : null}
+                            {row.isHidden ? (
+                              <span className="ml-1.5 text-[11px] font-bold text-slate-400">
+                                · ซ่อนหน้าร้าน
+                              </span>
+                            ) : null}
                           </p>
                           {row.activeShift ? (
                             <OwnerBranchShiftLine shift={row.activeShift} />
@@ -1235,39 +1179,16 @@ function OwnerHomeInner() {
                     </li>
                   ))}
                 </ul>
-              ) : null}
-              {overviewByBranchMore ? (
-                <Link
-                  href={branchesHref}
-                  className="flex items-center justify-center border-t border-slate-100/80 bg-slate-50/60 px-4 py-3 text-[13px] font-extrabold text-site-primary active:bg-slate-100/80"
-                >
-                  <IconLinkSuffix>
-                    ดูเพิ่มเติม · ทั้งหมด {overviewByBranchAll.length} สาขา
-                  </IconLinkSuffix>
-                </Link>
-              ) : overviewByBranch.length > 0 ? (
-                <Link
-                  href={branchesHref}
-                  className="flex items-center justify-center border-t border-slate-100/80 bg-slate-50/60 px-4 py-2.5 text-[12px] font-bold text-slate-500 active:bg-slate-100/80"
-                >
-                  <IconLinkSuffix size={13}>ดูการ์ดทุกสาขา</IconLinkSuffix>
-                </Link>
               ) : (
-                <Link
-                  href={branchesHref}
-                  className="flex items-center justify-center px-4 py-3 text-[13px] font-bold text-site-primary active:bg-slate-50"
-                >
-                  <IconLinkSuffix size={13}>ดูการ์ดทุกสาขา</IconLinkSuffix>
-                </Link>
+                <p className="px-4 py-4 text-center text-[13px] font-medium text-slate-400">
+                  ยังไม่มียอดในช่วงที่เลือก
+                </p>
               )}
             </section>
           ) : !stockEnabled ? (
             <button
               type="button"
-              onClick={() => {
-                selectHomeTab("setup");
-                scrollToBranches();
-              }}
+              onClick={() => router.push("/owner/settings")}
               className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm active:bg-slate-50"
             >
               <div>
@@ -1411,25 +1332,23 @@ function OwnerHomeInner() {
             tone="amber"
             size="hero"
           />
-          <div className="grid min-h-[8.25rem] grid-cols-2 divide-x divide-white/40">
-            <SoftTile
-              href="/owner/today"
-              title="ออเดอร์วันนี้"
-              subtitle={orderSubtitle}
-              icon={<IconClipboard size={26} />}
-              badge={shellOpenCount > 0 ? shellOpenCount : undefined}
-              tone="sky"
-              size="half"
-            />
-            <SoftTile
-              href={expensesHref}
-              title="ค่าใช้จ่าย"
-              subtitle="ดูรายการและยอดจ่าย"
-              icon={<IconReceipt size={26} />}
-              tone="rose"
-              size="half"
-            />
-          </div>
+          <SoftTile
+            href="/owner/today"
+            title="ออเดอร์วันนี้"
+            subtitle={orderSubtitle}
+            icon={<IconClipboard size={26} />}
+            badge={shellOpenCount > 0 ? shellOpenCount : undefined}
+            tone="sky"
+            size="hero"
+          />
+          <SoftTile
+            href={expensesHref}
+            title="ค่าใช้จ่าย"
+            subtitle="ดูรายการและยอดจ่าย"
+            icon={<IconReceipt size={26} />}
+            tone="rose"
+            size="hero"
+          />
         </section>
       ) : null}
 
@@ -1574,87 +1493,6 @@ function OwnerHomeInner() {
         )
       ) : null}
 
-      {homeTab === "setup" ? (
-        <>
-          {liveBranches.length > 0 ? (
-            <section id="owner-branch-open" className="scroll-mt-4">
-              <div className="mb-2 flex items-end justify-between gap-2">
-                <p className="text-sm font-bold text-slate-800">
-                  เปิด-ปิดร้าน
-                  <span className="ml-2 text-[12px] font-semibold text-slate-500">
-                    เปิด {openBranchCount} จาก {liveBranches.length} สาขา
-                  </span>
-                </p>
-                {multiBranch ? (
-                  <Link
-                    href={branchesHref}
-                    className="text-[12px] font-bold text-slate-500"
-                  >
-                    <IconLinkSuffix size={12}>ดูยอดทุกสาขา</IconLinkSuffix>
-                  </Link>
-                ) : null}
-              </div>
-              <div className="space-y-2">
-                {liveBranches.map((branch) => (
-                  <div
-                    key={branch.id}
-                    className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm"
-                  >
-                    <div className="min-w-0 pr-3">
-                      <p className="truncate font-semibold text-slate-900">
-                        {branch.name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {branch.isOpen ? "ลูกค้าเห็นว่าร้านเปิด" : "ร้านปิดอยู่"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={togglingId === branch.id}
-                      onClick={() => void toggleOpen(branch)}
-                      className={`h-10 min-w-[4.5rem] rounded-full px-3 text-sm font-bold text-white ${
-                        branch.isOpen ? "bg-site-primary" : "bg-slate-400"
-                      }`}
-                    >
-                      {branch.isOpen ? "เปิด" : "ปิด"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          <OwnerShopMenuSection
-            links={shopLinkGroups.setup}
-            title="ตั้งค่าร้าน"
-            subtitle="สาขา เมนู พนักงาน และเวลาเปิด"
-            branches={(branches ?? [])
-              .filter((b) => b.kind !== "WAREHOUSE")
-              .map((b) => ({
-                id: b.id,
-                name: b.name,
-                isOpen: b.isOpen,
-                isTest: b.isTest,
-              }))}
-            onManageBranchesClick={() => setManageBranchesOpen(true)}
-            onOpenBranchTask={(task, branchId) => {
-              setManageBranchesOpen(false);
-              setBranchTask({ task, branchId });
-            }}
-          />
-          {/* อื่นๆ (เชื่อม LINE · ธีม) — ซ่อนไว้ก่อน ยังไม่จำเป็นตอนนี้ */}
-          {brand ? (
-            <OwnerAccountCards
-              brandId={brand.id}
-              brandName={brand.nameTh || brand.name}
-              subscription={subscription}
-              smsQuota={data?.smsQuota ?? null}
-              onOwnerAccountClick={() => setOwnerAccountOpen(true)}
-            />
-          ) : null}
-        </>
-      ) : null}
-
       {linkOpen && brand ? (
         <BranchLinkSheet
           brandCode={brand.code}
@@ -1712,45 +1550,12 @@ function OwnerHomeInner() {
       ) : null}
 
       {data?.brand?.id ? (
-        <>
-          <OwnerBrandProfileSetupModal
-            brandId={data.brand.id}
-            open={brandSetupOpen}
-            onClose={() => setBrandSetupOpen(false)}
-            onSaved={() => reload()}
-          />
-          <OwnerAccountModal
-            brandId={data.brand.id}
-            open={ownerAccountOpen}
-            onClose={() => setOwnerAccountOpen(false)}
-          />
-          <OwnerBranchesManageModal
-            brandId={data.brand.id}
-            open={manageBranchesOpen}
-            onClose={() => setManageBranchesOpen(false)}
-            onChanged={() => reload()}
-            onOpenBranchSettings={(branchId) => {
-              setManageBranchesOpen(false);
-              setBranchTask({ task: "branchSettings", branchId });
-            }}
-          />
-          {branchTask ? (
-            <OwnerBranchTaskModal
-              open
-              branchId={branchTask.branchId}
-              branchName={
-                branches.find((b) => b.id === branchTask.branchId)?.name ??
-                liveBranches.find((b) => b.id === branchTask.branchId)?.name ??
-                "สาขา"
-              }
-              task={branchTask.task}
-              onClose={() => {
-                setBranchTask(null);
-                reload();
-              }}
-            />
-          ) : null}
-        </>
+        <OwnerBrandProfileSetupModal
+          brandId={data.brand.id}
+          open={brandSetupOpen}
+          onClose={() => setBrandSetupOpen(false)}
+          onSaved={() => reload()}
+        />
       ) : null}
     </div>
   );

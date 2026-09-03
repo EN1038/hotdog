@@ -28,6 +28,7 @@ import {
 } from "@/components/owner/OwnerViewSwitch";
 import { OwnerTrialBanner } from "@/components/owner/OwnerTrialBanner";
 import { OwnerDashboardHeaderDecor } from "@/components/owner/OwnerDashboardHeaderDecor";
+import { PageLoadingScreen } from "@/components/PageLoadingScreen";
 
 export type OwnerShellTab = "home" | "today" | "summary" | "settings";
 
@@ -177,11 +178,7 @@ export function OwnerAppShell({
   );
 
   if (!loaded || !session || session.isPlatformAdmin) {
-    return (
-      <div className="owner-shell-bg flex min-h-dvh items-center justify-center text-sm text-slate-500">
-        กำลังเข้าสู่ร้าน…
-      </div>
-    );
+    return <PageLoadingScreen label="กำลังเข้าสู่ร้าน…" />;
   }
 
   return (

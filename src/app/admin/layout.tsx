@@ -4,6 +4,7 @@ import { AdminSessionProvider } from "@/components/admin/AdminSessionProvider";
 import { ToastProvider } from "@/components/admin/Toast";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { SiteBrandingProvider } from "@/components/customer/SiteBrandingProvider";
+import { PageLoadingScreen } from "@/components/PageLoadingScreen";
 
 export default function AdminLayout({
   children,
@@ -15,7 +16,7 @@ export default function AdminLayout({
       <ToastProvider>
         <ConfirmProvider>
           <AdminSessionProvider>
-            <Suspense fallback={null}>
+            <Suspense fallback={<PageLoadingScreen label="กำลังเปิดหน้า…" />}>
               <AdminShell>{children}</AdminShell>
             </Suspense>
           </AdminSessionProvider>

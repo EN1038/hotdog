@@ -3,6 +3,7 @@ import { AdminSessionProvider } from "@/components/admin/AdminSessionProvider";
 import { ToastProvider } from "@/components/admin/Toast";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { SiteBrandingProvider } from "@/components/customer/SiteBrandingProvider";
+import { PageLoadingScreen } from "@/components/PageLoadingScreen";
 
 export default function OwnerLayout({
   children,
@@ -14,7 +15,9 @@ export default function OwnerLayout({
       <ToastProvider>
         <ConfirmProvider>
           <AdminSessionProvider>
-            <Suspense fallback={null}>{children}</Suspense>
+            <Suspense fallback={<PageLoadingScreen label="กำลังเปิดหน้า…" />}>
+              {children}
+            </Suspense>
           </AdminSessionProvider>
         </ConfirmProvider>
       </ToastProvider>

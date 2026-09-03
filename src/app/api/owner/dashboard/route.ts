@@ -21,17 +21,15 @@ import {
 import { loadShopAgingAttention } from "@/lib/shop-aging-summary";
 import type { OwnerPeriod, OwnerTodayOrder } from "@/lib/owner-dashboard";
 import {
-  BRAND_PLAN_HINTS,
-  BRAND_PLAN_LABELS,
-  BRAND_PLAN_PRICES,
   BRAND_STATUS_LABELS,
   getBrandSubscriptionState,
 } from "@/lib/brand-plan-shared";
+import { getBrandPlanConfigRow } from "@/lib/brand-plan-catalog";
 import type { BrandPlan, BrandStatus } from "@prisma/client";
 import { getBrandSmsQuota } from "@/lib/brand-sms-quota";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 import { pendingConvertNotiCreatedAtGte } from "@/lib/stock-count-pending-noti";
-import { syncOwnerTrialFullAccess, syncOwnerRegisterTemplateIfEmpty } from "@/lib/owner-register-setup";
+import { syncOwnerTrialPlanModules, syncOwnerRegisterTemplateIfEmpty } from "@/lib/owner-register-setup";
 
 async function loadBrandSaleStockSnapshot(branchIds: string[]) {
   if (branchIds.length === 0) {
@@ -137,7 +135,7 @@ export async function GET(request: Request) {
     const includeTest = searchParams.get("includeTest") === "1";
     const branchIdParam = searchParams.get("branchId")?.trim() || null;
 
-    await syncOwnerTrialFullAccess(brandId);
+    await syncOwnerTrialPlanModules(brandId);
     await syncOwnerRegisterTemplateIfEmpty(brandId);
 
     const [brand, branches, smsQuota] = await Promise.all([
@@ -279,6 +277,7 @@ export async function GET(request: Request) {
       trialEndsAt: brand.trialEndsAt,
       nextDueAt: brand.nextDueAt,
     });
+    const planConfig = await getBrandPlanConfigRow(plan);
     const subscription = {
       status,
       statusLabel: BRAND_STATUS_LABELS[status] ?? status,
@@ -287,9 +286,9 @@ export async function GET(request: Request) {
         BRAND_STATUS_LABELS[subscriptionState.effectiveStatus] ??
         subscriptionState.effectiveStatus,
       plan,
-      planLabel: BRAND_PLAN_LABELS[plan] ?? plan,
-      planPrice: BRAND_PLAN_PRICES[plan] ?? null,
-      planHint: BRAND_PLAN_HINTS[plan] ?? null,
+      planLabel: planConfig.label,
+      planPrice: planConfig.priceBaht,
+      planHint: planConfig.hint || null,
       maxBranches: brand.maxBranches,
       maxStaff: brand.maxStaff,
       branchCount: liveBranchIds.length,

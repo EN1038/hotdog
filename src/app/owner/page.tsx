@@ -31,7 +31,9 @@ import {
   OwnerAccountCards,
   OwnerShopMenuSection,
   buildOwnerShopLinkGroups,
+  type OwnerBranchTask,
 } from "@/components/owner/OwnerShopHub";
+import { OwnerBranchTaskModal } from "@/components/owner/OwnerBranchTaskModal";
 import {
   enterOwnerStaffMode,
   type OwnerEnterStaffBranch,
@@ -55,6 +57,7 @@ import { branchAdminBasePath } from "@/lib/branch-admin-path";
 import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, ownerParStockHref, ownerTomorrowPlansHref, ownerSalesDaysHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
 import { OwnerBrandProfileSetupModal } from "@/components/owner/OwnerBrandProfileSetupModal";
 import { OwnerAccountModal } from "@/components/owner/OwnerAccountModal";
+import { OwnerBranchesManageModal } from "@/components/owner/OwnerBranchesManageModal";
 import {
   isOwnerBrandSetupDismissed,
   OWNER_BRAND_SETUP_FORCE_SHOW_ON_LOAD,
@@ -485,6 +488,11 @@ function OwnerHomeInner() {
   const [shopRedirecting, setShopRedirecting] = useState(false);
   const [brandSetupOpen, setBrandSetupOpen] = useState(false);
   const [ownerAccountOpen, setOwnerAccountOpen] = useState(false);
+  const [manageBranchesOpen, setManageBranchesOpen] = useState(false);
+  const [branchTask, setBranchTask] = useState<{
+    task: OwnerBranchTask;
+    branchId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (homeTabReady.current) return;
@@ -1620,6 +1628,19 @@ function OwnerHomeInner() {
             links={shopLinkGroups.setup}
             title="ตั้งค่าร้าน"
             subtitle="สาขา เมนู พนักงาน และเวลาเปิด"
+            branches={(branches ?? [])
+              .filter((b) => b.kind !== "WAREHOUSE")
+              .map((b) => ({
+                id: b.id,
+                name: b.name,
+                isOpen: b.isOpen,
+                isTest: b.isTest,
+              }))}
+            onManageBranchesClick={() => setManageBranchesOpen(true)}
+            onOpenBranchTask={(task, branchId) => {
+              setManageBranchesOpen(false);
+              setBranchTask({ task, branchId });
+            }}
           />
           {/* อื่นๆ (เชื่อม LINE · ธีม) — ซ่อนไว้ก่อน ยังไม่จำเป็นตอนนี้ */}
           {brand ? (
@@ -1703,6 +1724,32 @@ function OwnerHomeInner() {
             open={ownerAccountOpen}
             onClose={() => setOwnerAccountOpen(false)}
           />
+          <OwnerBranchesManageModal
+            brandId={data.brand.id}
+            open={manageBranchesOpen}
+            onClose={() => setManageBranchesOpen(false)}
+            onChanged={() => reload()}
+            onOpenBranchSettings={(branchId) => {
+              setManageBranchesOpen(false);
+              setBranchTask({ task: "branchSettings", branchId });
+            }}
+          />
+          {branchTask ? (
+            <OwnerBranchTaskModal
+              open
+              branchId={branchTask.branchId}
+              branchName={
+                branches.find((b) => b.id === branchTask.branchId)?.name ??
+                liveBranches.find((b) => b.id === branchTask.branchId)?.name ??
+                "สาขา"
+              }
+              task={branchTask.task}
+              onClose={() => {
+                setBranchTask(null);
+                reload();
+              }}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

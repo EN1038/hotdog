@@ -1,28 +1,28 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   OwnerAppShell,
   useOwnerDashboard,
 } from "@/components/owner/OwnerAppShell";
 import { logout } from "@/components/LoginForm";
-import { IconChevronRight, IconLinkSuffix, IconLogout } from "@/components/icons";
+import { IconChevronRight, IconLogout } from "@/components/icons";
 import {
   OwnerAccountCards,
   OwnerShopMenuSection,
   buildOwnerShopLinks,
+  type OwnerBranchTask,
 } from "@/components/owner/OwnerShopHub";
 import { OwnerBrandProfileSetupModal } from "@/components/owner/OwnerBrandProfileSetupModal";
 import { OwnerAccountModal } from "@/components/owner/OwnerAccountModal";
-import {
-  enterOwnerStaffMode,
-  type OwnerEnterStaffBranch,
-} from "@/lib/owner-enter-staff";
-import { useToast } from "@/components/admin/Toast";
+import { OwnerBranchesManageModal } from "@/components/owner/OwnerBranchesManageModal";
+import { OwnerBranchTaskModal } from "@/components/owner/OwnerBranchTaskModal";
 import { OwnerNotificationSettings } from "@/components/owner/OwnerNotificationSettings";
 
 function OwnerSettingsInner() {
-  const toast = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { data, reload } = useOwnerDashboard();
   const brandName = data?.brand?.nameTh || data?.brand?.name || "ร้านค้า";
   const brandId = data?.brand?.id;
@@ -30,13 +30,19 @@ function OwnerSettingsInner() {
   const liveBranches = (data?.branches ?? []).filter(
     (b) => !b.isTest && b.kind !== "WAREHOUSE",
   );
-  const firstBranchId = liveBranches[0]?.id ?? data?.branches[0]?.id ?? null;
-  const [enteringStaff, setEnteringStaff] = useState(false);
-  const [staffBranches, setStaffBranches] = useState<OwnerEnterStaffBranch[] | null>(
-    null,
+  /** สาขาที่จัดการได้จากเมนูตั้งค่า — รวมสาขาทดลอง ไม่รวมคลัง */
+  const manageBranches = (data?.branches ?? []).filter(
+    (b) => b.kind !== "WAREHOUSE",
   );
+  const firstBranchId =
+    liveBranches[0]?.id ?? manageBranches[0]?.id ?? null;
   const [brandProfileOpen, setBrandProfileOpen] = useState(false);
   const [ownerAccountOpen, setOwnerAccountOpen] = useState(false);
+  const [manageBranchesOpen, setManageBranchesOpen] = useState(false);
+  const [branchTask, setBranchTask] = useState<{
+    task: OwnerBranchTask;
+    branchId: string;
+  } | null>(null);
 
   const shopLinks = useMemo(
     () =>
@@ -62,33 +68,29 @@ function OwnerSettingsInner() {
     ],
   );
 
-  async function goSell(branchId?: string) {
-    if (enteringStaff) return;
-    if (data?.subscription?.writeAllowed === false) {
-      toast.error(
-        "แพ็กเกจหมดอายุ",
-        data.subscription.writeBlockedReason ??
-          "ยังดูข้อมูลได้ แต่สร้างรายการใหม่ไม่ได้",
-      );
-      return;
-    }
-    setEnteringStaff(true);
-    try {
-      const result = await enterOwnerStaffMode(branchId);
-      if (!result.ok) {
-        toast.error("เข้าโหมดขายไม่สำเร็จ", result.error);
-        return;
-      }
-      if ("needsBranchSelect" in result && result.needsBranchSelect) {
-        setStaffBranches(result.branches);
-        return;
-      }
-      window.location.assign("/staff/key-order/regular");
-    } catch {
-      toast.error("เข้าโหมดขายไม่สำเร็จ", "เชื่อมต่อไม่ได้");
-    } finally {
-      setEnteringStaff(false);
-    }
+  const taskBranchName = useMemo(() => {
+    if (!branchTask) return "";
+    return (
+      manageBranches.find((b) => b.id === branchTask.branchId)?.name ??
+      data?.branches.find((b) => b.id === branchTask.branchId)?.name ??
+      "สาขา"
+    );
+  }, [branchTask, manageBranches, data?.branches]);
+
+  useEffect(() => {
+    if (searchParams.get("manageBranches") !== "1") return;
+    setManageBranchesOpen(true);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("manageBranches");
+    const qs = params.toString();
+    router.replace(qs ? `/owner/settings?${qs}` : "/owner/settings", {
+      scroll: false,
+    });
+  }, [searchParams, router]);
+
+  function openBranchTask(task: OwnerBranchTask, branchId: string) {
+    setManageBranchesOpen(false);
+    setBranchTask({ task, branchId });
   }
 
   return (
@@ -126,7 +128,7 @@ function OwnerSettingsInner() {
                   บัญชีเจ้าของ
                 </p>
                 <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-                  ชื่อเข้าสู่ระบบและสิทธิ์ดูแลร้าน
+                  ดูบัญชีและติดต่อแอดมิน
                 </p>
               </div>
               <IconChevronRight size={18} className="text-slate-300" aria-hidden />
@@ -139,6 +141,14 @@ function OwnerSettingsInner() {
         links={shopLinks}
         title="ร้าน"
         subtitle="จัดการเหมือนแอดมินแบรนด์"
+        branches={manageBranches.map((b) => ({
+          id: b.id,
+          name: b.name,
+          isOpen: b.isOpen,
+          isTest: b.isTest,
+        }))}
+        onManageBranchesClick={() => setManageBranchesOpen(true)}
+        onOpenBranchTask={openBranchTask}
       />
 
       <OwnerNotificationSettings />
@@ -153,61 +163,6 @@ function OwnerSettingsInner() {
           hideSupport
           hideProfileLinks
         />
-      ) : null}
-
-      <button
-        type="button"
-        disabled={enteringStaff || data?.subscription?.writeAllowed === false}
-        onClick={() => void goSell()}
-        className="flex min-h-[4.5rem] w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-4 text-left shadow-sm active:scale-[0.99] disabled:opacity-60"
-      >
-        <div className="min-w-0">
-          <p className="text-[16px] font-extrabold text-slate-900">
-            {enteringStaff ? "กำลังเข้า…" : "ขายหน้าร้าน"}
-          </p>
-          <p className="mt-1 text-[13px] text-slate-500">
-            {data?.subscription?.writeAllowed === false
-              ? (data.subscription.writeBlockedReason ??
-                "แพ็กเกจหมดอายุชั่วคราว")
-              : "เข้าคีย์ออเดอร์ทันที กดบัญชีร้านเมื่อต้องจัดการแพ็กเกจ"}
-          </p>
-        </div>
-        <IconChevronRight size={20} className="text-slate-300" aria-hidden />
-      </button>
-
-      {staffBranches ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-          <div className="w-full max-w-md rounded-3xl bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-base font-bold text-slate-900">เลือกสาขาที่จะขาย</p>
-              <button
-                type="button"
-                onClick={() => setStaffBranches(null)}
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-slate-500"
-              >
-                ปิด
-              </button>
-            </div>
-            <div className="space-y-2">
-              {staffBranches.map((b) => (
-                <button
-                  key={b.branchId}
-                  type="button"
-                  disabled={enteringStaff || data?.subscription?.writeAllowed === false}
-                  onClick={() => void goSell(b.branchId)}
-                  className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-left"
-                >
-                  <span className="truncate font-semibold text-slate-900">
-                    {b.branchName}
-                  </span>
-                  <IconLinkSuffix size={14} className="text-sm font-bold text-site-primary">
-                    ขาย
-                  </IconLinkSuffix>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
       ) : null}
 
       <button
@@ -233,6 +188,27 @@ function OwnerSettingsInner() {
             open={ownerAccountOpen}
             onClose={() => setOwnerAccountOpen(false)}
           />
+          <OwnerBranchesManageModal
+            brandId={brandId}
+            open={manageBranchesOpen}
+            onClose={() => setManageBranchesOpen(false)}
+            onChanged={() => reload()}
+            onOpenBranchSettings={(id) =>
+              openBranchTask("branchSettings", id)
+            }
+          />
+          {branchTask ? (
+            <OwnerBranchTaskModal
+              open
+              branchId={branchTask.branchId}
+              branchName={taskBranchName}
+              task={branchTask.task}
+              onClose={() => {
+                setBranchTask(null);
+                reload();
+              }}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

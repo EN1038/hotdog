@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { OwnerSubscriptionInfo } from "@/lib/owner-dashboard";
 import type { BrandSmsQuotaSnapshot } from "@/lib/brand-sms-quota";
 import { OwnerSmsQuotaCard } from "@/components/owner/OwnerSmsQuotaCard";
+import { OwnerBillingModal } from "@/components/owner/OwnerBillingModal";
 import {
   enterOwnerStaffMode,
   type OwnerEnterStaffBranch,
@@ -12,7 +13,7 @@ import {
 import { useToast } from "@/components/admin/Toast";
 import { PlatformSupportCard } from "@/components/PlatformSupportCard";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
-import { IconChevronRight, IconLinkSuffix } from "@/components/icons";
+import { IconChevronRight, IconClose, IconLinkSuffix } from "@/components/icons";
 import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 function formatDateLabel(iso: string | null) {
@@ -29,23 +30,68 @@ function formatDateLabel(iso: string | null) {
   }
 }
 
+export type OwnerBranchTask =
+  | "menu"
+  | "staff"
+  | "hours"
+  | "branchSettings";
+
 export type OwnerShopLink = {
   href: string;
   label: string;
   hint: string;
   /** เข้าโหมดหน้าร้านก่อน แล้วไปที่ href นี้ (เมนูเดียวกับพนักงาน) */
   enterStaff?: boolean;
+  /** เปิด modal จัดการสาขาบนมือถือ */
+  manageBranches?: boolean;
+  /** เลือกสาขาแล้วเปิดงานของสาขานั้น (เมนู / พนักงาน / เวลา) */
+  pickBranchTask?: OwnerBranchTask;
 };
 
+export type OwnerShopBranchOption = {
+  id: string;
+  name: string;
+  isOpen?: boolean;
+  isTest?: boolean;
+};
+
+export function ownerBranchTaskHref(
+  branchId: string,
+  task: OwnerBranchTask,
+): string {
+  const base = branchAdminBasePath(branchId, { ownerShell: true });
+  if (task === "hours") {
+    return `${base}?tab=settings&focus=1&section=hours`;
+  }
+  if (task === "branchSettings") {
+    return `${base}?tab=settings&focus=1&section=branch`;
+  }
+  return `${base}?tab=${task}&focus=1`;
+}
+
 /** เมนูร้าน (กลุ่ม A) — งานจัดการรายวันเหมือนแอดมินแบรนด์ */
+export const BRANCH_TASK_LABEL: Record<OwnerBranchTask, string> = {
+  menu: "เมนู",
+  staff: "พนักงาน",
+  hours: "เวลาเปิด–ปิด",
+  branchSettings: "ตั้งค่าสาขา",
+};
+
 export function OwnerShopMenuSection({
   links,
   title = "ร้าน",
   subtitle = "จัดการสาขา เมนู พนักงาน และสต๊อก",
+  branches = [],
+  onManageBranchesClick,
+  onOpenBranchTask,
 }: {
   links: OwnerShopLink[];
   title?: string;
   subtitle?: string;
+  branches?: OwnerShopBranchOption[];
+  onManageBranchesClick?: () => void;
+  /** ถ้ามี จะเปิด modal แทนการ navigate ไปหน้าสาขา */
+  onOpenBranchTask?: (task: OwnerBranchTask, branchId: string) => void;
 }) {
   const toast = useToast();
   const [entering, setEntering] = useState(false);
@@ -53,6 +99,7 @@ export function OwnerShopMenuSection({
     OwnerEnterStaffBranch[] | null
   >(null);
   const [pendingHref, setPendingHref] = useState("/staff/stock");
+  const [taskPicker, setTaskPicker] = useState<OwnerBranchTask | null>(null);
 
   if (links.length === 0) return null;
 
@@ -78,6 +125,23 @@ export function OwnerShopMenuSection({
     }
   }
 
+  function launchBranchTask(task: OwnerBranchTask, branchId: string) {
+    if (onOpenBranchTask) {
+      onOpenBranchTask(task, branchId);
+      return;
+    }
+    window.location.assign(ownerBranchTaskHref(branchId, task));
+  }
+
+  function openBranchTask(task: OwnerBranchTask) {
+    if (branches.length === 0) {
+      toast.error("ยังไม่มีสาขา", "เพิ่มสาขาก่อนจากเมนูจัดการสาขา");
+      return;
+    }
+    // เลือกสาขาก่อนเสมอ — แม้มีสาขาเดียว ก็รู้ว่ากำลังแก้สาขาไหน
+    setTaskPicker(task);
+  }
+
   return (
     <section className="mt-5">
       <div className="mb-2">
@@ -87,28 +151,76 @@ export function OwnerShopMenuSection({
         </p>
       </div>
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
-        {links.map((link, index) =>
-          link.enterStaff ? (
-            <button
-              key={`${link.href}-${link.label}`}
-              type="button"
-              disabled={entering}
-              onClick={() => void enterStaff(link.href)}
-              className={`flex min-h-[3.75rem] w-full items-center justify-between gap-3 px-4 py-3 text-left active:bg-slate-50 ${
-                index > 0 ? "border-t border-slate-100" : ""
-              }`}
-            >
-              <div className="min-w-0">
-                <p className="text-[15px] font-extrabold text-slate-900">
-                  {entering ? "กำลังเข้า…" : link.label}
-                </p>
-                <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-                  {link.hint}
-                </p>
-              </div>
-              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
-            </button>
-          ) : (
+        {links.map((link, index) => {
+          const rowClass = `flex min-h-[3.75rem] w-full items-center justify-between gap-3 px-4 py-3 text-left active:bg-slate-50 ${
+            index > 0 ? "border-t border-slate-100" : ""
+          }`;
+
+          if (link.enterStaff) {
+            return (
+              <button
+                key={`${link.href}-${link.label}`}
+                type="button"
+                disabled={entering}
+                onClick={() => void enterStaff(link.href)}
+                className={rowClass}
+              >
+                <div className="min-w-0">
+                  <p className="text-[15px] font-extrabold text-slate-900">
+                    {entering ? "กำลังเข้า…" : link.label}
+                  </p>
+                  <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                    {link.hint}
+                  </p>
+                </div>
+                <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+              </button>
+            );
+          }
+
+          if (link.manageBranches && onManageBranchesClick) {
+            return (
+              <button
+                key={`${link.href}-${link.label}`}
+                type="button"
+                onClick={onManageBranchesClick}
+                className={rowClass}
+              >
+                <div className="min-w-0">
+                  <p className="text-[15px] font-extrabold text-slate-900">
+                    {link.label}
+                  </p>
+                  <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                    {link.hint}
+                  </p>
+                </div>
+                <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+              </button>
+            );
+          }
+
+          if (link.pickBranchTask) {
+            return (
+              <button
+                key={`${link.href}-${link.label}`}
+                type="button"
+                onClick={() => openBranchTask(link.pickBranchTask!)}
+                className={rowClass}
+              >
+                <div className="min-w-0">
+                  <p className="text-[15px] font-extrabold text-slate-900">
+                    {link.label}
+                  </p>
+                  <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                    {link.hint}
+                  </p>
+                </div>
+                <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+              </button>
+            );
+          }
+
+          return (
             <Link
               key={`${link.href}-${link.label}`}
               href={link.href}
@@ -126,8 +238,8 @@ export function OwnerShopMenuSection({
               </div>
               <IconChevronRight size={18} className="text-slate-300" aria-hidden />
             </Link>
-          ),
-        )}
+          );
+        })}
       </div>
 
       {staffBranches ? (
@@ -172,6 +284,88 @@ export function OwnerShopMenuSection({
           </div>
         </div>
       ) : null}
+
+      {taskPicker ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+          <button
+            type="button"
+            aria-label="ปิด"
+            className="absolute inset-0 bg-black/45"
+            onClick={() => setTaskPicker(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="owner-branch-task-pick-title"
+            className="relative z-10 flex max-h-[min(92dvh,40rem)] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] bg-white shadow-2xl sm:mx-4 sm:rounded-[1.75rem]"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <div className="min-w-0">
+                <p
+                  id="owner-branch-task-pick-title"
+                  className="text-[17px] font-extrabold text-slate-900"
+                >
+                  เลือกสาขา
+                </p>
+                <p className="mt-0.5 text-[12px] text-slate-500">
+                  สำหรับ{BRANCH_TASK_LABEL[taskPicker]}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTaskPicker(null)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 active:bg-slate-200"
+                aria-label="ปิด"
+              >
+                <IconClose size={16} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              <div className="overflow-hidden rounded-2xl border border-slate-100">
+                {branches.map((b, index) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => {
+                      setTaskPicker(null);
+                      launchBranchTask(taskPicker, b.id);
+                    }}
+                    className={`flex min-h-[3.75rem] w-full items-center justify-between gap-3 px-4 py-3 text-left active:bg-slate-50 ${
+                      index > 0 ? "border-t border-slate-100" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-[15px] font-extrabold text-slate-900">
+                        {b.name}
+                      </p>
+                      <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                        {b.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
+                        {b.isTest ? " · ทดลอง" : ""}
+                      </p>
+                    </div>
+                    <IconChevronRight
+                      size={18}
+                      className="shrink-0 text-slate-300"
+                      aria-hidden
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-slate-100 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <button
+                type="button"
+                onClick={() => setTaskPicker(null)}
+                className="min-h-12 w-full rounded-2xl bg-slate-900 text-[15px] font-bold text-white active:bg-slate-800"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -202,6 +396,8 @@ export function OwnerAccountCards({
   /** ถ้ามี จะเปิด modal แทนลิงก์ไปหน้าบัญชีแอดมิน */
   onOwnerAccountClick?: () => void;
 }) {
+  const [billingOpen, setBillingOpen] = useState(false);
+
   if (!subscription) return null;
 
   const expiryLabel = formatDateLabel(
@@ -218,13 +414,6 @@ export function OwnerAccountCards({
     subscription.effectiveStatus === "EXPIRED" ||
     subscription.status === "EXPIRED" ||
     (daysLeft != null && daysLeft < 0);
-  const modules = [
-    subscription.stockEnabled ? "สต๊อก" : null,
-    subscription.kitchenEnabled ? "ครัว" : null,
-    subscription.bbqEnabled ? "โต๊ะ/BBQ" : null,
-    subscription.skewerEnabled ? "เสียบไม้" : null,
-  ].filter(Boolean) as string[];
-
   const daysLeftText =
     daysLeft == null
       ? null
@@ -240,7 +429,7 @@ export function OwnerAccountCards({
         <p className="text-sm font-bold text-slate-800">บัญชีและแพ็กเกจ</p>
         <p className="mt-0.5 text-[12px] font-medium text-slate-500">
           {hideProfileLinks
-            ? "แพ็กเกจ · ติดต่อทีมงาน"
+            ? "แพ็กเกจและการชำระเงิน"
             : "โปรไฟล์ร้าน · แพ็กเกจ · ติดต่อทีมงาน"}
         </p>
       </div>
@@ -290,7 +479,7 @@ export function OwnerAccountCards({
                   บัญชีเจ้าของ
                 </p>
                 <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-                  ชื่อเข้าสู่ระบบและสิทธิ์ดูแลร้าน
+                  ดูบัญชีและติดต่อแอดมิน
                 </p>
               </div>
               <IconChevronRight size={18} className="text-slate-300" aria-hidden />
@@ -305,7 +494,7 @@ export function OwnerAccountCards({
                   บัญชีเจ้าของ
                 </p>
                 <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-                  ชื่อเข้าสู่ระบบและสิทธิ์ดูแลร้าน
+                  ดูบัญชีและติดต่อแอดมิน
                 </p>
               </div>
               <IconChevronRight size={18} className="text-slate-300" aria-hidden />
@@ -314,142 +503,142 @@ export function OwnerAccountCards({
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[12px] font-semibold text-slate-500">
-              แพ็กเกจของฉัน
-            </p>
-            <p className="mt-1 text-[16px] font-black text-slate-900">
-              {subscription.planLabel}
-            </p>
-            {subscription.planHint ? (
-              <p className="mt-1 text-[12px] font-medium leading-snug text-slate-500">
-                {subscription.planHint}
+      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-slate-500">แพ็กเกจ</p>
+              <p className="mt-1 text-[18px] font-black tracking-tight text-slate-900">
+                {subscription.planLabel}
               </p>
-            ) : null}
-            {typeof subscription.planPrice === "number" ? (
-              <p className="mt-1 text-[13px] font-bold tabular-nums text-slate-700">
-                ฿{subscription.planPrice.toLocaleString("th-TH")}
-                <span className="font-semibold text-slate-500">/เดือน</span>
-              </p>
-            ) : null}
-          </div>
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-              expired
-                ? "bg-red-50 text-red-800"
-                : nearExpiry
-                  ? "bg-amber-50 text-amber-900"
-                  : "bg-site-primary-soft text-site-primary-medium"
-            }`}
-          >
-            {subscription.effectiveStatusLabel ?? subscription.statusLabel}
-          </span>
-        </div>
-
-        <div
-          className={`mt-3 rounded-xl px-3 py-2.5 ${
-            expired
-              ? "bg-red-50 ring-1 ring-red-100"
-              : nearExpiry
-                ? "bg-amber-50 ring-1 ring-amber-100"
-                : "bg-slate-50"
-          }`}
-        >
-          <div className="flex items-baseline justify-between gap-3">
-            <p
-              className={`text-[11px] font-semibold ${
+              {typeof subscription.planPrice === "number" ? (
+                <p className="mt-1 text-[13px] font-bold tabular-nums text-slate-700">
+                  ฿{subscription.planPrice.toLocaleString("th-TH")}
+                  <span className="font-semibold text-slate-500">/เดือน</span>
+                </p>
+              ) : null}
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
                 expired
-                  ? "text-red-700"
+                  ? "bg-red-50 text-red-800"
                   : nearExpiry
-                    ? "text-amber-800"
-                    : "text-slate-500"
+                    ? "bg-amber-50 text-amber-900"
+                    : "bg-emerald-50 text-emerald-800"
               }`}
             >
-              {subscription.status === "TRIAL"
-                ? "วันหมดอายุทดลอง"
-                : "วันหมดอายุแพ็กเกจ"}
-            </p>
-            {daysLeftText ? (
-              <p
-                className={`text-[11px] font-bold ${
-                  expired
-                    ? "text-red-800"
-                    : nearExpiry
-                      ? "text-amber-900"
-                      : "text-slate-600"
-                }`}
-              >
-                {daysLeftText}
-              </p>
-            ) : null}
+              {subscription.effectiveStatusLabel ?? subscription.statusLabel}
+            </span>
           </div>
-          <p
-            className={`mt-0.5 text-[15px] font-extrabold ${
-              expired
-                ? "text-red-900"
-                : nearExpiry
-                  ? "text-amber-950"
-                  : "text-slate-900"
-            }`}
-          >
-            {expiryLabel ?? "ยังไม่ระบุวันหมดอายุ"}
-          </p>
-          {!expiryLabel ? (
-            <p className="mt-1 text-[11px] font-medium text-slate-500">
-              ติดต่อทีม SkillSale เพื่อตั้งวันหมดอายุ / ต่ออายุแพ็กเกจ
-            </p>
-          ) : null}
-          {subscription.writeBlockedReason ? (
-            <p className="mt-1.5 text-[12px] font-semibold text-red-800">
-              {subscription.writeBlockedReason}
+          {subscription.planHint ? (
+            <p className="mt-2 text-[12px] font-medium leading-snug text-slate-500">
+              {subscription.planHint}
             </p>
           ) : null}
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-            <p className="text-[11px] font-semibold text-slate-500">สาขา</p>
-            <p className="mt-0.5 text-[15px] font-extrabold tabular-nums text-slate-900">
-              {subscription.branchCount}/{subscription.maxBranches}
+        <div className="space-y-3 px-4 py-4">
+          <div
+            className={`rounded-2xl px-3.5 py-3 ${
+              expired
+                ? "bg-red-50"
+                : nearExpiry
+                  ? "bg-amber-50"
+                  : "bg-slate-50"
+            }`}
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <p
+                className={`text-[11px] font-semibold ${
+                  expired
+                    ? "text-red-700"
+                    : nearExpiry
+                      ? "text-amber-800"
+                      : "text-slate-500"
+                }`}
+              >
+                {subscription.status === "TRIAL"
+                  ? "หมดอายุทดลอง"
+                  : "หมดอายุแพ็กเกจ"}
+              </p>
+              {daysLeftText ? (
+                <p
+                  className={`text-[11px] font-bold ${
+                    expired
+                      ? "text-red-800"
+                      : nearExpiry
+                        ? "text-amber-900"
+                        : "text-slate-600"
+                  }`}
+                >
+                  {daysLeftText}
+                </p>
+              ) : null}
+            </div>
+            <p
+              className={`mt-0.5 text-[15px] font-extrabold ${
+                expired
+                  ? "text-red-900"
+                  : nearExpiry
+                    ? "text-amber-950"
+                    : "text-slate-900"
+              }`}
+            >
+              {expiryLabel ?? "ยังไม่ระบุ"}
             </p>
+            {subscription.writeBlockedReason ? (
+              <p className="mt-1.5 text-[12px] font-semibold text-red-800">
+                {subscription.writeBlockedReason}
+              </p>
+            ) : null}
           </div>
-          <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-            <p className="text-[11px] font-semibold text-slate-500">พนักงาน</p>
-            <p className="mt-0.5 text-[15px] font-extrabold tabular-nums text-slate-900">
-              {subscription.staffCount}/{subscription.maxStaff}
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-slate-500">สาขา</p>
+              <p className="mt-0.5 text-[15px] font-extrabold tabular-nums text-slate-900">
+                {subscription.branchCount}/{subscription.maxBranches}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-slate-500">พนักงาน</p>
+              <p className="mt-0.5 text-[15px] font-extrabold tabular-nums text-slate-900">
+                {subscription.staffCount}/{subscription.maxStaff}
+              </p>
+            </div>
+          </div>
+
+          {subscription.status === "TRIAL" &&
+          trialLabel &&
+          trialLabel !== expiryLabel ? (
+            <p className="text-[12px] font-semibold text-amber-700">
+              ทดลองถึง {trialLabel}
             </p>
-          </div>
+          ) : null}
+          {dueLabel && dueLabel !== expiryLabel ? (
+            <p className="text-[12px] font-medium text-slate-500">
+              ครบกำหนดชำระถัดไป {dueLabel}
+            </p>
+          ) : null}
         </div>
-        {modules.length > 0 ? (
-          <p className="mt-3 text-[12px] font-medium text-slate-600">
-            โมดูล: {modules.join(" · ")}
-          </p>
-        ) : (
-          <p className="mt-3 text-[12px] font-medium text-slate-500">
-            ยังไม่เปิดโมดูลเสริม
-          </p>
-        )}
-        {subscription.status === "TRIAL" &&
-        trialLabel &&
-        trialLabel !== expiryLabel ? (
-          <p className="mt-2 text-[12px] font-semibold text-amber-700">
-            ทดลองถึง {trialLabel}
-          </p>
-        ) : null}
-        {dueLabel && dueLabel !== expiryLabel ? (
-          <p className="mt-1 text-[12px] font-medium text-slate-500">
-            ครบกำหนดชำระถัดไป {dueLabel}
-          </p>
-        ) : null}
-        <Link
-          href={`/admin/brands/${brandId}/admins?tab=billing`}
-          className="mt-3 inline-flex text-[13px] font-bold text-site-primary"
-        >
-          <IconLinkSuffix size={14}>ดูใบแจ้งหนี้ / ประวัติชำระ</IconLinkSuffix>
-        </Link>
+
+        <div className="border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setBillingOpen(true)}
+            className="flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl bg-slate-900 px-4 text-left active:bg-slate-800"
+          >
+            <span className="text-[15px] font-extrabold text-white">บิล</span>
+            <IconChevronRight size={18} className="text-white/70" aria-hidden />
+          </button>
+        </div>
       </div>
+
+      <OwnerBillingModal
+        brandId={brandId}
+        open={billingOpen}
+        onClose={() => setBillingOpen(false)}
+      />
 
       {smsQuota && !hideSmsQuota ? (
         <OwnerSmsQuotaCard quota={smsQuota} />
@@ -502,28 +691,32 @@ export function buildOwnerShopLinkGroups(input: {
       hint: "การ์ดยอดขาย · กดเจาะสาขา",
     },
     {
-      href: "/admin",
-      label: "จัดการสาขา (แอดมิน)",
-      hint: "เพิ่มสาขา · ตั้งค่าเต็ม",
+      href: "#manage-branches",
+      label: "จัดการสาขา",
+      hint: "เพิ่มสาขา และเข้าตั้งค่าแต่ละสาขา",
+      manageBranches: true,
     },
   ];
 
   if (branchBase) {
     setup.push(
       {
-        href: `${branchBase}?tab=menu`,
+        href: "#branch-task-menu",
         label: "เมนู",
         hint: "เมนู · หมวด · ตัวเลือก · ราคา",
+        pickBranchTask: "menu",
       },
       {
-        href: `${branchBase}?tab=staff`,
+        href: "#branch-task-staff",
         label: "พนักงาน",
         hint: "เพิ่มพนักงานและสิทธิ์หน้าร้าน",
+        pickBranchTask: "staff",
       },
       {
-        href: `${branchBase}?tab=settings`,
+        href: "#branch-task-hours",
         label: "เวลาเปิด–ปิด",
-        hint: "หน้าร้านและเดลิเวอรี",
+        hint: "เปิด/ปิดร้านและตารางทำการ",
+        pickBranchTask: "hours",
       },
       {
         href: `${branchBase}?tab=shifts`,

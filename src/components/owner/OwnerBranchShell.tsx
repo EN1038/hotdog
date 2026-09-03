@@ -17,12 +17,15 @@ type Props = {
   children: ReactNode;
   backHref?: string;
   backLabel?: string;
+  /** โหมดโฟกัสงานเดียว — ซ่อนสลับสาขาเพื่อลด chrome */
+  focusMode?: boolean;
 };
 
 export function OwnerBranchShell({
   children,
   backHref = "/owner",
   backLabel = "กลับหน้าแรก",
+  focusMode = false,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -51,7 +54,7 @@ export function OwnerBranchShell({
           {backLabel}
         </Link>
       </div>
-      {isOwnerBranchAdminPath(pathname) ? (
+      {isOwnerBranchAdminPath(pathname) && !focusMode ? (
         <div className="px-4 pb-3 pt-1">
           <OwnerBranchSwitcher />
         </div>

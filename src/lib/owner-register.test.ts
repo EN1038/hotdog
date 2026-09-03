@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  OWNER_REGISTER_TRIAL_DAYS,
-  OWNER_TRIAL_FULL_MODULES,
-} from "@/lib/owner-register-shared";
+import { OWNER_REGISTER_TRIAL_DAYS } from "@/lib/owner-register-shared";
 import { categoryAllowsMasterImportFrom } from "@/lib/owner-register-category";
+import { BRAND_PLAN_PRESETS } from "@/lib/brand-plan-shared";
 
 describe("owner register shared", () => {
   it("trial is 7 days", () => {
@@ -33,9 +31,11 @@ describe("owner register shared", () => {
     ).toBe(false);
   });
 
-  it("trial enables all modules including stock", () => {
-    expect(OWNER_TRIAL_FULL_MODULES.stockEnabled).toBe(true);
-    expect(OWNER_TRIAL_FULL_MODULES.kitchenEnabled).toBe(true);
-    expect(OWNER_TRIAL_FULL_MODULES.skewerEnabled).toBe(true);
+  it("MALA trial modules follow plan preset not full unlock", () => {
+    const mala = BRAND_PLAN_PRESETS.MALA;
+    expect(mala.skewerEnabled).toBe(true);
+    expect(mala.kitchenEnabled).toBe(true);
+    expect(mala.bbqEnabled).toBe(false);
+    expect(mala.stockEnabled).toBe(false);
   });
 });

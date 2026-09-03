@@ -25,6 +25,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
 import { useAdminBranchShell } from "@/components/admin/AdminBranchShellContext";
+import { useOwnerBranchEmbed } from "@/components/owner/OwnerBranchEmbedContext";
 import { branchAdminBasePath, shouldUseOwnerBranchShell } from "@/lib/branch-admin-path";
 import type { BranchOptionGroup } from "@/components/admin/BranchOptionLibrary";
 import { SkewerPhotoTileChrome } from "@/components/skewer/SkewerPhotoMenuGrid";
@@ -202,10 +203,17 @@ function previewOptionsForLibraryGroup(group: BranchOptionGroup): MenuOptionData
 
 export default function MenuItemEditorPage() {
   const { embeddedInOwnerShell } = useAdminBranchShell();
-  const { id: branchId, itemId } = useParams<{
+  const embed = useOwnerBranchEmbed();
+  const params = useParams<{
     id: string;
     itemId: string;
   }>();
+  /** ฝังใน modal เจ้าของร้าน — อ่าน id จาก embed ไม่พึ่ง URL */
+  const branchId = embed?.menuEditorItemId
+    ? embed.branchId
+    : params.id;
+  const itemId = embed?.menuEditorItemId ?? params.itemId;
+  const inOwnerTaskModal = Boolean(embed?.menuEditorItemId && embed.closeMenuEditor);
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
@@ -348,7 +356,7 @@ export default function MenuItemEditorPage() {
 
   useEffect(() => {
     if (!session) return;
-    if (session.isPlatformAdmin) {
+    if (session.isPlatformAdmin || inOwnerTaskModal) {
       setLayoutReady(true);
       return;
     }
@@ -363,7 +371,7 @@ export default function MenuItemEditorPage() {
       return;
     }
     setLayoutReady(true);
-  }, [embeddedInOwnerShell, pathname, router, session]);
+  }, [embeddedInOwnerShell, inOwnerTaskModal, pathname, router, session]);
 
   function toggleGroup(groupId: string) {
     setSelectedGroupIds((prev) =>
@@ -520,7 +528,15 @@ export default function MenuItemEditorPage() {
         return;
       }
       toast.success(isCreate ? "สร้างเมนูแล้ว" : "บันทึกแล้ว");
-      router.push(`${branchBase}?tab=menu`);
+      if (inOwnerTaskModal && embed?.closeMenuEditor) {
+        embed.closeMenuEditor({ saved: true, nextTab: "menu" });
+        return;
+      }
+      router.push(
+        embeddedInOwnerShell
+          ? `${branchBase}?tab=menu&focus=1`
+          : `${branchBase}?tab=menu`,
+      );
     } finally {
       setSaving(false);
     }
@@ -564,7 +580,7 @@ export default function MenuItemEditorPage() {
   const optionsTabHref = `${branchBase}?tab=options`;
   const categoriesTabHref = `${branchBase}?tab=categories`;
 
-  async function leaveTo(href: string) {
+  async function leaveTo(href: string, nextTab?: string) {
     const ok = await confirm({
       title: "ออกจากหน้านี้?",
       message:
@@ -574,6 +590,13 @@ export default function MenuItemEditorPage() {
       tone: "primary",
     });
     if (!ok) return;
+    if (inOwnerTaskModal && embed?.closeMenuEditor) {
+      embed.closeMenuEditor({
+        saved: false,
+        nextTab: nextTab ?? "menu",
+      });
+      return;
+    }
     router.push(href);
   }
 
@@ -637,10 +660,15 @@ export default function MenuItemEditorPage() {
   return (
     <div className={showPhoneFrame ? "mx-auto w-full max-w-md" : undefined}>
     <div className={isMobileLayout ? "pb-24" : undefined}>
+      {inOwnerTaskModal ? null : (
       <div className="mb-4 flex items-center gap-3">
         {embeddedInOwnerShell ? null : (
         <Link
-          href={`${branchBase}?tab=menu`}
+          href={
+            embeddedInOwnerShell
+              ? `${branchBase}?tab=menu&focus=1`
+              : `${branchBase}?tab=menu`
+          }
           className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
           aria-label="กลับ"
         >
@@ -658,6 +686,7 @@ export default function MenuItemEditorPage() {
           </p>
         </div>
       </div>
+      )}
 
       <div className={`grid gap-6${isMobileLayout ? "" : " lg:grid-cols-2"}`}>
         <div className="space-y-6">
@@ -1201,14 +1230,14 @@ export default function MenuItemEditorPage() {
                 <button
                   type="button"
                   className={btnOutline}
-                  onClick={() => leaveTo(categoriesTabHref)}
+                  onClick={() => leaveTo(categoriesTabHref, "categories")}
                 >
                   หมวดหมู่
                 </button>
                 <button
                   type="button"
                   className={btnOutline}
-                  onClick={() => leaveTo(optionsTabHref)}
+                  onClick={() => leaveTo(optionsTabHref, "options")}
                 >
                   คลังตัวเลือก
                 </button>
@@ -1218,12 +1247,22 @@ export default function MenuItemEditorPage() {
             {library.length === 0 ? (
               <p className="text-sm text-gray-500">
                 ยังไม่มีหัวข้อในคลัง —{" "}
-                <Link
-                  href={optionsTabHref}
-                  className="text-site-primary hover:underline"
-                >
-                  ไปสร้างที่แท็บตัวเลือก
-                </Link>
+                {inOwnerTaskModal ? (
+                  <button
+                    type="button"
+                    className="font-medium text-site-primary hover:underline"
+                    onClick={() => void leaveTo(optionsTabHref, "options")}
+                  >
+                    ไปสร้างที่แท็บตัวเลือก
+                  </button>
+                ) : (
+                  <Link
+                    href={optionsTabHref}
+                    className="text-site-primary hover:underline"
+                  >
+                    ไปสร้างที่แท็บตัวเลือก
+                  </Link>
+                )}
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
@@ -1396,7 +1435,9 @@ export default function MenuItemEditorPage() {
 
       {isMobileLayout ? (
       <div
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-sm"
+        className={`fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-sm ${
+          inOwnerTaskModal ? "z-[80]" : "z-30"
+        }`}
         style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
       >
         <button

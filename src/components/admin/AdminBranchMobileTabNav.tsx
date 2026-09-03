@@ -26,6 +26,8 @@ type Props = {
   hiddenTabIds: Set<string>;
   onTabChange: (tabId: string) => void;
   getTabAttention?: (tabId: string) => TabAttention | null;
+  /** โหมดโฟกัส — ไม่แสดงสวิตช์กลุ่มขาย/เมนู/ทีม/ตั้งค่า */
+  hideGroupTabs?: boolean;
 };
 
 function groupForTab(groups: AdminBranchTabGroup[], tabId: string): string {
@@ -42,6 +44,7 @@ export function AdminBranchMobileTabNav({
   hiddenTabIds,
   onTabChange,
   getTabAttention,
+  hideGroupTabs = false,
 }: Props) {
   const [mobileGroup, setMobileGroup] = useState(() =>
     groupForTab(groups, activeTab),
@@ -52,16 +55,19 @@ export function AdminBranchMobileTabNav({
   }, [activeTab, groups]);
 
   const visibleTabs = useMemo(() => {
-    const group = groups.find((g) => g.id === mobileGroup) ?? groups[0];
+    const group = hideGroupTabs
+      ? groups[0]
+      : groups.find((g) => g.id === mobileGroup) ?? groups[0];
     if (!group) return [];
     return group.tabIds
       .filter((tabId) => !hiddenTabIds.has(tabId))
       .map((tabId) => tabsById[tabId])
       .filter(Boolean);
-  }, [groups, hiddenTabIds, mobileGroup, tabsById]);
+  }, [groups, hiddenTabIds, hideGroupTabs, mobileGroup, tabsById]);
 
   return (
     <div className="space-y-2">
+      {!hideGroupTabs ? (
       <div
         className="grid grid-cols-4 gap-1 rounded-2xl bg-slate-200/80 p-1"
         role="tablist"
@@ -89,6 +95,7 @@ export function AdminBranchMobileTabNav({
           );
         })}
       </div>
+      ) : null}
 
       <div className="-mx-1 overflow-x-auto filter-scroll-row px-1">
         <div className="flex min-w-max items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">

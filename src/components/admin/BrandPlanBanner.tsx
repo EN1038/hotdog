@@ -150,10 +150,15 @@ export function BrandPlanBanner({
   brand,
   editable = false,
   onEdit,
+  planLabel,
+  planPrice,
 }: {
   brand: BrandPlanSummary;
   editable?: boolean;
   onEdit?: () => void;
+  /** ชื่อแพ็กจากแคตตาล็อก — ถ้าไม่ส่งใช้ค่า hardcode */
+  planLabel?: string;
+  planPrice?: number;
 }) {
   const status = effectiveStatus(brand);
   const plan = brand.plan ?? "RETAIL";
@@ -168,7 +173,8 @@ export function BrandPlanBanner({
   const branchUsed = brand._count?.branches;
   const maxBranches = brand.maxBranches;
   const maxStaff = brand.maxStaff;
-  const price = BRAND_PLAN_PRICES[plan];
+  const price = planPrice ?? BRAND_PLAN_PRICES[plan];
+  const label = planLabel ?? BRAND_PLAN_LABELS[plan];
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -180,7 +186,7 @@ export function BrandPlanBanner({
             {BRAND_STATUS_LABELS[status]}
           </span>
           <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
-            {BRAND_PLAN_LABELS[plan]}
+            {label}
           </span>
           <span className="text-[11px] text-slate-500">฿{price}/เดือน</span>
           {starts ? (
@@ -225,7 +231,7 @@ export function BrandPlanBanner({
         </p>
         {!editable ? (
           <p className="text-xs text-slate-500">
-            เปลี่ยนแพ็กเกจ / สถานะ / โควต้าได้เฉพาะผู้ดูแลแพลตฟอร์ม
+            เปลี่ยนแพ็กเกจ / สถานะได้ที่ปุ่มแพ็กเกจบนการ์ดแบรนด์ · แก้แคตตาล็อกที่เมนู แพ็กเกจ
           </p>
         ) : null}
       </div>

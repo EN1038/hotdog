@@ -16,7 +16,6 @@ import {
 } from "@/lib/owner-register-template";
 import {
   OWNER_REGISTER_BILLING_NOTE,
-  OWNER_TRIAL_FULL_MODULES,
   type OwnerRegisterImportLevel,
 } from "@/lib/owner-register-shared";
 import {
@@ -60,49 +59,68 @@ async function uniqueBrandCode(
 
 export { syncOwnerRegisterTemplateIfEmpty } from "@/lib/owner-register-template";
 
-export async function syncOwnerTrialFullAccess(brandId: string): Promise<boolean> {
+/**
+ * Trial self-register brands keep modules from their chosen plan only
+ * (not full unlock). Re-aligns if older rows still have full-trial flags.
+ */
+export async function syncOwnerTrialPlanModules(brandId: string): Promise<boolean> {
   const brand = await prisma.brand.findUnique({
     where: { id: brandId },
     select: {
       status: true,
+      plan: true,
+      billingNote: true,
       stockEnabled: true,
       kitchenEnabled: true,
       bbqEnabled: true,
       skewerEnabled: true,
     },
   });
-  if (!brand || brand.status !== "TRIAL") return false;
+  if (
+    !brand ||
+    brand.status !== "TRIAL" ||
+    brand.billingNote !== OWNER_REGISTER_BILLING_NOTE
+  ) {
+    return false;
+  }
 
+  const preset = await applyPlanPresetFromCatalog(brand.plan);
   const needsModuleSync =
-    !brand.stockEnabled ||
-    !brand.kitchenEnabled ||
-    !brand.bbqEnabled ||
-    !brand.skewerEnabled;
+    brand.stockEnabled !== preset.stockEnabled ||
+    brand.kitchenEnabled !== preset.kitchenEnabled ||
+    brand.bbqEnabled !== preset.bbqEnabled ||
+    brand.skewerEnabled !== preset.skewerEnabled;
   if (!needsModuleSync) return false;
 
   await prisma.$transaction(async (tx) => {
     await tx.brand.update({
       where: { id: brandId },
-      data: { ...OWNER_TRIAL_FULL_MODULES },
+      data: {
+        stockEnabled: preset.stockEnabled,
+        kitchenEnabled: preset.kitchenEnabled,
+        bbqEnabled: preset.bbqEnabled,
+        skewerEnabled: preset.skewerEnabled,
+      },
     });
-    if (!brand.stockEnabled) {
-      await tx.branch.updateMany({
-        where: {
-          brandId,
-          kind: "STORE",
-          isHidden: false,
-          isTest: false,
-        },
-        data: { stockEnabled: true },
-      });
-    }
+    await tx.branch.updateMany({
+      where: {
+        brandId,
+        kind: "STORE",
+        isHidden: false,
+        isTest: false,
+      },
+      data: { stockEnabled: preset.stockEnabled },
+    });
   });
 
-  if (!brand.stockEnabled) {
-    await syncBrandStockModule(brandId, true);
+  if (brand.stockEnabled !== preset.stockEnabled) {
+    await syncBrandStockModule(brandId, preset.stockEnabled);
   }
   return true;
 }
+
+/** @deprecated use syncOwnerTrialPlanModules */
+export const syncOwnerTrialFullAccess = syncOwnerTrialPlanModules;
 
 export async function createOwnerRegistration(
   input: OwnerRegisterSetupInput,
@@ -126,7 +144,10 @@ export async function createOwnerRegistration(
         plan: preset.plan,
         maxBranches: preset.maxBranches,
         maxStaff: preset.maxStaff,
-        ...OWNER_TRIAL_FULL_MODULES,
+        stockEnabled: preset.stockEnabled,
+        kitchenEnabled: preset.kitchenEnabled,
+        bbqEnabled: preset.bbqEnabled,
+        skewerEnabled: preset.skewerEnabled,
         trialEndsAt,
         billingNote: OWNER_REGISTER_BILLING_NOTE,
         lineNotifyNewOrder: false,
@@ -167,7 +188,7 @@ export async function createOwnerRegistration(
         isOpen: false,
         operatingMode: category.operatingMode,
         primaryCategory: input.shopCategory,
-        stockEnabled: true,
+        stockEnabled: preset.stockEnabled,
       },
     });
 

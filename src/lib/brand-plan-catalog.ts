@@ -135,6 +135,16 @@ export async function applyPlanPresetFromCatalog(
   };
 }
 
+export async function getBrandPlanConfigRow(
+  plan: BrandPlan,
+): Promise<BrandPlanConfigRow> {
+  const catalog = await getBrandPlanCatalog();
+  return (
+    catalog.plans.find((p) => p.plan === plan) ??
+    fallbackPlanRow(plan, BRAND_PLANS_ORDERED.indexOf(plan) + 1 || 1)
+  );
+}
+
 export function planLabelsFromCatalog(
   catalog: BrandPlanCatalog,
 ): Record<BrandPlan, string> {

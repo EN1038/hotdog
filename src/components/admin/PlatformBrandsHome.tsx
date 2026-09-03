@@ -31,13 +31,8 @@ import {
 } from "@/lib/image-guides";
 import { bangkokDateKey } from "@/lib/constants";
 import { slugifyCode } from "@/lib/slug";
-import {
-  BRAND_PLAN_HINTS,
-  BRAND_PLAN_LABELS,
-  BRAND_PLAN_PRESETS,
-  BRAND_PLAN_PRICES,
-  BRAND_PLANS_ORDERED,
-} from "@/lib/brand-plan-shared";
+import { BRAND_PLAN_PRESETS, BRAND_PLANS_ORDERED } from "@/lib/brand-plan-shared";
+import type { BrandPlanConfigRow } from "@/lib/brand-plan-catalog";
 import {
   BrandPlanBanner,
   BRAND_STATUS_BADGE,
@@ -85,6 +80,29 @@ const PLAN_SHORT_LABELS: Record<BrandPlanId, string> = {
   MALA: "Mala",
   MULTI: "Multi",
 };
+
+function catalogRowForPlan(
+  catalog: BrandPlanConfigRow[] | null,
+  plan: BrandPlanId,
+): BrandPlanConfigRow {
+  const found = catalog?.find((p) => p.plan === plan);
+  if (found) return found;
+  const preset = BRAND_PLAN_PRESETS[plan];
+  return {
+    plan,
+    label: PLAN_SHORT_LABELS[plan],
+    hint: "",
+    priceBaht: 0,
+    maxBranches: preset.maxBranches,
+    maxStaff: preset.maxStaff,
+    stockEnabled: preset.stockEnabled,
+    kitchenEnabled: preset.kitchenEnabled,
+    bbqEnabled: preset.bbqEnabled,
+    skewerEnabled: preset.skewerEnabled,
+    isActive: true,
+    sortOrder: 0,
+  };
+}
 
 type StatusFilter = "ALL" | BrandStatusId;
 type PlanFilter = "ALL" | BrandPlanId;
@@ -181,6 +199,9 @@ export function PlatformBrandsHome() {
   const [planBrand, setPlanBrand] = useState<Brand | null>(null);
   const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
   const [savingPlan, setSavingPlan] = useState(false);
+  const [planCatalog, setPlanCatalog] = useState<BrandPlanConfigRow[] | null>(
+    null,
+  );
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [planFilter, setPlanFilter] = useState<PlanFilter>("ALL");
@@ -272,13 +293,16 @@ export function PlatformBrandsHome() {
   }, [brands, query, statusFilter, planFilter, expiryFilter]);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/brands");
-    if (res.status === 401) {
+    const [brandsRes, plansRes] = await Promise.all([
+      fetch("/api/admin/brands"),
+      fetch("/api/admin/brand-plans"),
+    ]);
+    if (brandsRes.status === 401) {
       router.push("/admin/login");
       return;
     }
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
+    if (!brandsRes.ok) {
+      const data = await brandsRes.json().catch(() => ({}));
       toast.error(
         "โหลดแบรนด์ไม่สำเร็จ",
         typeof data.error === "string" ? data.error : "กรุณารีเฟรชหน้า หรือรีสตาร์ทเซิร์ฟเวอร์",
@@ -286,9 +310,28 @@ export function PlatformBrandsHome() {
       setLoading(false);
       return;
     }
-    setBrands(await res.json());
+    setBrands(await brandsRes.json());
+    if (plansRes.ok) {
+      const catalog = await plansRes.json().catch(() => null);
+      if (catalog?.plans && Array.isArray(catalog.plans)) {
+        setPlanCatalog(catalog.plans as BrandPlanConfigRow[]);
+      }
+    }
     setLoading(false);
   }, [router, toast]);
+
+  const activeCatalogPlans = useMemo(() => {
+    const rows =
+      planCatalog?.filter((p) => p.isActive) ??
+      BRAND_PLANS_ORDERED.map((plan) => catalogRowForPlan(null, plan));
+    return rows.length > 0
+      ? rows
+      : BRAND_PLANS_ORDERED.map((plan) => catalogRowForPlan(planCatalog, plan));
+  }, [planCatalog]);
+
+  function planMeta(plan: BrandPlanId) {
+    return catalogRowForPlan(planCatalog, plan);
+  }
 
   useEffect(() => {
     load();
@@ -429,8 +472,17 @@ export function PlatformBrandsHome() {
   }
 
   function applyPlanLimits(plan: BrandPlanId) {
-    const preset = BRAND_PLAN_PRESETS[plan];
-    setPlanForm((f) => ({ ...f, ...preset }));
+    const row = planMeta(plan);
+    setPlanForm((f) => ({
+      ...f,
+      plan: row.plan,
+      maxBranches: row.maxBranches,
+      maxStaff: row.maxStaff,
+      stockEnabled: row.stockEnabled,
+      kitchenEnabled: row.kitchenEnabled,
+      bbqEnabled: row.bbqEnabled,
+      skewerEnabled: row.skewerEnabled,
+    }));
   }
 
   async function savePlan(e: React.FormEvent) {
@@ -739,7 +791,7 @@ export function PlatformBrandsHome() {
                       planFilter === plan,
                     )}`}
                   >
-                    {PLAN_SHORT_LABELS[plan]}
+                    {planMeta(plan).label}
                   </button>
                 ))}
               </div>
@@ -908,10 +960,10 @@ export function PlatformBrandsHome() {
 
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                        {PLAN_SHORT_LABELS[plan]}
+                        {planMeta(plan).label}
                       </span>
                       <span className="text-[11px] text-slate-500">
-                        ฿{BRAND_PLAN_PRICES[plan]}/เดือน
+                        ฿{planMeta(plan).priceBaht}/เดือน
                       </span>
                       {startLabel ? (
                         <span className="text-[11px] text-slate-500">
@@ -1269,15 +1321,23 @@ export function PlatformBrandsHome() {
                 <div>
                   <p className={adminLabelClass}>แพ็กเกจ</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {BRAND_PLANS_ORDERED.map((plan) => {
-                      const preset = BRAND_PLAN_PRESETS[plan];
-                      const selected = form.plan === plan;
+                    {activeCatalogPlans.map((row) => {
+                      const selected = form.plan === row.plan;
                       return (
                         <button
-                          key={plan}
+                          key={row.plan}
                           type="button"
                           onClick={() =>
-                            setForm((f) => ({ ...f, ...preset }))
+                            setForm((f) => ({
+                              ...f,
+                              plan: row.plan,
+                              maxBranches: row.maxBranches,
+                              maxStaff: row.maxStaff,
+                              stockEnabled: row.stockEnabled,
+                              kitchenEnabled: row.kitchenEnabled,
+                              bbqEnabled: row.bbqEnabled,
+                              skewerEnabled: row.skewerEnabled,
+                            }))
                           }
                           className={`rounded-2xl border px-3 py-2.5 text-left transition ${
                             selected
@@ -1285,21 +1345,21 @@ export function PlatformBrandsHome() {
                               : "border-slate-200 bg-white text-slate-800"
                           }`}
                         >
-                          <p className="text-sm font-semibold">
-                            {BRAND_PLAN_LABELS[plan]}
-                          </p>
+                          <p className="text-sm font-semibold">{row.label}</p>
                           <p
                             className={`mt-0.5 text-xs ${
                               selected ? "text-white/85" : "text-slate-500"
                             }`}
                           >
-                            ฿{BRAND_PLAN_PRICES[plan]}/เดือน · สาขา{" "}
-                            {preset.maxBranches}
+                            ฿{row.priceBaht}/เดือน · สาขา {row.maxBranches}
                           </p>
                         </button>
                       );
                     })}
                   </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    เลือกจากแคตตาล็อกแพ็กเกจ — แก้รายละเอียดแพ็กได้ที่เมนู แพ็กเกจ
+                  </p>
                 </div>
               </div>
             </div>
@@ -1379,7 +1439,7 @@ export function PlatformBrandsHome() {
         onClose={closePlan}
         busy={savingPlan}
         title={planBrand ? `แพ็กเกจ · ${planBrand.name}` : "แพ็กเกจ"}
-        description="สถานะ แพ็กเกจ โควต้า และโมดูล — PAUSED/EXPIRED จะปิดหน้าร้านและล็อกอินพนักงาน"
+        description="เลือกแพ็กจากแคตตาล็อก — แก้ชื่อ ราคา โควต้า และโมดูลได้ที่เมนู แพ็กเกจ"
         maxWidthClassName="max-w-xl"
       >
         <form onSubmit={savePlan} className="space-y-5 p-5">
@@ -1392,7 +1452,8 @@ export function PlatformBrandsHome() {
                   : null,
               _count: planBrand?._count,
             }}
-            editable
+            planLabel={planMeta(planForm.plan).label}
+            planPrice={planMeta(planForm.plan).priceBaht}
           />
 
           <div>
@@ -1444,116 +1505,59 @@ export function PlatformBrandsHome() {
           </div>
 
           <div>
-            <p className={adminLabelClass}>แพ็กเกจ</p>
+            <p className={adminLabelClass}>เลือกแพ็กเกจ</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {BRAND_PLANS_ORDERED.map((plan) => {
-                const preset = BRAND_PLAN_PRESETS[plan];
-                const selected = planForm.plan === plan;
+              {activeCatalogPlans.map((row) => {
+                const selected = planForm.plan === row.plan;
+                const modules = [
+                  row.stockEnabled ? "สต๊อก" : null,
+                  row.kitchenEnabled ? "ครัว" : null,
+                  row.bbqEnabled ? "หมูกระทะ" : null,
+                  row.skewerEnabled ? "เสียบไม้" : null,
+                ].filter(Boolean) as string[];
                 return (
                   <button
-                    key={plan}
+                    key={row.plan}
                     type="button"
-                    onClick={() => applyPlanLimits(plan)}
+                    onClick={() => applyPlanLimits(row.plan)}
                     className={`rounded-2xl border px-4 py-3 text-left transition ${
                       selected
                         ? "border-slate-900 bg-slate-900 text-white"
                         : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
                     }`}
                   >
-                    <p className="font-semibold">{BRAND_PLAN_LABELS[plan]}</p>
+                    <p className="font-semibold">{row.label}</p>
                     <p
                       className={`mt-0.5 text-xs font-medium ${
                         selected ? "text-white/90" : "text-slate-600"
                       }`}
                     >
-                      ฿{BRAND_PLAN_PRICES[plan]}/เดือน
+                      ฿{row.priceBaht}/เดือน
                     </p>
                     <p
                       className={`mt-1 text-xs ${
                         selected ? "text-white/75" : "text-slate-500"
                       }`}
                     >
-                      สาขา {preset.maxBranches} · พนักงาน {preset.maxStaff}
-                      {preset.stockEnabled ? " · สต็อกสาขา" : ""}
+                      สาขา {row.maxBranches} · พนักงาน {row.maxStaff}
+                      {modules.length > 0 ? ` · ${modules.join(" · ")}` : ""}
                     </p>
-                    <p
-                      className={`mt-1 text-[11px] leading-snug ${
-                        selected ? "text-white/65" : "text-slate-400"
-                      }`}
-                    >
-                      {BRAND_PLAN_HINTS[plan]}
-                    </p>
+                    {row.hint ? (
+                      <p
+                        className={`mt-1 text-[11px] leading-snug ${
+                          selected ? "text-white/65" : "text-slate-400"
+                        }`}
+                      >
+                        {row.hint}
+                      </p>
+                    ) : null}
                   </button>
                 );
               })}
             </div>
             <p className="mt-1.5 text-xs text-slate-500">
-              กดแพ็กเพื่อใส่โควต้าและโมดูลตามค่าเริ่มต้น — ปรับเองได้ด้านล่าง
+              กดเลือกแพ็กเพื่อใส่โควต้าและโมดูลตามแคตตาล็อก — ไม่แก้รายละเอียดแพ็กที่นี่
             </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className={adminLabelClass}>สาขาสูงสุด</label>
-              <input
-                type="number"
-                min={1}
-                max={200}
-                className={adminInputClass}
-                value={planForm.maxBranches}
-                onChange={(e) =>
-                  setPlanForm((f) => ({
-                    ...f,
-                    maxBranches: Math.max(1, Number(e.target.value) || 1),
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <label className={adminLabelClass}>พนักงานสูงสุด</label>
-              <input
-                type="number"
-                min={1}
-                max={500}
-                className={adminInputClass}
-                value={planForm.maxStaff}
-                onChange={(e) =>
-                  setPlanForm((f) => ({
-                    ...f,
-                    maxStaff: Math.max(1, Number(e.target.value) || 1),
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <div>
-            <p className={adminLabelClass}>โมดูล</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {(
-                [
-                  ["stockEnabled", "สต๊อก"],
-                  ["kitchenEnabled", "ครัว / ผลิต"],
-                  ["bbqEnabled", "หมูกระทะชั่งกิโล"],
-                  ["skewerEnabled", "เสียบไม้"],
-                ] as const
-              ).map(([key, label]) => (
-                <label
-                  key={key}
-                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
-                >
-                  <input
-                    type="checkbox"
-                    checked={planForm[key]}
-                    onChange={(e) =>
-                      setPlanForm((f) => ({ ...f, [key]: e.target.checked }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">

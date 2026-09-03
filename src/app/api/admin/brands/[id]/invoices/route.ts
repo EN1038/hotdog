@@ -3,7 +3,7 @@ import { requirePlatformAdmin } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { logAdminActivity } from "@/lib/admin-activity";
-import { BRAND_PLAN_PRICES } from "@/lib/brand-plan-shared";
+import { getBrandPlanConfigRow } from "@/lib/brand-plan-catalog";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -120,7 +120,7 @@ export async function POST(request: Request, { params }: Params) {
       metadata: {
         amountBaht: body.amountBaht,
         status,
-        suggested: BRAND_PLAN_PRICES[brand.plan],
+        suggested: (await getBrandPlanConfigRow(brand.plan)).priceBaht,
       },
     });
 

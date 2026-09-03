@@ -2,14 +2,6 @@ import type { BrandPlan, BranchOperatingMode } from "@prisma/client";
 
 export const OWNER_REGISTER_TRIAL_DAYS = 7;
 
-/** ช่วงทดลอง — เปิดทุกโมดูลให้ลองครบ (สต๊อก · ครัว · โต๊ะ · เสียบไม้) */
-export const OWNER_TRIAL_FULL_MODULES = {
-  stockEnabled: true,
-  kitchenEnabled: true,
-  bbqEnabled: true,
-  skewerEnabled: true,
-} as const;
-
 export const OWNER_REGISTER_BILLING_NOTE = "owner_self_register";
 
 export const OWNER_REGISTER_IMPORT_OPTIONS = [

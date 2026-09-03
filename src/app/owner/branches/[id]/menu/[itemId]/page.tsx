@@ -11,8 +11,9 @@ export default function OwnerBranchMenuEditorPage() {
 
   return (
     <OwnerBranchShell
-      backHref={`${branchAdminBasePath(id, { ownerShell: true })}?tab=menu`}
+      backHref={`${branchAdminBasePath(id, { ownerShell: true })}?tab=menu&focus=1`}
       backLabel="กลับรายการเมนู"
+      focusMode
     >
       <AdminBranchShellProvider embeddedInOwnerShell>
         <MenuItemEditorPage />

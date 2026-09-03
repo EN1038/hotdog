@@ -31,6 +31,11 @@ export function OwnerBranchSwitcher() {
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  function openManageBranches() {
+    setOpen(false);
+    router.push("/owner/settings?manageBranches=1");
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -134,8 +139,9 @@ export function OwnerBranchSwitcher() {
           <IconChevronDown size={18} className="shrink-0 text-slate-400" aria-hidden />
         </button>
 
-        <Link
-          href="/admin"
+        <button
+          type="button"
+          onClick={openManageBranches}
           className="flex shrink-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center shadow-sm transition active:bg-slate-50"
           title="จัดการและเพิ่มสาขา"
         >
@@ -143,7 +149,7 @@ export function OwnerBranchSwitcher() {
           <span className="mt-0.5 text-[10px] font-bold text-slate-600">
             สาขา
           </span>
-        </Link>
+        </button>
       </div>
 
       {open ? (
@@ -213,14 +219,14 @@ export function OwnerBranchSwitcher() {
               ดูทุกสาขา
               <IconChevronRight size={16} className="text-slate-300" aria-hidden />
             </Link>
-            <Link
-              href="/admin"
-              onClick={() => setOpen(false)}
+            <button
+              type="button"
+              onClick={openManageBranches}
               className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold text-site-primary active:bg-site-primary-soft"
             >
               จัดการและเพิ่มสาขา
               <IconChevronRight size={16} className="text-site-primary/40" aria-hidden />
-            </Link>
+            </button>
           </div>
           {hasMultiple &&
           preferredBrandId &&

@@ -11,7 +11,7 @@ import {
   ensureBrandPrimaryAdmin,
   pickPrimaryAdminId,
 } from "@/lib/brand-primary-owner";
-import { BRAND_PLAN_PRICES } from "@/lib/brand-plan-shared";
+import { getBrandPlanConfigRow } from "@/lib/brand-plan-catalog";
 import { normalizePhone } from "@/lib/constants";
 
 type Params = { params: Promise<{ id: string }> };
@@ -242,7 +242,7 @@ export async function GET(_request: Request, { params }: Params) {
       brand: {
         ...brand,
         primaryAdminId,
-        suggestedPriceBaht: BRAND_PLAN_PRICES[brand.plan] ?? null,
+        suggestedPriceBaht: (await getBrandPlanConfigRow(brand.plan)).priceBaht,
         trialEndsAt: brand.trialEndsAt?.toISOString() ?? null,
         serviceStartsAt: brand.serviceStartsAt?.toISOString() ?? null,
         lastPaidAt: brand.lastPaidAt?.toISOString() ?? null,

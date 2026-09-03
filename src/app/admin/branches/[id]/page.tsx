@@ -27,6 +27,7 @@ import { AdminStaffRowActions } from "@/components/admin/AdminStaffRowActions";
 import { QuickAddMenuBar } from "@/components/admin/QuickAddMenuBar";
 import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
 import { useAdminBranchShell } from "@/components/admin/AdminBranchShellContext";
+import { useOwnerBranchEmbed } from "@/components/owner/OwnerBranchEmbedContext";
 import { branchAdminBasePath, branchMenuEditorPath, shouldUseOwnerBranchShell } from "@/lib/branch-admin-path";
 import { BranchLocationPicker } from "@/components/admin/BranchLocationPicker";
 import { AdminMapLocationPicker } from "@/components/admin/AdminMapLocationPicker";
@@ -407,12 +408,14 @@ function formatMenuBaht(value: string | number | null | undefined): string {
 
 function MenuChannelPrices({
   item,
+  compact = false,
 }: {
   item: {
     price: string;
     pickupPrice?: string | null;
     storefrontPrice?: string | null;
   };
+  compact?: boolean;
 }) {
   const rows = [
     {
@@ -437,6 +440,23 @@ function MenuChannelPrices({
       value: formatMenuBaht(item.storefrontPrice ?? item.price),
     },
   ] as const;
+
+  if (compact) {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {rows.map(({ key, label, icon: Icon, iconClass, value }) => (
+          <span
+            key={key}
+            title={label}
+            className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-800"
+          >
+            <Icon size={12} className={`shrink-0 ${iconClass}`} />
+            {value}
+          </span>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-gray-600">
@@ -584,13 +604,31 @@ export default function BranchDetailPage() {
 
 function BranchDetailContent() {
   const { embeddedInOwnerShell } = useAdminBranchShell();
-  const { id } = useParams<{ id: string }>();
+  const embed = useOwnerBranchEmbed();
+  const params = useParams<{ id: string }>();
+  const id = embed?.branchId ?? params.id;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { session } = useAdminSession();
-  const tabParam = searchParams.get("tab");
+  const tabParam = embed?.tab ?? searchParams.get("tab");
   const activeTab: TabId = isTabId(tabParam) ? tabParam : "overview";
+  const sectionParam =
+    embed?.settingsSection ??
+    (searchParams.get("section") === "hours" ||
+    searchParams.get("section") === "branch"
+      ? searchParams.get("section")
+      : null);
+  const settingsSection =
+    sectionParam === "hours" || sectionParam === "branch"
+      ? sectionParam
+      : null;
+  const focusMode = Boolean(
+    embed || (embeddedInOwnerShell && searchParams.get("focus") === "1"),
+  );
+  const hideOuterChrome = Boolean(embed?.hideOuterChrome);
+  const showHoursSection = !settingsSection || settingsSection === "hours";
+  const showBranchSection = !settingsSection || settingsSection === "branch";
 
   const [branch, setBranch] = useState<BranchDetail | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -645,6 +683,10 @@ function BranchDetailContent() {
   const { confirm } = useConfirm();
 
   useEffect(() => {
+    if (embed) {
+      setLayoutReady(true);
+      return;
+    }
     if (!session) return;
     if (session.isPlatformAdmin) {
       setLayoutReady(true);
@@ -662,7 +704,7 @@ function BranchDetailContent() {
       return;
     }
     setLayoutReady(true);
-  }, [embeddedInOwnerShell, id, router, searchParams, session]);
+  }, [embed, embeddedInOwnerShell, id, router, searchParams, session]);
 
   const emptyLocationMap = (): MapLocationValue => ({
     address: "",
@@ -746,8 +788,14 @@ function BranchDetailContent() {
   const [overviewStatsLoading, setOverviewStatsLoading] = useState(false);
 
   function setTab(next: TabId) {
+    if (embed) {
+      embed.setTab(next);
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", next);
+    if (focusMode) params.set("focus", "1");
+    if (settingsSection) params.set("section", settingsSection);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
@@ -838,6 +886,11 @@ function BranchDetailContent() {
   useEffect(() => {
     load();
   }, [id, router]);
+
+  useEffect(() => {
+    if (!embed?.menuReloadToken) return;
+    void load();
+  }, [embed?.menuReloadToken]);
 
   useEffect(() => {
     if (activeTab !== "overview") return;
@@ -1644,6 +1697,26 @@ function BranchDetailContent() {
     branch.kind,
   );
 
+  const focusGroupId = focusMode
+    ? TAB_GROUPS.find((g) => g.tabIds.includes(activeTab))?.id ?? null
+    : null;
+  const focusTabGroups = focusGroupId
+    ? TAB_GROUPS.filter((g) => g.id === focusGroupId)
+    : TAB_GROUPS;
+  const focusHiddenTabIds = (() => {
+    if (!focusMode || !focusGroupId) return hiddenTabIds;
+    const allowed = new Set(
+      TAB_GROUPS.find((g) => g.id === focusGroupId)?.tabIds ?? [],
+    );
+    const next = new Set(hiddenTabIds);
+    for (const tab of TABS) {
+      if (!allowed.has(tab.id)) next.add(tab.id);
+    }
+    return next;
+  })();
+  const navHiddenTabIds = focusMode ? focusHiddenTabIds : hiddenTabIds;
+  const navTabGroups = focusMode ? focusTabGroups : TAB_GROUPS;
+
   async function goAddMenu() {
     const [catRes, optRes] = await Promise.all([
       fetch(`/api/admin/branches/${id}/categories`),
@@ -1682,7 +1755,21 @@ function BranchDetailContent() {
       setMenuSetupModalOpen(true);
       return;
     }
+    if (embed?.openMenuEditor) {
+      embed.openMenuEditor("new");
+      return;
+    }
     router.push(branchMenuEditorPath(id, "new", { ownerShell: embeddedInOwnerShell }));
+  }
+
+  function openMenuItemEditor(itemId: string) {
+    if (embed?.openMenuEditor) {
+      embed.openMenuEditor(itemId);
+      return;
+    }
+    router.push(
+      branchMenuEditorPath(id, itemId, { ownerShell: embeddedInOwnerShell }),
+    );
   }
 
   const storefrontSchedule = ensureWeeklySchedule(
@@ -1758,6 +1845,7 @@ function BranchDetailContent() {
   return (
     <div className={showPhoneFrame ? "mx-auto w-full max-w-md" : undefined}>
     <div>
+      {!focusMode ? (
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -1839,24 +1927,43 @@ function BranchDetailContent() {
           </div>
         </div>
       </div>
+      ) : hideOuterChrome ? null : (
+      <div className="mb-1">
+        <p className="text-[17px] font-extrabold text-slate-900">{branch.name}</p>
+        <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+          {settingsSection === "hours"
+            ? "เวลาเปิดปิด"
+            : settingsSection === "branch"
+              ? "ตั้งค่าสาขา"
+              : focusGroupId === "menu"
+                ? "จัดการเมนู"
+                : focusGroupId === "team"
+                  ? "จัดการพนักงาน"
+                  : focusGroupId === "settings"
+                    ? "ตั้งค่าสาขา"
+                    : "จัดการสาขา"}
+        </p>
+      </div>
+      )}
 
-      {isMobileLayout ? (
-      <div className={`sticky z-20 -mx-1 mt-4 bg-[#eef3f8]/95 px-1 py-2 backdrop-blur ${embeddedInOwnerShell ? "top-0" : "top-[3rem]"}`}>
+      {!settingsSection && isMobileLayout ? (
+      <div className={`sticky z-20 -mx-1 mt-4 bg-[#eef3f8]/95 px-1 py-2 backdrop-blur ${embeddedInOwnerShell || hideOuterChrome ? "top-0" : "top-[3rem]"}`}>
         <AdminBranchMobileTabNav
-          groups={TAB_GROUPS}
+          groups={navTabGroups}
           tabsById={TAB_BY_ID}
           activeTab={activeTab}
-          hiddenTabIds={hiddenTabIds}
+          hiddenTabIds={navHiddenTabIds}
           onTabChange={(tabId) => setTab(tabId as TabId)}
           getTabAttention={(tabId) => getTabAttention(tabId as TabId, branch)}
+          hideGroupTabs={focusMode}
         />
       </div>
-      ) : (
+      ) : !settingsSection ? (
       <div className="sticky top-[3rem] z-20 -mx-1 mt-4 overflow-x-auto filter-scroll-row bg-slate-50/95 px-1 py-2 backdrop-blur lg:top-[3.25rem]">
         <div className="flex min-w-max items-center gap-0.5 rounded-2xl border border-slate-200 bg-white/90 p-1.5 shadow-sm">
-          {TAB_GROUPS.map((group, groupIndex) => {
+          {navTabGroups.map((group, groupIndex) => {
             const mode: BranchOperatingModeId = branchOperatingMode;
-            const hidden = hiddenTabIds;
+            const hidden = navHiddenTabIds;
             const visibleTabIds = group.tabIds.filter(
               (tabId) => !hidden.has(tabId),
             );
@@ -1932,7 +2039,7 @@ function BranchDetailContent() {
           })}
         </div>
       </div>
-      )}
+      ) : null}
 
       <div className="mt-4">
         {activeTab === "overview" && (
@@ -2573,7 +2680,7 @@ function BranchDetailContent() {
                   : "ไม่พบเมนูที่ตรงเงื่อนไข"}
               </p>
             ) : (
-            <ul className="mt-4 space-y-2">
+            <ul className={`mt-4 ${isMobileLayout ? "space-y-2.5" : "space-y-2"}`}>
               {filteredMenuItems.map((m) => {
                 const orderIndex = menuItemsOrderRef.current.indexOf(m.id);
                 const canMoveUp =
@@ -2583,6 +2690,11 @@ function BranchDetailContent() {
                   orderIndex >= 0 &&
                   orderIndex < menuItemsOrderRef.current.length - 1 &&
                   !menuReorderSaving;
+                const thumb = resolveMenuDisplayImageUrl(
+                  branch?.operatingMode,
+                  m,
+                );
+                const seq = menuSeqById.get(m.id) ?? "—";
                 return (
                 <li
                   key={m.id}
@@ -2594,74 +2706,164 @@ function BranchDetailContent() {
                     e.preventDefault();
                     void onMenuDrop(m.id);
                   }}
-                  className={`rounded-lg border px-3 py-2.5 transition ${
+                  className={`transition ${
+                    isMobileLayout
+                      ? "overflow-hidden rounded-2xl border bg-white shadow-sm"
+                      : "rounded-lg border px-3 py-2.5"
+                  } ${
                     menuDraggingId === m.id
                       ? "border-slate-300 opacity-60 shadow-sm"
                       : menuDragOverId === m.id
                         ? "border-amber-300 bg-amber-50/70"
-                        : "border-gray-200"
+                        : "border-slate-200"
                   } ${canReorderMenu && !isMobileLayout ? "lg:cursor-move" : ""}`}
                 >
-                  <div className="flex gap-3">
-                    <div className="flex shrink-0 flex-col items-center justify-center gap-1 self-start pt-1">
-                      {canReorderMenu ? (
-                        <>
-                          <span
-                            className={`select-none text-slate-400 ${isMobileLayout ? "hidden" : "hidden lg:inline"}`}
-                            aria-hidden
-                          >
-                            ::
-                          </span>
-                          {isMobileLayout ? (
-                          <div className="flex flex-col gap-0.5">
+                  {isMobileLayout ? (
+                    <div className="p-3">
+                      <div className="flex gap-3">
+                        {thumb ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={thumb}
+                            alt=""
+                            className={`h-14 w-14 shrink-0 rounded-xl ${
+                              branch?.operatingMode === "SKEWER"
+                                ? "object-cover bg-site-primary-soft"
+                                : "object-cover"
+                            }`}
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[10px] font-medium text-slate-400">
+                            ไม่มีรูป
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[15px] font-extrabold text-slate-900">
+                                {m.name}
+                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                {m.itemCode?.trim() ? (
+                                  <MenuItemCodeBadge
+                                    code={resolveMenuItemProductCode({
+                                      id: m.id,
+                                      itemCode: m.itemCode,
+                                    })}
+                                  />
+                                ) : null}
+                                {m.category ? (
+                                  <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                                    {m.category.name}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                                    ไม่มีหมวด
+                                  </span>
+                                )}
+                                <MenuBestSellerTag show={m.isBestSeller} />
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openMenuItemEditor(m.id)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 active:bg-slate-200"
+                                aria-label={`แก้ไข ${m.name}`}
+                              >
+                                <IconEdit size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteMenu(m.id)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 active:bg-red-100"
+                                aria-label={`ลบ ${m.name}`}
+                              >
+                                <IconTrash size={16} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-2">
+                            <MenuChannelPrices item={m} compact />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5">
+                        <div className="min-w-0 flex-1 flex flex-wrap gap-1.5">
+                          <AdminToggle
+                            checked={m.isHidden}
+                            onChange={(next) => toggleHidden(m.id, next)}
+                            label="ซ่อน"
+                          />
+                          <AdminToggle
+                            checked={m.isOutOfStock}
+                            onChange={(next) => toggleOutOfStock(m.id, next)}
+                            label="หมด"
+                          />
+                        </div>
+                        {canReorderMenu ? (
+                          <div className="flex shrink-0 items-center gap-1">
                             <button
                               type="button"
                               disabled={!canMoveUp}
                               onClick={() => void moveMenuByStep(m.id, -1)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-slate-600 disabled:opacity-35"
                               aria-label={`เลื่อน ${m.name} ขึ้น`}
                             >
                               ↑
                             </button>
+                            <span className="min-w-[1.25rem] text-center text-[11px] font-bold tabular-nums text-slate-400">
+                              {seq}
+                            </span>
                             <button
                               type="button"
                               disabled={!canMoveDown}
                               onClick={() => void moveMenuByStep(m.id, 1)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-slate-600 disabled:opacity-35"
                               aria-label={`เลื่อน ${m.name} ลง`}
                             >
                               ↓
                             </button>
                           </div>
-                          ) : null}
-                        </>
+                        ) : (
+                          <span className="text-[11px] font-bold tabular-nums text-slate-400">
+                            {seq}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                  <div className="flex gap-3">
+                    <div className="flex shrink-0 flex-col items-center justify-center gap-1 self-start pt-1">
+                      {canReorderMenu ? (
+                        <span
+                          className="hidden select-none text-slate-400 lg:inline"
+                          aria-hidden
+                        >
+                          ::
+                        </span>
                       ) : null}
                       <span className="text-xs font-bold tabular-nums text-slate-400">
-                        {menuSeqById.get(m.id) ?? "—"}
+                        {seq}
                       </span>
                     </div>
-                    {(() => {
-                      const thumb = resolveMenuDisplayImageUrl(
-                        branch?.operatingMode,
-                        m,
-                      );
-                      return thumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={thumb}
-                          alt=""
-                          className={`h-16 w-16 shrink-0 rounded-lg sm:h-20 sm:w-20 ${
-                            branch?.operatingMode === "SKEWER"
-                              ? "object-cover bg-site-primary-soft"
-                              : "object-cover"
-                          }`}
-                        />
-                      ) : (
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-20 sm:w-20">
-                          ไม่มีรูป
-                        </div>
-                      );
-                    })()}
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt=""
+                        className={`h-16 w-16 shrink-0 rounded-lg sm:h-20 sm:w-20 ${
+                          branch?.operatingMode === "SKEWER"
+                            ? "object-cover bg-site-primary-soft"
+                            : "object-cover"
+                        }`}
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-500 sm:h-20 sm:w-20">
+                        ไม่มีรูป
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900">
                         {m.itemCode?.trim() ? (
@@ -2692,7 +2894,7 @@ function BranchDetailContent() {
                         )}
                         <MenuChannelPrices item={m} />
                       </div>
-                      <div className={`mt-2.5 flex flex-col gap-2${isMobileLayout ? "" : " sm:flex-row sm:flex-wrap"}`}>
+                      <div className="mt-2.5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <AdminToggle
                           checked={m.isHidden}
                           onChange={(next) => toggleHidden(m.id, next)}
@@ -2706,16 +2908,15 @@ function BranchDetailContent() {
                       </div>
                     </div>
                     <div className="flex shrink-0 items-start gap-2 self-start">
-                      <Link
-                        href={branchMenuEditorPath(id, m.id, {
-                          ownerShell: embeddedInOwnerShell,
-                        })}
+                      <button
+                        type="button"
+                        onClick={() => openMenuItemEditor(m.id)}
                         className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
                         aria-label={`แก้ไข ${m.name}`}
                         title="แก้ไข"
                       >
                         <IconEdit size={18} />
-                      </Link>
+                      </button>
                       <button
                         type="button"
                         onClick={() => deleteMenu(m.id)}
@@ -2727,6 +2928,7 @@ function BranchDetailContent() {
                       </button>
                     </div>
                   </div>
+                  )}
                 </li>
                 );
               })}
@@ -3463,9 +3665,19 @@ function BranchDetailContent() {
           <>
           <section className={`overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm${isMobileLayout ? " pb-24" : ""}`}>
             <div className="border-b border-gray-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-4 sm:px-5">
-              <h3 className="font-semibold text-gray-900">ตั้งค่าสาขา</h3>
+              <h3 className="font-semibold text-gray-900">
+                {settingsSection === "hours"
+                  ? "เวลาเปิด–ปิด"
+                  : settingsSection === "branch"
+                    ? "ตั้งค่าสาขา"
+                    : "ตั้งค่าสาขา"}
+              </h3>
               <p className="mt-0.5 text-sm text-gray-600">
-                จัดการสถานะรับออเดอร์ ข้อมูลร้าน แผนที่ และเวลาทำการ
+                {settingsSection === "hours"
+                  ? "สวิตช์เปิด/ปิดร้าน และตารางทำการหน้าร้าน/เดลิเวอรี"
+                  : settingsSection === "branch"
+                    ? "โหมดร้าน ข้อมูลสาขา แผนที่ และการรับออเดอร์"
+                    : "จัดการสถานะรับออเดอร์ ข้อมูลร้าน แผนที่ และเวลาทำการ"}
               </p>
             </div>
             <form
@@ -3474,6 +3686,7 @@ function BranchDetailContent() {
               className="space-y-8 p-4 sm:p-5"
             >
               {(() => {
+                if (settingsSection === "hours") return null;
                 const draftGaps = getBranchSettingsGaps({
                   latitude: settings.latitude,
                   longitude: settings.longitude,
@@ -3536,6 +3749,7 @@ function BranchDetailContent() {
                 );
               })()}
               {/* Operating mode (locked after create) */}
+              {showBranchSection ? (
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
@@ -3568,17 +3782,29 @@ function BranchDetailContent() {
                   </p>
                 </div>
               </div>
+              ) : null}
               {/* 1. Daily ops status */}
+              {(showHoursSection || showBranchSection) ? (
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    สถานะการรับออเดอร์
+                    {settingsSection === "hours"
+                      ? "เปิด–ปิดร้าน"
+                      : settingsSection === "branch"
+                        ? "การรับออเดอร์"
+                        : "สถานะการรับออเดอร์"}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    ใช้บ่อย — เปิด/ปิดร้านและวิธีรับออเดอร์
+                    {settingsSection === "hours"
+                      ? "สวิตช์ร้านและรับสั่งล่วงหน้า"
+                      : settingsSection === "branch"
+                        ? "รับอัตโนมัติ สต๊อก และโหมดเสริม"
+                        : "ใช้บ่อย — เปิด/ปิดร้านและวิธีรับออเดอร์"}
                   </p>
                 </div>
                 <div className="space-y-3">
+                  {showHoursSection ? (
+                  <>
                   <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">
@@ -3681,7 +3907,11 @@ function BranchDetailContent() {
                       </button>
                     )}
                   </div>
+                  </>
+                  ) : null}
 
+                  {showBranchSection ? (
+                  <>
                   <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">
@@ -3915,10 +4145,15 @@ function BranchDetailContent() {
                       )}
                     </div>
                   </div>
+                  </>
+                  ) : null}
                 </div>
               </div>
+              ) : null}
 
               {/* 2. Identity */}
+              {showBranchSection ? (
+              <>
               <div className="space-y-3 border-t border-slate-100 pt-8">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
@@ -4055,8 +4290,11 @@ function BranchDetailContent() {
                   }
                 />
               </div>
+              </>
+              ) : null}
 
               {/* 4. Hours */}
+              {showHoursSection ? (
               <div className="space-y-3 border-t border-slate-100 pt-8">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
@@ -4082,14 +4320,21 @@ function BranchDetailContent() {
                       {branch.deliveryLocations.length === 0 && (
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                           ยังไม่มีพื้นที่จัดส่ง — ตารางเวลานี้ยังไม่มีผลกับลูกค้า
-                          จนกว่าจะเพิ่มอย่างน้อย 1 โซน{" "}
-                          <button
-                            type="button"
-                            onClick={() => setTab("locations")}
-                            className="font-semibold underline underline-offset-2"
-                          >
-                            ไปเพิ่มพื้นที่
-                          </button>
+                          จนกว่าจะเพิ่มอย่างน้อย 1 โซน
+                          {settingsSection === "hours" ? (
+                            " — เพิ่มโซนได้จากตั้งค่าสาขา"
+                          ) : (
+                            <>
+                              {" "}
+                              <button
+                                type="button"
+                                onClick={() => setTab("locations")}
+                                className="font-semibold underline underline-offset-2"
+                              >
+                                ไปเพิ่มพื้นที่
+                              </button>
+                            </>
+                          )}
                         </p>
                       )}
                       <BranchHoursEditor
@@ -4125,8 +4370,11 @@ function BranchDetailContent() {
                   )}
                 </div>
               </div>
+              ) : null}
 
               {/* 5. Types & price */}
+              {showBranchSection ? (
+              <>
               <div
                 id="settings-category"
                 className="space-y-3 border-t border-slate-100 pt-8"
@@ -4438,6 +4686,8 @@ function BranchDetailContent() {
                   </div>
                 </div>
               </div>
+              </>
+              ) : null}
 
               {!isMobileLayout ? (
               <div className="border-t border-slate-100 pt-5">

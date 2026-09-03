@@ -250,10 +250,10 @@ model Brand {
   nextDueAt          DateTime?
   /// Platform-granted SMS quota for owner/branch alert messages (not OTP / customer skewer SMS)
   smsQuotaGranted    Int                @default(0)
-  /// Brand-level LINE toggles (shared platform OA)
-  lineNotifyNewOrder       Boolean        @default(true)
-  lineNotifySkewerOrder    Boolean        @default(true)
-  lineNotifyDailySummary   Boolean        @default(true)
+  /// Brand-level LINE toggles (shared platform OA); off until owner enables
+  lineNotifyNewOrder       Boolean        @default(false)
+  lineNotifySkewerOrder    Boolean        @default(false)
+  lineNotifyDailySummary   Boolean        @default(false)
   createdAt          DateTime           @default(now())
   branches           Branch[]
   members            BrandMember[]

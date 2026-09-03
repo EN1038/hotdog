@@ -211,6 +211,9 @@ export async function POST(request: Request) {
             NEW_BRAND_DEFAULTS.skewerEnabled,
           serviceStartsAt,
           trialEndsAt,
+          lineNotifyNewOrder: false,
+          lineNotifySkewerOrder: false,
+          lineNotifyDailySummary: false,
         },
       });
 

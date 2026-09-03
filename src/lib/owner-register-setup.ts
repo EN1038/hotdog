@@ -129,6 +129,9 @@ export async function createOwnerRegistration(
         ...OWNER_TRIAL_FULL_MODULES,
         trialEndsAt,
         billingNote: OWNER_REGISTER_BILLING_NOTE,
+        lineNotifyNewOrder: false,
+        lineNotifySkewerOrder: false,
+        lineNotifyDailySummary: false,
       },
     });
 

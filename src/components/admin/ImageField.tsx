@@ -4,6 +4,8 @@ import { useId, useRef, useState } from "react";
 import { IconClose, IconImage, IconUpload } from "@/components/icons";
 import { adminInputClass, adminLabelClass } from "@/components/admin/AdminShell";
 import { ImageCropDialog } from "@/components/admin/ImageCropDialog";
+import { useToast } from "@/components/admin/Toast";
+import { validateImageFileForUpload } from "@/lib/upload-image-rules";
 
 type ImageFieldProps = {
   value: string;
@@ -24,6 +26,8 @@ type ImageFieldProps = {
   shopCode?: string | null;
   /** โฟลเดอร์ปลายทาง: Products | Branch | Staff | Brand | Site */
   folder?: "Products" | "Branch" | "Staff" | "Brand" | "Site";
+  /** โชว์ปุ่มวางลิงก์รูป (ปิดใน onboarding มือถือ) */
+  showUrlOption?: boolean;
 };
 
 export function ImageField({
@@ -39,15 +43,20 @@ export function ImageField({
   className = "",
   shopCode,
   folder = "Products",
+  showUrlOption = true,
 }: ImageFieldProps) {
+  const toast = useToast();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const cropSrcIsBlobRef = useRef(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showUrl, setShowUrl] = useState(false);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
+
+  function notifyError(message: string) {
+    toast.error("อัปโหลดรูปไม่สำเร็จ", message);
+  }
 
   function clearCropSrc() {
     if (cropSrc && cropSrcIsBlobRef.current) {
@@ -60,13 +69,18 @@ export function ImageField({
 
   function openCropFromCurrent() {
     if (!value.trim() || !cropAspect || cropAspect <= 0) return;
-    setError(null);
     cropSrcIsBlobRef.current = false;
     setCropSrc(value.trim());
   }
 
   async function uploadFile(file: File) {
-    setError(null);
+    const invalid = validateImageFileForUpload(file);
+    if (invalid) {
+      notifyError(invalid);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     setUploading(true);
     try {
       const body = new FormData();
@@ -85,7 +99,7 @@ export function ImageField({
       }
       onChange(data.url as string);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
+      notifyError(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -95,6 +109,14 @@ export function ImageField({
   function onPick(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
+
+    const invalid = validateImageFileForUpload(file);
+    if (invalid) {
+      notifyError(invalid);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     if (cropAspect && cropAspect > 0) {
       const url = URL.createObjectURL(file);
       cropSrcIsBlobRef.current = true;
@@ -123,13 +145,15 @@ export function ImageField({
         <label className={`${adminLabelClass} mb-0`} htmlFor={inputId}>
           {label}
         </label>
-        <button
-          type="button"
-          onClick={() => setShowUrl((v) => !v)}
-          className="text-xs text-gray-500 hover:text-gray-800"
-        >
-          {showUrl ? "ซ่อนลิงก์" : "ใส่ลิงก์แทน"}
-        </button>
+        {showUrlOption ? (
+          <button
+            type="button"
+            onClick={() => setShowUrl((v) => !v)}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            {showUrl ? "ซ่อนลิงก์" : "ใส่ลิงก์แทน"}
+          </button>
+        ) : null}
       </div>
       {hint ? (
         <p className="mb-2 text-[11px] leading-snug text-slate-500">{hint}</p>
@@ -231,13 +255,13 @@ export function ImageField({
                 : size === "thumb"
                   ? "เลือกรูป"
                   : cropAspect
-                    ? "เลือกรูปแล้วครอปตามขนาด"
-                    : "ลากรูปมาวาง หรือคลิกเพื่อเลือก"}
+                    ? "แตะเพื่อเลือกรูปจากมือถือ"
+                    : "แตะเพื่อเลือกรูป หรือลากมาวาง"}
             </span>
             {size !== "thumb" && (
               <span className="flex items-center gap-1 text-xs text-gray-600">
                 <IconImage size={14} />
-                JPG, PNG, WEBP, GIF · สูงสุด 5MB
+                ใช้รูปจากมือถือได้ · ไม่เกิน 5MB
               </span>
             )}
           </button>
@@ -247,28 +271,25 @@ export function ImageField({
           id={inputId}
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
+          accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
           className="sr-only"
           onChange={(e) => onPick(e.target.files)}
         />
       </div>
 
-      {showUrl && (
+      {showUrlOption && showUrl && (
         <div className="mt-2">
           <label className={adminLabelClass}>หรือวางลิงก์รูป</label>
           <input
             className={adminInputClass}
             value={value}
             onChange={(e) => {
-              setError(null);
               onChange(e.target.value);
             }}
             placeholder="https://... หรือ /uploads/..."
           />
         </div>
       )}
-
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
       {cropSrc && cropAspect ? (
         <ImageCropDialog

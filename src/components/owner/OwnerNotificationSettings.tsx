@@ -146,23 +146,27 @@ export function OwnerNotificationSettings() {
           (b.smsNotifyNewOrder || b.smsNotifySkewerOrder),
       );
       const savedPhone = smsBranches.find((b) => b.alertSmsPhone)?.alertSmsPhone ?? "";
+      const lineFlagsOn =
+        json.brand.lineNotifyNewOrder ||
+        json.brand.lineNotifySkewerOrder ||
+        json.brand.lineNotifyDailySummary;
+      // เปิดแผง LINE เมื่อตั้งค่าแล้วและมีบัญชีเชื่อมแล้วเท่านั้น
+      // (ค่า default เก่าที่เป็น true ทั้งคู่โดยยังไม่เชื่อม = ถือว่ายังไม่ตั้งค่า)
+      const activeLine = lineFlagsOn && json.line.linkedOwnerCount > 0;
 
       if (activeSms && savedPhone) {
         setSmsOpen(true);
         setLineOpen(false);
         setPhone(savedPhone);
         setVerifiedPhone(savedPhone);
-      } else if (
-        json.brand.lineNotifyNewOrder ||
-        json.brand.lineNotifySkewerOrder ||
-        json.brand.lineNotifyDailySummary
-      ) {
+      } else if (activeLine) {
         setSmsOpen(false);
         setLineOpen(true);
         setPhone("");
         setVerifiedPhone(null);
       } else {
-        setSmsOpen(true);
+        // ครั้งแรก / ยังไม่เลือกช่องทาง — ปิดทั้งคู่
+        setSmsOpen(false);
         setLineOpen(false);
         setPhone(savedPhone);
         setVerifiedPhone(savedPhone || null);
@@ -193,6 +197,8 @@ export function OwnerNotificationSettings() {
     return phone !== verifiedPhone;
   }, [phone, verifiedPhone]);
 
+  const smsVerified = Boolean(verifiedPhone && !phoneChanged);
+
   function resetOtp() {
     setOtpStep(false);
     setOtpCode("");
@@ -216,7 +222,7 @@ export function OwnerNotificationSettings() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error("ส่ง OTP ไม่สำเร็จ", json.error ?? "ลองใหม่อีกครั้ง");
+        toast.error("ส่งรหัสไม่สำเร็จ", json.error ?? "ลองใหม่อีกครั้ง");
         return;
       }
       setChallengeId(json.challengeId ?? "");
@@ -230,7 +236,7 @@ export function OwnerNotificationSettings() {
         typeof json.expiresIn === "number" ? json.expiresIn : OTP_TTL_SECONDS,
       );
     } catch {
-      toast.error("ส่ง OTP ไม่สำเร็จ", "เชื่อมต่อไม่ได้");
+      toast.error("ส่งรหัสไม่สำเร็จ", "เชื่อมต่อไม่ได้");
     } finally {
       setSendingOtp(false);
     }
@@ -238,11 +244,11 @@ export function OwnerNotificationSettings() {
 
   async function confirmOtp() {
     if (!challengeId || otpCode.replace(/\D/g, "").length < OTP_DIGIT_LENGTH) {
-      toast.error("กรุณากรอกรหัส OTP ให้ครบ");
+      toast.error("กรุณากรอกรหัสให้ครบ");
       return;
     }
     if (expiresIn <= 0) {
-      toast.error("รหัสหมดอายุ", "กรุณาขอรหัสใหม่");
+      toast.error("รหัสหมดอายุแล้ว", "กรุณาขอรหัสใหม่");
       return;
     }
     setSaving(true);
@@ -259,8 +265,10 @@ export function OwnerNotificationSettings() {
       }
       setVerifiedPhone(json.phone ?? phone);
       resetOtp();
-      toast.success("ยืนยันเบอร์แล้ว", "บันทึกการแจ้งเตือน SMS เรียบร้อย");
+      toast.success("ยืนยันเบอร์แล้ว", "พร้อมรับแจ้งเตือนทาง SMS");
       await load();
+      setSmsOpen(true);
+      setLineOpen(false);
     } catch {
       toast.error("ยืนยันไม่สำเร็จ", "เชื่อมต่อไม่ได้");
     } finally {
@@ -281,9 +289,11 @@ export function OwnerNotificationSettings() {
         toast.error("บันทึกไม่สำเร็จ", err.error ?? "ลองใหม่อีกครั้ง");
         return;
       }
-      toast.success("บันทึกแล้ว", "ตั้งค่าแจ้งเตือนผ่าน LINE");
+      toast.success("บันทึกแล้ว", "ตั้งค่าแจ้งเตือนทาง LINE แล้ว");
       resetOtp();
       await load();
+      setSmsOpen(false);
+      setLineOpen(true);
     } catch {
       toast.error("บันทึกไม่สำเร็จ", "เชื่อมต่อไม่ได้");
     } finally {
@@ -316,14 +326,14 @@ export function OwnerNotificationSettings() {
       <div>
         <h2 className="text-[17px] font-extrabold text-slate-900">แจ้งเตือน</h2>
         <p className="mt-1 text-[13px] text-slate-500">
-          เปิดช่องทางที่ต้องการตั้งค่า
+          เลือกวิธีรับแจ้งเตือนเมื่อมีออเดอร์ใหม่
         </p>
       </div>
 
       <div className="space-y-3">
         <NotifyChannelRow
           title="SMS"
-          subtitle="ส่งไปเบอร์โทร — ต้องยืนยัน OTP ก่อนใช้งาน"
+          subtitle="รับข้อความที่เบอร์โทร ต้องยืนยันรหัสก่อนใช้งาน"
           open={smsOpen}
           onToggle={toggleSms}
           icon={
@@ -334,14 +344,16 @@ export function OwnerNotificationSettings() {
         />
         {smsOpen ? (
           <div className="space-y-3 pl-1">
-            <OwnerSmsQuotaCard quota={data.sms} manageHref={undefined} />
+            {smsVerified ? (
+              <OwnerSmsQuotaCard quota={data.sms} />
+            ) : null}
             <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
               <div>
                 <label
                   htmlFor="owner-alert-phone"
                   className="mb-2 block text-[14px] font-medium text-slate-500"
                 >
-                  เบอร์รับ SMS
+                  เบอร์โทรที่รับแจ้งเตือน
                 </label>
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
@@ -362,13 +374,13 @@ export function OwnerNotificationSettings() {
                     className="w-full min-h-[3.75rem] rounded-2xl border border-slate-100 bg-white py-3 pl-[3.75rem] pr-4 text-[17px] font-semibold text-slate-900 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.1)] focus:border-site-primary-focus focus:outline-none focus:ring-2 focus:ring-site-primary-focus"
                   />
                 </div>
-                {verifiedPhone && !phoneChanged ? (
+                {smsVerified ? (
                   <p className="mt-2 text-[13px] font-semibold text-site-primary">
-                    ยืนยันแล้ว · {formatThaiPhone(verifiedPhone)}
+                    ยืนยันแล้ว ใช้งานที่ {formatThaiPhone(verifiedPhone!)}
                   </p>
                 ) : (
                   <p className="mt-2 text-[13px] text-slate-400">
-                    กรอกเบอร์แล้วกดส่ง OTP เพื่อยืนยันก่อนรับแจ้งเตือน
+                    กรอกเบอร์โทร แล้วกดส่งรหัสเพื่อยืนยัน
                   </p>
                 )}
               </div>
@@ -377,14 +389,14 @@ export function OwnerNotificationSettings() {
                 <div>
                   <p className="text-[14px] text-slate-600">
                     ส่งรหัสไปที่ {formatThaiPhone(phone)}
-                    {otpRefNo ? ` (Ref: ${otpRefNo})` : ""}
+                    {otpRefNo ? ` รหัสอ้างอิง ${otpRefNo}` : ""}
                   </p>
                   <label
                     id="owner-alert-otp-label"
                     htmlFor="owner-alert-otp"
                     className="mb-2 mt-4 block text-[14px] font-medium text-slate-500"
                   >
-                    รหัส OTP
+                    รหัสยืนยัน
                   </label>
                   <OtpDigitInput
                     id="owner-alert-otp"
@@ -409,7 +421,7 @@ export function OwnerNotificationSettings() {
                       onClick={() => void sendOtp()}
                       className="font-semibold text-site-primary disabled:opacity-40"
                     >
-                      {resendIn > 0 ? `ขอใหม่ ${resendIn}s` : "ขอรหัสใหม่"}
+                      {resendIn > 0 ? `ขอใหม่ ${resendIn} วินาที` : "ขอรหัสใหม่"}
                     </button>
                   </div>
                   <button
@@ -432,7 +444,7 @@ export function OwnerNotificationSettings() {
                   onClick={() => void sendOtp()}
                   className="min-h-[3.25rem] w-full rounded-2xl bg-site-primary text-[16px] font-bold text-white active:bg-site-primary-active disabled:opacity-50"
                 >
-                  {sendingOtp ? "กำลังส่ง OTP…" : "ส่งรหัส OTP"}
+                  {sendingOtp ? "กำลังส่งรหัส…" : "ส่งรหัสยืนยัน"}
                 </button>
               ) : null}
             </div>
@@ -441,7 +453,7 @@ export function OwnerNotificationSettings() {
 
         <NotifyChannelRow
           title="LINE"
-          subtitle="ติดต่อเจ้าหน้าที่ SkillSale"
+          subtitle="ให้ทีม SkillSale ช่วยตั้งค่าให้"
           open={lineOpen}
           onToggle={toggleLine}
           icon={
@@ -453,7 +465,7 @@ export function OwnerNotificationSettings() {
         {lineOpen ? (
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 pl-1">
             <p className="text-[14px] leading-relaxed text-slate-600">
-              แจ้งเตือนผ่าน LINE — ติดต่อทีม SkillSale เพื่อตั้งค่าและรับแจ้งเตือนจากร้าน
+              รับแจ้งเตือนทาง LINE ได้หลังติดต่อทีม SkillSale ให้ช่วยตั้งค่า
             </p>
             <a
               href={PLATFORM_LINE_ADD_URL}
@@ -472,7 +484,7 @@ export function OwnerNotificationSettings() {
             ) : null}
             {!data.line.platformReady ? (
               <p className="text-[13px] text-amber-700">
-                ระบบ LINE ยังไม่พร้อม — ติดต่อทีม SkillSale
+                ระบบ LINE ยังไม่พร้อม โปรดติดต่อทีม SkillSale
               </p>
             ) : null}
           </div>

@@ -1,51 +1,100 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useState } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 import { btnOutline, btnPrimary } from "@/components/admin/AdminShell";
+import { useToast } from "@/components/admin/Toast";
+import { sameOriginMediaProxyUrl } from "@/lib/share-media";
+
+function needsCorsBypass(src: string): boolean {
+  return /^https?:\/\//i.test(src);
+}
+
+/** Resolve any image src into a canvas-safe local URL (blob / data / same-origin). */
+async function resolveCanvasImageSrc(src: string): Promise<{
+  src: string;
+  revoke?: () => void;
+}> {
+  if (
+    src.startsWith("blob:") ||
+    src.startsWith("data:") ||
+    src.startsWith("/")
+  ) {
+    return { src };
+  }
+
+  if (!needsCorsBypass(src)) {
+    return { src };
+  }
+
+  // Spaces/CDN blocks canvas read without CORS — fetch via same-origin proxy.
+  const res = await fetch(sameOriginMediaProxyUrl(src));
+  if (!res.ok) {
+    throw new Error("โหลดรูปไม่สำเร็จ ลองเลือกรูปใหม่อีกครั้ง");
+  }
+  const blob = await res.blob();
+  if (!blob.type.startsWith("image/") && blob.type !== "application/octet-stream") {
+    throw new Error("ไฟล์นี้ไม่ใช่รูปภาพ");
+  }
+  const objectUrl = URL.createObjectURL(blob);
+  return {
+    src: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
+function loadHtmlImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () =>
+      reject(new Error("โหลดรูปไม่สำเร็จ ลองเลือกรูปใหม่อีกครั้ง"));
+    img.src = src;
+  });
+}
 
 async function cropToBlob(
   imageSrc: string,
   crop: Area,
   mime = "image/jpeg",
 ): Promise<Blob> {
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.crossOrigin = "anonymous";
-    img.src = imageSrc;
-  });
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(crop.width));
-  canvas.height = Math.max(1, Math.round(crop.height));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("ไม่สามารถครอปรูปได้");
-  ctx.drawImage(
-    image,
-    crop.x,
-    crop.y,
-    crop.width,
-    crop.height,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("ครอปรูปไม่สำเร็จ"))),
-      mime,
-      0.92,
+  const resolved = await resolveCanvasImageSrc(imageSrc);
+  try {
+    const image = await loadHtmlImage(resolved.src);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(crop.width));
+    canvas.height = Math.max(1, Math.round(crop.height));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("จัดขนาดรูปไม่สำเร็จ");
+    ctx.drawImage(
+      image,
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
     );
-  });
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) =>
+          blob ? resolve(blob) : reject(new Error("จัดขนาดรูปไม่สำเร็จ")),
+        mime,
+        0.92,
+      );
+    });
+  } finally {
+    resolved.revoke?.();
+  }
 }
 
 export function ImageCropDialog({
   open,
   imageSrc,
   aspect,
-  title = "ครอปรูป",
+  title = "จัดขนาดรูป",
   onCancel,
   onConfirm,
 }: {
@@ -56,6 +105,7 @@ export function ImageCropDialog({
   onCancel: () => void;
   onConfirm: (file: File) => void;
 }) {
+  const toast = useToast();
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [area, setArea] = useState<Area | null>(null);
@@ -77,7 +127,9 @@ export function ImageCropDialog({
       });
       onConfirm(file);
     } catch (e) {
-      console.error(e);
+      const message =
+        e instanceof Error ? e.message : "จัดขนาดรูปไม่สำเร็จ ลองใหม่อีกครั้ง";
+      toast.error("จัดขนาดรูปไม่สำเร็จ", message);
     } finally {
       setBusy(false);
     }
@@ -130,7 +182,7 @@ export function ImageCropDialog({
               disabled={busy || !area}
               onClick={() => void confirm()}
             >
-              {busy ? "กำลังครอป…" : "ใช้รูปนี้"}
+              {busy ? "กำลังจัดขนาด…" : "ใช้รูปนี้"}
             </button>
           </div>
         </div>

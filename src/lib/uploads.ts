@@ -7,18 +7,17 @@ import {
   type UploadFolder,
   uploadBufferToS3,
 } from "@/lib/s3";
+import {
+  ALLOWED_IMAGE_MIME_TYPES,
+  MAX_IMAGE_UPLOAD_BYTES,
+} from "@/lib/upload-image-rules";
 
 export const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 export const UPLOAD_PUBLIC_PREFIX = "/uploads";
 
-export const ALLOWED_IMAGE_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]);
+export const ALLOWED_IMAGE_TYPES = ALLOWED_IMAGE_MIME_TYPES;
 
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_BYTES;
 
 const EXT_BY_KIND: Record<string, string> = {
   jpeg: "jpg",
@@ -79,13 +78,13 @@ function detectImageKind(buffer: Buffer): ImageKind | null {
 
 export function assertAllowedImage(file: File) {
   if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-    throw new Error("รองรับเฉพาะไฟล์ JPG, PNG, WEBP หรือ GIF");
+    throw new Error("ไฟล์นี้ใช้ไม่ได้ ลองเลือกรูป JPG หรือ PNG จากมือถือ");
   }
   if (file.size <= 0) {
-    throw new Error("ไม่พบไฟล์รูปภาพ");
+    throw new Error("ไม่พบไฟล์รูป กรุณาเลือกใหม่อีกครั้ง");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error("ไฟล์ใหญ่เกิน 5MB");
+    throw new Error("รูปใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า 5MB");
   }
 }
 
@@ -98,7 +97,7 @@ export async function saveUploadedImage(
   const buffer = Buffer.from(await file.arrayBuffer());
   const kind = detectImageKind(buffer);
   if (!kind) {
-    throw new Error("ไฟล์ไม่ใช่รูปภาพที่รองรับ (ตรวจลายเซ็นไฟล์ไม่ผ่าน)");
+    throw new Error("ไฟล์นี้ใช้ไม่ได้ ลองเลือกรูป JPG หรือ PNG จากมือถือ");
   }
 
   const ext = EXT_BY_KIND[kind];

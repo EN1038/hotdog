@@ -53,6 +53,12 @@ import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosed
 import { SalesShareSection } from "@/components/merchant/SalesSummaryView";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
 import { ownerExpensesHref, ownerSummaryHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockHref, ownerStockFlowHref, ownerStockHistoryHref, ownerTopSellersHref, ownerParStockHref, ownerTomorrowPlansHref, ownerSalesDaysHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
+import { OwnerBrandProfileSetupModal } from "@/components/owner/OwnerBrandProfileSetupModal";
+import { OwnerAccountModal } from "@/components/owner/OwnerAccountModal";
+import {
+  isOwnerBrandSetupDismissed,
+  OWNER_BRAND_SETUP_FORCE_SHOW_ON_LOAD,
+} from "@/lib/owner-brand-setup";
 import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 const OWNER_HOME_TAB_KEY = "skillsale_owner_home_tab_v2";
@@ -474,10 +480,26 @@ function OwnerHomeInner() {
   const homeTabReady = useRef(false);
   const overviewTopRef = useRef<HTMLDivElement>(null);
   const urlReady = useRef(false);
+  const brandSetupHandled = useRef(false);
+  const skipAutoShopForBrandSetup = useRef(false);
   const [shopRedirecting, setShopRedirecting] = useState(false);
+  const [brandSetupOpen, setBrandSetupOpen] = useState(false);
+  const [ownerAccountOpen, setOwnerAccountOpen] = useState(false);
 
   useEffect(() => {
     if (homeTabReady.current) return;
+    const tabParam = searchParams.get("tab");
+    const setupBrand = searchParams.get("setupBrand") === "1";
+    if (tabParam === "sell" || setupBrand) {
+      setHomeTab("sell");
+      homeTabReady.current = true;
+      try {
+        window.sessionStorage.setItem(OWNER_HOME_TAB_KEY, "sell");
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (initialView.branchId) {
       setHomeTab("overview");
       homeTabReady.current = true;
@@ -494,7 +516,29 @@ function OwnerHomeInner() {
       setHomeTab(multi ? "overview" : "sell");
       homeTabReady.current = true;
     }
-  }, [loading, data, initialView.branchId]);
+  }, [loading, data, initialView.branchId, searchParams]);
+
+  useEffect(() => {
+    if (brandSetupHandled.current || loading || !data?.brand?.id) return;
+
+    const fromWelcome = searchParams.get("setupBrand") === "1";
+    if (!OWNER_BRAND_SETUP_FORCE_SHOW_ON_LOAD && !fromWelcome) return;
+
+    brandSetupHandled.current = true;
+    skipAutoShopForBrandSetup.current = true;
+
+    if (fromWelcome) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("setupBrand");
+      params.delete("tab");
+      const qs = params.toString();
+      router.replace(qs ? `/owner?${qs}` : "/owner", { scroll: false });
+    }
+
+    if (!isOwnerBrandSetupDismissed(data.brand.id)) {
+      setBrandSetupOpen(true);
+    }
+  }, [loading, data, searchParams, router]);
 
   function selectHomeTab(tab: OwnerHomeTab) {
     homeTabReady.current = true;
@@ -809,6 +853,8 @@ function OwnerHomeInner() {
   useEffect(() => {
     if (!data || loading) return;
     if (autoShopAttempted.current) return;
+    if (skipAutoShopForBrandSetup.current || brandSetupOpen) return;
+    if (searchParams.get("setupBrand") === "1") return;
     if (!shouldPreferShopFloor()) return;
     if (data.subscription?.writeAllowed === false) return;
 
@@ -831,7 +877,7 @@ function OwnerHomeInner() {
       }
       setShopRedirecting(false);
     })();
-  }, [data, loading]);
+  }, [data, loading, brandSetupOpen, searchParams]);
 
   if (loading && !data) {
     return (
@@ -1582,6 +1628,7 @@ function OwnerHomeInner() {
               brandName={brand.nameTh || brand.name}
               subscription={subscription}
               smsQuota={data?.smsQuota ?? null}
+              onOwnerAccountClick={() => setOwnerAccountOpen(true)}
             />
           ) : null}
         </>
@@ -1641,6 +1688,22 @@ function OwnerHomeInner() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {data?.brand?.id ? (
+        <>
+          <OwnerBrandProfileSetupModal
+            brandId={data.brand.id}
+            open={brandSetupOpen}
+            onClose={() => setBrandSetupOpen(false)}
+            onSaved={() => reload()}
+          />
+          <OwnerAccountModal
+            brandId={data.brand.id}
+            open={ownerAccountOpen}
+            onClose={() => setOwnerAccountOpen(false)}
+          />
+        </>
       ) : null}
     </div>
   );

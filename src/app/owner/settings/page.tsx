@@ -1,33 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   OwnerAppShell,
   useOwnerDashboard,
 } from "@/components/owner/OwnerAppShell";
 import { logout } from "@/components/LoginForm";
 import { IconChevronRight, IconLinkSuffix, IconLogout } from "@/components/icons";
-import { BrandColorPicker } from "@/components/BrandColorPicker";
 import {
   OwnerAccountCards,
   OwnerShopMenuSection,
   buildOwnerShopLinks,
 } from "@/components/owner/OwnerShopHub";
-import {
-  DEFAULT_BRAND_COLOR,
-  normalizePrimaryColor,
-} from "@/lib/color";
+import { OwnerBrandProfileSetupModal } from "@/components/owner/OwnerBrandProfileSetupModal";
+import { OwnerAccountModal } from "@/components/owner/OwnerAccountModal";
 import {
   enterOwnerStaffMode,
   type OwnerEnterStaffBranch,
 } from "@/lib/owner-enter-staff";
-import {
-  clearSkipAutoShopFloor,
-  getOwnerStartPreference,
-  OWNER_START_LABELS,
-  setOwnerStartPreference,
-  type OwnerStartPreference,
-} from "@/lib/owner-sole-start";
 import { useToast } from "@/components/admin/Toast";
 import { OwnerNotificationSettings } from "@/components/owner/OwnerNotificationSettings";
 
@@ -41,13 +31,12 @@ function OwnerSettingsInner() {
     (b) => !b.isTest && b.kind !== "WAREHOUSE",
   );
   const firstBranchId = liveBranches[0]?.id ?? data?.branches[0]?.id ?? null;
-  const [color, setColor] = useState(DEFAULT_BRAND_COLOR);
-  const [saving, setSaving] = useState(false);
   const [enteringStaff, setEnteringStaff] = useState(false);
   const [staffBranches, setStaffBranches] = useState<OwnerEnterStaffBranch[] | null>(
     null,
   );
-  const [startPref, setStartPref] = useState<OwnerStartPreference>("auto");
+  const [brandProfileOpen, setBrandProfileOpen] = useState(false);
+  const [ownerAccountOpen, setOwnerAccountOpen] = useState(false);
 
   const shopLinks = useMemo(
     () =>
@@ -72,42 +61,6 @@ function OwnerSettingsInner() {
       data?.stockEnabled,
     ],
   );
-
-  useEffect(() => {
-    if (data?.brand?.color) {
-      setColor(normalizePrimaryColor(data.brand.color, DEFAULT_BRAND_COLOR));
-    }
-  }, [data?.brand?.color]);
-
-  useEffect(() => {
-    setStartPref(getOwnerStartPreference());
-  }, []);
-
-  async function saveColor(next: string) {
-    if (!brandId) return;
-    const normalized = normalizePrimaryColor(next, DEFAULT_BRAND_COLOR);
-    setColor(normalized);
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/admin/brands/${brandId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ color: normalized }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error("บันทึกสีไม่สำเร็จ", err.error ?? "ลองใหม่อีกครั้ง");
-        return;
-      }
-      document.documentElement.style.setProperty("--site-primary", normalized);
-      toast.success("บันทึกสีแล้ว", "ธีมร้านอัปเดตแล้ว");
-      reload();
-    } catch {
-      toast.error("บันทึกสีไม่สำเร็จ", "เชื่อมต่อไม่ได้");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function goSell(branchId?: string) {
     if (enteringStaff) return;
@@ -138,72 +91,48 @@ function OwnerSettingsInner() {
     }
   }
 
-  function saveStartPref(next: OwnerStartPreference) {
-    setOwnerStartPreference(next);
-    setStartPref(next);
-    if (next !== "office") clearSkipAutoShopFloor();
-    toast.success("บันทึกแล้ว", OWNER_START_LABELS[next]);
-  }
-
   return (
     <div className="space-y-3 px-4 pb-6 pt-4">
-      <div className="rounded-3xl bg-white px-4 py-5 shadow-sm">
-        <p className="text-[13px] font-semibold text-slate-400">ร้านที่ใช้งาน</p>
-        <p className="mt-1 text-[20px] font-black text-slate-900">{brandName}</p>
-        {data?.soleOperator ? (
-          <p className="mt-2 rounded-xl bg-site-primary-banner px-3 py-2 text-[13px] font-semibold text-site-primary-strong">
-            แม่ค้าคนเดียว · สาขาเดียว — แนะนำเริ่มที่หน้าร้าน
-          </p>
+      <div className="overflow-hidden rounded-3xl bg-white shadow-sm">
+        <div className="px-4 py-5">
+          <p className="text-[13px] font-semibold text-slate-400">ร้านที่ใช้งาน</p>
+          <p className="mt-1 text-[20px] font-black text-slate-900">{brandName}</p>
+        </div>
+
+        {brandId ? (
+          <div className="border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setBrandProfileOpen(true)}
+              className="flex min-h-[3.75rem] w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left active:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] font-extrabold text-slate-900">
+                  โปรไฟล์แบรนด์
+                </p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                  ชื่อ โลโก้ และรูปปกของ {brandName}
+                </p>
+              </div>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => setOwnerAccountOpen(true)}
+              className="flex min-h-[3.75rem] w-full items-center justify-between gap-3 px-4 py-3 text-left active:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] font-extrabold text-slate-900">
+                  บัญชีเจ้าของ
+                </p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                  ชื่อเข้าสู่ระบบและสิทธิ์ดูแลร้าน
+                </p>
+              </div>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+            </button>
+          </div>
         ) : null}
-      </div>
-
-      <div className="rounded-3xl bg-white px-4 py-5 shadow-sm">
-        <p className="text-[17px] font-extrabold text-slate-900">เริ่มใช้งานวันละ</p>
-        <p className="mt-1 text-[13px] text-slate-500">
-          ลดการสลับหน้า — ล็อกอินแล้วไปหน้าร้านขายเลยได้
-        </p>
-        <div className="mt-3 space-y-2">
-          {(
-            ["auto", "shop", "office"] as const satisfies readonly OwnerStartPreference[]
-          ).map((option) => {
-            const active = startPref === option;
-            return (
-              <button
-                key={option}
-                type="button"
-                onClick={() => saveStartPref(option)}
-                className={`flex w-full rounded-2xl border px-4 py-3 text-left text-[14px] font-bold ${
-                  active
-                    ? "border-site-primary bg-site-primary/10 text-site-primary"
-                    : "border-slate-200 bg-slate-50 text-slate-800"
-                }`}
-              >
-                {OWNER_START_LABELS[option]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="rounded-3xl bg-white px-4 py-5 shadow-sm">
-        <p className="text-[17px] font-extrabold text-slate-900">สีธีมร้าน</p>
-        <p className="mt-1 text-[13px] text-slate-500">
-          ใช้กับหน้าพนักงาน หน้าเจ้าของร้าน และปุ่มหลักของแบรนด์
-        </p>
-        <div className="mt-4">
-          <BrandColorPicker
-            value={color}
-            onChange={(next) => void saveColor(next)}
-            disabled={saving || !brandId}
-          />
-        </div>
-        <div
-          className="mt-4 overflow-hidden rounded-2xl bg-site-primary px-4 py-3 text-white"
-          aria-hidden
-        >
-          <p className="text-xs font-medium text-white/80">ตัวอย่างหัวหน้า</p>
-          <p className="text-base font-black">{brandName}</p>
-        </div>
       </div>
 
       <OwnerShopMenuSection
@@ -222,6 +151,7 @@ function OwnerSettingsInner() {
           smsQuota={data?.smsQuota ?? null}
           hideSmsQuota
           hideSupport
+          hideProfileLinks
         />
       ) : null}
 
@@ -239,7 +169,7 @@ function OwnerSettingsInner() {
             {data?.subscription?.writeAllowed === false
               ? (data.subscription.writeBlockedReason ??
                 "แพ็กเกจหมดอายุชั่วคราว")
-              : "เข้าคีย์ออเดอร์ทันที · กด「บัญชีร้าน」เมื่อต้องจัดการแพ็กเกจ"}
+              : "เข้าคีย์ออเดอร์ทันที กดบัญชีร้านเมื่อต้องจัดการแพ็กเกจ"}
           </p>
         </div>
         <IconChevronRight size={20} className="text-slate-300" aria-hidden />
@@ -288,6 +218,23 @@ function OwnerSettingsInner() {
         <IconLogout size={20} />
         ออกจากระบบ
       </button>
+
+      {brandId ? (
+        <>
+          <OwnerBrandProfileSetupModal
+            brandId={brandId}
+            open={brandProfileOpen}
+            mode="settings"
+            onClose={() => setBrandProfileOpen(false)}
+            onSaved={() => reload()}
+          />
+          <OwnerAccountModal
+            brandId={brandId}
+            open={ownerAccountOpen}
+            onClose={() => setOwnerAccountOpen(false)}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

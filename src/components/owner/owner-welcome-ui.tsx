@@ -3,12 +3,30 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PlatformMark } from "@/components/PlatformMark";
-import { IconChevronRight } from "@/components/icons";
+import { IconBag, IconChevronRight } from "@/components/icons";
 import {
   OWNER_REGISTER_HEADER_BG,
   OWNER_REGISTER_TRIAL_ICON,
   IconLine,
 } from "@/components/owner/owner-register-ui";
+
+/** Welcome page palette — fixed greens, not site theme. */
+const W = {
+  deep: "#047857",
+  mid: "#0d9668",
+  bright: "#10b981",
+  teal: "#14b8a6",
+  lime: "#86efac",
+  soft: "#ecfdf5",
+  softRing: "#a7f3d0",
+  ink: "#0f172a",
+  muted: "#64748b",
+  pageTop: "#ffffff",
+  pageMid: "#f0fdf8",
+  pageBottom: "#d1fae5",
+} as const;
+
+const PAGE_BG = `linear-gradient(180deg, ${W.pageTop} 0%, ${W.pageMid} 42%, ${W.pageBottom} 100%)`;
 
 export type OwnerWelcomeReadyItem = {
   id: string;
@@ -48,94 +66,104 @@ function IconCheck() {
   );
 }
 
-function LucideIcon({
-  className = "h-6 w-6 text-site-primary",
-  children,
+function StepGlyph({
+  kind,
 }: {
-  className?: string;
-  children: ReactNode;
+  kind: OwnerWelcomeStep["icon"];
 }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {children}
-    </svg>
-  );
-}
+  const common = {
+    className: "h-6 w-6",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    "aria-hidden": true as const,
+    stroke: W.mid,
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
 
-function StepIcon({ kind }: { kind: OwnerWelcomeStep["icon"] }) {
   if (kind === "menu") {
     return (
-      <LucideIcon>
+      <svg {...common}>
         <path d="M16 13h6" />
         <path d="m16.5 6.5-3.914-3.914A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l1.79-1.79" />
         <path d="M19 10v6" />
-        <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" stroke="none" />
-      </LucideIcon>
+        <circle cx="7.5" cy="7.5" r=".5" fill={W.mid} stroke="none" />
+      </svg>
     );
   }
   if (kind === "store") {
     return (
-      <LucideIcon>
+      <svg {...common}>
         <path d="M10 22v-8" />
         <path d="M2.336 8.89 10 14l11.715-7.029" />
         <path d="M22 14a2 2 0 0 1-.971 1.715l-10 6a2 2 0 0 1-2.138-.05l-6-4A2 2 0 0 1 2 16v-6a2 2 0 0 1 .971-1.715l10-6a2 2 0 0 1 2.138.05l6 4A2 2 0 0 1 22 8z" />
-      </LucideIcon>
+      </svg>
     );
   }
   return (
-    <LucideIcon>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <line x1="19" x2="19" y1="8" y2="14" />
-      <line x1="22" x2="16" y1="11" y2="11" />
-    </LucideIcon>
+    <svg {...common}>
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
   );
 }
 
 function WelcomeReadyRow({ children }: { children: ReactNode }) {
   return (
-    <li className="flex items-center gap-3 rounded-2xl bg-site-primary-soft px-3.5 py-3 ring-1 ring-site-primary-soft">
+    <li
+      className="flex items-center gap-3 rounded-2xl px-3.5 py-3"
+      style={{
+        backgroundColor: W.soft,
+        boxShadow: `inset 0 0 0 1px ${W.softRing}`,
+      }}
+    >
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-site-primary text-white shadow-sm"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white shadow-sm"
+        style={{ backgroundColor: W.bright }}
         aria-hidden
       >
         <IconCheck />
       </span>
-      <span className="text-[14px] font-semibold leading-snug text-slate-900">
+      <span
+        className="text-[14px] font-semibold leading-snug"
+        style={{ color: W.ink }}
+      >
         {children}
       </span>
     </li>
   );
 }
 
-function WelcomeNextStep({
-  step,
-}: {
-  step: OwnerWelcomeStep;
-}) {
+function WelcomeNextStep({ step }: { step: OwnerWelcomeStep }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center text-center">
       <div className="relative w-full pb-3">
-        <div className="mx-auto flex h-[3.25rem] w-[3.25rem] items-center justify-center rounded-2xl bg-site-primary-soft ring-1 ring-site-primary-soft">
-          <StepIcon kind={step.icon} />
+        <div
+          className="mx-auto flex h-[3.25rem] w-[3.25rem] items-center justify-center rounded-2xl"
+          style={{
+            backgroundColor: W.soft,
+            boxShadow: `inset 0 0 0 1px ${W.softRing}`,
+          }}
+        >
+          <StepGlyph kind={step.icon} />
         </div>
-        <span className="absolute bottom-0 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-site-primary text-[11px] font-bold text-white ring-2 ring-white">
+        <span
+          className="absolute bottom-0 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full text-[11px] font-bold text-white ring-2 ring-white"
+          style={{ backgroundColor: W.mid }}
+        >
           {step.n}
         </span>
       </div>
-      <p className="text-[13px] font-bold leading-snug text-slate-900">
+      <p
+        className="text-[13px] font-bold leading-snug"
+        style={{ color: W.ink }}
+      >
         {step.title}
       </p>
-      <p className="mt-1 text-[11px] leading-snug text-slate-500">{step.hint}</p>
+      <p className="mt-1 text-[11px] leading-snug" style={{ color: W.muted }}>
+        {step.hint}
+      </p>
     </div>
   );
 }
@@ -178,6 +206,11 @@ function TrialProgressRing({
 }) {
   const displayDays =
     daysLeft != null && daysLeft >= 0 ? daysLeft : fallbackDays;
+  // progress prop is "used days" %; ring should show remaining portion
+  const remainingPct =
+    daysLeft != null && daysLeft >= 0
+      ? Math.max(8, Math.round((daysLeft / fallbackDays) * 100))
+      : Math.max(8, 100 - progress);
 
   return (
     <div className="relative flex h-[4.75rem] w-[4.75rem] shrink-0 items-center justify-center">
@@ -195,28 +228,67 @@ function TrialProgressRing({
           cy="18"
           r="15.5"
           fill="none"
-          stroke="var(--site-primary)"
+          stroke={W.bright}
           strokeWidth="3"
           strokeLinecap="round"
-          strokeDasharray={`${Math.max(8, progress)} 100`}
+          strokeDasharray={`${remainingPct} 100`}
         />
       </svg>
       <div className="text-center">
-        <p className="text-[22px] font-black tabular-nums leading-none text-site-primary">
+        <p
+          className="text-[22px] font-black tabular-nums leading-none"
+          style={{ color: W.mid }}
+        >
           {displayDays}
         </p>
-        <p className="mt-0.5 text-[11px] font-bold text-site-primary/85">วัน</p>
+        <p
+          className="mt-0.5 text-[11px] font-bold"
+          style={{ color: W.mid }}
+        >
+          วัน
+        </p>
       </div>
     </div>
   );
 }
 
+function HeroWaveDecor() {
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.18]"
+      viewBox="0 0 400 220"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden
+    >
+      <path
+        d="M-20 140 Q80 60 180 110 T400 90"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M-10 170 Q100 90 200 140 T410 120"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="1"
+      />
+      <circle cx="320" cy="48" r="36" fill="#ffffff" opacity="0.12" />
+      <circle cx="360" cy="90" r="22" fill="#ffffff" opacity="0.1" />
+    </svg>
+  );
+}
+
 export function OwnerWelcomeLoading() {
   return (
-    <main className="min-h-dvh bg-[#f4f8f6]">
+    <main className="min-h-dvh" style={{ background: PAGE_BG }}>
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
-        <div className="h-10 w-10 animate-pulse rounded-full bg-site-primary/20" />
-        <p className="text-sm font-medium text-slate-500">กำลังเตรียมร้าน…</p>
+        <div
+          className="h-10 w-10 animate-pulse rounded-full"
+          style={{ backgroundColor: `${W.bright}33` }}
+        />
+        <p className="text-sm font-medium" style={{ color: W.muted }}>
+          กำลังเตรียมร้าน…
+        </p>
       </div>
     </main>
   );
@@ -234,19 +306,30 @@ export function OwnerWelcomeContent({
   lineUrl,
 }: OwnerWelcomeContentProps) {
   return (
-    <main className="min-h-dvh bg-[#f4f8f6]">
+    <main className="min-h-dvh" style={{ background: PAGE_BG }}>
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
         <div className="flex shrink-0 justify-center py-3">
           <PlatformMark placement="login" height={40} priority />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-          <section className="relative mt-2 overflow-hidden rounded-[1.75rem] shadow-[0_16px_48px_-16px_rgba(16,94,57,0.35)]">
+          <section
+            className="relative mt-2 overflow-hidden rounded-[1.75rem]"
+            style={{
+              boxShadow: "0 16px 48px -16px rgba(4,120,87,0.4)",
+            }}
+          >
             <div
-              className="relative bg-cover bg-center bg-no-repeat px-5 pb-16 pt-8 text-center"
+              className="relative overflow-hidden bg-cover bg-center bg-no-repeat px-5 pb-16 pt-8 text-center"
               style={{ backgroundImage: `url('${OWNER_REGISTER_HEADER_BG}')` }}
             >
-              <div className="absolute inset-0 bg-site-primary/85" />
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: `linear-gradient(160deg, ${W.deep}f2 0%, ${W.mid}e8 55%, ${W.teal}d9 100%)`,
+                }}
+              />
+              <HeroWaveDecor />
               <div className="relative">
                 <p className="text-[13px] font-bold tracking-wide text-white/90">
                   เปิดร้านสำเร็จ
@@ -254,7 +337,10 @@ export function OwnerWelcomeContent({
                 <h1 className="mt-1 text-[2rem] font-black leading-tight tracking-tight text-white">
                   ยินดีต้อนรับ!
                 </h1>
-                <p className="mt-3 text-[1.35rem] font-extrabold leading-snug text-white/90">
+                <p
+                  className="mt-3 text-[1.35rem] font-extrabold leading-snug"
+                  style={{ color: W.lime }}
+                >
                   {brandName}
                 </p>
                 <p className="mt-2 text-[14px] font-medium leading-relaxed text-white/85">
@@ -272,16 +358,25 @@ export function OwnerWelcomeContent({
                     progress={trialProgress}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-extrabold text-slate-900">
+                    <p
+                      className="text-[15px] font-extrabold"
+                      style={{ color: W.mid }}
+                    >
                       ทดลองใช้ฟรี {trialDaysTotal} วัน
                     </p>
                     {trialLabel ? (
-                      <p className="mt-0.5 text-[13px] font-semibold text-slate-600">
+                      <p
+                        className="mt-0.5 text-[13px] font-semibold"
+                        style={{ color: W.muted }}
+                      >
                         ถึง {trialLabel}
                         {daysLeftText ? ` · ${daysLeftText}` : ""}
                       </p>
                     ) : null}
-                    <p className="mt-1 text-[12px] leading-relaxed text-slate-500">
+                    <p
+                      className="mt-1 text-[12px] leading-relaxed"
+                      style={{ color: W.muted }}
+                    >
                       ลองครบทุกฟีเจอร์ รวมสต๊อก · ครัว · รายงาน
                     </p>
                   </div>
@@ -292,7 +387,7 @@ export function OwnerWelcomeContent({
                       alt=""
                       width={72}
                       height={68}
-                      className="h-full w-full object-contain object-right drop-shadow-[0_8px_16px_rgba(16,94,57,0.22)]"
+                      className="h-full w-full object-contain object-right drop-shadow-[0_8px_16px_rgba(16,185,129,0.22)]"
                       aria-hidden
                     />
                   </span>
@@ -301,22 +396,38 @@ export function OwnerWelcomeContent({
             </div>
           </section>
 
-          <section className="mt-4 rounded-[1.35rem] bg-white p-4 shadow-[0_4px_24px_-10px_rgba(15,23,42,0.1)] ring-1 ring-slate-100">
-            <p className="text-[16px] font-extrabold text-slate-900">
+          <section className="relative mt-4 overflow-hidden rounded-[1.35rem] bg-white p-4 shadow-[0_4px_24px_-10px_rgba(15,23,42,0.1)] ring-1 ring-slate-100">
+            <p
+              className="text-[16px] font-extrabold"
+              style={{ color: W.ink }}
+            >
               สิ่งที่พร้อมแล้ว
             </p>
-            <ul className="mt-3 space-y-2">
+            <ul className="relative z-[1] mt-3 space-y-2 pr-14 sm:pr-16">
               {readyItems.map((item) => (
                 <WelcomeReadyRow key={item.id}>{item.label}</WelcomeReadyRow>
               ))}
             </ul>
+            <div
+              className="pointer-events-none absolute bottom-3 right-3 flex h-14 w-14 items-center justify-center rounded-2xl opacity-90"
+              style={{ backgroundColor: W.soft }}
+              aria-hidden
+            >
+              <IconBag size={28} style={{ color: W.mid }} />
+            </div>
           </section>
 
           <section className="mt-4 rounded-[1.35rem] bg-white p-4 shadow-[0_4px_24px_-10px_rgba(15,23,42,0.1)] ring-1 ring-slate-100">
-            <p className="text-[16px] font-extrabold text-slate-900">
+            <p
+              className="text-[16px] font-extrabold"
+              style={{ color: W.ink }}
+            >
               ขั้นตอนถัดไป
             </p>
-            <p className="mt-0.5 text-[13px] font-medium text-slate-500">
+            <p
+              className="mt-0.5 text-[13px] font-medium"
+              style={{ color: W.muted }}
+            >
               ทำ 3 อย่างนี้ก่อนเปิดขายจริง
             </p>
 
@@ -325,8 +436,12 @@ export function OwnerWelcomeContent({
 
           <div className="mt-6 space-y-3 pb-2">
             <Link
-              href="/owner"
-              className="grid min-h-[3.75rem] w-full grid-cols-[1fr_auto] items-center rounded-[1.125rem] bg-site-primary px-5 text-[17px] font-bold text-white shadow-site-primary-button transition-all duration-200 hover:bg-site-primary-hover active:scale-[0.99] active:bg-site-primary-active"
+              href="/owner?tab=sell&setupBrand=1"
+              className="grid min-h-[3.75rem] w-full grid-cols-[1fr_auto] items-center rounded-[1.125rem] px-5 text-[17px] font-bold text-white transition-all duration-200 hover:brightness-[1.03] active:scale-[0.99]"
+              style={{
+                background: `linear-gradient(90deg, ${W.mid} 0%, ${W.bright} 50%, ${W.teal} 100%)`,
+                boxShadow: "0 10px 28px -8px rgba(16,185,129,0.55)",
+              }}
             >
               <span className="text-center">เริ่มใช้งาน</span>
               <IconChevronRight className="mr-1" />
@@ -342,11 +457,15 @@ export function OwnerWelcomeContent({
               ติดต่อทีมงาน
             </a>
 
-            <p className="pt-2 text-center text-[15px] text-slate-500">
+            <p
+              className="pt-2 text-center text-[15px]"
+              style={{ color: W.muted }}
+            >
               มีบัญชีแล้ว?{" "}
               <Link
                 href="/owner/login"
-                className="font-bold text-site-primary transition-colors hover:text-site-primary-hover hover:underline"
+                className="font-bold transition-opacity hover:underline hover:opacity-85"
+                style={{ color: W.mid }}
               >
                 เข้าสู่ระบบ
               </Link>

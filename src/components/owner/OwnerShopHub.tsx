@@ -184,6 +184,9 @@ export function OwnerAccountCards({
   smsQuota,
   hideSmsQuota,
   hideSupport,
+  hideProfileLinks,
+  onBrandProfileClick,
+  onOwnerAccountClick,
 }: {
   brandId: string;
   brandName: string;
@@ -192,6 +195,12 @@ export function OwnerAccountCards({
   /** ซ่อนเมื่อแสดงโควตา SMS / ติดต่อ LINE ในส่วนแจ้งเตือนแล้ว */
   hideSmsQuota?: boolean;
   hideSupport?: boolean;
+  /** ซ่อนโปรไฟล์แบรนด์ / บัญชีเจ้าของ (ย้ายไปการ์ดอื่นแล้ว) */
+  hideProfileLinks?: boolean;
+  /** ถ้ามี จะเปิด modal แทนลิงก์ไป /admin/brands */
+  onBrandProfileClick?: () => void;
+  /** ถ้ามี จะเปิด modal แทนลิงก์ไปหน้าบัญชีแอดมิน */
+  onOwnerAccountClick?: () => void;
 }) {
   if (!subscription) return null;
 
@@ -230,40 +239,80 @@ export function OwnerAccountCards({
       <div>
         <p className="text-sm font-bold text-slate-800">บัญชีและแพ็กเกจ</p>
         <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-          โปรไฟล์ร้าน · แพ็กเกจ · ติดต่อทีมงาน
+          {hideProfileLinks
+            ? "แพ็กเกจ · ติดต่อทีมงาน"
+            : "โปรไฟล์ร้าน · แพ็กเกจ · ติดต่อทีมงาน"}
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
-        <Link
-          href="/admin/brands"
-          className="flex min-h-[3.75rem] items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 active:bg-slate-50"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-slate-900">
-              โปรไฟล์แบรนด์
-            </p>
-            <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-              ชื่อ โลโก้ รูปปก · {brandName}
-            </p>
-          </div>
-          <IconChevronRight size={18} className="text-slate-300" aria-hidden />
-        </Link>
-        <Link
-          href={`/admin/brands/${brandId}/admins`}
-          className="flex min-h-[3.75rem] items-center justify-between gap-3 px-4 py-3 active:bg-slate-50"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-slate-900">
-              บัญชีเจ้าของ
-            </p>
-            <p className="mt-0.5 text-[12px] font-medium text-slate-500">
-              ดูข้อมูลล็อกอินและทีมแอดมิน
-            </p>
-          </div>
-          <IconChevronRight size={18} className="text-slate-300" aria-hidden />
-        </Link>
-      </div>
+      {!hideProfileLinks ? (
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+          {onBrandProfileClick ? (
+            <button
+              type="button"
+              onClick={onBrandProfileClick}
+              className="flex min-h-[3.75rem] w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left active:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] font-extrabold text-slate-900">
+                  โปรไฟล์แบรนด์
+                </p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                  ชื่อ โลโก้ และรูปปกของ {brandName}
+                </p>
+              </div>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+            </button>
+          ) : (
+            <Link
+              href="/admin/brands"
+              className="flex min-h-[3.75rem] items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 active:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] font-extrabold text-slate-900">
+                  โปรไฟล์แบรนด์
+                </p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                  ชื่อ โลโก้ และรูปปกของ {brandName}
+                </p>
+              </div>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+            </Link>
+          )}
+          {onOwnerAccountClick ? (
+            <button
+              type="button"
+              onClick={onOwnerAccountClick}
+              className="flex min-h-[3.75rem] w-full items-center justify-between gap-3 px-4 py-3 text-left active:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] font-extrabold text-slate-900">
+                  บัญชีเจ้าของ
+                </p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                  ชื่อเข้าสู่ระบบและสิทธิ์ดูแลร้าน
+                </p>
+              </div>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+            </button>
+          ) : (
+            <Link
+              href={`/admin/brands/${brandId}/admins`}
+              className="flex min-h-[3.75rem] items-center justify-between gap-3 px-4 py-3 active:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] font-extrabold text-slate-900">
+                  บัญชีเจ้าของ
+                </p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+                  ชื่อเข้าสู่ระบบและสิทธิ์ดูแลร้าน
+                </p>
+              </div>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
+            </Link>
+          )}
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">

@@ -30,7 +30,7 @@ const START_STEPS: readonly OwnerWelcomeStep[] = [
   {
     n: 1,
     title: "ตั้งเมนูและราคา",
-    hint: "ถ้ายังไม่ได้นำเข้าจากแม่แบบ",
+    hint: "ถ้ายังไม่ได้ นำเข้าจากแม่แบบ",
     icon: "menu",
   },
   {

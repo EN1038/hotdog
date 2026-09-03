@@ -44,6 +44,11 @@ import {
 } from "@/lib/sales-report-shared";
 import type { SalesShareSlice } from "@/lib/sales-share";
 import {
+  IconChevronRight,
+  IconChevronUp,
+  IconLinkSuffix,
+} from "@/components/icons";
+import {
   captureElementToPng,
   downloadPngDataUrl,
   sharePngDataUrl,
@@ -459,7 +464,7 @@ export default function StaffSummaryPage() {
                   : "ยอดขาย · สต๊อก · ของเสีย · สินค้าขายดี"}
             </p>
             {tab === "overview" && exportMsg ? (
-              <p className="mt-1 text-[12px] font-semibold text-emerald-700">
+              <p className="mt-1 text-[12px] font-semibold text-site-primary">
                 {exportMsg}
               </p>
             ) : null}
@@ -542,14 +547,14 @@ export default function StaffSummaryPage() {
                   </p>
                 </div>
               )}
-            <section className="rounded-2xl bg-emerald-700 px-3.5 py-3.5 text-white">
+            <section className="rounded-2xl bg-site-primary-gradient px-3.5 py-3.5 text-white shadow-site-primary-card">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-emerald-100">ขายได้</p>
-                  <p className="mt-0.5 text-[12px] font-medium text-emerald-100/85">
+                  <p className="text-[13px] font-bold text-white/90">ขายได้</p>
+                  <p className="mt-0.5 text-[12px] font-medium text-white/80">
                     {rangeLabelWithTime}
                   </p>
-                  <p className="mt-1 text-[11px] font-medium text-emerald-100/75">
+                  <p className="mt-1 text-[11px] font-medium text-white/75">
                     {shiftHoursLabel
                       ? "เวลาเปิด–ปิดรอบ · ขายข้ามคืนรวมในรอบนั้น"
                       : "นับตามวันเปิดรอบ · ขายข้ามคืนรวมในรอบนั้น"}
@@ -559,7 +564,7 @@ export default function StaffSummaryPage() {
                   <p className="text-[32px] font-black tabular-nums leading-none tracking-tight">
                     ฿{formatPrice(stats.completedRevenue)}
                   </p>
-                  <p className="mt-1.5 text-[13px] font-bold tabular-nums text-emerald-100">
+                  <p className="mt-1.5 text-[13px] font-bold tabular-nums text-white/90">
                     {formatPrice(stats.completedCount)} บิล
                     {stats.openCount > 0
                       ? ` · ทำอยู่ ${formatPrice(stats.openCount)}`
@@ -567,26 +572,26 @@ export default function StaffSummaryPage() {
                   </p>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-1.5 rounded-xl bg-emerald-900/25 px-1.5 py-2.5 text-center">
+              <div className="mt-3 grid grid-cols-3 gap-1.5 rounded-xl bg-black/15 px-1.5 py-2.5 text-center">
                 <div className="px-1">
-                  <p className="text-[11px] font-semibold text-emerald-100/90">เงินสด</p>
+                  <p className="text-[11px] font-semibold text-white/85">เงินสด</p>
                   <p className="mt-1 text-[15px] font-black tabular-nums leading-tight">
                     ฿{formatPrice(stats.cashRevenue)}
                   </p>
                 </div>
                 <div className="border-x border-white/15 px-1">
-                  <p className="text-[11px] font-semibold text-emerald-100/90">โอน</p>
+                  <p className="text-[11px] font-semibold text-white/85">โอน</p>
                   <p className="mt-1 text-[15px] font-black tabular-nums leading-tight">
                     ฿{formatPrice(stats.transferRevenue)}
                   </p>
                 </div>
                 <div className="px-1">
-                  <p className="text-[11px] font-semibold text-emerald-100/90">ชิ้น</p>
+                  <p className="text-[11px] font-semibold text-white/85">ชิ้น</p>
                   <p className="mt-1 text-[15px] font-black tabular-nums leading-tight">
                     {formatPrice(stats.soldQty)}
                   </p>
                   {stats.giftQuantity > 0 ? (
-                    <p className="mt-0.5 text-[10px] font-semibold text-emerald-100/80">
+                    <p className="mt-0.5 text-[10px] font-semibold text-white/75">
                       แถม {formatPrice(stats.giftQuantity)}
                     </p>
                   ) : null}
@@ -732,9 +737,9 @@ export default function StaffSummaryPage() {
                       ? ` · ${agingAttention} รายการ`
                       : " · ไม่มี"}
                   </p>
-                  <span className="text-[13px] font-extrabold text-slate-500">
-                    ดูรายการ →
-                  </span>
+                  <IconLinkSuffix size={14} className="text-[13px] font-extrabold text-slate-500">
+                    ดูรายการ
+                  </IconLinkSuffix>
                 </button>
               </div>
             ) : null}
@@ -760,7 +765,11 @@ export default function StaffSummaryPage() {
                   </p>
                 </div>
                 <span className="text-lg text-slate-400" aria-hidden>
-                  {showOverviewShifts ? "▴" : "→"}
+                  {showOverviewShifts ? (
+                    <IconChevronUp size={18} />
+                  ) : (
+                    <IconChevronRight size={18} />
+                  )}
                 </span>
               </button>
               {stockOn ? (
@@ -777,9 +786,7 @@ export default function StaffSummaryPage() {
                         : "ยังไม่เคยนับ"}
                     </p>
                   </div>
-                  <span className="text-lg" aria-hidden>
-                    →
-                  </span>
+                  <IconChevronRight size={18} aria-hidden />
                 </button>
               ) : null}
             </div>

@@ -6,7 +6,7 @@ import {
   useOwnerDashboard,
 } from "@/components/owner/OwnerAppShell";
 import { logout } from "@/components/LoginForm";
-import { IconLogout } from "@/components/icons";
+import { IconChevronRight, IconLinkSuffix, IconLogout } from "@/components/icons";
 import { BrandColorPicker } from "@/components/BrandColorPicker";
 import {
   OwnerAccountCards,
@@ -151,7 +151,7 @@ function OwnerSettingsInner() {
         <p className="text-[13px] font-semibold text-slate-400">ร้านที่ใช้งาน</p>
         <p className="mt-1 text-[20px] font-black text-slate-900">{brandName}</p>
         {data?.soleOperator ? (
-          <p className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-semibold text-emerald-900">
+          <p className="mt-2 rounded-xl bg-site-primary-banner px-3 py-2 text-[13px] font-semibold text-site-primary-strong">
             แม่ค้าคนเดียว · สาขาเดียว — แนะนำเริ่มที่หน้าร้าน
           </p>
         ) : null}
@@ -185,8 +185,6 @@ function OwnerSettingsInner() {
         </div>
       </div>
 
-      <OwnerNotificationSettings />
-
       <div className="rounded-3xl bg-white px-4 py-5 shadow-sm">
         <p className="text-[17px] font-extrabold text-slate-900">สีธีมร้าน</p>
         <p className="mt-1 text-[13px] text-slate-500">
@@ -213,6 +211,8 @@ function OwnerSettingsInner() {
         title="ร้าน"
         subtitle="จัดการเหมือนแอดมินแบรนด์"
       />
+
+      <OwnerNotificationSettings />
 
       {brandId ? (
         <OwnerAccountCards
@@ -242,7 +242,7 @@ function OwnerSettingsInner() {
               : "เข้าคีย์ออเดอร์ทันที · กด「บัญชีร้าน」เมื่อต้องจัดการแพ็กเกจ"}
           </p>
         </div>
-        <span className="text-xl text-slate-300">›</span>
+        <IconChevronRight size={20} className="text-slate-300" aria-hidden />
       </button>
 
       {staffBranches ? (
@@ -270,7 +270,9 @@ function OwnerSettingsInner() {
                   <span className="truncate font-semibold text-slate-900">
                     {b.branchName}
                   </span>
-                  <span className="text-sm font-bold text-site-primary">ขาย →</span>
+                  <IconLinkSuffix size={14} className="text-sm font-bold text-site-primary">
+                    ขาย
+                  </IconLinkSuffix>
                 </button>
               ))}
             </div>

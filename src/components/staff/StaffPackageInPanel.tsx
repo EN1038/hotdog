@@ -15,7 +15,7 @@ import {
   planLotNumbersForRows,
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
-import { IconPrinter } from "@/components/icons";
+import { IconPrinter, IconChevronDown, IconLinkSuffix } from "@/components/icons";
 
 type MenuItem = {
   id: string;
@@ -566,9 +566,9 @@ export function StaffPackageInPanel({
                         >
                           {displayName ?? "เลือกรายการ"}
                         </span>
-                        <span className="shrink-0 text-[12px] font-bold text-site-primary">
-                          {item ? "เปลี่ยน ›" : "เลือก ›"}
-                        </span>
+                        <IconLinkSuffix size={12} className="shrink-0 text-[12px] font-bold text-site-primary">
+                          {item ? "เปลี่ยน" : "เลือก"}
+                        </IconLinkSuffix>
                       </button>
                       <p className="mt-1.5 text-[11px] font-semibold leading-snug text-slate-500">
                         ผลิต {formatThaiDateKey(row.producedAt)} · รับ{" "}
@@ -591,11 +591,11 @@ export function StaffPackageInPanel({
                     aria-label={row.expanded ? "ย่อการ์ด" : "ขยายการ์ด"}
                   >
                     <span
-                      className={`text-lg transition-transform ${
+                      className={`transition-transform ${
                         row.expanded ? "rotate-180" : ""
                       }`}
                     >
-                      ▾
+                      <IconChevronDown size={18} aria-hidden />
                     </span>
                   </button>
                   <button
@@ -690,7 +690,7 @@ export function StaffPackageInPanel({
                       aria-pressed={row.printSticker}
                       className={`flex h-[46px] w-12 shrink-0 items-center justify-center rounded-xl border-2 transition active:scale-95 ${
                         row.printSticker
-                          ? "border-emerald-500 bg-emerald-500 text-white shadow-sm"
+                          ? "border-site-primary bg-site-primary text-white shadow-sm"
                           : "border-slate-200 bg-white text-slate-400"
                       }`}
                     >
@@ -737,7 +737,7 @@ export function StaffPackageInPanel({
           <button
             type="button"
             onClick={addEmptyRow}
-            className="flex min-h-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 px-3 text-emerald-700 active:bg-emerald-50"
+            className="flex min-h-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-site-primary-soft bg-site-primary-soft/40 px-3 text-site-primary active:bg-site-primary-soft"
           >
             <span className="text-[28px] font-light leading-none">+</span>
             <span className="text-[12px] font-extrabold">เพิ่มรายการ</span>
@@ -749,7 +749,7 @@ export function StaffPackageInPanel({
         type="button"
         disabled={busy}
         onClick={() => void submit()}
-        className="mt-4 w-full rounded-2xl bg-emerald-600 py-4 text-[16px] font-extrabold text-white shadow-md disabled:opacity-60"
+        className="mt-4 w-full rounded-2xl bg-site-primary py-4 text-[16px] font-extrabold text-white shadow-md disabled:opacity-60"
       >
         {busy
           ? "กำลังบันทึก…"

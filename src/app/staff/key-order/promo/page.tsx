@@ -136,7 +136,7 @@ export default function StaffPromoKeyOrderIndexPage() {
                   ? "from-amber-500 to-orange-500"
                   : index % 3 === 1
                     ? "from-sky-500 to-blue-600"
-                    : "from-emerald-500 to-teal-600";
+                    : "from-site-primary to-site-primary-active";
 
               const cardClass = `relative flex min-h-[6.5rem] items-center gap-3.5 overflow-hidden rounded-2xl bg-gradient-to-br ${tone} px-4 py-4 text-white shadow-sm transition ${
                 sellable ? "active:scale-[0.98]" : "opacity-90"

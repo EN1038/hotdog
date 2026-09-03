@@ -102,7 +102,7 @@ export function StaffOrderSummary({
           </div>
         ) : null}
         {discount > 0 ? (
-          <div className="flex justify-between text-emerald-700">
+          <div className="flex justify-between text-site-primary">
             <span>ส่วนลด</span>
             <span className="tabular-nums">−{formatPrice(discount)}฿</span>
           </div>
@@ -253,7 +253,7 @@ export function StaffKeyOrderSuccessModal({
         aria-labelledby={titleId}
         className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
       >
-        <p className="text-center text-sm font-semibold text-emerald-700">
+        <p className="text-center text-sm font-semibold text-site-primary">
           สั่งสำเร็จ
         </p>
         <h2

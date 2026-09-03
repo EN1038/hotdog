@@ -60,6 +60,7 @@ import {
   IconBack,
   IconChevronRight,
   IconClose,
+  IconLinkSuffix,
   IconDelivery,
   IconEdit,
   IconMic,
@@ -4729,7 +4730,7 @@ function BranchDetailContent() {
                   ไปแท็บหมวดหมู่เพื่อสร้าง เช่น เมนูปิ้ง ลูกชิ้น เครื่องดื่ม
                 </span>
                 <span className="mt-2 inline-block text-sm font-medium text-site-primary">
-                  ไปสร้างหมวดหมู่ →
+                  <IconLinkSuffix size={14}>ไปสร้างหมวดหมู่</IconLinkSuffix>
                 </span>
               </span>
             </button>
@@ -4754,7 +4755,7 @@ function BranchDetailContent() {
                   ไปแท็บตัวเลือกเพื่อสร้างชุด เช่น ระดับความเผ็ด ซอส
                 </span>
                 <span className="mt-2 inline-block text-sm font-medium text-site-primary">
-                  ไปสร้างตัวเลือก →
+                  <IconLinkSuffix size={14}>ไปสร้างตัวเลือก</IconLinkSuffix>
                 </span>
               </span>
             </button>

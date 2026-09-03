@@ -670,7 +670,7 @@ export default function StaffPage() {
               ) : null}
               {!isViewingToday ? " · " : null}
               {branchStatus?.isOpen ? (
-                <span className="text-emerald-700">ร้านเปิด</span>
+                <span className="text-site-primary">ร้านเปิด</span>
               ) : (
                 <span className="text-red-600">ร้านปิด</span>
               )}
@@ -707,7 +707,7 @@ export default function StaffPage() {
                 onClick={disableSound}
                 aria-label="ปิดเสียงแจ้งเตือน"
                 title="ปิดเสียงแจ้งเตือน"
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-site-primary-soft bg-site-primary-soft text-site-primary-strong"
               >
                 <IconVolume size={20} aria-hidden />
               </button>
@@ -720,7 +720,7 @@ export default function StaffPage() {
                 title={printerLabel}
                 className={`flex h-10 w-10 items-center justify-center rounded-xl border ${
                   printerConfigured
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                    ? "border-site-primary-soft bg-site-primary-soft text-site-primary-strong"
                     : "border-amber-300 bg-amber-50 text-amber-950"
                 }`}
               >

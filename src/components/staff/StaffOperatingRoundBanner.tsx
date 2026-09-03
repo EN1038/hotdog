@@ -56,7 +56,7 @@ export function StaffOperatingRoundBanner({
     const dayLabel = formatOperatingDayLabel(operatingDay);
     return (
       <div
-        className={`rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-emerald-950 ${compact ? "py-2" : "py-2.5"}`}
+        className={`rounded-xl border border-site-primary-soft bg-site-primary-soft px-3 text-site-primary-strong ${compact ? "py-2" : "py-2.5"}`}
         role="status"
       >
         <p className={`font-semibold ${compact ? "text-xs" : "text-sm"}`}>

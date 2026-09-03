@@ -15,6 +15,7 @@ import {
   OwnerDailyRevenueBars,
   OwnerHourlyRevenueBars,
 } from "@/components/owner/OwnerOverviewExtras";
+import { IconLinkSuffix } from "@/components/icons";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import type { OwnerDashboardPayload } from "@/lib/owner-dashboard";
 import {
@@ -180,7 +181,7 @@ function OwnerSalesDaysInner() {
   return (
     <div className="px-4 pb-6 pt-4">
       <header className="mb-4">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-emerald-700/80">
+        <p className="text-[12px] font-bold uppercase tracking-wide text-site-primary/80">
           Owner · วางแผนสต๊อก
         </p>
         <h1 className="mt-1 text-[22px] font-black text-slate-900">
@@ -217,15 +218,15 @@ function OwnerSalesDaysInner() {
       </div>
 
       <section
-        className={`mb-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm ${
+        className={`mb-3 rounded-2xl border border-site-primary-soft bg-site-primary-soft/80 p-4 shadow-sm ${
           loading ? "opacity-70" : ""
         }`}
       >
-        <h2 className="text-[15px] font-extrabold text-emerald-950">
+        <h2 className="text-[15px] font-extrabold text-site-primary-strong">
           สิ่งที่ควรทำจากช่วงนี้
         </h2>
         {peakDays.length === 0 && softDays.length === 0 ? (
-          <p className="mt-2 text-sm text-emerald-900/70">
+          <p className="mt-2 text-sm text-site-primary-strong/70">
             {loading ? "กำลังโหลด…" : "ยังไม่มียอดพอสรุป — ลองขยายช่วงวัน"}
           </p>
         ) : (
@@ -233,7 +234,7 @@ function OwnerSalesDaysInner() {
             {peakDays.slice(0, 2).map((d) => (
               <li
                 key={`p-${d.weekday}`}
-                className="rounded-xl bg-white/80 px-3 py-2.5 text-[13px] font-semibold text-emerald-950"
+                className="rounded-xl bg-white/80 px-3 py-2.5 text-[13px] font-semibold text-site-primary-strong"
               >
                 วัน{d.label} ขายดี
                 {d.vsAvgPct != null ? ` (${d.vsAvgPct > 0 ? "+" : ""}${d.vsAvgPct}%)` : ""}
@@ -255,13 +256,13 @@ function OwnerSalesDaysInner() {
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
             href={plansHref}
-            className="rounded-full bg-emerald-700 px-3.5 py-2 text-[12px] font-extrabold text-white"
+            className="rounded-full bg-site-primary px-3.5 py-2 text-[12px] font-extrabold text-white"
           >
             เปิดแผนผลิต-เติม
           </Link>
           <Link
             href={parHref}
-            className="rounded-full bg-white px-3.5 py-2 text-[12px] font-extrabold text-emerald-800 ring-1 ring-emerald-200"
+            className="rounded-full bg-white px-3.5 py-2 text-[12px] font-extrabold text-site-primary-medium ring-1 ring-site-primary-soft"
           >
             ตั้ง{PAR_STOCK_LABEL}
           </Link>
@@ -386,21 +387,21 @@ function OwnerSalesDaysInner() {
           <div className="mt-3 space-y-3">
             {spend.hot.length > 0 ? (
               <div>
-                <p className="mb-1.5 text-[12px] font-bold text-emerald-800">
+                <p className="mb-1.5 text-[12px] font-bold text-site-primary-medium">
                   ใช้จ่ายมาก
                 </p>
                 <ul className="space-y-2">
                   {spend.hot.map((r) => (
                     <li
                       key={`h-${r.from}-${r.to}`}
-                      className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5"
+                      className="rounded-xl border border-site-primary-soft bg-site-primary-soft/70 px-3 py-2.5"
                     >
-                      <p className="text-[14px] font-extrabold text-emerald-950">
+                      <p className="text-[14px] font-extrabold text-site-primary-strong">
                         {r.from === r.to
                           ? r.fromLabel
                           : `${r.fromLabel} → ${r.toLabel}`}
                       </p>
-                      <p className="mt-0.5 text-[12px] font-semibold text-emerald-900/80">
+                      <p className="mt-0.5 text-[12px] font-semibold text-site-primary-strong/80">
                         {r.dayCount} วัน · ฿{formatPrice(r.revenueBaht)} ·{" "}
                         {formatPrice(r.orderCount)} บิล
                       </p>
@@ -448,8 +449,8 @@ function OwnerSalesDaysInner() {
       </div>
 
       <div className="mt-4 flex justify-center gap-4 text-[12px] font-medium text-slate-400">
-        <Link href={plansHref} className="font-bold text-emerald-700">
-          แผนผลิต-เติม →
+        <Link href={plansHref} className="font-bold text-site-primary">
+          <IconLinkSuffix size={14}>แผนผลิต-เติม</IconLinkSuffix>
         </Link>
         <Link href={homeHref} className="font-bold text-slate-600">
           ← หน้าแรก

@@ -5,7 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useSiteBranding } from "@/components/customer/SiteBrandingProvider";
 import {
+  IconBasket,
+  IconGear,
   IconHome,
+  IconKeyOrder,
   IconLogout,
   IconReceipt,
   IconStore,
@@ -60,57 +63,6 @@ type BranchChoice = {
 
 function formatBranchLabel(name: string) {
   return name.replace(/^สาขา\s*/i, "").trim() || name;
-}
-
-function IconKeyOrder({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 7h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M8 7V5a4 4 0 018 0v2"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconBasket({ size = 26 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3 9h18l-1.5 11H4.5L3 9z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 9V7a4 4 0 018 0v2"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconGear({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="M12 3v2M12 19v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3 12h2M19 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }
 
 export function StaffAppShell({
@@ -550,7 +502,7 @@ function StaffAppShellInner({
                       onClick={() => void switchBranch(b.branchId)}
                       className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
                         activeBranch
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                          ? "border-site-primary-soft bg-site-primary-soft text-site-primary-strong"
                           : "border-slate-200 bg-white text-slate-900 active:bg-slate-50"
                       } disabled:opacity-70`}
                     >
@@ -570,7 +522,7 @@ function StaffAppShellInner({
                         ) : null}
                       </span>
                       {activeBranch ? (
-                        <span className="shrink-0 text-xs font-bold text-emerald-700">
+                        <span className="shrink-0 text-xs font-bold text-site-primary">
                           ใช้อยู่
                         </span>
                       ) : switchingBranch ? (
@@ -600,30 +552,24 @@ function StaffAppShellInner({
         <div className="mx-auto flex max-w-lg items-end justify-between px-1 pt-2">
           {tabs.map((tab) => {
             const isActive = navActive === tab.id;
-            const isFeatured = tab.id === "summary" && !warehouseMode;
 
-            if (isFeatured) {
+            if (isActive) {
               return (
                 <Link
                   key={tab.id}
                   href={tab.href}
                   className="relative flex min-w-0 flex-1 flex-col items-center justify-end pb-1.5"
-                  aria-current={isActive ? "page" : undefined}
+                  aria-current="page"
                 >
-                  <span
-                    className={`-mt-6 flex h-[3.6rem] w-[3.6rem] items-center justify-center rounded-full text-white shadow-[0_8px_20px_rgba(15,23,42,0.22)] ring-[3px] ring-white transition active:scale-95 ${
-                      isActive
-                        ? "bg-site-primary"
-                        : "bg-site-primary/90"
-                    }`}
-                  >
+                  <span className="relative -mt-6 flex h-[3.6rem] w-[3.6rem] items-center justify-center rounded-full bg-site-primary text-white shadow-site-primary-lg ring-[3px] ring-white transition active:scale-95">
                     {tab.icon}
+                    {(tab.badge ?? 0) > 0 ? (
+                      <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-0.5 text-[11px] font-bold text-white ring-2 ring-white">
+                        {tab.badge! > 99 ? "99+" : tab.badge}
+                      </span>
+                    ) : null}
                   </span>
-                  <span
-                    className={`mt-1 truncate text-[12px] font-extrabold ${
-                      isActive ? "text-site-primary" : "text-slate-700"
-                    }`}
-                  >
+                  <span className="mt-1 truncate text-[12px] font-extrabold text-site-primary">
                     {tab.label}
                   </span>
                 </Link>
@@ -634,9 +580,7 @@ function StaffAppShellInner({
               <Link
                 key={tab.id}
                 href={tab.href}
-                className={`relative flex min-h-[3.75rem] min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 ${
-                  isActive ? "text-site-primary" : "text-slate-500"
-                }`}
+                className="relative flex min-h-[3.75rem] min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-slate-500"
               >
                 <span className="relative">
                   {tab.icon}

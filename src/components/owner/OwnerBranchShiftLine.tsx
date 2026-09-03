@@ -30,14 +30,14 @@ export function OwnerBranchShiftLine({ shift, compact = false }: Props) {
 
   return (
     <div
-      className={`mt-0.5 font-semibold text-emerald-700 ${
+      className={`mt-0.5 font-semibold text-site-primary ${
         compact ? "text-[10px]" : "text-[11px]"
       }`}
       role="status"
     >
       <span className="inline-flex items-center gap-1">
         <span
-          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
+          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-site-primary"
           aria-hidden
         />
         เปิดรอบที่ {shift.roundNumber}

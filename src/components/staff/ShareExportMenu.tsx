@@ -132,7 +132,7 @@ export function ShareExportMenu({
                 type="button"
                 disabled={!!busy}
                 onClick={() => void run("share")}
-                className="flex w-full items-center gap-3 rounded-2xl bg-emerald-600 px-4 py-3.5 text-left text-white active:bg-emerald-700 disabled:opacity-60"
+                className="flex w-full items-center gap-3 rounded-2xl bg-site-primary px-4 py-3.5 text-left text-white active:bg-site-primary-active disabled:opacity-60"
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
                   <IconShare size={20} />
@@ -141,7 +141,7 @@ export function ShareExportMenu({
                   <span className="block text-[15px] font-extrabold">
                     แชร์รูป
                   </span>
-                  <span className="mt-0.5 block text-[12px] font-medium text-emerald-100">
+                  <span className="mt-0.5 block text-[12px] font-medium text-white/85">
                     ส่งเข้าไลน์หรือแอปอื่น
                   </span>
                 </span>

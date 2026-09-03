@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { isTestBranch } from "@/lib/branch-test";
+import { IconChevronDown } from "@/components/icons";
 
 type BranchOption = {
   id: string;
@@ -146,9 +147,7 @@ export function AdminBranchSwitcher({
             {label}
           </span>
         </span>
-        <span className="shrink-0 text-slate-400" aria-hidden>
-          ▾
-        </span>
+        <IconChevronDown size={16} className="shrink-0 text-slate-400" aria-hidden />
       </button>
 
       {open ? (

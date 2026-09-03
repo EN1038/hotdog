@@ -8,6 +8,7 @@ import {
   SALES_SHARE_COLORS,
   type SalesShareSlice,
 } from "@/lib/sales-share";
+import { IconChevronDown } from "@/components/icons";
 
 export function SalesSummaryPageHeader({
   title = "สรุปยอด",
@@ -91,7 +92,7 @@ export function SalesReportFilters({
               className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-site-primary"
               aria-hidden
             >
-              ▾
+              <IconChevronDown size={18} className="text-site-primary" aria-hidden />
             </span>
           </div>
         </label>
@@ -246,7 +247,7 @@ export function MetricTile({
 }) {
   const toneClass =
     tone === "cash"
-      ? "border-emerald-200 bg-emerald-50"
+      ? "border-site-primary-soft bg-site-primary-soft"
       : tone === "transfer"
         ? "border-sky-200 bg-sky-50"
         : tone === "warn"
@@ -775,18 +776,18 @@ export function SalesOverviewCards({
 
   const salesCard = (
     <>
-      <p className="text-sm font-semibold text-emerald-700">ขายได้ (รายได้)</p>
-      <p className="mt-1 text-2xl font-black tabular-nums text-emerald-800">
+      <p className="text-sm font-semibold text-site-primary">ขายได้ (รายได้)</p>
+      <p className="mt-1 text-2xl font-black tabular-nums text-site-primary-medium">
         {formatPrice(data.completedRevenue)} ฿
       </p>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-emerald-800/90">
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-site-primary-medium/90">
         <span>
           เงินสด{" "}
           <span className="font-semibold tabular-nums">
             {formatPrice(cash)} ฿
           </span>
         </span>
-        <span className="text-emerald-400">·</span>
+        <span className="text-site-primary/40">·</span>
         <span>
           เงินโอน{" "}
           <span className="font-semibold tabular-nums">
@@ -794,7 +795,7 @@ export function SalesOverviewCards({
           </span>
         </span>
       </div>
-      <p className="mt-1.5 text-xs font-medium text-emerald-600/80">
+      <p className="mt-1.5 text-xs font-medium text-site-primary/80">
         {formatPrice(data.soldQty)} ชิ้น · ช่วงที่เลือก
         {salesHref || onOpenSalesDetail ? " · กดดูรายละเอียด" : ""}
       </p>
@@ -858,7 +859,7 @@ export function SalesOverviewCards({
       {salesHref ? (
         <Link
           href={salesHref}
-          className={`${cardClass} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-left`}
+          className={`${cardClass} border-site-primary-soft bg-site-primary-card-gradient text-left`}
         >
           {salesCard}
         </Link>
@@ -866,7 +867,7 @@ export function SalesOverviewCards({
         <button
           type="button"
           onClick={onOpenSalesDetail}
-          className={`${cardClass} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-left`}
+          className={`${cardClass} border-site-primary-soft bg-site-primary-card-gradient text-left`}
         >
           {salesCard}
         </button>

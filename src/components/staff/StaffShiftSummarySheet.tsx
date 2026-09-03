@@ -14,6 +14,7 @@ import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDet
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
 import { DateInput } from "@/components/DateInput";
 import { formatQueueNumber } from "@/lib/order-queue-format";
+import { IconLinkSuffix } from "@/components/icons";
 
 type ShiftListItem = {
   id: string;
@@ -939,9 +940,9 @@ export function StaffShiftSummarySheet({
                             <span className="block text-sm font-extrabold tabular-nums text-gray-900">
                               ฿{formatPrice(o.total)}
                             </span>
-                            <span className="text-[11px] font-semibold text-site-primary">
-                              ดู ›
-                            </span>
+                            <IconLinkSuffix size={12} className="text-[11px] font-semibold text-site-primary">
+                              ดู
+                            </IconLinkSuffix>
                           </span>
                         </button>
                       </li>

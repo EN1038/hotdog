@@ -14,6 +14,7 @@ import {
   ownerSummaryHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
+import { IconLinkSuffix } from "@/components/icons";
 
 function OwnerAgingInner() {
   const { data } = useOwnerDashboard();
@@ -186,7 +187,7 @@ function OwnerAgingInner() {
 
       <div className="mt-4 flex justify-center gap-4 text-[12px] font-medium text-slate-400">
         <Link href={stockHref} className="font-bold text-violet-700">
-          ดูสต๊อก →
+          <IconLinkSuffix size={14}>ดูสต๊อก</IconLinkSuffix>
         </Link>
         <Link href={summaryHref} className="font-bold text-slate-600">
           ← ภาพรวมร้าน

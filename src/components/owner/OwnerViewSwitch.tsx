@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { logout } from "@/components/LoginForm";
-import { IconLogout } from "@/components/icons";
+import { IconChevronRight, IconLogout } from "@/components/icons";
 import {
   assignOwnerViewHome,
   getOwnerViewPreference,
@@ -296,9 +296,7 @@ export function OwnerProfileMenuButton({
                 className="flex w-full items-center justify-between px-4 py-3.5 text-left text-[14px] font-extrabold text-slate-900 active:bg-slate-100"
               >
                 ตั้งค่า
-                <span className="text-slate-300" aria-hidden>
-                  ›
-                </span>
+                <IconChevronRight size={18} className="text-slate-300" aria-hidden />
               </Link>
               <button
                 type="button"

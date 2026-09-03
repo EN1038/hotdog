@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { IconChevronDown, IconChevronUp } from "@/components/icons";
 
 type WeighBoardItem = {
   id: string;
@@ -204,7 +205,13 @@ export default function TableQrGuestPage() {
                   {data.weighPriceBoard!.length} รายการ · บาทต่อกิโลกรัม
                 </p>
               </div>
-              <span className="text-stone-400">{boardOpen ? "▴" : "▾"}</span>
+              <span className="text-stone-400">
+                {boardOpen ? (
+                  <IconChevronUp size={18} aria-hidden />
+                ) : (
+                  <IconChevronDown size={18} aria-hidden />
+                )}
+              </span>
             </button>
             {boardOpen ? (
               <div className="max-h-[40vh] space-y-4 overflow-y-auto border-t border-white/10 px-5 pb-5 pt-3">

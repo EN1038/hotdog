@@ -974,7 +974,7 @@ export function StaffDailySalesSummarySheet({
                 type="button"
                 disabled={convertBusy}
                 onClick={() => void applyConvert("apply")}
-                className="flex-1 rounded-full bg-emerald-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm disabled:opacity-60"
+                className="flex-1 rounded-full bg-site-primary px-4 py-3 text-sm font-extrabold text-white shadow-sm disabled:opacity-60"
               >
                 {convertBusy ? "กำลังทำ…" : "Convert → ADJUST"}
               </button>

@@ -7,6 +7,22 @@ import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShe
 import { useToast } from "@/components/admin/Toast";
 import { appAbsoluteUrl } from "@/lib/app-url";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
+import {
+  IconBoxes,
+  IconCart,
+  IconChartBars,
+  IconChevronRight,
+  IconClipboard,
+  IconExpense,
+  IconGear,
+  IconGridView,
+  IconLink,
+  IconLinkSuffix,
+  IconReceipt,
+  IconStore,
+  IconWallet,
+  IconWaste,
+} from "@/components/icons";
 import type {
   OwnerBranchRow,
   OwnerDashboardPayload,
@@ -41,13 +57,47 @@ import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventor
 
 const OWNER_HOME_TAB_KEY = "skillsale_owner_home_tab_v2";
 
+function ownerLiveBranches(branches: OwnerBranchRow[]) {
+  return branches.filter(
+    (b) => !b.isHidden && !b.isTest && b.kind !== "WAREHOUSE",
+  );
+}
+
 type OwnerHomeTab = "overview" | "sell" | "stock" | "setup";
 
-const OWNER_HOME_TABS: { id: OwnerHomeTab; label: string }[] = [
-  { id: "overview", label: "ภาพรวม" },
-  { id: "sell", label: "การขาย" },
-  { id: "stock", label: "สต๊อก" },
-  { id: "setup", label: "ตั้งค่า" },
+const OWNER_HOME_TABS: {
+  id: OwnerHomeTab;
+  label: string;
+  icon: (props: { size?: number; className?: string }) => ReactNode;
+}[] = [
+  {
+    id: "overview",
+    label: "ภาพรวม",
+    icon: ({ size = 20, className }) => (
+      <IconGridView size={size} className={className} />
+    ),
+  },
+  {
+    id: "sell",
+    label: "การขาย",
+    icon: ({ size = 20, className }) => (
+      <IconCart size={size} className={className} />
+    ),
+  },
+  {
+    id: "stock",
+    label: "สต๊อก",
+    icon: ({ size = 20, className }) => (
+      <IconBoxes size={size} className={className} />
+    ),
+  },
+  {
+    id: "setup",
+    label: "ตั้งค่า",
+    icon: ({ size = 20, className }) => (
+      <IconGear size={size} className={className} />
+    ),
+  },
 ];
 
 function readStoredHomeTab(): OwnerHomeTab | null {
@@ -78,11 +128,11 @@ function OwnerHomeTabBar({
 }) {
   return (
     <div
-      className="sticky top-0 z-20 -mx-4 mb-4 border-b border-slate-200/80 bg-[#eef3f8]/95 px-4 py-2 backdrop-blur-md"
+      className="sticky top-0 z-20 -mx-4 mb-4 px-4 pt-1"
       role="tablist"
       aria-label="หมวดงานเจ้าของร้าน"
     >
-      <div className="grid grid-cols-4 gap-1 rounded-2xl bg-slate-200/80 p-1">
+      <div className="grid grid-cols-4 gap-1 rounded-[1.25rem] bg-slate-200/60 p-1 shadow-inner">
         {OWNER_HOME_TABS.map((tab) => {
           const selected = active === tab.id;
           return (
@@ -92,13 +142,22 @@ function OwnerHomeTabBar({
               role="tab"
               aria-selected={selected}
               onClick={() => onChange(tab.id)}
-              className={`rounded-xl px-1 py-2.5 text-[13px] font-extrabold transition active:scale-[0.98] sm:text-sm ${
+              className={`flex flex-col items-center gap-1 rounded-[1rem] px-1 py-2.5 transition active:scale-[0.98] ${
                 selected
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600"
+                  ? "bg-white text-site-primary shadow-site-primary-button"
+                  : "text-slate-500"
               }`}
             >
-              {tab.label}
+              <span className={selected ? "text-site-primary" : "text-slate-400"}>
+                {tab.icon({ size: 20 })}
+              </span>
+              <span
+                className={`text-[12px] font-extrabold sm:text-[13px] ${
+                  selected ? "text-site-primary-strong" : "text-slate-600"
+                }`}
+              >
+                {tab.label}
+              </span>
             </button>
           );
         })}
@@ -111,107 +170,27 @@ function customerPath(brandCode: string, branchCode: string) {
   return `/${brandCode}/${branchCode}`;
 }
 
-function IconCart({ size = 28 }: { size?: number }) {
+function SalesHeroChartDecor() {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg
+      className="pointer-events-none absolute bottom-0 right-0 h-24 w-32 opacity-[0.18]"
+      viewBox="0 0 120 80"
+      aria-hidden
+    >
       <path
-        d="M3 5h2l2.2 10.2a2 2 0 001.95 1.55H17.5a2 2 0 001.95-1.5L21 8H7"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="10" cy="20" r="1.4" fill="currentColor" />
-      <circle cx="17" cy="20" r="1.4" fill="currentColor" />
-    </svg>
-  );
-}
-
-function IconLink({ size = 26 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M10 14a5 5 0 007.07 0l2.12-2.12a5 5 0 00-7.07-7.07L11 6"
-        stroke="currentColor"
-        strokeWidth="1.9"
+        d="M10 60 L30 45 L50 50 L70 30 L90 35 L110 15"
+        fill="none"
+        stroke="white"
+        strokeWidth="2"
         strokeLinecap="round"
       />
       <path
-        d="M14 10a5 5 0 00-7.07 0L4.8 12.12a5 5 0 007.07 7.07L13 18"
-        stroke="currentColor"
-        strokeWidth="1.9"
+        d="M10 70 L30 55 L50 62 L70 42 L90 48 L110 28"
+        fill="none"
+        stroke="white"
+        strokeWidth="1.5"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconClipboard({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 4h6a2 2 0 012 2v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h1V6a2 2 0 012-2z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path d="M9 4.5h6v2H9v-2z" fill="currentColor" opacity="0.25" />
-      <path
-        d="M8 12h8M8 16h5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconReceipt({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M7 3h10v18l-2-1.2L13 21l-2-1.2L9 21l-2-1.2V3z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 8h6M9 12h6M9 16h4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconBoxes({ size = 26 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 8.5L12 4l8 4.5v7L12 20l-8-4.5v-7z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 4v16M4 8.5l8 4.5 8-4.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function IconChevron({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 6l6 6-6 6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        opacity="0.6"
       />
     </svg>
   );
@@ -250,7 +229,7 @@ const TILE_TONES: Record<SoftTone, { card: string; iconWrap: string }> = {
     iconWrap: "bg-white/20 text-white",
   },
   emerald: {
-    card: "bg-emerald-600 hover:bg-emerald-700",
+    card: "bg-site-primary hover:bg-site-primary-hover active:bg-site-primary-active",
     iconWrap: "bg-white/20 text-white",
   },
   violet: {
@@ -321,7 +300,7 @@ function SoftTile({
           ) : null}
         </span>
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white">
-          <IconChevron size={20} />
+          <IconChevronRight size={20} />
         </span>
       </>
     ) : (
@@ -511,10 +490,7 @@ function OwnerHomeInner() {
       return;
     }
     if (!loading && data) {
-      const multi =
-        (data.branches ?? []).filter(
-          (b) => !b.isTest && b.kind !== "WAREHOUSE",
-        ).length > 1;
+      const multi = ownerLiveBranches(data.branches ?? []).length > 1;
       setHomeTab(multi ? "overview" : "sell");
       homeTabReady.current = true;
     }
@@ -608,9 +584,7 @@ function OwnerHomeInner() {
   const subscription = data?.subscription ?? null;
   const pulseSource = overviewPayload ?? data;
   const branches = pulseSource?.branches ?? data?.branches ?? [];
-  const liveBranches = branches.filter(
-    (b) => !b.isTest && b.kind !== "WAREHOUSE",
-  );
+  const liveBranches = ownerLiveBranches(branches);
   const firstBranchId = liveBranches[0]?.id ?? branches[0]?.id ?? null;
   const openBranchCount = liveBranches.filter((b) => b.activeShift).length;
 
@@ -881,7 +855,7 @@ function OwnerHomeInner() {
   const multiBranch = liveBranches.length > 1;
 
   return (
-    <div className="px-4 pb-6 pt-3">
+    <div className="px-4 pb-6 pt-2">
       <OwnerHomeTabBar active={homeTab} onChange={selectHomeTab} />
 
       {homeTab === "overview" ? (
@@ -910,8 +884,8 @@ function OwnerHomeInner() {
           />
 
           {filterBranchId ? (
-            <div className="flex items-center justify-between gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5">
-              <p className="min-w-0 truncate text-[13px] font-semibold text-emerald-900">
+            <div className="flex items-center justify-between gap-2 rounded-2xl border border-site-primary-banner bg-site-primary-banner px-3.5 py-2.5">
+              <p className="min-w-0 truncate text-[13px] font-semibold text-site-primary-strong">
                 กำลังดู ·{" "}
                 {liveBranches.find((b) => b.id === filterBranchId)?.name ??
                   "สาขา"}
@@ -919,7 +893,7 @@ function OwnerHomeInner() {
               <div className="flex shrink-0 items-center gap-2">
                 <Link
                   href={branchAdminBasePath(filterBranchId, { ownerShell: true })}
-                  className="text-[12px] font-bold text-emerald-800"
+                  className="text-[12px] font-bold text-site-primary-medium"
                 >
                   จัดการ
                 </Link>
@@ -934,16 +908,17 @@ function OwnerHomeInner() {
             </div>
           ) : null}
 
-          {/* 1) ยอดขายหลัก — แม่ค้าดูตัวเลขใหญ่ก่อน */}
+          {/* 1) ยอดขายหลัก — hero card */}
           <Link
             href={summaryHref}
-            className="block overflow-hidden rounded-2xl bg-emerald-700 px-4 py-4 text-white shadow-sm active:bg-emerald-800"
+            className="relative block overflow-hidden rounded-[1.35rem] bg-site-primary-gradient px-4 py-4 text-white shadow-site-primary-card active:brightness-95"
             aria-label="ยอดขาย"
           >
-            <div className="flex items-start justify-between gap-3">
+            <SalesHeroChartDecor />
+            <div className="relative flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[13px] font-bold text-emerald-100">ขายได้</p>
-                <p className="mt-0.5 truncate text-[12px] font-medium text-emerald-100/80">
+                <p className="text-[14px] font-bold text-white/90">ขายได้</p>
+                <p className="mt-0.5 truncate text-[12px] font-medium text-white/75">
                   {rangeLabel}
                   {filterBranchId
                     ? ` · ${
@@ -955,14 +930,14 @@ function OwnerHomeInner() {
                       : ""}
                 </p>
               </div>
-              <span className="shrink-0 rounded-full bg-white/15 px-3 py-1.5 text-[12px] font-bold text-white">
-                รายละเอียด →
+              <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-white/20 px-3 py-1.5 text-[12px] font-bold text-white backdrop-blur-sm">
+                <IconLinkSuffix size={14}>รายละเอียด</IconLinkSuffix>
               </span>
             </div>
-            <p className="mt-2 text-[34px] font-black tabular-nums leading-none tracking-tight">
+            <p className="relative mt-2 text-[36px] font-black tabular-nums leading-none tracking-tight">
               ฿{formatPrice(overviewCompletedRevenue)}
             </p>
-            <p className="mt-2 text-[13px] font-bold text-emerald-100">
+            <p className="relative mt-2 text-[14px] font-bold text-white/90">
               {formatPrice(overviewCompletedCount)} บิล
               {overviewSoldQty > 0
                 ? ` · ${formatPrice(overviewSoldQty)} ชิ้น`
@@ -971,20 +946,20 @@ function OwnerHomeInner() {
                 ? ` · ค้าง ${formatPrice(overviewOpenCount)}`
                 : ""}
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-white/10 px-3 py-2.5">
-                <p className="text-[11px] font-semibold text-emerald-100/85">
+            <div className="relative mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-white/15 px-3 py-2.5 backdrop-blur-sm">
+                <p className="text-[11px] font-semibold text-white/85">
                   เงินสด
                 </p>
-                <p className="mt-0.5 text-[16px] font-black tabular-nums">
+                <p className="mt-0.5 text-[17px] font-black tabular-nums">
                   ฿{formatPrice(overviewCashRevenue)}
                 </p>
               </div>
-              <div className="rounded-xl bg-white/10 px-3 py-2.5">
-                <p className="text-[11px] font-semibold text-emerald-100/85">
+              <div className="rounded-xl bg-white/15 px-3 py-2.5 backdrop-blur-sm">
+                <p className="text-[11px] font-semibold text-white/85">
                   โอน
                 </p>
-                <p className="mt-0.5 text-[16px] font-black tabular-nums">
+                <p className="mt-0.5 text-[17px] font-black tabular-nums">
                   ฿{formatPrice(overviewTransferRevenue)}
                 </p>
               </div>
@@ -998,25 +973,31 @@ function OwnerHomeInner() {
           >
             <Link
               href={summaryHref}
-              className="rounded-2xl border border-sky-200 bg-sky-50 px-2.5 py-3 active:bg-sky-100"
+              className="rounded-[1.15rem] bg-sky-50 px-2.5 py-3 shadow-sm ring-1 ring-sky-100 active:bg-sky-100"
             >
+              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                <IconWallet size={18} />
+              </span>
               <p className="text-[11px] font-bold text-sky-800">เหลือสุทธิ</p>
-              <p className="mt-1 text-[15px] font-black tabular-nums leading-tight text-sky-950">
+              <p className="mt-1 text-[16px] font-black tabular-nums leading-tight text-sky-950">
                 ฿{formatPrice(overviewNetAfterWaste)}
               </p>
-              <p className="mt-1 text-[10px] font-semibold text-sky-700/80">
+              <p className="mt-1 text-[10px] font-semibold text-sky-600/80">
                 ขาย−จ่าย−เสีย
               </p>
             </Link>
             <Link
               href={expensesHref}
-              className="rounded-2xl border border-rose-200 bg-rose-50 px-2.5 py-3 active:bg-rose-100"
+              className="rounded-[1.15rem] bg-rose-50 px-2.5 py-3 shadow-sm ring-1 ring-rose-100 active:bg-rose-100"
             >
+              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                <IconExpense size={18} />
+              </span>
               <p className="text-[11px] font-bold text-rose-800">ค่าใช้จ่าย</p>
-              <p className="mt-1 text-[15px] font-black tabular-nums leading-tight text-rose-950">
+              <p className="mt-1 text-[16px] font-black tabular-nums leading-tight text-rose-950">
                 ฿{formatPrice(overviewExpenseTotal)}
               </p>
-              <p className="mt-1 text-[10px] font-semibold text-rose-700/80">
+              <p className="mt-1 text-[10px] font-semibold text-rose-600/80">
                 {overviewExpenseCount > 0
                   ? `${formatPrice(overviewExpenseCount)} รายการ`
                   : "ไม่มี"}
@@ -1024,16 +1005,19 @@ function OwnerHomeInner() {
             </Link>
             <Link
               href={wasteHref}
-              className="rounded-2xl border border-orange-200 bg-orange-50 px-2.5 py-3 active:bg-orange-100"
+              className="rounded-[1.15rem] bg-orange-50 px-2.5 py-3 shadow-sm ring-1 ring-orange-100 active:bg-orange-100"
             >
+              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                <IconWaste size={18} />
+              </span>
               <p className="text-[11px] font-bold text-orange-800">ของเสีย</p>
-              <p className="mt-1 text-[15px] font-black tabular-nums leading-tight text-orange-950">
+              <p className="mt-1 text-[16px] font-black tabular-nums leading-tight text-orange-950">
                 {overviewWasteQty > 0
                   ? `${formatPrice(overviewWasteQty)}`
                   : "0"}
                 <span className="text-[11px] font-bold"> ชิ้น</span>
               </p>
-              <p className="mt-1 text-[10px] font-semibold text-orange-700/80">
+              <p className="mt-1 text-[10px] font-semibold text-orange-600/80">
                 {overviewWasteValue > 0
                   ? `฿${formatPrice(overviewWasteValue)}`
                   : "ไม่มีเสีย"}
@@ -1044,30 +1028,30 @@ function OwnerHomeInner() {
           {/* 3) สต๊อก — สำคัญมากกับหม่าล่า */}
           {stockEnabled ? (
             <section
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+              className="overflow-hidden rounded-[1.25rem] bg-white shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100"
               aria-label="สต๊อกปัจจุบัน"
             >
-              <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3.5 py-2.5">
+              <div className="flex items-center justify-between gap-2 px-4 py-3">
                 <div>
-                  <p className="text-[13px] font-extrabold text-slate-800">
-                    สต๊อกขายตอนนี้
+                  <p className="text-[14px] font-extrabold text-site-primary">
+                    สต๊อกขายดีวันนี้
                   </p>
                   <p className="text-[11px] font-medium text-slate-500">
-                    คงเหลือปัจจุบัน · วิเคราะห์ตามช่วงวันได้
+                    คงเหลือปัจจุบัน · วิเคราะห์ตามช่วงวันนี้ได้
                   </p>
                 </div>
                 <Link
                   href={stockFlowHref}
-                  className="text-[12px] font-bold text-violet-700"
+                  className="inline-flex items-center gap-0.5 text-[12px] font-bold text-site-primary"
                 >
-                  วิเคราะห์ →
+                  <IconLinkSuffix size={14}>วิเคราะห์</IconLinkSuffix>
                 </Link>
               </div>
               <div className={`grid ${stockOn ? "grid-cols-3" : "grid-cols-1"}`}>
                 <Link
                   href={stockFlowHref}
-                  className={`bg-violet-50 px-3 py-3 active:bg-violet-100 ${
-                    stockOn ? "border-r border-slate-100" : ""
+                  className={`bg-violet-50/90 px-3 py-3 active:bg-violet-100 ${
+                    stockOn ? "border-r border-slate-100/80" : ""
                   }`}
                 >
                   <p className="text-[11px] font-bold text-violet-800">
@@ -1131,46 +1115,38 @@ function OwnerHomeInner() {
             </section>
           ) : null}
 
-          {/* 4) สาขา */}
-          {multiBranch && !filterBranchId ? (
+          {/* 4) สาขา — แสดงเมื่อไม่ได้กรองสาขา (รวมบัญชีสาขาเดียว) */}
+          {!filterBranchId && liveBranches.length > 0 ? (
             <section
-              className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm"
-              aria-label="สาขา"
+              className="overflow-hidden rounded-[1.25rem] bg-white shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100"
+              aria-label="ยอดขายตามสาขา"
             >
-              <Link
-                href={branchesHref}
-                className="flex items-center justify-between gap-3 bg-emerald-50 px-4 py-3 active:bg-emerald-100"
-              >
-                <div className="min-w-0">
-                  <p className="text-[15px] font-extrabold text-emerald-950">
-                    รวม {liveBranches.length} สาขา
-                  </p>
-                  <p className="mt-0.5 text-[12px] font-semibold text-emerald-800/80">
-                    เปิดรอบ {openBranchCount}
-                    {closedBranchCount > 0
-                      ? ` · ปิดรอบ ${closedBranchCount}`
-                      : ""}{" "}
-                    · กดสาขาเพื่อดูยอดสาขานั้น
-                  </p>
-                </div>
-                <span className="text-lg font-bold text-emerald-700" aria-hidden>
-                  ›
-                </span>
-              </Link>
+              <div className="border-b border-slate-100/80 px-4 py-3">
+                <p className="text-[14px] font-extrabold text-site-primary">
+                  ยอดขายตามสาขา
+                </p>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                  เปิดรอบ {openBranchCount}
+                  {closedBranchCount > 0
+                    ? ` · ปิดรอบ ${closedBranchCount}`
+                    : ""}{" "}
+                  · รวม {liveBranches.length} สาขา
+                </p>
+              </div>
               {overviewByBranch.length > 0 ? (
-                <ul className="divide-y divide-slate-100">
+                <ul className="divide-y divide-slate-100/80">
                   {overviewByBranch.map((row, index) => (
                     <li key={row.branchId}>
                       <button
                         type="button"
                         onClick={() => applyBranchFilter(row.branchId)}
-                        className="flex w-full items-start gap-3 px-4 py-3 text-left active:bg-slate-50"
+                        className="flex w-full items-start gap-3 px-4 py-3 text-left active:bg-slate-50/80"
                       >
-                        <span className="mt-0.5 w-5 text-[12px] font-bold tabular-nums text-slate-400">
+                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-site-primary-badge text-[12px] font-black tabular-nums text-site-primary-badge">
                           {index + 1}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[14px] font-semibold text-slate-900">
+                          <p className="truncate text-[14px] font-semibold text-site-primary">
                             {row.branchName}
                           </p>
                           {row.activeShift ? (
@@ -1194,7 +1170,7 @@ function OwnerHomeInner() {
                           ) : null}
                         </div>
                         <span className="shrink-0 text-right">
-                          <span className="block text-[14px] font-black tabular-nums text-emerald-700">
+                          <span className="block text-[14px] font-black tabular-nums text-site-primary">
                             ฿{formatPrice(row.completedRevenue)}
                           </span>
                           <span className="mt-0.5 block text-[11px] font-semibold tabular-nums text-slate-400">
@@ -1209,18 +1185,27 @@ function OwnerHomeInner() {
               {overviewByBranchMore ? (
                 <Link
                   href={branchesHref}
-                  className="flex items-center justify-center border-t border-slate-100 bg-slate-50/80 px-4 py-3 text-[13px] font-extrabold text-emerald-800 active:bg-slate-100"
+                  className="flex items-center justify-center border-t border-slate-100/80 bg-slate-50/60 px-4 py-3 text-[13px] font-extrabold text-site-primary active:bg-slate-100/80"
                 >
-                  ดูเพิ่มเติม · ทั้งหมด {overviewByBranchAll.length} สาขา →
+                  <IconLinkSuffix>
+                    ดูเพิ่มเติม · ทั้งหมด {overviewByBranchAll.length} สาขา
+                  </IconLinkSuffix>
                 </Link>
               ) : overviewByBranch.length > 0 ? (
                 <Link
                   href={branchesHref}
-                  className="flex items-center justify-center border-t border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[12px] font-bold text-slate-500 active:bg-slate-100"
+                  className="flex items-center justify-center border-t border-slate-100/80 bg-slate-50/60 px-4 py-2.5 text-[12px] font-bold text-slate-500 active:bg-slate-100/80"
                 >
-                  ดูการ์ดทุกสาขา →
+                  <IconLinkSuffix size={13}>ดูการ์ดทุกสาขา</IconLinkSuffix>
                 </Link>
-              ) : null}
+              ) : (
+                <Link
+                  href={branchesHref}
+                  className="flex items-center justify-center px-4 py-3 text-[13px] font-bold text-site-primary active:bg-slate-50"
+                >
+                  <IconLinkSuffix size={13}>ดูการ์ดทุกสาขา</IconLinkSuffix>
+                </Link>
+              )}
             </section>
           ) : !stockEnabled ? (
             <button
@@ -1239,9 +1224,7 @@ function OwnerHomeInner() {
                   {openBranchCount}/{liveBranches.length || 0} · กดไปเปิด–ปิด
                 </p>
               </div>
-              <span className="text-slate-300" aria-hidden>
-                ›
-              </span>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
             </button>
           ) : null}
 
@@ -1280,7 +1263,7 @@ function OwnerHomeInner() {
           {/* 6) เมนูขายดี */}
           <OwnerTopSellersList
             title="เมนูขายดี"
-            linkLabel="วิเคราะห์ · เทียบสาขา →"
+            linkLabel="วิเคราะห์ · เทียบสาขา"
             items={overviewTopSellers}
             loading={overviewLoading}
             href={topSellersHref}
@@ -1300,9 +1283,7 @@ function OwnerHomeInner() {
                   มูลค่า ฿{formatPrice(overviewCancelledRevenue)} · กดดูเหตุผล
                 </p>
               </div>
-              <span className="text-slate-300" aria-hidden>
-                ›
-              </span>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
             </Link>
           ) : null}
 
@@ -1310,26 +1291,30 @@ function OwnerHomeInner() {
           <div className="grid grid-cols-2 gap-2 pt-1">
             <Link
               href={summaryHref}
-              className="rounded-2xl bg-emerald-600 px-3 py-3.5 text-center text-[14px] font-extrabold text-white shadow-sm active:bg-emerald-700"
+              className="flex items-center justify-center gap-2 rounded-[1.15rem] bg-site-primary px-3 py-4 text-[14px] font-extrabold text-white shadow-site-primary-button active:bg-site-primary-active"
             >
+              <IconChartBars size={20} />
               สรุปยอดเต็ม
             </Link>
             <Link
               href={multiBranch ? branchesHref : "/owner/today"}
-              className="rounded-2xl bg-white px-3 py-3.5 text-center text-[14px] font-extrabold text-slate-800 shadow-sm ring-1 ring-slate-200 active:bg-slate-50"
+              className="flex items-center justify-center gap-2 rounded-[1.15rem] bg-white px-3 py-4 text-[14px] font-extrabold text-site-primary shadow-sm ring-1 ring-slate-200 active:bg-slate-50"
             >
+              <IconStore size={20} />
               {multiBranch ? "ทุกสาขา" : "ออเดอร์วันนี้"}
             </Link>
             <Link
               href={expensesHref}
-              className="rounded-2xl bg-white px-3 py-3.5 text-center text-[14px] font-extrabold text-rose-800 shadow-sm ring-1 ring-rose-200 active:bg-rose-50"
+              className="flex items-center justify-center gap-2 rounded-[1.15rem] bg-white px-3 py-4 text-[14px] font-extrabold text-rose-800 shadow-sm ring-1 ring-rose-200 active:bg-rose-50"
             >
+              <IconExpense size={20} />
               ค่าใช้จ่าย
             </Link>
             <Link
               href={wasteHref}
-              className="rounded-2xl bg-white px-3 py-3.5 text-center text-[14px] font-extrabold text-orange-800 shadow-sm ring-1 ring-orange-200 active:bg-orange-50"
+              className="flex items-center justify-center gap-2 rounded-[1.15rem] bg-white px-3 py-4 text-[14px] font-extrabold text-orange-800 shadow-sm ring-1 ring-orange-200 active:bg-orange-50"
             >
+              <IconWaste size={20} />
               ของเสีย
             </Link>
           </div>
@@ -1551,7 +1536,7 @@ function OwnerHomeInner() {
                     href={branchesHref}
                     className="text-[12px] font-bold text-slate-500"
                   >
-                    ดูยอดทุกสาขา →
+                    <IconLinkSuffix size={12}>ดูยอดทุกสาขา</IconLinkSuffix>
                   </Link>
                 ) : null}
               </div>
@@ -1574,7 +1559,7 @@ function OwnerHomeInner() {
                       disabled={togglingId === branch.id}
                       onClick={() => void toggleOpen(branch)}
                       className={`h-10 min-w-[4.5rem] rounded-full px-3 text-sm font-bold text-white ${
-                        branch.isOpen ? "bg-emerald-500" : "bg-slate-400"
+                        branch.isOpen ? "bg-site-primary" : "bg-slate-400"
                       }`}
                     >
                       {branch.isOpen ? "เปิด" : "ปิด"}
@@ -1647,8 +1632,9 @@ function OwnerHomeInner() {
                       {b.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
                     </span>
                   </span>
-                  <span className="text-sm font-bold text-site-primary">
-                    เข้า →
+                  <span className="inline-flex items-center gap-0.5 text-sm font-bold text-site-primary">
+                    เข้า
+                    <IconChevronRight size={14} />
                   </span>
                 </button>
               ))}

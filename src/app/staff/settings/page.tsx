@@ -14,6 +14,7 @@ import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 import {
   IconLogout,
   IconPrinter,
+  IconChevronRight,
   IconVolume,
   IconVolumeOff,
 } from "@/components/icons";
@@ -323,7 +324,7 @@ export default function StaffSettingsPage() {
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <p className="text-[12px] text-slate-400">{profilePhone}</p>
                   {profilePhoneVerified ? (
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    <span className="rounded-full bg-site-primary-soft px-2 py-0.5 text-[11px] font-semibold text-site-primary">
                       ยืนยันเบอร์แล้ว
                     </span>
                   ) : (
@@ -382,7 +383,7 @@ export default function StaffSettingsPage() {
                       onClick={() => void switchBranch(b.branchId)}
                       className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm font-semibold transition ${
                         active
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                          ? "border-site-primary-soft bg-site-primary-soft text-site-primary-strong"
                           : "border-slate-200 bg-white text-slate-900 active:bg-slate-50"
                       } disabled:opacity-60`}
                     >
@@ -395,7 +396,7 @@ export default function StaffSettingsPage() {
                         ) : null}
                       </span>
                       {active ? (
-                        <span className="text-xs font-bold text-emerald-700">
+                        <span className="text-xs font-bold text-site-primary">
                           ใช้งานอยู่
                         </span>
                       ) : (
@@ -423,9 +424,7 @@ export default function StaffSettingsPage() {
             className="mt-3 flex min-h-12 w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 text-[15px] font-bold text-slate-900 active:bg-slate-100"
           >
             <span>จัดการโปร / วันหมดอายุ</span>
-            <span className="text-slate-400" aria-hidden>
-              ›
-            </span>
+            <IconChevronRight size={18} className="text-slate-400" aria-hidden />
           </Link>
         </section>
 
@@ -462,7 +461,7 @@ export default function StaffSettingsPage() {
                   }
                   setSoundOn(false);
                 }}
-                className="flex min-h-12 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-[15px] font-bold text-emerald-900"
+                className="flex min-h-12 items-center gap-2 rounded-xl border border-site-primary-soft bg-site-primary-soft px-4 py-3 text-[15px] font-bold text-site-primary-strong"
               >
                 <IconVolume size={20} /> ปิดเสียง
               </button>
@@ -508,7 +507,7 @@ export default function StaffSettingsPage() {
               onClick={() => selectPrinter()}
               className={`mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border py-3.5 text-[15px] font-extrabold ${
                 printerConfigured
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                  ? "border-site-primary-soft bg-site-primary-soft text-site-primary-strong"
                   : "border-amber-300 bg-amber-50 text-amber-950"
               }`}
             >

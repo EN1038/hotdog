@@ -32,7 +32,7 @@ import {
   ShareExportMenu,
   type ShareExportAction,
 } from "@/components/staff/ShareExportMenu";
-import { IconEdit, IconSkewerPlaceholder, IconTrash } from "@/components/icons";
+import { IconChevronDown, IconEdit, IconSkewerPlaceholder, IconTrash } from "@/components/icons";
 import { ImageField } from "@/components/admin/ImageField";
 import { BranchStockCountsView } from "@/components/admin/BranchStockCountsView";
 import { BranchStockMovementsView } from "@/components/admin/BranchStockMovementsView";
@@ -940,7 +940,10 @@ export function BranchStockPanel({
                 onClick={() => setShowCreateDropdown(!showCreateDropdown)}
                 className="flex h-9 items-center justify-center rounded-lg bg-site-primary px-4 text-sm font-semibold text-white transition hover:bg-site-primary-focus"
               >
-                สร้างรายการใหม่ ▾
+                <span className="inline-flex items-center gap-1">
+                  สร้างรายการใหม่
+                  <IconChevronDown size={16} aria-hidden />
+                </span>
               </button>
               {showCreateDropdown && (
                 <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg border border-slate-100 py-1 z-50">

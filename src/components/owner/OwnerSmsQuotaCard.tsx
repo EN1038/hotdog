@@ -37,10 +37,10 @@ export function OwnerSmsQuotaCard({
           sub: "text-amber-800",
         }
       : {
-          wrap: "border-emerald-200 bg-emerald-50/60",
-          bar: "bg-emerald-500",
-          label: "text-emerald-900",
-          sub: "text-emerald-800",
+          wrap: "border-site-primary-soft bg-site-primary-soft",
+          bar: "bg-site-primary",
+          label: "text-site-primary-strong",
+          sub: "text-site-primary-medium",
         };
 
   return (

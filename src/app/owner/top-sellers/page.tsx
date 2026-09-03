@@ -420,7 +420,7 @@ function OwnerTopSellersInner() {
   return (
     <div className="px-4 pb-6 pt-4">
       <header className="mb-4">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-emerald-700/80">
+        <p className="text-[12px] font-bold uppercase tracking-wide text-site-primary/80">
           Owner · เมนูขายดี
         </p>
         <h1 className="mt-1 text-[22px] font-black text-slate-900">
@@ -468,7 +468,7 @@ function OwnerTopSellersInner() {
       />
 
       {filterBranchName ? (
-        <p className="mb-3 text-[13px] font-semibold text-emerald-800">
+        <p className="mb-3 text-[13px] font-semibold text-site-primary-medium">
           กำลังดูสาขา · {filterBranchName}
         </p>
       ) : null}
@@ -480,7 +480,7 @@ function OwnerTopSellersInner() {
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
             placeholder="ค้นหาชื่อเมนู…"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[15px] font-semibold text-slate-900 outline-none ring-emerald-500/30 placeholder:font-medium placeholder:text-slate-400 focus:ring-2"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[15px] font-semibold text-slate-900 outline-none ring-site-primary/30 placeholder:font-medium placeholder:text-slate-400 focus:ring-2"
           />
         </label>
         <div className="flex gap-2">
@@ -498,7 +498,7 @@ function OwnerTopSellersInner() {
                 onClick={() => setSort(id)}
                 className={`flex-1 rounded-full py-2.5 text-[13px] font-extrabold ${
                   active
-                    ? "bg-emerald-700 text-white"
+                    ? "bg-site-primary text-white"
                     : "bg-white text-slate-600 ring-1 ring-slate-200"
                 }`}
               >
@@ -512,21 +512,21 @@ function OwnerTopSellersInner() {
       <section
         className={`mb-3 grid grid-cols-3 gap-2 ${loading ? "opacity-70" : ""}`}
       >
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-          <p className="text-[11px] font-bold text-emerald-800">เมนู</p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-emerald-950">
+        <div className="rounded-2xl border border-site-primary-soft bg-site-primary-soft px-3 py-3">
+          <p className="text-[11px] font-bold text-site-primary-medium">เมนู</p>
+          <p className="mt-1 text-[18px] font-black tabular-nums text-site-primary-strong">
             {formatPrice(summary.itemCount)}
           </p>
         </div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-          <p className="text-[11px] font-bold text-emerald-800">ชิ้นขาย</p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-emerald-950">
+        <div className="rounded-2xl border border-site-primary-soft bg-site-primary-soft px-3 py-3">
+          <p className="text-[11px] font-bold text-site-primary-medium">ชิ้นขาย</p>
+          <p className="mt-1 text-[18px] font-black tabular-nums text-site-primary-strong">
             {formatPrice(summary.totalQty)}
           </p>
         </div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-          <p className="text-[11px] font-bold text-emerald-800">มูลค่า</p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-emerald-950">
+        <div className="rounded-2xl border border-site-primary-soft bg-site-primary-soft px-3 py-3">
+          <p className="text-[11px] font-bold text-site-primary-medium">มูลค่า</p>
+          <p className="mt-1 text-[18px] font-black tabular-nums text-site-primary-strong">
             ฿{formatPrice(summary.totalRevenue)}
           </p>
         </div>
@@ -545,7 +545,7 @@ function OwnerTopSellersInner() {
                   : "เปิดเพื่อเทียบยอดขายแต่ละสาขา"}
               </p>
               {compareShareMsg ? (
-                <p className="mt-1 text-[12px] font-semibold text-emerald-700">
+                <p className="mt-1 text-[12px] font-semibold text-site-primary">
                   {compareShareMsg}
                 </p>
               ) : null}
@@ -568,7 +568,7 @@ function OwnerTopSellersInner() {
                 aria-label="แสดงเทียบสาขา"
                 onClick={() => setCompareOpen((v) => !v)}
                 className={`relative h-8 w-14 shrink-0 rounded-full transition ${
-                  compareOpen ? "bg-emerald-600" : "bg-slate-300"
+                  compareOpen ? "bg-site-primary" : "bg-slate-300"
                 }`}
               >
                 <span
@@ -658,7 +658,7 @@ function OwnerTopSellersInner() {
                                 key={b.id}
                                 className={`px-2 py-2 tabular-nums ${
                                   hot
-                                    ? "font-black text-emerald-700"
+                                    ? "font-black text-site-primary"
                                     : "font-semibold text-slate-600"
                                 }`}
                                 title={`฿${formatPrice(revForBranch(item, b.id))}`}
@@ -682,11 +682,11 @@ function OwnerTopSellersInner() {
       ) : null}
 
       <section
-        className={`overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm ${
+        className={`overflow-hidden rounded-2xl border border-site-primary-soft/80 bg-white shadow-sm ${
           loading ? "opacity-70" : ""
         }`}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-emerald-100 px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-site-primary-soft px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-[15px] font-extrabold text-slate-900">
               รายการเมนู
@@ -695,7 +695,7 @@ function OwnerTopSellersInner() {
               กดแถวเพื่อดูยอดแยกสาขา
             </p>
             {shareMsg ? (
-              <p className="mt-1 text-[12px] font-semibold text-emerald-700">
+              <p className="mt-1 text-[12px] font-semibold text-site-primary">
                 {shareMsg}
               </p>
             ) : null}
@@ -710,7 +710,7 @@ function OwnerTopSellersInner() {
           />
         </div>
         <div ref={listCaptureRef} className="bg-white">
-          <div className="border-b border-emerald-50 px-4 py-2.5">
+          <div className="border-b border-site-primary-soft px-4 py-2.5">
             <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
               <p className="text-[13px] font-extrabold text-slate-900">
                 รายการเมนูขายดี
@@ -740,7 +740,7 @@ function OwnerTopSellersInner() {
                   : "ยังไม่มียอดขายในช่วงนี้"}
             </p>
           ) : (
-            <ul className="divide-y divide-emerald-50">
+            <ul className="divide-y divide-site-primary-soft">
               {items.map((item, index) => {
                 const open = expandedKey === item.key;
                 const maxBranchQty = Math.max(
@@ -756,9 +756,9 @@ function OwnerTopSellersInner() {
                           k === item.key ? null : item.key,
                         )
                       }
-                      className="flex w-full items-start gap-3 px-4 py-3 text-left active:bg-emerald-50/50"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left active:bg-site-primary-soft/50"
                     >
-                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-[12px] font-black tabular-nums text-emerald-800">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-site-primary-soft text-[12px] font-black tabular-nums text-site-primary-medium">
                         {index + 1}
                       </span>
                       <div className="min-w-0 flex-1">
@@ -774,7 +774,7 @@ function OwnerTopSellersInner() {
                           {open ? " · ซ่อน" : " · กดเทียบ"}
                         </p>
                       </div>
-                      <span className="shrink-0 text-[13px] font-black tabular-nums text-emerald-800">
+                      <span className="shrink-0 text-[13px] font-black tabular-nums text-site-primary-medium">
                         ฿{formatPrice(item.revenueBaht)}
                       </span>
                     </button>
@@ -797,7 +797,7 @@ function OwnerTopSellersInner() {
                               </div>
                               <div className="h-2 overflow-hidden rounded-full bg-slate-200">
                                 <div
-                                  className="h-full rounded-full bg-emerald-500"
+                                  className="h-full rounded-full bg-site-primary-soft0"
                                   style={{ width: `${pct}%` }}
                                 />
                               </div>

@@ -351,7 +351,7 @@ export default function StaffWeighPage() {
                   onClick={() => setPayment("CASH")}
                   className={`flex-1 rounded-xl py-2.5 text-sm font-bold ${
                     payment === "CASH"
-                      ? "bg-emerald-600 text-white"
+                      ? "bg-site-primary text-white"
                       : "border border-slate-200 text-slate-600"
                   }`}
                 >

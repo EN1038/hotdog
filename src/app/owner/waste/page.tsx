@@ -195,7 +195,7 @@ function OwnerWasteInner() {
       />
 
       {filterBranchName ? (
-        <p className="mb-3 text-[13px] font-semibold text-emerald-800">
+        <p className="mb-3 text-[13px] font-semibold text-site-primary-medium">
           กำลังดูสาขา · {filterBranchName}
         </p>
       ) : compareBranches.length > 1 ? (

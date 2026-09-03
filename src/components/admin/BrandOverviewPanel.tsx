@@ -19,6 +19,7 @@ import {
   type BrandHqSection,
 } from "@/lib/brand-hq-nav";
 import { usePathname } from "next/navigation";
+import { IconLinkSuffix } from "@/components/icons";
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const res = await fetch(dataUrl);
@@ -783,7 +784,7 @@ export function BrandOverviewPanel({
               href={`/admin/brands/${brandId}/stock-flow?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`}
               className="mt-2 inline-flex text-xs font-bold text-violet-700 hover:text-violet-900"
             >
-              เปิดหน้าวิเคราะห์สต๊อกเต็ม · เทียบสาขา →
+              <IconLinkSuffix size={14}>เปิดหน้าวิเคราะห์สต๊อกเต็ม · เทียบสาขา</IconLinkSuffix>
             </Link>
           ) : null}
         </div>

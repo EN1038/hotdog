@@ -30,6 +30,7 @@ import {
 import { reprintPackageBatchLabels } from "@/lib/stock-package-label-print";
 import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
 import type { PackageHistoryLine } from "@/lib/stock-package-history-types";
+import { IconChevronRight } from "@/components/icons";
 
 function historyKindTone(
   kind: Exclude<BranchHistoryKind, "all">,
@@ -597,7 +598,7 @@ export function StaffBranchStockHistoryPanel({
                         {batch.createdByStaff?.name ?? "—"}
                       </p>
                       {batch.branchName ? (
-                        <p className="mt-0.5 text-[12px] font-semibold text-emerald-800">
+                        <p className="mt-0.5 text-[12px] font-semibold text-site-primary-medium">
                           สาขา · {batch.branchName}
                         </p>
                       ) : null}
@@ -636,9 +637,7 @@ export function StaffBranchStockHistoryPanel({
                           {unit}
                         </span>
                       </p>
-                      <span className="text-lg text-slate-300" aria-hidden>
-                        ›
-                      </span>
+                      <IconChevronRight size={18} className="text-slate-300" aria-hidden />
                     </div>
                   </button>
                 </li>
@@ -968,7 +967,7 @@ export function StaffBranchStockHistoryPanel({
                   type="button"
                   disabled={printing || packagePrintLines.length === 0}
                   onClick={() => void handlePackageReprint()}
-                  className="mt-4 w-full rounded-2xl bg-emerald-600 py-3.5 text-[15px] font-extrabold text-white disabled:opacity-60"
+                  className="mt-4 w-full rounded-2xl bg-site-primary py-3.5 text-[15px] font-extrabold text-white disabled:opacity-60"
                 >
                   {printing ? "กำลังเตรียมพิมพ์…" : "พิมพ์ทั้งหมด"}
                 </button>

@@ -45,7 +45,7 @@ export function StaffPrinterStatusChip({
       aria-label={label}
       className={`flex max-w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-[11px] font-bold leading-tight active:scale-[0.99] ${
         readyForPackage
-          ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+          ? "border-site-primary-soft bg-site-primary-soft text-site-primary-strong"
           : "border-amber-300 bg-amber-50 text-amber-950"
       } ${className}`}
     >

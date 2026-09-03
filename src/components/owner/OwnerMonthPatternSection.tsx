@@ -47,9 +47,9 @@ function bucketTone(classification: MonthBucketInsight["classification"]): {
   switch (classification) {
     case "hot":
       return {
-        border: "border-emerald-200",
-        bg: "bg-emerald-50/70",
-        badge: "bg-emerald-100 text-emerald-900",
+        border: "border-site-primary-soft",
+        bg: "bg-site-primary-soft",
+        badge: "bg-site-primary-badge text-site-primary-strong",
       };
     case "cool":
       return {
@@ -227,7 +227,7 @@ export function OwnerMonthPatternSection({
             onClick={() => onPeriodChange(d)}
             className={`rounded-full px-3 py-1.5 text-[12px] font-extrabold ${
               periodDays === d
-                ? "bg-emerald-700 text-white"
+                ? "bg-site-primary text-white"
                 : "bg-slate-100 text-slate-700"
             }`}
           >

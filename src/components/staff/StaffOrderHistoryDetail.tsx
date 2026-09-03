@@ -335,7 +335,7 @@ export function StaffOrderHistoryDetail({
                               ×{it.quantity}
                             </span>
                             {it.giftQuantity > 0 ? (
-                              <span className="ml-1 text-xs font-semibold text-emerald-700">
+                              <span className="ml-1 text-xs font-semibold text-site-primary">
                                 แถม {it.giftQuantity}
                               </span>
                             ) : null}

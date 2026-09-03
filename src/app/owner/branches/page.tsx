@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { IconPlus } from "@/components/icons";
+import { IconPlus, IconChevronRight, IconLinkSuffix } from "@/components/icons";
 import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShell";
 import { useToast } from "@/components/admin/Toast";
 import {
@@ -264,7 +264,7 @@ function OwnerBranchesInner() {
         </div>
         <div className="rounded-2xl bg-white px-3 py-3 shadow-sm">
           <p className="text-[11px] font-semibold text-slate-500">ยอดรวม</p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-emerald-700">
+          <p className="mt-1 text-[18px] font-black tabular-nums text-site-primary">
             ฿{formatPrice(totalRevenue)}
           </p>
           <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
@@ -359,9 +359,7 @@ function OwnerBranchesInner() {
                             : ""}
                         </div>
                       </div>
-                      <span className="shrink-0 text-lg text-slate-300" aria-hidden>
-                        ›
-                      </span>
+                      <IconChevronRight size={18} className="shrink-0 text-slate-300" aria-hidden />
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-4">
@@ -369,7 +367,7 @@ function OwnerBranchesInner() {
                         <p className="text-[11px] font-semibold text-slate-500">
                           ยอดขาย
                         </p>
-                        <p className="mt-0.5 text-[15px] font-black tabular-nums text-emerald-700">
+                        <p className="mt-0.5 text-[15px] font-black tabular-nums text-site-primary">
                           ฿{formatPrice(card.completedRevenue)}
                         </p>
                         <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
@@ -459,7 +457,7 @@ function OwnerBranchesInner() {
                   <div className="grid grid-cols-4 border-t border-slate-100 text-center text-[11px] font-bold">
                     <Link
                       href={summaryHref}
-                      className="py-2.5 text-emerald-800 active:bg-emerald-50"
+                      className="py-2.5 text-site-primary-medium active:bg-site-primary-soft"
                     >
                       ยอดขาย
                     </Link>
@@ -486,7 +484,7 @@ function OwnerBranchesInner() {
                   <div className="grid grid-cols-4 border-t border-slate-100 text-center text-[11px] font-bold">
                     <Link
                       href={topSellersHref}
-                      className="py-2.5 text-emerald-800 active:bg-emerald-50"
+                      className="py-2.5 text-site-primary-medium active:bg-site-primary-soft"
                     >
                       ขายดี
                     </Link>
@@ -521,7 +519,7 @@ function OwnerBranchesInner() {
       <p className="mt-4 text-center text-[12px] font-medium text-slate-400">
         อยากดูยอดรวมทั้งร้าน?{" "}
         <Link href="/owner/summary" className="font-bold text-slate-600">
-          ภาพรวมร้าน →
+          <IconLinkSuffix size={14}>ภาพรวมร้าน</IconLinkSuffix>
         </Link>
       </p>
 

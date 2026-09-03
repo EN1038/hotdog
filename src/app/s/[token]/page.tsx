@@ -8,6 +8,8 @@ import {
   SKEWER_CATEGORY_ROLE_LABELS,
   formatSkewerQtyLabel,
   skewerOrderUsesConfirmedQty,
+  isShopAddedSkewerLine,
+  describeSkewerQtyChange,
 } from "@/lib/skewer-order";
 import type { PublicSkewerOrderReceipt } from "@/lib/skewer-order-public-share";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
@@ -180,7 +182,21 @@ export default function PublicSkewerOrderSharePage() {
     const displayQty = showConfirmed
       ? (item.confirmedQuantity ?? 0)
       : item.requestedQuantity;
+    const shopAdded = isShopAddedSkewerLine(item.requestedQuantity);
+    const change = showConfirmed
+      ? describeSkewerQtyChange(
+          item.requestedQuantity,
+          item.confirmedQuantity ?? 0,
+        )
+      : null;
     const showPrice = item.unitPriceBaht != null && item.unitPriceBaht >= 0;
+    if (
+      showConfirmed &&
+      shopAdded &&
+      (item.confirmedQuantity ?? 0) <= 0
+    ) {
+      return null;
+    }
     return (
       <li
         key={`${item.skewerCategoryRole}-${item.itemName}-${index}`}
@@ -216,19 +232,26 @@ export default function PublicSkewerOrderSharePage() {
             {item.itemName}
           </p>
           <p className="truncate text-xs text-gray-500">
-            สั่ง{" "}
-            {formatSkewerQtyLabel(item.requestedQuantity, {
-              quantityUnit: item.quantityUnit,
-              sticksPerUnit: item.sticksPerUnit,
-              countsAsSticks: item.countsAsSticks,
-            })}
-            {showConfirmed && item.confirmedQuantity != null
-              ? ` · ได้ ${formatSkewerQtyLabel(item.confirmedQuantity, {
+            {shopAdded
+              ? "ร้านเพิ่ม"
+              : `สั่ง ${formatSkewerQtyLabel(item.requestedQuantity, {
                   quantityUnit: item.quantityUnit,
                   sticksPerUnit: item.sticksPerUnit,
                   countsAsSticks: item.countsAsSticks,
-                })}`
-              : ""}
+                })}`}
+            {showConfirmed && item.confirmedQuantity != null && !shopAdded
+              ? ` · ${change?.label ?? `ได้ ${formatSkewerQtyLabel(item.confirmedQuantity, {
+                  quantityUnit: item.quantityUnit,
+                  sticksPerUnit: item.sticksPerUnit,
+                  countsAsSticks: item.countsAsSticks,
+                })}`}`
+              : shopAdded && showConfirmed && item.confirmedQuantity != null
+                ? ` · ได้ ${formatSkewerQtyLabel(item.confirmedQuantity, {
+                    quantityUnit: item.quantityUnit,
+                    sticksPerUnit: item.sticksPerUnit,
+                    countsAsSticks: item.countsAsSticks,
+                  })}`
+                : ""}
             {showPrice
               ? ` · ${formatPrice(item.unitPriceBaht!)} บาท/${item.quantityUnit}`
               : ""}

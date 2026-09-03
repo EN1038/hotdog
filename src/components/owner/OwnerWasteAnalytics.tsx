@@ -369,7 +369,7 @@ export function OwnerWasteAnalytics({
                   : "เปิดเพื่อเทียบจำนวนของเสียแต่ละสาขา"}
               </p>
               {shareMsg ? (
-                <p className="mt-1 text-[12px] font-semibold text-emerald-700">
+                <p className="mt-1 text-[12px] font-semibold text-site-primary">
                   {shareMsg}
                 </p>
               ) : null}

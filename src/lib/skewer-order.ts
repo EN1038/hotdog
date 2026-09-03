@@ -265,6 +265,35 @@ export function skewerOrderUsesConfirmedQty(status: SkewerOrderStatus): boolean 
   return status === "CONFIRMED" || status === "DELIVERED";
 }
 
+/** Shop can change lines while waiting or after confirm — not after deliver/cancel. */
+export function skewerOrderAllowsItemEdits(status: SkewerOrderStatus): boolean {
+  return status === "PENDING_CONFIRM" || status === "CONFIRMED";
+}
+
+/** Line the customer did not order — shop added after talking. */
+export function isShopAddedSkewerLine(requestedQuantity: number): boolean {
+  return requestedQuantity <= 0;
+}
+
+export function describeSkewerQtyChange(
+  requested: number,
+  got: number,
+): { kind: "same" | "less" | "more" | "added" | "removed"; label: string } {
+  if (requested <= 0) {
+    return { kind: "added", label: "ร้านเพิ่ม" };
+  }
+  if (got <= 0) {
+    return { kind: "removed", label: "ไม่ได้ของ" };
+  }
+  if (got === requested) {
+    return { kind: "same", label: "ได้เท่าที่สั่ง" };
+  }
+  if (got < requested) {
+    return { kind: "less", label: `น้อยกว่าที่สั่ง ${requested - got}` };
+  }
+  return { kind: "more", label: `มากกว่าที่สั่ง +${got - requested}` };
+}
+
 type SkewerMenuPriceSource = {
   price?: { toString(): string } | number | string | null;
   storefrontPrice?: { toString(): string } | number | string | null;

@@ -36,6 +36,7 @@ import {
   ownerWasteHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
+import { IconChevronRight } from "@/components/icons";
 
 function OwnerSummaryInner() {
   const { data } = useOwnerDashboard();
@@ -166,10 +167,10 @@ function OwnerSummaryInner() {
   });
 
   return (
-    <div className="px-4 pb-6 pt-4">
-      <header className="mb-4">
-        <h1 className="text-[20px] font-black text-slate-900">ภาพรวมร้าน</h1>
-        <p className="mt-1 text-[14px] font-medium text-slate-500">
+    <div className="space-y-3 px-4 pb-6 pt-3">
+      <header className="mb-1">
+        <h1 className="text-[20px] font-black text-site-primary">ภาพรวมร้าน</h1>
+        <p className="mt-1 text-[13px] font-medium text-slate-500">
           ยอดสุทธิ · ประเภทบิล · วันในสัปดาห์ · ชั่วโมง · สต๊อก
           {hasTestBranch && !includeTest ? " (ไม่รวมสาขาทดลอง)" : ""}
         </p>
@@ -178,19 +179,17 @@ function OwnerSummaryInner() {
       {liveBranchCount > 1 && !filterBranchId ? (
         <Link
           href="/owner/branches"
-          className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 active:bg-emerald-100"
+          className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-site-primary-soft bg-site-primary-soft px-4 py-3.5 active:bg-site-primary-soft"
         >
           <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-emerald-950">
+            <p className="text-[15px] font-extrabold text-site-primary-strong">
               รวม {liveBranchCount} สาขา
             </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-emerald-800/80">
+            <p className="mt-0.5 text-[12px] font-semibold text-site-primary-medium/80">
               ดูการ์ดรายสาขา · กดเพื่อกรองดูยอดสาขานั้น
             </p>
           </div>
-          <span className="shrink-0 text-lg font-bold text-emerald-700" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="shrink-0 text-site-primary" aria-hidden />
         </Link>
       ) : null}
 
@@ -230,7 +229,7 @@ function OwnerSummaryInner() {
       />
 
       {filterBranchName ? (
-        <p className="mb-3 text-[13px] font-semibold text-emerald-800">
+        <p className="mb-3 text-[13px] font-semibold text-site-primary-medium">
           กำลังดูสาขา · {filterBranchName}
         </p>
       ) : null}
@@ -277,9 +276,7 @@ function OwnerSummaryInner() {
               {formatPrice(stats.expenseTotal ?? 0)} · กดดูรายละเอียด
             </p>
           </div>
-          <span className="shrink-0 text-lg font-bold text-rose-700" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="shrink-0 text-rose-700" aria-hidden />
         </Link>
 
         <Link
@@ -295,9 +292,7 @@ function OwnerSummaryInner() {
               {formatPrice(stats.wasteValue ?? 0)} · กดดูรายละเอียด
             </p>
           </div>
-          <span className="shrink-0 text-lg font-bold text-orange-700" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="shrink-0 text-orange-700" aria-hidden />
         </Link>
 
         <Link
@@ -313,9 +308,7 @@ function OwnerSummaryInner() {
               {formatPrice(stats.cancelledRevenue ?? 0)} · กดดูเหตุผล
             </p>
           </div>
-          <span className="shrink-0 text-lg font-bold text-slate-500" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="shrink-0 text-slate-500" aria-hidden />
         </Link>
 
         <Link
@@ -332,9 +325,7 @@ function OwnerSummaryInner() {
                 : "กดดูสถานะสต๊อกค้างอายุ"}
             </p>
           </div>
-          <span className="shrink-0 text-lg font-bold text-amber-700" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="shrink-0 text-amber-700" aria-hidden />
         </Link>
 
         <OwnerAgingAttentionCard
@@ -367,19 +358,17 @@ function OwnerSummaryInner() {
 
         <Link
           href={topSellersHref}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 active:bg-emerald-100"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-site-primary-soft bg-site-primary-soft px-4 py-3.5 active:bg-site-primary-soft"
         >
           <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-emerald-950">
+            <p className="text-[15px] font-extrabold text-site-primary-strong">
               วิเคราะห์เมนูขายดี
             </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-emerald-800/80">
+            <p className="mt-0.5 text-[12px] font-semibold text-site-primary-medium/80">
               ค้นหา · เรียงลำดับ · เทียบสาขา
             </p>
           </div>
-          <span className="shrink-0 text-lg font-bold text-emerald-700" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="shrink-0 text-site-primary" aria-hidden />
         </Link>
 
         <OwnerTopSellersList

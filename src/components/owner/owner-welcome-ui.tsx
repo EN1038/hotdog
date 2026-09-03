@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode, SVGProps } from "react";
+import type { ReactNode } from "react";
 import { PlatformMark } from "@/components/PlatformMark";
+import { IconChevronRight } from "@/components/icons";
 import {
   OWNER_REGISTER_HEADER_BG,
   OWNER_REGISTER_TRIAL_ICON,
@@ -47,22 +48,8 @@ function IconCheck() {
   );
 }
 
-function IconChevronRight(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden {...props}>
-      <path
-        d="M9 6l6 6-6 6"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function LucideIcon({
-  className = "h-6 w-6 text-emerald-700",
+  className = "h-6 w-6 text-site-primary",
   children,
 }: {
   className?: string;
@@ -116,9 +103,9 @@ function StepIcon({ kind }: { kind: OwnerWelcomeStep["icon"] }) {
 
 function WelcomeReadyRow({ children }: { children: ReactNode }) {
   return (
-    <li className="flex items-center gap-3 rounded-2xl bg-emerald-50/70 px-3.5 py-3 ring-1 ring-emerald-100/60">
+    <li className="flex items-center gap-3 rounded-2xl bg-site-primary-soft px-3.5 py-3 ring-1 ring-site-primary-soft">
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-site-primary text-white shadow-sm"
         aria-hidden
       >
         <IconCheck />
@@ -138,10 +125,10 @@ function WelcomeNextStep({
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center text-center">
       <div className="relative w-full pb-3">
-        <div className="mx-auto flex h-[3.25rem] w-[3.25rem] items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100/80">
+        <div className="mx-auto flex h-[3.25rem] w-[3.25rem] items-center justify-center rounded-2xl bg-site-primary-soft ring-1 ring-site-primary-soft">
           <StepIcon kind={step.icon} />
         </div>
-        <span className="absolute bottom-0 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-emerald-700 text-[11px] font-bold text-white ring-2 ring-white">
+        <span className="absolute bottom-0 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-site-primary text-[11px] font-bold text-white ring-2 ring-white">
           {step.n}
         </span>
       </div>
@@ -159,9 +146,7 @@ function WelcomeNextStepConnector() {
       className="flex shrink-0 items-center self-start px-0.5 pt-[2.125rem]"
       aria-hidden
     >
-      <span className="text-[15px] font-medium leading-none text-slate-300">
-        ›
-      </span>
+      <IconChevronRight size={15} className="text-slate-300" />
     </div>
   );
 }
@@ -210,17 +195,17 @@ function TrialProgressRing({
           cy="18"
           r="15.5"
           fill="none"
-          stroke="#10b981"
+          stroke="var(--site-primary)"
           strokeWidth="3"
           strokeLinecap="round"
           strokeDasharray={`${Math.max(8, progress)} 100`}
         />
       </svg>
       <div className="text-center">
-        <p className="text-[22px] font-black tabular-nums leading-none text-emerald-700">
+        <p className="text-[22px] font-black tabular-nums leading-none text-site-primary">
           {displayDays}
         </p>
-        <p className="mt-0.5 text-[11px] font-bold text-emerald-600/85">วัน</p>
+        <p className="mt-0.5 text-[11px] font-bold text-site-primary/85">วัน</p>
       </div>
     </div>
   );
@@ -230,7 +215,7 @@ export function OwnerWelcomeLoading() {
   return (
     <main className="min-h-dvh bg-[#f4f8f6]">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
-        <div className="h-10 w-10 animate-pulse rounded-full bg-emerald-200" />
+        <div className="h-10 w-10 animate-pulse rounded-full bg-site-primary/20" />
         <p className="text-sm font-medium text-slate-500">กำลังเตรียมร้าน…</p>
       </div>
     </main>
@@ -261,15 +246,15 @@ export function OwnerWelcomeContent({
               className="relative bg-cover bg-center bg-no-repeat px-5 pb-16 pt-8 text-center"
               style={{ backgroundImage: `url('${OWNER_REGISTER_HEADER_BG}')` }}
             >
-              <div className="absolute inset-0 bg-gradient-to-b from-teal-900/75 via-emerald-800/80 to-emerald-900/90" />
+              <div className="absolute inset-0 bg-site-primary/85" />
               <div className="relative">
-                <p className="text-[13px] font-bold tracking-wide text-emerald-100/95">
+                <p className="text-[13px] font-bold tracking-wide text-white/90">
                   เปิดร้านสำเร็จ
                 </p>
                 <h1 className="mt-1 text-[2rem] font-black leading-tight tracking-tight text-white">
                   ยินดีต้อนรับ!
                 </h1>
-                <p className="mt-3 text-[1.35rem] font-extrabold leading-snug text-emerald-200">
+                <p className="mt-3 text-[1.35rem] font-extrabold leading-snug text-white/90">
                   {brandName}
                 </p>
                 <p className="mt-2 text-[14px] font-medium leading-relaxed text-white/85">
@@ -341,7 +326,7 @@ export function OwnerWelcomeContent({
           <div className="mt-6 space-y-3 pb-2">
             <Link
               href="/owner"
-              className="grid min-h-[3.75rem] w-full grid-cols-[1fr_auto] items-center rounded-[1.125rem] bg-gradient-to-r from-[#0d9668] via-[#10b981] to-[#14b8a6] px-5 text-[17px] font-bold text-white shadow-[0_12px_32px_-10px_rgba(16,185,129,0.55)] transition-all duration-200 hover:brightness-[1.02] active:scale-[0.99]"
+              className="grid min-h-[3.75rem] w-full grid-cols-[1fr_auto] items-center rounded-[1.125rem] bg-site-primary px-5 text-[17px] font-bold text-white shadow-site-primary-button transition-all duration-200 hover:bg-site-primary-hover active:scale-[0.99] active:bg-site-primary-active"
             >
               <span className="text-center">เริ่มใช้งาน</span>
               <IconChevronRight className="mr-1" />
@@ -361,7 +346,7 @@ export function OwnerWelcomeContent({
               มีบัญชีแล้ว?{" "}
               <Link
                 href="/owner/login"
-                className="font-bold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                className="font-bold text-site-primary transition-colors hover:text-site-primary-hover hover:underline"
               >
                 เข้าสู่ระบบ
               </Link>

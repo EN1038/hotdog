@@ -13,6 +13,7 @@ import {
   resolveSkewerMenuUnitPrice,
   resolveSkewerOrderItemFields,
   resolveSkewerQtyUnit,
+  skewerOrderAllowsItemEdits,
 } from "@/lib/skewer-order";
 import {
   notifyCustomerSkewerOrderCancelled,
@@ -168,6 +169,7 @@ function serializeItem(
       : null;
   return {
     id: item.id,
+    branchMenuItemId: item.branchMenuItemId ?? null,
     itemName: item.itemName,
     requestedQuantity: item.requestedQuantity,
     confirmedQuantity: item.confirmedQuantity,
@@ -315,7 +317,14 @@ export async function GET(request: Request, { params }: Params) {
 
 const confirmItemSchema = z.object({
   id: z.string().min(1),
-  confirmedQuantity: z.number().int().min(0),
+  confirmedQuantity: z.number().int().min(0).max(99_999),
+});
+
+const updateItemsLineSchema = z.object({
+  id: z.string().min(1).optional(),
+  branchMenuItemId: z.string().min(1).optional(),
+  confirmedQuantity: z.number().int().min(0).max(99_999),
+  unitPriceBaht: z.number().min(0).max(999_999).optional(),
 });
 
 const patchSchema = z.discriminatedUnion("action", [
@@ -363,6 +372,11 @@ const patchSchema = z.discriminatedUnion("action", [
     discountAmount: z.number().min(0).max(999_999).optional(),
     discountReason: z.string().trim().max(40).optional().nullable(),
     discountReasonNote: z.string().trim().max(120).optional().nullable(),
+  }),
+  z.object({
+    action: z.literal("updateItems"),
+    orderId: z.string().min(1),
+    items: z.array(updateItemsLineSchema).min(1),
   }),
 ]);
 
@@ -551,6 +565,227 @@ export async function PATCH(request: Request, { params }: Params) {
       return jsonOk(serialize(updated));
     }
 
+    if (body.action === "updateItems") {
+      const existing = await prisma.skewerOrder.findFirst({
+        where: { id: body.orderId, branchId },
+        include: { items: true },
+      });
+      if (!existing) return jsonError("ไม่พบออเดอร์", 404);
+      if (!skewerOrderAllowsItemEdits(existing.status)) {
+        return jsonError("แก้รายการได้เฉพาะออเดอร์ที่รอหรือยืนยันแล้ว");
+      }
+
+      for (const line of body.items) {
+        if (!line.id && !line.branchMenuItemId) {
+          return jsonError("รายการใหม่ต้องระบุเมนู");
+        }
+      }
+
+      const existingById = new Map(existing.items.map((i) => [i.id, i]));
+      const existingByMenuId = new Map<string, (typeof existing.items)[number]>();
+      for (const row of existing.items) {
+        if (row.branchMenuItemId && !existingByMenuId.has(row.branchMenuItemId)) {
+          existingByMenuId.set(row.branchMenuItemId, row);
+        }
+      }
+
+      const qtyById = new Map<string, number>();
+      const priceById = new Map<string, number>();
+      const createLines: Array<{
+        branchMenuItemId: string;
+        confirmedQuantity: number;
+        unitPriceBaht?: number;
+      }> = [];
+      const touchedIds = new Set<string>();
+
+      for (const line of body.items) {
+        if (line.id) {
+          if (!existingById.has(line.id)) {
+            return jsonError("รายการไม่ตรงกับออเดอร์");
+          }
+          qtyById.set(line.id, line.confirmedQuantity);
+          if (line.unitPriceBaht != null) {
+            priceById.set(line.id, line.unitPriceBaht);
+          }
+          touchedIds.add(line.id);
+          continue;
+        }
+        const menuId = line.branchMenuItemId!;
+        const match = existingByMenuId.get(menuId);
+        if (match && !touchedIds.has(match.id)) {
+          qtyById.set(match.id, line.confirmedQuantity);
+          if (line.unitPriceBaht != null) {
+            priceById.set(match.id, line.unitPriceBaht);
+          }
+          touchedIds.add(match.id);
+        } else if (match && touchedIds.has(match.id)) {
+          qtyById.set(
+            match.id,
+            (qtyById.get(match.id) ?? 0) + line.confirmedQuantity,
+          );
+        } else {
+          createLines.push({
+            branchMenuItemId: menuId,
+            confirmedQuantity: line.confirmedQuantity,
+            unitPriceBaht: line.unitPriceBaht,
+          });
+        }
+      }
+
+      const createMenuIds = [...new Set(createLines.map((l) => l.branchMenuItemId))];
+      const menus =
+        createMenuIds.length > 0
+          ? await prisma.branchMenuItem.findMany({
+              where: { id: { in: createMenuIds }, branchId, isHidden: false },
+              select: {
+                id: true,
+                name: true,
+                quantityUnit: true,
+                sticksPerUnit: true,
+                countsAsSticks: true,
+                price: true,
+                storefrontPrice: true,
+                pickupPrice: true,
+                category: {
+                  select: { skewerCategoryRole: true, stockExempt: true },
+                },
+                optionGroupLinks: {
+                  select: { group: { select: { mode: true } } },
+                },
+              },
+            })
+          : [];
+      if (menus.length !== createMenuIds.length) {
+        return jsonError("มีเมนูที่ไม่พร้อมเพิ่ม");
+      }
+      const menuById = new Map(menus.map((m) => [m.id, m]));
+      for (const menu of menus) {
+        const isPromo =
+          menu.optionGroupLinks.some((l) => l.group.mode === "FROM_MENU") ||
+          Boolean(menu.category?.stockExempt);
+        if (isPromo) {
+          return jsonError(`โปรโมชั่นไม่ใช่รายการสั่งไม้ — ${menu.name}`);
+        }
+      }
+
+      const priceMenuIds = [
+        ...new Set(
+          [
+            ...[...qtyById.keys()]
+              .map((id) => existingById.get(id)?.branchMenuItemId)
+              .filter((id): id is string => Boolean(id)),
+            ...createMenuIds,
+          ],
+        ),
+      ];
+      const priceMenus =
+        priceMenuIds.length > 0
+          ? await prisma.branchMenuItem.findMany({
+              where: { id: { in: priceMenuIds } },
+              select: {
+                id: true,
+                price: true,
+                storefrontPrice: true,
+                pickupPrice: true,
+              },
+            })
+          : [];
+      const menuPriceById = new Map(
+        priceMenus.map((m) => [m.id, resolveSkewerMenuUnitPrice(m)]),
+      );
+      const repeatPrices = await loadLatestRepeatCustomerUnitPrices(branchId);
+
+      const defaultPriceFor = (
+        menuItemId: string | null,
+        itemName: string,
+      ) =>
+        lookupRepeatSkewerUnitPrice(
+          repeatPrices,
+          existing.customerId,
+          menuItemId,
+          itemName,
+        ) ?? (menuItemId ? menuPriceById.get(menuItemId) ?? 0 : 0);
+
+      const updated = await prisma.$transaction(async (tx) => {
+        for (const [id, qty] of qtyById) {
+          const row = existingById.get(id)!;
+          const data: Prisma.SkewerOrderItemUpdateInput = {
+            confirmedQuantity: qty,
+          };
+          if (priceById.has(id)) {
+            data.unitPriceBaht = priceById.get(id);
+          } else if (row.unitPriceBaht == null) {
+            data.unitPriceBaht = defaultPriceFor(
+              row.branchMenuItemId,
+              row.itemName,
+            );
+          }
+          await tx.skewerOrderItem.update({ where: { id }, data });
+        }
+
+        for (const line of createLines) {
+          if (line.confirmedQuantity <= 0) continue;
+          const menu = menuById.get(line.branchMenuItemId)!;
+          await tx.skewerOrderItem.create({
+            data: {
+              skewerOrderId: existing.id,
+              branchMenuItemId: menu.id,
+              itemName: menu.name,
+              requestedQuantity: 0,
+              confirmedQuantity: line.confirmedQuantity,
+              quantityUnit: menu.quantityUnit,
+              sticksPerUnit: menu.sticksPerUnit ?? 1,
+              countsAsSticks: menu.countsAsSticks !== false,
+              skewerCategoryRole:
+                menu.category?.skewerCategoryRole === "SKEWER_SUPPLY"
+                  ? "SKEWER_SUPPLY"
+                  : "SKEWER_SALE",
+              unitPriceBaht:
+                line.unitPriceBaht ??
+                defaultPriceFor(menu.id, menu.name),
+            },
+          });
+        }
+
+        const after = await tx.skewerOrderItem.findMany({
+          where: { skewerOrderId: existing.id },
+          select: {
+            id: true,
+            requestedQuantity: true,
+            confirmedQuantity: true,
+          },
+        });
+        const deleteIds = after
+          .filter(
+            (row) =>
+              row.requestedQuantity <= 0 && (row.confirmedQuantity ?? 0) <= 0,
+          )
+          .map((row) => row.id);
+        if (deleteIds.length > 0) {
+          await tx.skewerOrderItem.deleteMany({
+            where: { id: { in: deleteIds } },
+          });
+        }
+
+        return tx.skewerOrder.findFirstOrThrow({
+          where: { id: existing.id },
+          include: { items: skewerItemInclude },
+        });
+      }, SKEWER_ORDER_TX);
+
+      await logAdminActivity(session, {
+        action: "branch.update",
+        summary: `แก้รายการออเดอร์เสียบไม้ #${updated.orderNumber} สาขา ${branch.name}`,
+        branchId,
+        branchName: branch.name,
+        entityType: "skewer_order",
+        entityId: updated.id,
+        entityName: updated.orderNumber,
+      });
+
+      return jsonOk(serialize(updated, repeatPrices));
+    }
+
     // confirm
     const existing = await prisma.skewerOrder.findFirst({
       where: { id: body.orderId, branchId },
@@ -582,23 +817,25 @@ export async function PATCH(request: Request, { params }: Params) {
     const repeatPrices = await loadLatestRepeatCustomerUnitPrices(branchId);
 
     const existingById = new Map(existing.items.map((i) => [i.id, i]));
-    if (body.items.length !== existing.items.length) {
-      return jsonError("กรุณากรอกจำนวนครบทุกรายการ");
-    }
-
     for (const line of body.items) {
       const row = existingById.get(line.id);
       if (!row) return jsonError("รายการไม่ตรงกับออเดอร์");
-      if (line.confirmedQuantity > row.requestedQuantity) {
-        return jsonError(
-          `"${row.itemName}" ยืนยันได้ไม่เกิน ${row.requestedQuantity}`,
-        );
-      }
     }
+
+    const confirmLines = existing.items.map((row) => {
+      const fromBody = body.items.find((line) => line.id === row.id);
+      return {
+        id: row.id,
+        confirmedQuantity:
+          fromBody?.confirmedQuantity ??
+          row.confirmedQuantity ??
+          row.requestedQuantity,
+      };
+    });
 
     const updated = await prisma.$transaction(async (tx) => {
       await Promise.all(
-        body.items.map((line) => {
+        confirmLines.map((line) => {
           const row = existingById.get(line.id)!;
           const repeatPrice = lookupRepeatSkewerUnitPrice(
             repeatPrices,
@@ -609,7 +846,12 @@ export async function PATCH(request: Request, { params }: Params) {
           const menuPrice = row.branchMenuItemId
             ? menuPriceById.get(row.branchMenuItemId) ?? 0
             : 0;
-          const defaultUnitPrice = repeatPrice ?? menuPrice;
+          const existingPrice =
+            row.unitPriceBaht != null ? Number(row.unitPriceBaht) : null;
+          const defaultUnitPrice =
+            existingPrice != null && Number.isFinite(existingPrice)
+              ? existingPrice
+              : (repeatPrice ?? menuPrice);
           return tx.skewerOrderItem.update({
             where: { id: line.id },
             data: {

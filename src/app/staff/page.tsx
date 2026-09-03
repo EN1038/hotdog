@@ -22,6 +22,16 @@ import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import {
+  IconBoxes,
+  IconCart,
+  IconChartBars,
+  IconChevronRight,
+  IconClipboard,
+  IconLinkSuffix,
+  IconReceipt,
+  IconStar,
+} from "@/components/icons";
+import {
   autoPrintQueueTickets,
   clampTicketCopies,
   formatTicketDateLabel,
@@ -57,109 +67,6 @@ type HomeMeta = {
   } | null;
 };
 
-function IconCart({ size = 28 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3 5h2l2.2 10.2a2 2 0 001.95 1.55H17.5a2 2 0 001.95-1.5L21 8H7"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="10" cy="20" r="1.4" fill="currentColor" />
-      <circle cx="17" cy="20" r="1.4" fill="currentColor" />
-    </svg>
-  );
-}
-
-function IconStar({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M12 3.4l2.35 4.76 5.25.76-3.8 3.7.9 5.24L12 15.4l-4.7 2.46.9-5.24-3.8-3.7 5.25-.76L12 3.4z" />
-    </svg>
-  );
-}
-
-function IconClipboard({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 4h6a2 2 0 012 2v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h1V6a2 2 0 012-2z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path d="M9 4.5h6v2H9v-2z" fill="currentColor" opacity="0.25" />
-      <path
-        d="M8 12h8M8 16h5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconChart({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M5 19V10M12 19V5M19 19v-7"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconBox({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 8l8-4 8 4v8l-8 4-8-4V8z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path d="M4 8l8 4 8-4M12 12v8" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function IconReceipt({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M7 3h10v18l-2-1.2L13 21l-2-1.2L9 21l-2-1.2V3z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 8h6M9 12h6M9 16h4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconChevron({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 6l6 6-6 6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 type SoftTone = "amber" | "sky" | "teal" | "rose" | "emerald" | "primary";
 
 /** บล็อกสีทึบแบบถุงเงิน — กดง่าย อ่านใหญ่ */
@@ -188,7 +95,7 @@ const TILE_TONES: Record<
     iconWrap: "bg-white/20 text-white",
   },
   emerald: {
-    card: "bg-emerald-600 hover:bg-emerald-700",
+    card: "bg-site-primary hover:bg-site-primary-hover active:bg-site-primary-active",
     iconWrap: "bg-white/20 text-white",
   },
 };
@@ -253,7 +160,7 @@ function SoftTile({
           ) : null}
         </span>
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white">
-          <IconChevron size={20} />
+          <IconChevronRight size={20} />
         </span>
       </>
     ) : (
@@ -587,9 +494,9 @@ export default function StaffHomePage() {
                   .join(" · ")}
               </span>
             </span>
-            <span className="shrink-0 text-[15px] font-extrabold text-rose-700">
-              ดู ›
-            </span>
+            <IconLinkSuffix size={14} className="shrink-0 text-[15px] font-extrabold text-rose-700">
+              ดู
+            </IconLinkSuffix>
           </Link>
         ) : null}
 
@@ -646,9 +553,9 @@ export default function StaffHomePage() {
                 กดเพื่อไปรับออเดอร์ทันที
               </span>
             </span>
-            <span className="shrink-0 text-[15px] font-extrabold text-amber-700">
-              ไปรับ ›
-            </span>
+            <IconLinkSuffix size={14} className="shrink-0 text-[15px] font-extrabold text-amber-700">
+              ไปรับ
+            </IconLinkSuffix>
           </Link>
         ) : null}
 
@@ -783,8 +690,8 @@ export default function StaffHomePage() {
               href="/staff/summary"
               title="ภาพรวมร้าน"
               subtitle="ยอดขาย · สต๊อก · Top 10"
-              icon={<IconChart size={26} />}
-              tone="emerald"
+              icon={<IconChartBars size={26} />}
+              tone="primary"
               size="half"
             />
             {stockOn ? (
@@ -797,7 +704,7 @@ export default function StaffHomePage() {
                   }
                   title="สต๊อก"
                   subtitle="รับของ / ตรวจนับ"
-                  icon={<IconBox size={26} />}
+                  icon={<IconBoxes size={26} />}
                   badge={meta?.pendingStockCount}
                   tone="teal"
                   size="half"

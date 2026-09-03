@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { IconCalendar } from "@/components/icons";
 import { bangkokDateKey } from "@/lib/constants";
 import { SalesDateRangeBar } from "@/components/merchant/SalesSummaryView";
 
@@ -22,8 +23,8 @@ export const MOBILE_DATE_PRESETS: Array<{
 }> = [
   { id: "today", label: "วันนี้" },
   { id: "yesterday", label: "เมื่อวาน" },
-  { id: "7d", label: "7" },
-  { id: "15d", label: "15" },
+  { id: "7d", label: "7 วัน" },
+  { id: "15d", label: "15 วัน" },
   { id: "month", label: "เดือนนี้" },
   { id: "lastMonth", label: "เดือนที่แล้ว" },
 ];
@@ -140,8 +141,8 @@ export function MobileDateRangeControl({
 
   return (
     <div className={className}>
-      <div className="mb-3 flex items-center gap-1.5">
-        <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="filter-scroll-row flex min-w-0 flex-1 gap-2 overflow-x-auto pb-0.5">
           {MOBILE_DATE_PRESETS.map((p) => {
             const range = mobileRangeForPreset(p.id, todayKey);
             const active = !isCustom && preset === p.id;
@@ -152,10 +153,10 @@ export function MobileDateRangeControl({
                 onClick={() =>
                   onChange({ from: range.from, to: range.to, preset: p.id })
                 }
-                className={`shrink-0 rounded-full px-3 py-2 text-[13px] font-bold ${
+                className={`shrink-0 rounded-full px-3.5 py-2 text-[13px] font-bold transition active:scale-[0.98] ${
                   active
-                    ? "bg-slate-800 text-white"
-                    : "bg-white text-slate-600 ring-1 ring-slate-200"
+                    ? "bg-site-primary text-white shadow-sm"
+                    : "bg-white text-slate-700 ring-1 ring-slate-200/90"
                 }`}
               >
                 {p.label}
@@ -165,13 +166,15 @@ export function MobileDateRangeControl({
           <button
             type="button"
             onClick={() => onChange({ from, to, preset: "custom" })}
-            className={`shrink-0 rounded-full px-3 py-2 text-[13px] font-bold ${
+            aria-label="กำหนดช่วงวันที่เอง"
+            title="กำหนดเอง"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition active:scale-[0.98] ${
               isCustom
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-600 ring-1 ring-slate-200"
+                ? "bg-site-primary text-white shadow-sm"
+                : "bg-white text-slate-600 ring-1 ring-slate-200/90"
             }`}
           >
-            กำหนดเอง
+            <IconCalendar size={18} />
           </button>
         </div>
         {trailing}

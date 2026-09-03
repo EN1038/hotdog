@@ -88,7 +88,7 @@ function OwnerTomorrowPlansInner() {
   return (
     <div className="px-4 pb-6 pt-4">
       <header className="mb-4">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-emerald-700/80">
+        <p className="text-[12px] font-bold uppercase tracking-wide text-site-primary/80">
           Owner · วางแผนสต๊อก
         </p>
         <h1 className="mt-1 text-[22px] font-black text-slate-900">

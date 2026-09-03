@@ -198,6 +198,23 @@ function applyCaptureFontVars(node: HTMLElement): () => void {
   };
 }
 
+/**
+ * Hide [data-capture-exclude] with display:none so layout collapses
+ * (html-to-image filter alone often leaves blank gaps).
+ */
+function hideCaptureExcluded(root: HTMLElement): () => void {
+  const prev: Array<{ el: HTMLElement; display: string }> = [];
+  for (const el of root.querySelectorAll<HTMLElement>("[data-capture-exclude]")) {
+    prev.push({ el, display: el.style.display });
+    el.style.display = "none";
+  }
+  return () => {
+    for (const { el, display } of prev) {
+      el.style.display = display;
+    }
+  };
+}
+
 /** Capture a DOM node to PNG data URL (html-to-image). */
 export async function captureElementToPng(
   node: HTMLElement,
@@ -205,6 +222,7 @@ export async function captureElementToPng(
   const { toPng, getFontEmbedCSS } = await import("html-to-image");
   const restoreImages = await prepareImagesForCapture(node);
   const restoreFonts = applyCaptureFontVars(node);
+  const restoreExcluded = hideCaptureExcluded(node);
   try {
     // Wait for inlined data-URL images to decode before rasterizing
     await Promise.all(
@@ -237,6 +255,7 @@ export async function captureElementToPng(
       style: fontFamily ? { fontFamily } : undefined,
     });
   } finally {
+    restoreExcluded();
     restoreFonts();
     restoreImages();
   }

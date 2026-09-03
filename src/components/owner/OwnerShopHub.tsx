@@ -12,6 +12,7 @@ import {
 import { useToast } from "@/components/admin/Toast";
 import { PlatformSupportCard } from "@/components/PlatformSupportCard";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
+import { IconChevronRight, IconLinkSuffix } from "@/components/icons";
 import { PAR_STOCK_LABEL, PAR_STOCK_SHORT_LABEL } from "@/lib/inventory/inventory-par-labels";
 
 function formatDateLabel(iso: string | null) {
@@ -105,9 +106,7 @@ export function OwnerShopMenuSection({
                   {link.hint}
                 </p>
               </div>
-              <span className="text-lg text-slate-300" aria-hidden>
-                ›
-              </span>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
             </button>
           ) : (
             <Link
@@ -125,9 +124,7 @@ export function OwnerShopMenuSection({
                   {link.hint}
                 </p>
               </div>
-              <span className="text-lg text-slate-300" aria-hidden>
-                ›
-              </span>
+              <IconChevronRight size={18} className="text-slate-300" aria-hidden />
             </Link>
           ),
         )}
@@ -166,9 +163,9 @@ export function OwnerShopMenuSection({
                       {b.isOpen ? "เปิดอยู่" : "ปิดร้าน"}
                     </span>
                   </span>
-                  <span className="text-sm font-bold text-site-primary">
-                    เข้า →
-                  </span>
+                  <IconLinkSuffix size={14} className="text-sm font-bold text-site-primary">
+                    เข้า
+                  </IconLinkSuffix>
                 </button>
               ))}
             </div>
@@ -250,9 +247,7 @@ export function OwnerAccountCards({
               ชื่อ โลโก้ รูปปก · {brandName}
             </p>
           </div>
-          <span className="text-lg text-slate-300" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="text-slate-300" aria-hidden />
         </Link>
         <Link
           href={`/admin/brands/${brandId}/admins`}
@@ -266,9 +261,7 @@ export function OwnerAccountCards({
               ดูข้อมูลล็อกอินและทีมแอดมิน
             </p>
           </div>
-          <span className="text-lg text-slate-300" aria-hidden>
-            ›
-          </span>
+          <IconChevronRight size={18} className="text-slate-300" aria-hidden />
         </Link>
       </div>
 
@@ -299,7 +292,7 @@ export function OwnerAccountCards({
                 ? "bg-red-50 text-red-800"
                 : nearExpiry
                   ? "bg-amber-50 text-amber-900"
-                  : "bg-emerald-50 text-emerald-800"
+                  : "bg-site-primary-soft text-site-primary-medium"
             }`}
           >
             {subscription.effectiveStatusLabel ?? subscription.statusLabel}
@@ -405,7 +398,7 @@ export function OwnerAccountCards({
           href={`/admin/brands/${brandId}/admins?tab=billing`}
           className="mt-3 inline-flex text-[13px] font-bold text-site-primary"
         >
-          ดูใบแจ้งหนี้ / ประวัติชำระ ›
+          <IconLinkSuffix size={14}>ดูใบแจ้งหนี้ / ประวัติชำระ</IconLinkSuffix>
         </Link>
       </div>
 

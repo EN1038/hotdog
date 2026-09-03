@@ -478,7 +478,7 @@ export function StaffStockMovementHistorySheet({
                           ? cancelled
                             ? "border-red-500 bg-red-50 font-bold text-red-800"
                             : kind === "stock_in"
-                              ? "border-emerald-500 bg-emerald-50 font-bold text-emerald-800"
+                              ? "border-site-primary bg-site-primary-soft font-bold text-site-primary-medium"
                               : "border-amber-500 bg-amber-50 font-bold text-amber-800"
                           : cancelled
                             ? "border-red-200 bg-red-50/70 text-red-700"
@@ -718,7 +718,7 @@ export function StaffStockMovementHistorySheet({
             onClick={handleCreate}
             className={`w-full rounded-xl px-4 py-3 text-sm font-bold text-white ${
               kind === "stock_in"
-                ? "bg-emerald-600 hover:bg-emerald-700"
+                ? "bg-site-primary hover:bg-site-primary-hover"
                 : "bg-amber-500 hover:bg-amber-600"
             }`}
           >

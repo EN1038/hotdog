@@ -190,9 +190,9 @@ export function StaffPackageReceivePanel({
         {loading ? <LoadingState label="กำลังค้นหา…" /> : null}
 
         {preview ? (
-          <section className="space-y-3 rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 p-4 shadow-sm">
+          <section className="space-y-3 rounded-2xl border-2 border-site-primary-soft bg-site-primary-soft/60 p-4 shadow-sm">
             <div>
-              <p className="text-[13px] font-bold text-emerald-700">พร้อมรับเข้า</p>
+              <p className="text-[13px] font-bold text-site-primary">พร้อมรับเข้า</p>
               <p className="mt-1 text-[17px] font-extrabold text-slate-900">
                 {preview.productName}
               </p>
@@ -212,7 +212,7 @@ export function StaffPackageReceivePanel({
               type="button"
               disabled={busy}
               onClick={() => void confirmReceive()}
-              className="w-full rounded-2xl bg-emerald-600 py-3.5 text-[15px] font-extrabold text-white shadow-sm disabled:opacity-60"
+              className="w-full rounded-2xl bg-site-primary py-3.5 text-[15px] font-extrabold text-white shadow-sm disabled:opacity-60"
             >
               {busy ? "กำลังบันทึก…" : "ยืนยันรับรายการ"}
             </button>

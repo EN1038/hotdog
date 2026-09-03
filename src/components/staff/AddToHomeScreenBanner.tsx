@@ -105,12 +105,12 @@ export function AddToHomeScreenBanner({
   if (installed && force) {
     return (
       <div
-        className={`rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 ${className}`}
+        className={`rounded-2xl border border-site-primary-soft bg-site-primary-soft px-4 py-3 ${className}`}
       >
-        <p className="text-sm font-bold text-emerald-900">
+        <p className="text-sm font-bold text-site-primary-strong">
           เปิดแบบแอปอยู่แล้ว
         </p>
-        <p className="mt-1 text-xs leading-relaxed text-emerald-800">
+        <p className="mt-1 text-xs leading-relaxed text-site-primary-medium">
           คุณเปิดจากไอคอนหน้าจอหลักแล้ว — ไม่มีแถบเบราว์เซอร์
         </p>
       </div>

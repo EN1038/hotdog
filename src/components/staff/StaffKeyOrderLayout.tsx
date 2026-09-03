@@ -74,7 +74,7 @@ export function StaffKeyOrderLayout({
               onClick={toggleMode}
               className={`flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-bold transition active:scale-[0.98] ${
                 isInstant
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-site-primary text-white"
                   : "bg-gray-100 text-gray-700"
               }`}
               title={

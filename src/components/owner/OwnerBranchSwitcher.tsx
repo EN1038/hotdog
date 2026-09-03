@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { IconPlus, IconStore } from "@/components/icons";
+import { IconPlus, IconStore, IconChevronDown, IconChevronRight } from "@/components/icons";
 import {
   isOwnerBranchAdminPath,
   parseBranchAdminId,
@@ -131,9 +131,7 @@ export function OwnerBranchSwitcher() {
               {label}
             </span>
           </span>
-          <span className="shrink-0 text-slate-400" aria-hidden>
-            ▾
-          </span>
+          <IconChevronDown size={18} className="shrink-0 text-slate-400" aria-hidden />
         </button>
 
         <Link
@@ -213,9 +211,7 @@ export function OwnerBranchSwitcher() {
               className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 active:bg-slate-50"
             >
               ดูทุกสาขา
-              <span className="text-slate-300" aria-hidden>
-                ›
-              </span>
+              <IconChevronRight size={16} className="text-slate-300" aria-hidden />
             </Link>
             <Link
               href="/admin"
@@ -223,9 +219,7 @@ export function OwnerBranchSwitcher() {
               className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold text-site-primary active:bg-site-primary-soft"
             >
               จัดการและเพิ่มสาขา
-              <span className="text-site-primary/40" aria-hidden>
-                ›
-              </span>
+              <IconChevronRight size={16} className="text-site-primary/40" aria-hidden />
             </Link>
           </div>
           {hasMultiple &&

@@ -130,14 +130,102 @@ input[type="time"]:not(:focus):invalid {
   background-color: color-mix(in srgb, var(--site-primary) 12%, white);
 }
 
+.bg-site-primary-chip {
+  background-color: color-mix(in srgb, var(--site-primary) 14%, white);
+}
+
+.bg-site-primary-badge {
+  background-color: color-mix(in srgb, var(--site-primary) 20%, white);
+}
+
+.bg-site-primary-gradient {
+  background: linear-gradient(
+    to bottom right,
+    var(--site-primary),
+    var(--site-primary-active)
+  );
+}
+
+.bg-site-primary-card-gradient {
+  background: linear-gradient(
+    to bottom right,
+    color-mix(in srgb, var(--site-primary) 10%, white),
+    white
+  );
+}
+
+.text-site-primary-strong {
+  color: color-mix(in srgb, var(--site-primary) 78%, black);
+}
+
+.text-site-primary-medium {
+  color: color-mix(in srgb, var(--site-primary) 62%, #334155);
+}
+
+.text-site-primary-badge {
+  color: color-mix(in srgb, var(--site-primary) 72%, black);
+}
+
 .border-site-primary-soft {
   border-color: color-mix(in srgb, var(--site-primary) 35%, white);
+}
+
+.border-site-primary-banner {
+  border-color: color-mix(in srgb, var(--site-primary) 28%, white);
+}
+
+.bg-site-primary-banner {
+  background-color: color-mix(in srgb, var(--site-primary) 10%, white);
 }
 
 .hover\:bg-site-primary-soft:hover {
   background-color: color-mix(in srgb, var(--site-primary) 12%, white);
 }
 
+.active\:bg-site-primary-soft:active {
+  background-color: color-mix(in srgb, var(--site-primary) 18%, white);
+}
+
 .ring-site-primary {
   --tw-ring-color: color-mix(in srgb, var(--site-primary) 35%, transparent);
+}
+
+.ring-site-primary-focus {
+  --tw-ring-color: color-mix(in srgb, var(--site-primary) 22%, transparent);
+}
+
+.border-site-primary-focus {
+  border-color: color-mix(in srgb, var(--site-primary) 42%, white);
+}
+
+.shadow-site-primary-lg {
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--site-primary) 42%, transparent);
+}
+
+.shadow-site-primary-card {
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--site-primary) 28%, transparent);
+}
+
+.shadow-site-primary-button {
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--site-primary) 30%, transparent);
+}
+
+/* SkillSale owner dashboard — premium merchant shell */
+.owner-shell-bg {
+  background-color: #f0f4f8;
+}
+
+.owner-header-gradient {
+  background: linear-gradient(
+    135deg,
+    #063b55 0%,
+    #006b67 52%,
+    #062b4b 100%
+  );
+}
+
+.owner-nav-float {
+  box-shadow:
+    0 -4px 24px rgba(6, 43, 75, 0.08),
+    0 -1px 0 rgba(6, 43, 75, 0.06);
 }

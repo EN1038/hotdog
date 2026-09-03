@@ -23,6 +23,8 @@ import {
   resolveCountsAsSticks,
   summarizeSkewerSplit,
   skewerOrderUsesConfirmedQty,
+  isShopAddedSkewerLine,
+  describeSkewerQtyChange,
 } from "@/lib/skewer-order";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import {
@@ -295,7 +297,12 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
           skewerCategoryRole: ordered?.skewerCategoryRole,
           category: menu.category,
         }),
-        ordered: Boolean(ordered),
+        ordered: ordered
+          ? skewerOrderUsesConfirmedQty(order.status)
+            ? ordered.requestedQuantity > 0 ||
+              (ordered.confirmedQuantity ?? 0) > 0
+            : ordered.requestedQuantity > 0
+          : false,
         seq: seqById.get(menu.id) ?? 9999,
       };
     });
@@ -516,16 +523,13 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
     if (!order) return null;
     const confirmed = item.confirmedQuantity;
     const displayQty = rowDisplayQty(order, item);
-    const less =
-      skewerOrderUsesConfirmedQty(order.status) &&
-      item.ordered &&
-      confirmed != null &&
-      confirmed < item.requestedQuantity;
-    const same =
-      skewerOrderUsesConfirmedQty(order.status) &&
-      item.ordered &&
-      confirmed != null &&
-      confirmed === item.requestedQuantity;
+    const shopAdded = isShopAddedSkewerLine(item.requestedQuantity);
+    const change =
+      skewerOrderUsesConfirmedQty(order.status) && item.ordered
+        ? describeSkewerQtyChange(item.requestedQuantity, confirmed ?? 0)
+        : null;
+    const less = change?.kind === "less" || change?.kind === "removed";
+    const same = change?.kind === "same";
     return (
       <li
         key={item.key}
@@ -574,13 +578,11 @@ export default function SkewerHistoryDetailPage({ params }: PageProps) {
           >
             {item.ordered
               ? skewerOrderUsesConfirmedQty(order.status)
-                ? `สั่ง ${formatSkewerQtyLabel(item.requestedQuantity, item)}${
-                    same
-                      ? " · ได้เท่าที่สั่ง"
-                      : less
-                        ? " · น้อยกว่าที่สั่ง"
-                        : ""
-                  }`
+                ? shopAdded
+                  ? "ร้านเพิ่ม"
+                  : `สั่ง ${formatSkewerQtyLabel(item.requestedQuantity, item)}${
+                      change ? ` · ${change.label}` : ""
+                    }`
                 : formatSkewerQtyLabel(item.requestedQuantity, item)
               : "ไม่ได้สั่ง"}
           </p>

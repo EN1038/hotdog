@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { IconLinkSuffix } from "@/components/icons";
 import type { StaffPrepTip } from "@/lib/sales-day-insights";
 
 type PrepTipPayload = {
@@ -40,9 +41,9 @@ export function StaffPrepTipBanner({
 
   const hot = tip.kind === "peak" || tip.kind === "strong";
   const wrap = hot
-    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+    ? "border-site-primary-soft bg-site-primary-soft text-site-primary-strong"
     : "border-amber-200 bg-amber-50 text-amber-950";
-  const eyebrow = hot ? "text-emerald-800" : "text-amber-800";
+  const eyebrow = hot ? "text-site-primary-medium" : "text-amber-800";
 
   return (
     <div
@@ -63,7 +64,7 @@ export function StaffPrepTipBanner({
           href={payload.fullHref}
           className="mt-2 inline-block text-[12px] font-bold underline underline-offset-2 opacity-90"
         >
-          ดูวันขายดี / ยอดอ่อนทั้งหมด →
+          <IconLinkSuffix size={14}>ดูวันขายดี / ยอดอ่อนทั้งหมด</IconLinkSuffix>
         </Link>
       ) : null}
     </div>

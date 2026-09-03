@@ -12,6 +12,7 @@ import { AdminUsageDeleteModal } from "@/components/admin/AdminUsageDeleteModal"
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { OptionGroupMenuSourceEditor } from "@/components/admin/OptionGroupMenuSourceEditor";
+import { IconChevronDown, IconChevronRight } from "@/components/icons";
 
 export type BranchOption = {
   id: string;
@@ -629,7 +630,11 @@ export function BranchOptionLibrary({ branchId }: Props) {
                   }
                 >
                   <span className="text-lg leading-none">
-                    {isCollapsed ? "▸" : "▾"}
+                    {isCollapsed ? (
+                      <IconChevronRight size={18} aria-hidden />
+                    ) : (
+                      <IconChevronDown size={18} aria-hidden />
+                    )}
                   </span>
                 </button>
 

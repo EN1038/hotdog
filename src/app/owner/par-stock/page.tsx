@@ -10,6 +10,7 @@ import { bangkokDateKey } from "@/lib/constants";
 import {
   PAR_STOCK_LABEL,
 } from "@/lib/inventory/inventory-par-labels";
+import { IconLinkSuffix } from "@/components/icons";
 import {
   buildOwnerViewQuery,
   ownerHomeHref,
@@ -114,8 +115,8 @@ function OwnerParStockInner() {
         <Link href={salesDaysHref} className="font-bold text-amber-800">
           วันขายดี / ยอดอ่อน
         </Link>
-        <Link href={plansHref} className="font-bold text-emerald-700">
-          ไปแผนผลิต-เติม →
+        <Link href={plansHref} className="font-bold text-site-primary">
+          <IconLinkSuffix size={14}>ไปแผนผลิต-เติม</IconLinkSuffix>
         </Link>
         <Link href={homeHref} className="font-bold text-slate-600">
           ← หน้าแรก

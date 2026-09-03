@@ -419,8 +419,8 @@ export function StaffShiftControls({
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-site-primary-soft px-2.5 py-1 text-xs font-bold text-site-primary">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-site-primary" />
                   เปิดขายอยู่
                 </span>
                 <span className="text-sm font-extrabold text-slate-800">
@@ -439,11 +439,11 @@ export function StaffShiftControls({
             </div>
 
             <div className="mt-2.5 grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-emerald-50/90 px-2.5 py-2">
-                <p className="text-[11px] font-semibold leading-none text-emerald-700">
+              <div className="rounded-xl bg-site-primary-soft/90 px-2.5 py-2">
+                <p className="text-[11px] font-semibold leading-none text-site-primary">
                   ยอดวันนี้
                 </p>
-                <p className="mt-1 text-[17px] font-black leading-none tabular-nums text-emerald-900">
+                <p className="mt-1 text-[17px] font-black leading-none tabular-nums text-site-primary-strong">
                   ฿{formatPrice(todayRevenueBaht)}
                 </p>
               </div>
@@ -506,28 +506,28 @@ export function StaffShiftControls({
           </div>
         ) : (
           <div
-            className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3.5 text-emerald-950 shadow-sm"
+            className="rounded-2xl border border-site-primary-soft bg-site-primary-soft/90 p-3.5 text-site-primary-strong shadow-sm"
             role="status"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <p className="text-sm font-bold text-emerald-950">
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-site-primary animate-pulse" />
+                  <p className="text-sm font-bold text-site-primary-strong">
                     รอบที่ {activeShift.roundNumber} · เปิดขายอยู่
                   </p>
                 </div>
-                <p className="mt-1 text-xs font-medium text-emerald-700">
+                <p className="mt-1 text-xs font-medium text-site-primary">
                   เปิดเวลา {formatShiftTime(activeShift.openedAt)} น. · เงินทอน{" "}
                   {formatPrice(activeShift.openingCash)}฿
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="text-sm font-bold leading-none text-emerald-950">
+                <p className="text-sm font-bold leading-none text-site-primary-strong">
                   เปิดมาแล้ว
                 </p>
                 <p
-                  className="mt-1 font-mono text-xs font-bold tabular-nums text-emerald-700"
+                  className="mt-1 font-mono text-xs font-bold tabular-nums text-site-primary"
                   aria-live="polite"
                 >
                   {formatElapsed(elapsedMs)}
@@ -539,7 +539,7 @@ export function StaffShiftControls({
                 type="button"
                 disabled={busy || submitting}
                 onClick={startDetail}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-emerald-300 bg-white text-emerald-900 shadow-sm hover:bg-emerald-50 disabled:opacity-60 transition active:scale-[0.98]"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-site-primary-soft bg-white text-site-primary-strong shadow-sm hover:bg-site-primary-soft disabled:opacity-60 transition active:scale-[0.98]"
                 aria-label="ดูรายละเอียดรอบขาย"
                 title="ดูรายละเอียดรอบขาย"
               >
@@ -584,7 +584,7 @@ export function StaffShiftControls({
             type="button"
             disabled={busy || submitting}
             onClick={startOpen}
-            className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-base font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 transition active:scale-[0.98]"
+            className="w-full rounded-2xl bg-site-primary px-4 py-3.5 text-base font-bold text-white shadow-sm hover:bg-site-primary-hover disabled:opacity-60 transition active:scale-[0.98]"
           >
             เปิดรอบขาย
           </button>
@@ -628,7 +628,7 @@ export function StaffShiftControls({
               />
             </label>
             {openingCashHint ? (
-              <p className="mt-1.5 text-[11px] font-medium leading-snug text-emerald-700">
+              <p className="mt-1.5 text-[11px] font-medium leading-snug text-site-primary">
                 {openingCashHint}
               </p>
             ) : null}
@@ -657,7 +657,7 @@ export function StaffShiftControls({
                 type="button"
                 disabled={submitting}
                 onClick={() => void submitOpen()}
-                className="flex-1 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="flex-1 rounded-xl bg-site-primary px-3 py-2.5 text-sm font-bold text-white hover:bg-site-primary-hover disabled:opacity-60"
               >
                 {submitting ? "กำลังเปิด…" : "เปิดร้าน"}
               </button>
@@ -987,7 +987,7 @@ export function StaffShiftControls({
                         Number(closingCashInput) -
                           Number(closeSummary.expectedCash) ===
                         0
-                          ? "text-emerald-700"
+                          ? "text-site-primary"
                           : "text-rose-700"
                       }`}
                     >

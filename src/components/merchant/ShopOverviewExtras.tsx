@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { IconImage } from "@/components/icons";
+import { IconImage, IconCalendar, IconTrend, IconLinkSuffix } from "@/components/icons";
 import { formatPrice } from "@/lib/constants";
 import type {
   ShopDailyPoint,
@@ -243,7 +243,7 @@ export function ShopDailyRevenueBars({
                 </span>
                 <div className="flex h-28 w-full items-end justify-center">
                   <div
-                    className="w-[70%] max-w-[1.25rem] rounded-t-md bg-emerald-500"
+                    className="w-[70%] max-w-[1.25rem] rounded-t-md bg-site-primary"
                     style={{
                       height: `${Math.max(
                         d.revenueBaht > 0 ? 6 : 2,
@@ -270,7 +270,7 @@ export function ShopTopSellersList({
   defaultOpen = false,
   href,
   title = "สินค้าขายดี Top 10",
-  linkLabel = "เปิดหน้าวิเคราะห์เต็ม →",
+  linkLabel = "เปิดหน้าวิเคราะห์เต็ม",
 }: {
   items: ShopTopSeller[];
   loading?: boolean;
@@ -283,23 +283,28 @@ export function ShopTopSellersList({
 
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+      className={`rounded-[1.25rem] bg-white p-4 shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100 ${
         loading ? "opacity-60" : ""
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[15px] font-extrabold text-slate-900">
-            {title}
-          </h2>
-          {href ? (
-            <Link
-              href={href}
-              className="mt-0.5 inline-block text-[12px] font-bold text-emerald-700"
-            >
-              {linkLabel}
-            </Link>
-          ) : null}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-site-primary-soft text-site-primary">
+            <IconTrend size={20} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-[14px] font-extrabold text-[#0b2a4a]">
+              {title}
+            </h2>
+            {href ? (
+              <Link
+                href={href}
+                className="mt-0.5 inline-block text-[12px] font-bold text-site-primary"
+              >
+                <IconLinkSuffix size={13}>{linkLabel}</IconLinkSuffix>
+              </Link>
+            ) : null}
+          </div>
         </div>
         <OverviewShowSwitch
           checked={show}
@@ -312,24 +317,24 @@ export function ShopTopSellersList({
           ยังไม่มียอดขายในช่วงนี้
         </p>
       ) : (
-        <ol className="divide-y divide-slate-100">
+        <ol className="mt-3 divide-y divide-slate-100/80">
           {items.map((item, index) => (
             <li
               key={`${item.name}-${index}`}
               className="flex items-center gap-3 py-2.5"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[12px] font-black tabular-nums text-slate-700">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-site-primary-badge text-[12px] font-black tabular-nums text-site-primary-badge">
                 {index + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-bold text-slate-900">
+                <p className="truncate text-[14px] font-bold text-[#0b2a4a]">
                   {item.name}
                 </p>
                 <p className="mt-0.5 text-[12px] font-medium text-slate-500">
                   {formatPrice(item.quantity)} ชิ้น
                 </p>
               </div>
-              <p className="shrink-0 text-[14px] font-extrabold tabular-nums text-slate-900">
+              <p className="shrink-0 text-[14px] font-extrabold tabular-nums text-site-primary">
                 {formatPrice(item.revenueBaht)} ฿
               </p>
             </li>
@@ -582,21 +587,26 @@ export function ShopWeekdayRevenueBars({
 
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+      className={`rounded-[1.25rem] bg-white p-4 shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100 ${
         loading ? "opacity-60" : ""
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[15px] font-extrabold text-slate-900">
-            ยอดขายแยกวันในสัปดาห์
-          </h2>
-          {!show ? (
-            <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
-              รวม {formatPrice(total)} ฿
-              {peak && peak.revenueBaht > 0 ? ` · พีกวัน${peak.label}` : ""}
-            </p>
-          ) : null}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-site-primary-soft text-site-primary">
+            <IconCalendar size={20} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-[14px] font-extrabold text-[#0b2a4a]">
+              ยอดขายแยกวันในสัปดาห์
+            </h2>
+            {!show ? (
+              <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
+                รวม {formatPrice(total)} ฿
+                {peak && peak.revenueBaht > 0 ? ` · พีกวัน${peak.label}` : ""}
+              </p>
+            ) : null}
+          </div>
         </div>
         <OverviewShowSwitch
           checked={show}
@@ -605,10 +615,10 @@ export function ShopWeekdayRevenueBars({
         />
       </div>
       {!show ? null : weekdays.every((d) => d.revenueBaht <= 0) ? (
-        <p className="py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
+        <p className="mt-3 py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
       ) : (
         <>
-          <p className="mb-2 text-right text-[12px] font-semibold tabular-nums text-slate-500">
+          <p className="mb-2 mt-3 text-right text-[12px] font-semibold tabular-nums text-slate-500">
             รวม {formatPrice(total)} ฿
             {peak && peak.revenueBaht > 0
               ? ` · พีกวัน${peak.label} · ${formatPrice(peak.revenueBaht)} ฿`
@@ -626,7 +636,7 @@ export function ShopWeekdayRevenueBars({
                 </span>
                 <div className="flex h-28 w-full items-end justify-center">
                   <div
-                    className="w-[70%] max-w-[1.5rem] rounded-t-md bg-emerald-500"
+                    className="w-[70%] max-w-[1.5rem] rounded-t-md bg-site-primary"
                     style={{
                       height: `${Math.max(
                         d.revenueBaht > 0 ? 6 : 2,
@@ -765,7 +775,7 @@ export function ShopAgingAttentionCard({
       </div>
       {href ? (
         <div className="border-t border-slate-100 bg-slate-50/80 px-4 py-2.5 text-right text-[13px] font-extrabold text-slate-500">
-          ดูรายการ →
+          <IconLinkSuffix size={13}>ดูรายการ</IconLinkSuffix>
         </div>
       ) : null}
     </div>

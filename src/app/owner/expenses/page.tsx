@@ -24,6 +24,7 @@ import {
   ownerSummaryHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
+import { IconLinkSuffix } from "@/components/icons";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 
 type PayChannel = "CASH" | "TRANSFER";
@@ -371,7 +372,7 @@ function OwnerExpensesInner() {
       />
 
       {filterBranchName ? (
-        <p className="mb-3 text-[13px] font-semibold text-emerald-800">
+        <p className="mb-3 text-[13px] font-semibold text-site-primary-medium">
           กำลังดูสาขา · {filterBranchName}
         </p>
       ) : null}
@@ -468,7 +469,9 @@ function OwnerExpensesInner() {
                         ฿{formatPrice(row.amount)}
                       </p>
                       <p className="mt-0.5 text-[11px] font-bold text-slate-400">
-                        แก้ไข ›
+                        <IconLinkSuffix size={12} className="text-[11px] font-bold text-slate-400">
+                          แก้ไข
+                        </IconLinkSuffix>
                       </p>
                     </div>
                   </button>

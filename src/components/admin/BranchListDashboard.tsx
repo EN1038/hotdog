@@ -21,6 +21,7 @@ import {
   IconBack,
   IconChevronRight,
   IconClose,
+  IconLinkSuffix,
   IconPlus,
   IconStore,
 } from "@/components/icons";
@@ -392,7 +393,7 @@ function BranchListDashboardInner({
               ปุ่มใหญ่ · ดูยอดวันนี้ · ไม่ต้องหาเมนู
             </p>
           </div>
-          <span className="text-sm font-semibold">เปิด ›</span>
+          <IconLinkSuffix size={14} className="text-sm font-semibold">เปิด</IconLinkSuffix>
         </Link>
       ) : null}
 

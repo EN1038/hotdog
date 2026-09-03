@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDetail";
-import { IconClose, IconSearch } from "@/components/icons";
+import { IconClose, IconSearch, IconChevronDown, IconLinkSuffix } from "@/components/icons";
 
 type ShiftRow = {
   id: string;
@@ -130,7 +130,9 @@ function ShiftRoundListButton({
         <span className="block text-[18px] font-black tabular-nums text-site-primary">
           ฿{formatPrice(shift.revenueBaht)}
         </span>
-        <span className="text-[12px] font-semibold text-slate-500">ดูบิล ›</span>
+        <IconLinkSuffix size={12} className="text-[12px] font-semibold text-slate-500">
+          ดูบิล
+        </IconLinkSuffix>
       </span>
     </button>
   );
@@ -203,7 +205,7 @@ function OrderBillRow({
           cancelled
             ? "bg-slate-300"
             : completed
-              ? "bg-emerald-500"
+              ? "bg-site-primary"
               : "bg-amber-400"
         }`}
         aria-hidden
@@ -249,7 +251,9 @@ function OrderBillRow({
           <span className="text-[17px] font-black tabular-nums text-slate-900">
             ฿{formatPrice(order.total)}
           </span>
-          <span className="text-[11px] font-bold text-site-primary">ดูบิล ›</span>
+          <IconLinkSuffix size={12} className="text-[11px] font-bold text-site-primary">
+            ดูบิล
+          </IconLinkSuffix>
         </span>
       </span>
     </button>
@@ -655,7 +659,7 @@ export function StaffSalesHistoryPanel({
                     className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-slate-400"
                     aria-hidden
                   >
-                    ▾
+                    <IconChevronDown size={16} className="text-slate-400" aria-hidden />
                   </span>
                 </div>
               </label>
@@ -679,7 +683,7 @@ export function StaffSalesHistoryPanel({
                     className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-slate-400"
                     aria-hidden
                   >
-                    ▾
+                    <IconChevronDown size={16} className="text-slate-400" aria-hidden />
                   </span>
                 </div>
               </label>

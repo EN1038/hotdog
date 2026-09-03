@@ -47,7 +47,7 @@ function levelCardClass(level: StockAgingLevel) {
     case "unknown":
       return "border-slate-200 bg-slate-50";
     default:
-      return "border-emerald-100 bg-emerald-50/60";
+      return "border-site-primary-soft bg-site-primary-soft/60";
   }
 }
 
@@ -60,7 +60,7 @@ function levelTextClass(level: StockAgingLevel) {
     case "unknown":
       return "text-slate-700";
     default:
-      return "text-emerald-800";
+      return "text-site-primary-medium";
   }
 }
 
@@ -453,7 +453,7 @@ function StaffStockAgingContent() {
                   setShowOk(true);
                   selectLevelFilter("ok");
                 }}
-                className="font-bold text-emerald-700 underline"
+                className="font-bold text-site-primary underline"
               >
                 ของใหม่ {summary.ok} รายการ
                 {summary.okQty ? ` · ${formatPrice(summary.okQty)} ชิ้น` : ""}
@@ -492,15 +492,15 @@ function StaffStockAgingContent() {
 
         <div className={`space-y-4 ${loading ? "opacity-60" : ""}`}>
           {grouped.length === 0 ? (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-8 text-center">
-              <p className="text-base font-extrabold text-emerald-800">
+            <div className="rounded-2xl border border-site-primary-soft bg-site-primary-soft px-4 py-8 text-center">
+              <p className="text-base font-extrabold text-site-primary-medium">
                 {levelFilter !== "all"
                   ? "ไม่มีรายการในกลุ่มที่เลือก"
                   : showOk
                     ? "ยังไม่มีสต๊อกขายคงเหลือ"
                     : "ไม่มีรายการใกล้เสีย"}
               </p>
-              <p className="mt-1 text-[13px] font-medium text-emerald-700/80">
+              <p className="mt-1 text-[13px] font-medium text-site-primary/80">
                 {levelFilter !== "all"
                   ? "กดการ์ดอีกครั้งหรือ「แสดงทั้งหมด」เพื่อยกเลิกกรอง"
                   : showOk

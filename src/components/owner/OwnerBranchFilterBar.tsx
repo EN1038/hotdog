@@ -64,7 +64,7 @@ export function OwnerBranchFilterBar({
         onClick={() => setOpen((v) => !v)}
         className={`relative flex h-9 w-9 items-center justify-center rounded-full ${
           filtered || open
-            ? "bg-emerald-700 text-white"
+            ? "bg-site-primary text-white"
             : "bg-white text-slate-600 ring-1 ring-slate-200"
         }`}
       >
@@ -94,7 +94,7 @@ export function OwnerBranchFilterBar({
             onClick={() => pick(null)}
             className={`flex w-full items-center px-3 py-2.5 text-left text-[13px] font-bold ${
               value == null
-                ? "bg-emerald-50 text-emerald-900"
+                ? "bg-site-primary-soft text-site-primary-strong"
                 : "text-slate-700 hover:bg-slate-50"
             }`}
           >
@@ -111,7 +111,7 @@ export function OwnerBranchFilterBar({
                 onClick={() => pick(b.id)}
                 className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-bold ${
                   active
-                    ? "bg-emerald-50 text-emerald-900"
+                    ? "bg-site-primary-soft text-site-primary-strong"
                     : "text-slate-700 hover:bg-slate-50"
                 }`}
               >

@@ -10,7 +10,7 @@ import {
   downloadPngDataUrl,
   sharePngDataUrl,
 } from "@/lib/share-media";
-import { IconClose, IconStore } from "@/components/icons";
+import { IconClose, IconStore, IconChevronDown, IconChevronRight } from "@/components/icons";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
 import type {
   HqBranchRow,
@@ -578,8 +578,8 @@ export function StockFlowAnalyticsPanel({
               label: "ขาย",
               qty: data?.soldQty ?? 0,
               value: data?.completedRevenue ?? 0,
-              tone: "bg-emerald-50 border-emerald-200 text-emerald-950",
-              sub: "text-emerald-700",
+              tone: "bg-site-primary-soft border-site-primary-soft text-site-primary-strong",
+              sub: "text-site-primary",
               valueIsMoney: true,
               note: "จากบิลสำเร็จ",
             },
@@ -665,7 +665,7 @@ export function StockFlowAnalyticsPanel({
           {links.topSellers ? (
             <Link
               href={links.topSellers}
-              className="rounded-full bg-emerald-50 px-3 py-1.5 text-[12px] font-bold text-emerald-800 ring-1 ring-emerald-200"
+              className="rounded-full bg-site-primary-soft px-3 py-1.5 text-[12px] font-bold text-site-primary-medium ring-1 ring-site-primary-soft"
             >
               เมนูขายดี
             </Link>
@@ -717,13 +717,13 @@ export function StockFlowAnalyticsPanel({
           {trendOpen ? (
             <div className="space-y-4 border-t border-slate-100 px-4 py-4">
               <div>
-                <p className="mb-2 text-[12px] font-bold text-emerald-800">
+                <p className="mb-2 text-[12px] font-bold text-site-primary-medium">
                   ชิ้นขาย
                 </p>
                 <TrendBars
                   daily={daily}
                   field="soldQty"
-                  colorClass="bg-emerald-500"
+                  colorClass="bg-site-primary"
                 />
               </div>
               <div>
@@ -861,7 +861,7 @@ export function StockFlowAnalyticsPanel({
                   : ""}
               </p>
               {menuCompareMsg ? (
-                <p className="mt-1 text-[12px] font-semibold text-emerald-700">
+                <p className="mt-1 text-[12px] font-semibold text-site-primary">
                   {menuCompareMsg}
                 </p>
               ) : null}
@@ -1084,7 +1084,11 @@ export function StockFlowAnalyticsPanel({
                       </p>
                     </div>
                     <span className="shrink-0 text-slate-300" aria-hidden>
-                      {open ? "▾" : "›"}
+                      {open ? (
+                        <IconChevronDown size={18} />
+                      ) : (
+                        <IconChevronRight size={18} />
+                      )}
                     </span>
                   </button>
                   {open && item.byBranch.length > 0 ? (

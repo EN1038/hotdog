@@ -1631,11 +1631,11 @@ function StaffStockContent() {
 
                   <button
                     onClick={() => handleActionClick("stock_in")}
-                    className="w-full flex items-center justify-between rounded-2xl bg-emerald-600 p-6 text-white shadow-md active:scale-[0.98] transition-transform"
+                    className="w-full flex items-center justify-between rounded-2xl bg-site-primary p-6 text-white shadow-md active:scale-[0.98] transition-transform"
                   >
                     <div className="text-left">
                       <h3 className="text-2xl font-black">รับเข้า</h3>
-                      <p className="mt-1 text-emerald-100 text-sm">เพิ่มจำนวนสต๊อกเมนู (ของมาส่ง/ทำเพิ่ม)</p>
+                      <p className="mt-1 text-sm text-white/85">เพิ่มจำนวนสต๊อกเมนู (ของมาส่ง/ทำเพิ่ม)</p>
                     </div>
                     <div className="text-4xl">📦</div>
                   </button>
@@ -2176,7 +2176,7 @@ function StaffStockContent() {
                       </div>
                       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
                         {summaryDiffItems.length === 0 ? (
-                          <p className="rounded-xl bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-800">
+                          <p className="rounded-xl bg-site-primary-soft px-3 py-3 text-sm font-semibold text-site-primary-medium">
                             ยอดที่นับได้ตรงกับสต๊อกปัจจุบันทุกรายการ
                           </p>
                         ) : (
@@ -2571,7 +2571,7 @@ function StaffStockContent() {
                   <section
                     className={`mb-4 rounded-2xl border p-4 shadow-sm ${
                       actionType === "stock_in"
-                        ? "border-emerald-100 bg-emerald-50/80"
+                        ? "border-site-primary-soft bg-site-primary-soft/80"
                         : "border-amber-100 bg-amber-50/80"
                     }`}
                   >
@@ -2579,7 +2579,7 @@ function StaffStockContent() {
                       <p
                         className={`min-w-0 text-[13px] font-extrabold leading-tight ${
                           actionType === "stock_in"
-                            ? "text-emerald-900"
+                            ? "text-site-primary-strong"
                             : "text-amber-950"
                         }`}
                       >
@@ -2589,7 +2589,7 @@ function StaffStockContent() {
                       </p>
                       {actionType === "stock_in" ? (
                         <label className="flex shrink-0 items-center gap-1.5">
-                          <span className="whitespace-nowrap text-[11px] font-semibold text-emerald-800/90">
+                          <span className="whitespace-nowrap text-[11px] font-semibold text-site-primary-medium/90">
                             วันที่ผลิต
                           </span>
                           <span className="block w-[7.75rem]">
@@ -2597,7 +2597,7 @@ function StaffStockContent() {
                               value={producedAt}
                               onChange={setProducedAt}
                               aria-label="วันที่ผลิต"
-                              className="w-full rounded-xl border border-emerald-200 bg-white px-2 py-1.5 text-center text-[12px] font-bold text-slate-900"
+                              className="w-full rounded-xl border border-site-primary-soft bg-white px-2 py-1.5 text-center text-[12px] font-bold text-slate-900"
                             />
                           </span>
                         </label>
@@ -2617,13 +2617,13 @@ function StaffStockContent() {
                     </div>
                     {actionType === "stock_in" ? (
                       <div className="mt-3">
-                        <p className="mb-1 text-[12px] font-semibold text-emerald-900">
+                        <p className="mb-1 text-[12px] font-semibold text-site-primary-strong">
                           แนบรูป{" "}
-                          <span className="font-medium text-emerald-800/70">
+                          <span className="font-medium text-site-primary-medium/70">
                             (ถ้ามี)
                           </span>
                         </p>
-                        <p className="mb-2 text-[11px] font-medium text-emerald-800/70">
+                        <p className="mb-2 text-[11px] font-medium text-site-primary-medium/70">
                           ถ่ายรูปหรือเลือกจากแกลเลอรี · ได้หลายรูป สูงสุด{" "}
                           {MAX_STOCK_MOVEMENT_IMAGES} รูป
                         </p>
@@ -2646,7 +2646,7 @@ function StaffStockContent() {
                               <img
                                 src={url}
                                 alt=""
-                                className="h-16 w-16 rounded-xl object-cover ring-1 ring-emerald-200"
+                                className="h-16 w-16 rounded-xl object-cover ring-1 ring-site-primary-soft"
                               />
                               <button
                                 type="button"
@@ -2668,7 +2668,7 @@ function StaffStockContent() {
                                 type="button"
                                 disabled={stockInImageBusy}
                                 onClick={() => void openStockInCamera()}
-                                className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-emerald-300 bg-white text-emerald-800 disabled:opacity-60"
+                                className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-site-primary-soft bg-white text-site-primary-medium disabled:opacity-60"
                                 aria-label="ถ่ายรูป"
                               >
                                 <IconCamera size={20} />
@@ -2682,7 +2682,7 @@ function StaffStockContent() {
                                 onClick={() =>
                                   stockInImageInputRef.current?.click()
                                 }
-                                className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-emerald-300 bg-white text-emerald-800 disabled:opacity-60"
+                                className="flex h-16 w-16 flex-col items-center justify-center rounded-xl border-2 border-dashed border-site-primary-soft bg-white text-site-primary-medium disabled:opacity-60"
                                 aria-label="แนบจากแกลเลอรี"
                               >
                                 <IconUpload size={20} />
@@ -2868,11 +2868,11 @@ function StaffStockContent() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-2.5">
-                        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white px-3.5 py-3 shadow-sm">
-                          <p className="text-[11px] font-bold tracking-wide text-emerald-700/80">
+                        <div className="rounded-2xl border border-site-primary-soft bg-site-primary-card-gradient px-3.5 py-3 shadow-sm">
+                          <p className="text-[11px] font-bold tracking-wide text-site-primary/80">
                             สต๊อกปัจจุบัน
                           </p>
-                          <p className="mt-0.5 text-xs font-semibold text-emerald-800/70">
+                          <p className="mt-0.5 text-xs font-semibold text-site-primary-medium/70">
                             คงเหลือ
                           </p>
                           <div className="mt-2.5 space-y-1">
@@ -2888,7 +2888,7 @@ function StaffStockContent() {
                               <span className="text-[11px] font-medium text-slate-500">
                                 มูลค่า
                               </span>
-                              <span className="text-sm font-extrabold tabular-nums text-emerald-700">
+                              <span className="text-sm font-extrabold tabular-nums text-site-primary">
                                 {formatPrice(
                                   Math.round(viewSummary.current.valueBaht),
                                 )}{" "}
@@ -3334,7 +3334,7 @@ function StaffStockContent() {
             <button
               onClick={() => void submitChanges()}
               disabled={busy}
-              className={`w-full rounded-xl py-3.5 text-center text-base font-bold text-white shadow-md active:scale-[0.98] transition-transform disabled:opacity-70 ${actionType === "stock_in" ? "bg-emerald-600" : "bg-amber-500"
+              className={`w-full rounded-xl py-3.5 text-center text-base font-bold text-white shadow-md active:scale-[0.98] transition-transform disabled:opacity-70 ${actionType === "stock_in" ? "bg-site-primary" : "bg-amber-500"
                 }`}
             >
               {busy ? "กำลังบันทึก..." : "ยืนยันการทำรายการ"}

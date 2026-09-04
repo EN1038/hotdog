@@ -547,6 +547,18 @@ export async function closeActiveShift(params: {
     summary = fallbackShiftSummary(closed);
   }
 
+  // Brand OA shift summary — fire-and-forget; never block close.
+  void import("@/lib/line-shift-summary")
+    .then(({ sendShiftCloseLineSummary }) =>
+      sendShiftCloseLineSummary(summary),
+    )
+    .catch((e) => {
+      console.error(
+        "[branch-shift] sendShiftCloseLineSummary failed",
+        e instanceof Error ? e.message : e,
+      );
+    });
+
   return { shift: closed, summary };
 }
 

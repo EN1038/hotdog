@@ -71,9 +71,10 @@ export async function POST() {
 
     const admin = await getSelfAdmin(session.adminId);
     if (!admin) return jsonError("ไม่พบผู้ใช้", 404);
-    if (!admin.isPlatformAdmin) {
+    const isBrandOwner = admin.brandMembers.length > 0;
+    if (!admin.isPlatformAdmin && !isBrandOwner) {
       return jsonError(
-        "ต้องเป็นแอดมินแพลตฟอร์มจึงจะเชื่อม LINE หลังบ้านได้",
+        "ต้องเป็นแอดมินแพลตฟอร์มหรือเจ้าของ/ผู้จัดการร้านจึงจะเชื่อม LINE ได้",
         403,
       );
     }

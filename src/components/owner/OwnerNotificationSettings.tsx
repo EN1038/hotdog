@@ -12,7 +12,6 @@ import {
   OTP_TTL_SECONDS,
   formatOtpCountdown,
 } from "@/lib/otp-ttl";
-import { PLATFORM_LINE_ADD_URL } from "@/lib/platform-support";
 
 type BranchRow = {
   id: string;
@@ -32,12 +31,21 @@ type NotificationPayload = {
     lineNotifyNewOrder: boolean;
     lineNotifySkewerOrder: boolean;
     lineNotifyDailySummary: boolean;
+    lineMessagingEnabled: boolean;
+    hasAccessToken: boolean;
+    hasChannelSecret: boolean;
   };
   sms: { granted: number; used: number; remaining: number };
   line: {
-    platformReady: boolean;
+    ready: boolean;
+    configured: boolean;
+    messagingEnabled: boolean;
+    webhookUrl: string;
     linkedOwnerCount: number;
-    connectUrl: string;
+    linkedStaffCount: number;
+    selfLinked: boolean;
+    activeCode: string | null;
+    codeExpiresAt: string | null;
   };
   branches: BranchRow[];
 };
@@ -46,10 +54,12 @@ function NotifyToggleSwitch({
   checked,
   onChange,
   label,
+  disabled,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -57,8 +67,9 @@ function NotifyToggleSwitch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative h-8 w-14 shrink-0 rounded-full transition ${
+      className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-40 ${
         checked ? "bg-site-primary" : "bg-slate-300"
       }`}
     >
@@ -126,6 +137,13 @@ export function OwnerNotificationSettings() {
   const [expiresIn, setExpiresIn] = useState(0);
   const [sendingOtp, setSendingOtp] = useState(false);
 
+  const [token, setToken] = useState("");
+  const [secret, setSecret] = useState("");
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [codeExpiresAt, setCodeExpiresAt] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [testing, setTesting] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -145,14 +163,15 @@ export function OwnerNotificationSettings() {
           Boolean(b.alertSmsPhone?.trim()) &&
           (b.smsNotifyNewOrder || b.smsNotifySkewerOrder),
       );
-      const savedPhone = smsBranches.find((b) => b.alertSmsPhone)?.alertSmsPhone ?? "";
+      const savedPhone =
+        smsBranches.find((b) => b.alertSmsPhone)?.alertSmsPhone ?? "";
       const lineFlagsOn =
         json.brand.lineNotifyNewOrder ||
         json.brand.lineNotifySkewerOrder ||
         json.brand.lineNotifyDailySummary;
-      // เปิดแผง LINE เมื่อตั้งค่าแล้วและมีบัญชีเชื่อมแล้วเท่านั้น
-      // (ค่า default เก่าที่เป็น true ทั้งคู่โดยยังไม่เชื่อม = ถือว่ายังไม่ตั้งค่า)
-      const activeLine = lineFlagsOn && json.line.linkedOwnerCount > 0;
+      const activeLine =
+        json.line.configured &&
+        (lineFlagsOn || json.line.messagingEnabled || json.line.selfLinked);
 
       if (activeSms && savedPhone) {
         setSmsOpen(true);
@@ -165,11 +184,18 @@ export function OwnerNotificationSettings() {
         setPhone("");
         setVerifiedPhone(null);
       } else {
-        // ครั้งแรก / ยังไม่เลือกช่องทาง — ปิดทั้งคู่
         setSmsOpen(false);
         setLineOpen(false);
         setPhone(savedPhone);
         setVerifiedPhone(savedPhone || null);
+      }
+
+      if (json.line.activeCode && json.line.codeExpiresAt) {
+        setLinkCode(json.line.activeCode);
+        setCodeExpiresAt(json.line.codeExpiresAt);
+      } else {
+        setLinkCode(null);
+        setCodeExpiresAt(null);
       }
     } finally {
       setLoading(false);
@@ -191,6 +217,22 @@ export function OwnerNotificationSettings() {
     const t = window.setTimeout(() => setExpiresIn((s) => s - 1), 1000);
     return () => window.clearTimeout(t);
   }, [expiresIn]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const remainingSec = codeExpiresAt
+    ? Math.max(0, Math.floor((new Date(codeExpiresAt).getTime() - now) / 1000))
+    : 0;
+
+  useEffect(() => {
+    if (codeExpiresAt && remainingSec <= 0) {
+      setLinkCode(null);
+      setCodeExpiresAt(null);
+    }
+  }, [codeExpiresAt, remainingSec]);
 
   const phoneChanged = useMemo(() => {
     if (!verifiedPhone) return phone.length >= 9;
@@ -229,9 +271,7 @@ export function OwnerNotificationSettings() {
       setOtpRefNo(json.otpRefNo ?? null);
       setOtpStep(true);
       setOtpCode("");
-      setResendIn(
-        typeof json.resendIn === "number" ? json.resendIn : 60,
-      );
+      setResendIn(typeof json.resendIn === "number" ? json.resendIn : 60);
       setExpiresIn(
         typeof json.expiresIn === "number" ? json.expiresIn : OTP_TTL_SECONDS,
       );
@@ -276,28 +316,114 @@ export function OwnerNotificationSettings() {
     }
   }
 
-  async function saveLineChannel() {
+  async function patchLine(body: Record<string, unknown>) {
     setSaving(true);
     try {
       const res = await fetch("/api/owner/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notificationChannel: "line" }),
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error("บันทึกไม่สำเร็จ", err.error ?? "ลองใหม่อีกครั้ง");
-        return;
+        toast.error("บันทึกไม่สำเร็จ", json.error ?? "ลองใหม่อีกครั้ง");
+        return false;
       }
-      toast.success("บันทึกแล้ว", "ตั้งค่าแจ้งเตือนทาง LINE แล้ว");
-      resetOtp();
-      await load();
-      setSmsOpen(false);
-      setLineOpen(true);
+      setData(json as NotificationPayload);
+      return true;
     } catch {
       toast.error("บันทึกไม่สำเร็จ", "เชื่อมต่อไม่ได้");
+      return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveCredentials() {
+    const body: Record<string, unknown> = {};
+    if (token.trim()) body.channelAccessToken = token.trim();
+    if (secret.trim()) body.channelSecret = secret.trim();
+    if (Object.keys(body).length === 0) {
+      toast.error("กรอก Channel access token หรือ Channel secret");
+      return;
+    }
+    const ok = await patchLine(body);
+    if (ok) {
+      setToken("");
+      setSecret("");
+      toast.success("บันทึก Channel แล้ว");
+    }
+  }
+
+  async function copyWebhook() {
+    if (!data?.line.webhookUrl) return;
+    try {
+      await navigator.clipboard.writeText(data.line.webhookUrl);
+      toast.success("คัดลอก Webhook URL แล้ว");
+    } catch {
+      toast.error("คัดลอกไม่สำเร็จ");
+    }
+  }
+
+  async function issueLinkCode() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/me/line-link", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("สร้างรหัสไม่สำเร็จ", json.error ?? "ลองใหม่อีกครั้ง");
+        return;
+      }
+      setLinkCode(json.code ?? null);
+      setCodeExpiresAt(json.expiresAt ?? null);
+      toast.success("สร้างรหัสแล้ว — ส่งในแชท OA ของร้านภายใน 10 นาที");
+      await load();
+      setLineOpen(true);
+    } catch {
+      toast.error("สร้างรหัสไม่สำเร็จ", "เชื่อมต่อไม่ได้");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function unlinkLine() {
+    if (!confirm("ยกเลิกการเชื่อม LINE ของบัญชีนี้?")) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/me/line-link", { method: "DELETE" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        toast.error("ยกเลิกไม่สำเร็จ", json.error ?? "ลองใหม่อีกครั้ง");
+        return;
+      }
+      toast.success("ยกเลิกการเชื่อมแล้ว");
+      await load();
+      setLineOpen(true);
+    } catch {
+      toast.error("ยกเลิกไม่สำเร็จ", "เชื่อมต่อไม่ได้");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sendTest() {
+    setTesting(true);
+    try {
+      const res = await fetch("/api/owner/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("ส่งทดสอบไม่สำเร็จ", json.error ?? "ลองใหม่อีกครั้ง");
+        return;
+      }
+      toast.success("ส่งข้อความทดสอบแล้ว — ตรวจใน LINE");
+    } catch {
+      toast.error("ส่งทดสอบไม่สำเร็จ", "เชื่อมต่อไม่ได้");
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -344,9 +470,7 @@ export function OwnerNotificationSettings() {
         />
         {smsOpen ? (
           <div className="space-y-3 pl-1">
-            {smsVerified ? (
-              <OwnerSmsQuotaCard quota={data.sms} />
-            ) : null}
+            {smsVerified ? <OwnerSmsQuotaCard quota={data.sms} /> : null}
             <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
               <div>
                 <label
@@ -453,7 +577,7 @@ export function OwnerNotificationSettings() {
 
         <NotifyChannelRow
           title="LINE"
-          subtitle="ให้ทีม SkillSale ช่วยตั้งค่าให้"
+          subtitle="ใช้ Official Account ของร้านรับแจ้งออเดอร์"
           open={lineOpen}
           onToggle={toggleLine}
           icon={
@@ -463,30 +587,205 @@ export function OwnerNotificationSettings() {
           }
         />
         {lineOpen ? (
-          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 pl-1">
-            <p className="text-[14px] leading-relaxed text-slate-600">
-              รับแจ้งเตือนทาง LINE ได้หลังติดต่อทีม SkillSale ให้ช่วยตั้งค่า
-            </p>
-            <a
-              href={PLATFORM_LINE_ADD_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => void saveLineChannel()}
-              className="flex min-h-[3.5rem] w-full items-center justify-center gap-2.5 rounded-2xl bg-[#06C755] px-4 text-[16px] font-extrabold text-white shadow-sm transition active:brightness-95"
-            >
-              <IconLine className="h-5 w-5 shrink-0" />
-              ติดต่อเจ้าหน้าที่ SkillSale
-            </a>
-            {data.line.linkedOwnerCount > 0 ? (
-              <p className="text-[13px] text-site-primary">
-                เชื่อม LINE แล้ว {data.line.linkedOwnerCount} บัญชี
+          <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="space-y-2">
+              <p className="text-[14px] font-semibold text-slate-800">
+                1. ใส่ Channel จาก LINE Developers
               </p>
-            ) : null}
-            {!data.line.platformReady ? (
-              <p className="text-[13px] text-amber-700">
-                ระบบ LINE ยังไม่พร้อม โปรดติดต่อทีม SkillSale
+              <p className="text-[13px] text-slate-500">
+                Messaging API → Channel access token และ Channel secret ของ OA
+                ร้าน
               </p>
-            ) : null}
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  data.brand.hasAccessToken
+                    ? "มี token แล้ว — วางใหม่เพื่อเปลี่ยน"
+                    : "Channel access token"
+                }
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[14px]"
+              />
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  data.brand.hasChannelSecret
+                    ? "มี secret แล้ว — วางใหม่เพื่อเปลี่ยน"
+                    : "Channel secret"
+                }
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[14px]"
+              />
+              <button
+                type="button"
+                disabled={saving || (!token.trim() && !secret.trim())}
+                onClick={() => void saveCredentials()}
+                className="min-h-[2.75rem] w-full rounded-xl bg-slate-900 text-[14px] font-bold text-white disabled:opacity-40"
+              >
+                {saving ? "กำลังบันทึก…" : "บันทึก Channel"}
+              </button>
+              <div className="flex flex-wrap gap-2 text-[12px]">
+                <span
+                  className={
+                    data.brand.hasAccessToken
+                      ? "text-site-primary"
+                      : "text-amber-700"
+                  }
+                >
+                  Token {data.brand.hasAccessToken ? "✓" : "ยังไม่มี"}
+                </span>
+                <span
+                  className={
+                    data.brand.hasChannelSecret
+                      ? "text-site-primary"
+                      : "text-amber-700"
+                  }
+                >
+                  Secret {data.brand.hasChannelSecret ? "✓" : "ยังไม่มี"}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 border-t border-slate-100 pt-4">
+              <p className="text-[14px] font-semibold text-slate-800">
+                2. ตั้ง Webhook URL ใน LINE Developers
+              </p>
+              <code className="block break-all rounded-xl bg-slate-50 px-3 py-2 text-[12px] text-slate-700">
+                {data.line.webhookUrl}
+              </code>
+              <button
+                type="button"
+                onClick={() => void copyWebhook()}
+                className="text-[13px] font-semibold text-site-primary"
+              >
+                คัดลอก URL
+              </button>
+            </div>
+
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[14px] font-semibold text-slate-800">
+                    เปิดการแจ้งเตือน LINE
+                  </p>
+                  <p className="text-[12px] text-slate-500">
+                    Master switch ของ Messaging API ร้าน
+                  </p>
+                </div>
+                <NotifyToggleSwitch
+                  checked={data.line.messagingEnabled}
+                  disabled={saving || !data.line.configured}
+                  label="เปิดการแจ้งเตือน LINE"
+                  onChange={(next) => {
+                    void patchLine({ messagingEnabled: next }).then((ok) => {
+                      if (ok) toast.success(next ? "เปิดแล้ว" : "ปิดแล้ว");
+                    });
+                  }}
+                />
+              </div>
+              {(
+                [
+                  ["lineNotifyNewOrder", "ออเดอร์ลูกค้าใหม่", data.brand.lineNotifyNewOrder],
+                  [
+                    "lineNotifySkewerOrder",
+                    "สั่งเสียบไม้ใหม่",
+                    data.brand.lineNotifySkewerOrder,
+                  ],
+                  [
+                    "lineNotifyDailySummary",
+                    "สรุปรอบ / สรุปวัน",
+                    data.brand.lineNotifyDailySummary,
+                  ],
+                ] as const
+              ).map(([key, label, checked]) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <p className="text-[14px] text-slate-700">{label}</p>
+                  <NotifyToggleSwitch
+                    checked={checked}
+                    disabled={saving || !data.line.messagingEnabled}
+                    label={label}
+                    onChange={(next) => {
+                      void patchLine({ [key]: next }).then((ok) => {
+                        if (ok) toast.success("อัปเดตแล้ว");
+                      });
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2 border-t border-slate-100 pt-4">
+              <p className="text-[14px] font-semibold text-slate-800">
+                3. เชื่อมบัญชี LINE ของคุณ
+              </p>
+              <p className="text-[13px] text-slate-500">
+                แอดเพื่อน OA ร้าน → กดสร้างรหัส → ส่งรหัส 6 หลักในแชท
+              </p>
+              {data.line.selfLinked ? (
+                <p className="text-[13px] font-semibold text-site-primary">
+                  เชื่อมแล้ว · เจ้าของ/ผู้จัดการที่เชื่อม {data.line.linkedOwnerCount}{" "}
+                  · พนักงาน {data.line.linkedStaffCount}
+                </p>
+              ) : (
+                <p className="text-[13px] text-amber-700">
+                  ยังไม่ได้เชื่อมบัญชีนี้
+                </p>
+              )}
+              {linkCode ? (
+                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                  <p className="text-[28px] font-extrabold tracking-[0.35em] text-slate-900">
+                    {linkCode}
+                  </p>
+                  <p className="mt-1 text-[12px] text-slate-500">
+                    เหลือ {Math.floor(remainingSec / 60)}:
+                    {String(remainingSec % 60).padStart(2, "0")} นาที
+                  </p>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void issueLinkCode()}
+                  className="min-h-[2.75rem] flex-1 rounded-xl bg-[#06C755] text-[14px] font-bold text-white disabled:opacity-40"
+                >
+                  {linkCode ? "สร้างรหัสใหม่" : "สร้างรหัสเชื่อม LINE"}
+                </button>
+                {data.line.selfLinked ? (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void unlinkLine()}
+                    className="min-h-[2.75rem] rounded-xl border border-slate-200 px-4 text-[14px] font-semibold text-slate-600 disabled:opacity-40"
+                  >
+                    ยกเลิกการเชื่อม
+                  </button>
+                ) : null}
+              </div>
+              <p className="text-[12px] text-slate-400">
+                พนักงาน: แอดเพื่อน OA แล้วพิมพ์เบอร์โทรในระบบ
+              </p>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                disabled={
+                  testing || saving || !data.line.ready || !data.line.selfLinked
+                }
+                onClick={() => void sendTest()}
+                className="min-h-[2.75rem] w-full rounded-xl border border-slate-200 text-[14px] font-semibold text-slate-800 disabled:opacity-40"
+              >
+                {testing ? "กำลังส่ง…" : "ส่งข้อความทดสอบ"}
+              </button>
+            </div>
           </div>
         ) : null}
       </div>

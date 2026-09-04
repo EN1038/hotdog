@@ -6,6 +6,11 @@ export type LineSettingsPublic = {
   /** @deprecated kept for API compat; always false for platform OA */
   notifyBrandDailySummary: boolean;
   notifyOwnerRegistration: boolean;
+  notifyTrialEnding: boolean;
+  notifyBrandStatus: boolean;
+  notifyInactiveOnboard: boolean;
+  notifySystemErrors: boolean;
+  notifyDailyOpsSummary: boolean;
   unlockedLineUserCount: number;
   hasAccessToken: boolean;
   hasChannelSecret: boolean;

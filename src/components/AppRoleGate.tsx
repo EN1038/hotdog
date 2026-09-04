@@ -169,7 +169,7 @@ export function AppRoleGate({
 
           <div className="mt-5 space-y-3.5">
             <RoleCard
-              href="/malawaiwai"
+              href="/shops"
               icon={<IconShoppingBag />}
               title="ลูกค้า"
               description="สั่งอาหารออนไลน์"

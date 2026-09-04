@@ -28,6 +28,10 @@ import {
 import {
   notifyBranchSmsNewOrder,
 } from "@/lib/brand-alert-sms";
+import {
+  notifyBrandOwnersNewOrder,
+  notifyStaffNewOrder,
+} from "@/lib/brand-line-notify";
 import { orderGrandTotal } from "@/lib/order-totals";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
 import {
@@ -457,6 +461,17 @@ export async function POST(request: Request) {
         customerName: order.customerName,
         totalBaht,
       });
+      void notifyStaffNewOrder({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        queueNumber: order.queueNumber,
+        branchId: order.branchId,
+        fulfillmentType: order.fulfillmentType,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        status: order.status,
+      });
+      void notifyBrandOwnersNewOrder(order.id);
     }
 
     return jsonOk(order, 201);

@@ -250,10 +250,15 @@ model Brand {
   nextDueAt          DateTime?
   /// Platform-granted SMS quota for owner/branch alert messages (not OTP / customer skewer SMS)
   smsQuotaGranted    Int                @default(0)
-  /// Brand-level LINE toggles (shared platform OA); off until owner enables
+  /// Brand-level LINE toggles; off until owner enables
   lineNotifyNewOrder       Boolean        @default(false)
   lineNotifySkewerOrder    Boolean        @default(false)
   lineNotifyDailySummary   Boolean        @default(false)
+  /// Messaging API credentials for this brand's Official Account
+  lineChannelAccessToken   String?
+  lineChannelSecret        String?
+  /// Master switch for this brand's outbound LINE pushes
+  lineMessagingEnabled     Boolean        @default(false)
   createdAt          DateTime           @default(now())
   branches           Branch[]
   members            BrandMember[]
@@ -381,6 +386,16 @@ model SiteSettings {
   lineNotifyBrandDailySummary Boolean  @default(true)
   /// Notify unlocked platform LINE users when a new owner self-registers
   lineNotifyOwnerRegistration Boolean  @default(true)
+  /// Trial ending soon (1/3 days)
+  lineNotifyTrialEnding       Boolean  @default(true)
+  /// Brand status became PAUSED / EXPIRED
+  lineNotifyBrandStatus       Boolean  @default(true)
+  /// New owner registered but inactive (no sales yet)
+  lineNotifyInactiveOnboard   Boolean  @default(true)
+  /// Spike of system failures (e.g. SMS)
+  lineNotifySystemErrors      Boolean  @default(true)
+  /// Daily platform ops digest
+  lineNotifyDailyOpsSummary   Boolean  @default(true)
   /// LINE rich menu id for linked brand admins (Messaging API)
   lineAdminRichMenuId         String?
   /// Default rich menu for guests (login / help) before admin link
@@ -388,6 +403,21 @@ model SiteSettings {
   /// Default trial length for new self-register / trial brands (days)
   defaultTrialDays            Int      @default(7)
   updatedAt                   DateTime @updatedAt
+}
+
+/**
+ * Dedupe log for platform OA ops LINE pushes (once per kind/brand/day).
+ */
+model PlatformOpsNotifyLog {
+  id        String   @id @default(cuid())
+  kind      String
+  /// Empty string = platform-wide (not brand-scoped)
+  brandId   String   @default("")
+  dayKey    String
+  createdAt DateTime @default(now())
+
+  @@unique([kind, brandId, dayKey])
+  @@index([dayKey, kind])
 }
 
 /**

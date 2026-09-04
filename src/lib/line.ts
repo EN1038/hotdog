@@ -23,6 +23,11 @@ export async function getLineSettingsPublic(): Promise<LineSettingsPublic> {
       lineChannelSecret: true,
       lineMessagingEnabled: true,
       lineNotifyOwnerRegistration: true,
+      lineNotifyTrialEnding: true,
+      lineNotifyBrandStatus: true,
+      lineNotifyInactiveOnboard: true,
+      lineNotifySystemErrors: true,
+      lineNotifyDailyOpsSummary: true,
       lineAdminRichMenuId: true,
       lineGuestRichMenuId: true,
     },
@@ -63,6 +68,11 @@ export async function getLineSettingsPublic(): Promise<LineSettingsPublic> {
     notifyStaffOnNewOrder: false,
     notifyBrandDailySummary: false,
     notifyOwnerRegistration: row?.lineNotifyOwnerRegistration ?? true,
+    notifyTrialEnding: row?.lineNotifyTrialEnding ?? true,
+    notifyBrandStatus: row?.lineNotifyBrandStatus ?? true,
+    notifyInactiveOnboard: row?.lineNotifyInactiveOnboard ?? true,
+    notifySystemErrors: row?.lineNotifySystemErrors ?? true,
+    notifyDailyOpsSummary: row?.lineNotifyDailyOpsSummary ?? true,
     unlockedLineUserCount,
     hasAccessToken,
     hasChannelSecret,
@@ -429,7 +439,10 @@ export type NewOrderNotifyInput = {
   status: string;
 };
 
-/** @deprecated Platform OA no longer notifies staff on new orders. */
-export async function notifyStaffNewOrder(_order: NewOrderNotifyInput) {
-  return;
+/** @deprecated Use notifyStaffNewOrder from @/lib/brand-line-notify */
+export async function notifyStaffNewOrder(
+  order: NewOrderNotifyInput,
+): Promise<void> {
+  const { notifyStaffNewOrder: send } = await import("@/lib/brand-line-notify");
+  await send(order);
 }

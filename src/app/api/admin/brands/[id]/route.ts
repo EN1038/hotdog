@@ -126,6 +126,14 @@ export async function PATCH(request: Request, { params }: Params) {
         ? await applyPlanPresetFromCatalog(body.plan)
         : null;
 
+    const previous =
+      body.status !== undefined
+        ? await prisma.brand.findUnique({
+            where: { id },
+            select: { status: true, name: true, code: true },
+          })
+        : null;
+
     const brand = await prisma.brand.update({
       where: { id },
       data: {
@@ -218,6 +226,24 @@ export async function PATCH(request: Request, { params }: Params) {
 
     if (body.stockEnabled !== undefined || (usePreset && preset)) {
       await syncBrandStockModule(brand.id, brand.stockEnabled);
+    }
+
+    if (
+      previous &&
+      body.status &&
+      previous.status !== body.status &&
+      (body.status === "PAUSED" || body.status === "EXPIRED")
+    ) {
+      void import("@/lib/line-platform-ops-notify").then(
+        ({ notifyPlatformBrandStatusChange }) =>
+          notifyPlatformBrandStatusChange({
+            brandId: brand.id,
+            brandName: brand.name,
+            brandCode: brand.code,
+            fromStatus: previous.status,
+            toStatus: body.status as "PAUSED" | "EXPIRED",
+          }),
+      );
     }
 
     return jsonOk(brand);

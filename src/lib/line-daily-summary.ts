@@ -18,9 +18,9 @@ import {
   orderGrandTotal,
 } from "@/lib/order-totals";
 import {
-  isLineMessagingReady,
-  linePushText,
-} from "@/lib/line";
+  brandLinePushText,
+  isBrandLineMessagingReady,
+} from "@/lib/brand-line";
 
 const LINE_TEXT_MAX = 4800;
 const TOP_CANCEL_REASONS = 5;
@@ -468,20 +468,6 @@ export async function runLineDailySummaries(
     details: [],
   };
 
-  if (!(await isLineMessagingReady())) {
-    result.errors.push("LINE messaging ยังไม่พร้อมหรือยังไม่เปิดใช้");
-    return result;
-  }
-
-  const settings = await prisma.siteSettings.findUnique({
-    where: { id: "default" },
-    select: { lineNotifyBrandDailySummary: true },
-  });
-  if (!settings?.lineNotifyBrandDailySummary && !options.force) {
-    result.errors.push("ปิดการแจ้งสรุปรอบไว้ในการตั้งค่า");
-    return result;
-  }
-
   const branches = await prisma.branch.findMany({
     where: {
       ...(options.branchId ? { id: options.branchId } : {}),
@@ -624,6 +610,18 @@ export async function runLineDailySummaries(
         continue;
       }
 
+      if (!(await isBrandLineMessagingReady(branch.brandId))) {
+        result.skipped += 1;
+        result.details.push({
+          branchId: branch.id,
+          branchName: branch.name,
+          operatingDay: closedDay,
+          status: "skipped",
+          reason: "LINE ร้านยังไม่พร้อม",
+        });
+        continue;
+      }
+
       const recipients = await recipientsForBrand(branch.brandId);
       const text = formatBranchDaySummaryMessage(summary);
 
@@ -641,7 +639,9 @@ export async function runLineDailySummaries(
       }
 
       const pushResults = await Promise.allSettled(
-        recipients.map((r) => linePushText(r.lineUserId, text)),
+        recipients.map((r) =>
+          brandLinePushText(branch.brandId!, r.lineUserId, text),
+        ),
       );
       const okCount = pushResults.filter(
         (r) => r.status === "fulfilled" && r.value.ok,

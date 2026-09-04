@@ -1,11 +1,193 @@
+import { appAbsoluteUrl } from "@/lib/app-url";
 import type { ShiftSummary } from "@/lib/branch-shift";
+import { formatPrice } from "@/lib/constants";
+import { prisma } from "@/lib/db";
+import {
+  brandLinePushText,
+  isBrandLineMessagingReady,
+} from "@/lib/brand-line";
+
+const LINE_TEXT_MAX = 4800;
+
+function money(n: number) {
+  return formatPrice(Math.round(n));
+}
+
+function formatHm(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat("th-TH", {
+      timeZone: "Asia/Bangkok",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(iso));
+  } catch {
+    return "—";
+  }
+}
+
+function formatDayLabel(dateYmd: string) {
+  try {
+    return new Date(`${dateYmd}T12:00:00+07:00`).toLocaleDateString("th-TH", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateYmd;
+  }
+}
+
+async function recipientsForBrand(brandId: string) {
+  const members = await prisma.brandMember.findMany({
+    where: {
+      brandId,
+      role: { in: ["OWNER", "MANAGER"] },
+      admin: {
+        lineUserId: { not: null },
+        lineNotifyEnabled: true,
+        lineNotifyDailySummary: true,
+      },
+    },
+    select: {
+      admin: { select: { lineUserId: true } },
+    },
+  });
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of members) {
+    const id = m.admin.lineUserId;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+export function formatShiftSummaryMessage(
+  summary: ShiftSummary,
+  meta?: { brandName?: string | null; branchName?: string | null },
+): string {
+  const dayLabel = formatDayLabel(summary.shift.calendarDate);
+  const header = [
+    "สรุปรอบขาย",
+    meta?.brandName && meta?.branchName
+      ? `${meta.brandName} · ${meta.branchName}`
+      : meta?.branchName || null,
+    dayLabel,
+    summary.shift.code,
+    summary.shift.isCancelled ? "สถานะ: ยกเลิก" : null,
+    summary.shift.isCancelled && summary.shift.cancelNote
+      ? `เหตุผล: ${summary.shift.cancelNote}`
+      : null,
+    `เปิด ${formatHm(summary.shift.openedAt)} – ปิด ${formatHm(summary.shift.closedAt)} น.`,
+    "",
+    `ออเดอร์ ${summary.orderCount.toLocaleString("th-TH")} รายการ`,
+    summary.cancelledOrders > 0
+      ? `ยกเลิก ${summary.cancelledOrders.toLocaleString("th-TH")} · ฿${money(summary.cancelledRevenueBaht)} · คืนสต๊อก ${summary.stockRestoredQuantity || summary.cancelledItemQuantity} ชิ้น`
+      : null,
+    `เงินเริ่มต้น ฿${money(summary.shift.openingCash)}`,
+    summary.shift.note ? `หมายเหตุ ${summary.shift.note}` : null,
+    `เงินสด ฿${money(summary.cashRevenueBaht)}`,
+    `โอน ฿${money(summary.transferRevenueBaht)}`,
+    `ยอดขายสุทธิ ฿${money(summary.revenueBaht)}`,
+    `ยอดรวมเงินเริ่มต้น ฿${money(summary.totalWithOpeningCash)}`,
+    summary.giftQuantity > 0
+      ? `ของแถม ${summary.giftQuantity.toLocaleString("th-TH")} ชิ้น`
+      : null,
+  ].filter((line) => line !== null);
+
+  const channelLines: string[] = [];
+  const channels = summary.channels ?? [];
+  if (channels.length === 0) {
+    channelLines.push("", "สรุปช่องทาง: ไม่มี");
+  } else {
+    channelLines.push("", "สรุปช่องทาง:");
+    for (const c of channels) {
+      channelLines.push(
+        `· ${c.label} ${c.orderCount} ออเดอร์ (฿${money(c.revenueBaht)})`,
+      );
+    }
+  }
+
+  const menuLines: string[] = [];
+  if (summary.menus.length === 0) {
+    menuLines.push("", "เมนูที่ขาย: ไม่มี");
+  } else {
+    menuLines.push("", "เมนูที่ขาย:");
+    for (const m of summary.menus.slice(0, 25)) {
+      menuLines.push(
+        `· ${m.name} ×${m.quantity} (฿${money(m.revenueBaht)})`,
+      );
+    }
+    if (summary.menus.length > 25) {
+      menuLines.push(`· …และอีก ${summary.menus.length - 25} รายการ`);
+    }
+  }
+
+  let body = [...header, ...channelLines, ...menuLines].join("\n");
+  if (body.length > LINE_TEXT_MAX) {
+    body = body.slice(0, LINE_TEXT_MAX - 20) + "\n…(ตัดข้อความ)";
+  }
+  return body;
+}
 
 /**
- * Push LINE summary for a closed shift to brand owners/managers.
- * @deprecated Platform OA no longer sends shift/order summaries.
+ * Push LINE summary for a closed shift via the brand Official Account.
  */
 export async function sendShiftCloseLineSummary(
-  _summary: ShiftSummary,
+  summary: ShiftSummary,
 ): Promise<{ sent: number; skippedReason?: string }> {
-  return { sent: 0, skippedReason: "ปิดการแจ้งสรุปรอบแล้ว" };
+  const shiftRow = await prisma.branchShift.findUnique({
+    where: { id: summary.shift.id },
+    select: {
+      branchId: true,
+      branch: {
+        select: {
+          name: true,
+          brandId: true,
+          brand: { select: { name: true, lineNotifyDailySummary: true } },
+        },
+      },
+    },
+  });
+  const brandId = shiftRow?.branch.brandId;
+  if (!brandId) {
+    return { sent: 0, skippedReason: "สาขาไม่มีแบรนด์" };
+  }
+  if (!(await isBrandLineMessagingReady(brandId))) {
+    return { sent: 0, skippedReason: "LINE ร้านยังไม่พร้อม" };
+  }
+  if (!shiftRow.branch.brand?.lineNotifyDailySummary) {
+    return { sent: 0, skippedReason: "แบรนด์ปิดแจ้งเตือนสรุป LINE" };
+  }
+
+  const recipients = await recipientsForBrand(brandId);
+  if (recipients.length === 0) {
+    return { sent: 0, skippedReason: "ไม่มีผู้รับ LINE" };
+  }
+
+  const detailUrl = appAbsoluteUrl(
+    `/admin/branches/${shiftRow.branchId}?tab=shifts&date=${summary.shift.calendarDate}`,
+  );
+  const text = [
+    formatShiftSummaryMessage(summary, {
+      brandName: shiftRow.branch.brand?.name ?? null,
+      branchName: shiftRow.branch.name,
+    }),
+    "",
+    "ดูรายละเอียด:",
+    detailUrl,
+  ].join("\n");
+
+  const results = await Promise.allSettled(
+    recipients.map((lineUserId) => brandLinePushText(brandId, lineUserId, text)),
+  );
+  const sent = results.filter(
+    (r) => r.status === "fulfilled" && r.value.ok,
+  ).length;
+  return { sent };
 }

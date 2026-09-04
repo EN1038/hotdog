@@ -1,11 +1,13 @@
 /**
- * Sync menu images across branches within each brand.
+ * Sync menu images across ALL brands and branches.
  *
- * Match key: itemCode if set, else name + category name (Thai-normalized).
+ * Match key: Thai-normalized menu name (codes often differ across brands).
+ * Promo categories are skipped.
+ *
  * For each match group:
- *  - pick best sale imageUrl and best skewerImageUrl (prefer most recently updated)
- *  - fill blanks on all rows in the group
- *  - if one side missing on a row, copy from the other side when available
+ *  - pick newest row that has both sale+skewer as canonical pair
+ *  - else best sale + best skewer by updatedAt; mirror if only one side exists
+ *  - write that pair onto every row in the group so all brands/branches match
  *
  * Usage:
  *   npx tsx scripts/sync-menu-images-across-branches.ts
@@ -25,14 +27,9 @@ function normName(s: string) {
   return s.trim().toLocaleLowerCase("th");
 }
 
-function matchKey(item: {
-  itemCode: string | null;
-  name: string;
-  categoryName: string | null;
-}): string {
-  const code = item.itemCode?.trim();
-  if (code) return `code:${code}`;
-  return `name:${item.categoryName ?? ""}:${normName(item.name)}`;
+function isPromoCategory(name: string | null) {
+  const n = (name ?? "").trim().toLocaleLowerCase("th");
+  return n.includes("โปรโมชั่น") || n.includes("โปรโมชัน") || n === "promo";
 }
 
 type Row = {
@@ -54,13 +51,13 @@ type Row = {
 function pickBestUrl(
   rows: Row[],
   field: "imageUrl" | "skewerImageUrl",
-): { url: string; fromId: string; updatedAt: Date } | null {
-  let best: { url: string; fromId: string; updatedAt: Date } | null = null;
+): { url: string; updatedAt: Date } | null {
+  let best: { url: string; updatedAt: Date } | null = null;
   for (const row of rows) {
     const url = row[field]?.trim() || "";
     if (!url) continue;
     if (!best || row.updatedAt > best.updatedAt) {
-      best = { url, fromId: row.id, updatedAt: row.updatedAt };
+      best = { url, updatedAt: row.updatedAt };
     }
   }
   return best;
@@ -80,7 +77,7 @@ async function main() {
     }),
   });
 
-  console.log(APPLY ? "MODE: APPLY" : "MODE: dry-run");
+  console.log(APPLY ? "MODE: APPLY (all brands)" : "MODE: dry-run (all brands)");
 
   const items = await prisma.branchMenuItem.findMany({
     where: { isHidden: false },
@@ -106,6 +103,7 @@ async function main() {
 
   const rows: Row[] = items
     .filter((i) => i.branch.brandId && i.branch.brand)
+    .filter((i) => !isPromoCategory(i.category?.name ?? null))
     .map((i) => ({
       id: i.id,
       branchId: i.branchId,
@@ -122,10 +120,10 @@ async function main() {
       branchName: i.branch.name,
     }));
 
-  // Group by brand + match key
+  // Cross-brand: same menu name shares one image pair everywhere.
   const groups = new Map<string, Row[]>();
   for (const row of rows) {
-    const key = `${row.brandId}::${matchKey(row)}`;
+    const key = `name:${normName(row.name)}`;
     const list = groups.get(key) ?? [];
     list.push(row);
     groups.set(key, list);
@@ -142,72 +140,67 @@ async function main() {
   };
 
   const patches: Patch[] = [];
-  let missingSale = 0;
-  let missingSkewer = 0;
-  let saleSkewerMismatch = 0;
+  let fillSale = 0;
+  let fillSkewer = 0;
+  let mirror = 0;
+  let align = 0;
 
   for (const [, group] of groups) {
     const bestSale = pickBestUrl(group, "imageUrl");
     const bestSkewer = pickBestUrl(group, "skewerImageUrl");
 
-    // Prefer a shared "canonical" pair from the newest row that has both,
-    // else independently best sale + best skewer.
     let canonSale = bestSale?.url ?? null;
     let canonSkewer = bestSkewer?.url ?? null;
 
+    // Newest row that already has both sides = preferred verified pair.
     const withBoth = [...group]
       .filter((r) => r.imageUrl?.trim() && r.skewerImageUrl?.trim())
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+
     if (withBoth) {
       canonSale = withBoth.imageUrl!.trim();
       canonSkewer = withBoth.skewerImageUrl!.trim();
     } else {
-      // If only one side exists brand-wide, mirror onto the other for fill.
+      // Prefer independently newest per side, then mirror so both exist.
       if (canonSale && !canonSkewer) canonSkewer = canonSale;
       if (canonSkewer && !canonSale) canonSale = canonSkewer;
     }
 
+    // Nothing to propagate in this name group.
+    if (!canonSale && !canonSkewer) continue;
+
     for (const row of group) {
-      let nextSale = row.imageUrl?.trim() || null;
-      let nextSkewer = row.skewerImageUrl?.trim() || null;
+      const beforeSale = row.imageUrl?.trim() || null;
+      const beforeSkewer = row.skewerImageUrl?.trim() || null;
+      let nextSale = beforeSale;
+      let nextSkewer = beforeSkewer;
       const reasons: string[] = [];
 
-      if (!nextSale && canonSale) {
+      if (canonSale && nextSale !== canonSale) {
+        if (!nextSale) fillSale += 1;
+        else align += 1;
         nextSale = canonSale;
-        reasons.push("fill-sale");
-        missingSale += 1;
+        reasons.push(beforeSale ? "align-sale" : "fill-sale");
       }
-      if (!nextSkewer && canonSkewer) {
+      if (canonSkewer && nextSkewer !== canonSkewer) {
+        if (!beforeSkewer) fillSkewer += 1;
+        else align += 1;
         nextSkewer = canonSkewer;
-        reasons.push("fill-skewer");
-        missingSkewer += 1;
+        reasons.push(beforeSkewer ? "align-skewer" : "fill-skewer");
       }
 
-      // Align within row: if one side empty after fill attempt, copy peer
+      // Guarantee both sides when we have at least one.
       if (nextSale && !nextSkewer) {
         nextSkewer = nextSale;
+        mirror += 1;
         reasons.push("mirror-sale→skewer");
       }
       if (nextSkewer && !nextSale) {
         nextSale = nextSkewer;
+        mirror += 1;
         reasons.push("mirror-skewer→sale");
       }
 
-      // If both exist but differ, upgrade to newest verified pair when available.
-      if (
-        withBoth &&
-        canonSale &&
-        canonSkewer &&
-        (nextSale !== canonSale || nextSkewer !== canonSkewer)
-      ) {
-        saleSkewerMismatch += 1;
-        nextSale = canonSale;
-        nextSkewer = canonSkewer;
-        reasons.push("align-to-newest-pair");
-      }
-
-      const beforeSale = row.imageUrl?.trim() || null;
-      const beforeSkewer = row.skewerImageUrl?.trim() || null;
       if (nextSale === beforeSale && nextSkewer === beforeSkewer) continue;
       if (reasons.length === 0) continue;
 
@@ -223,12 +216,13 @@ async function main() {
     }
   }
 
-  console.log(`\nVisible menu rows: ${rows.length}`);
-  console.log(`Match groups: ${groups.size}`);
+  console.log(`\nVisible non-promo menu rows: ${rows.length}`);
+  console.log(`Name match groups: ${groups.size}`);
   console.log(`Rows to update: ${patches.length}`);
-  console.log(`  fill missing sale: ~${missingSale}`);
-  console.log(`  fill missing skewer: ~${missingSkewer}`);
-  console.log(`  align to newest pair: ~${saleSkewerMismatch}`);
+  console.log(`  fill sale: ~${fillSale}`);
+  console.log(`  fill skewer: ~${fillSkewer}`);
+  console.log(`  align existing: ~${align}`);
+  console.log(`  mirror one-side: ~${mirror}`);
 
   const byBrand = new Map<string, number>();
   for (const p of patches) {
@@ -239,8 +233,8 @@ async function main() {
     console.log(`  ${b}: ${n}`);
   }
 
-  console.log("\nSample (first 20):");
-  for (const p of patches.slice(0, 20)) {
+  console.log("\nSample (first 25):");
+  for (const p of patches.slice(0, 25)) {
     console.log(
       `• ${p.brand} › ${p.branch} › ${p.name} [${p.reasons.join(", ")}]`,
     );
@@ -254,7 +248,6 @@ async function main() {
   }
 
   let updated = 0;
-  // Batch updates
   for (const p of patches) {
     await prisma.branchMenuItem.update({
       where: { id: p.id },

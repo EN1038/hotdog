@@ -68,51 +68,43 @@ export function CustomerEntryGate({
           notifyActiveBrandUpdated();
         }
 
-        if (branchCode) {
-          // เข้าจากลิงก์สาขา — รู้สาขาแล้ว ใช้รูปสาขาเป็นหัวภาพ
-          if (branches[0]?.id) {
-            const branchImage =
-              typeof branches[0]?.imageUrl === "string" &&
-              branches[0].imageUrl.trim()
-                ? branches[0].imageUrl.trim()
-                : null;
-            if (brandName) {
-              setBrandInfo({
-                name: brandName,
-                logoUrl: brandLogo,
-                heroImageUrl: branchImage,
-              });
-            }
-            const mode = branches[0]?.operatingMode;
-            if (mode === "BBQ_WEIGH") {
-              setBbqTableOnly(true);
-              setDestination(null);
-            } else if (mode === "SKEWER") {
-              setDestination(`/skewer/${branches[0].id}`);
-              setRequireLogin(true);
-            } else {
-              setDestination(`/order/store/${branches[0].id}`);
-            }
-          } else {
-            setNotFound(true);
-          }
-        } else if (branches.length > 0) {
-          // เข้าจากลิงก์แบรนด์ — ใช้รูปปกแบรนด์ (ยังไม่รู้สาขา)
+        if (!branchCode) {
+          // Brand-only URLs use BrandHubPage; gate is for branch deep links.
+          router.replace(`/${brandCode}`);
+          return;
+        }
+
+        // เข้าจากลิงก์สาขา — รู้สาขาแล้ว ใช้รูปสาขาเป็นหัวภาพ
+        if (branches[0]?.id) {
+          const branchImage =
+            typeof branches[0]?.imageUrl === "string" &&
+            branches[0].imageUrl.trim()
+              ? branches[0].imageUrl.trim()
+              : null;
           if (brandName) {
             setBrandInfo({
               name: brandName,
               logoUrl: brandLogo,
-              heroImageUrl: brandCover,
+              heroImageUrl: branchImage,
             });
           }
-          setDestination("/order");
+          const mode = branches[0]?.operatingMode;
+          if (mode === "BBQ_WEIGH") {
+            setBbqTableOnly(true);
+            setDestination(null);
+          } else if (mode === "SKEWER") {
+            setDestination(`/skewer/${branches[0].id}`);
+            setRequireLogin(true);
+          } else {
+            setDestination(`/order/store/${branches[0].id}`);
+          }
         } else {
           setNotFound(true);
         }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  }, [brandCode, branchCode]);
+  }, [brandCode, branchCode, router]);
 
   useEffect(() => {
     if (sessionChecked && session && destination) {

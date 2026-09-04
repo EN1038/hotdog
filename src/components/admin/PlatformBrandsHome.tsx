@@ -540,6 +540,19 @@ export function PlatformBrandsHome() {
         }
       />
 
+      <Link
+        href="/admin/ops"
+        className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-4 py-3 text-sm shadow-sm transition hover:border-emerald-300"
+      >
+        <div>
+          <p className="font-bold text-emerald-900">ภาพรวมแพลตฟอร์ม</p>
+          <p className="text-xs text-emerald-800/80">
+            สมัครใหม่ · ทดลองใกล้หมด · หยุดใช้/หมดอายุ · สมัครแล้วนิ่ง · สรุป LINE
+          </p>
+        </div>
+        <span className="shrink-0 font-semibold text-emerald-700">เปิด →</span>
+      </Link>
+
       <section className="mt-4">
         <div className="mb-2 flex items-end justify-between gap-2">
           <h2 className="text-sm font-bold text-slate-800">สรุป</h2>

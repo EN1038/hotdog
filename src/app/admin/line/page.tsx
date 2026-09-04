@@ -450,9 +450,76 @@ export default function AdminLinePage() {
             }
           />
         </label>
+        <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
+          <span>แจ้งทดลองใกล้หมดอายุ (1 / 3 วัน)</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={settings.notifyTrialEnding}
+            disabled={saving || !settings.messagingEnabled}
+            onChange={(e) =>
+              void patchFlags({ notifyTrialEnding: e.target.checked })
+            }
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
+          <span>แจ้งเมื่อแบรนด์หยุดใช้ / หมดอายุ</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={settings.notifyBrandStatus}
+            disabled={saving || !settings.messagingEnabled}
+            onChange={(e) =>
+              void patchFlags({ notifyBrandStatus: e.target.checked })
+            }
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
+          <span>แจ้งสมัครแล้วยังไม่เริ่มใช้งาน</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={settings.notifyInactiveOnboard}
+            disabled={saving || !settings.messagingEnabled}
+            onChange={(e) =>
+              void patchFlags({ notifyInactiveOnboard: e.target.checked })
+            }
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
+          <span>แจ้งข้อผิดพลาดระบบ (SMS ล้มเหลวพุ่ง)</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={settings.notifySystemErrors}
+            disabled={saving || !settings.messagingEnabled}
+            onChange={(e) =>
+              void patchFlags({ notifySystemErrors: e.target.checked })
+            }
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
+          <span>สรุปรายวันแพลตฟอร์ม</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={settings.notifyDailyOpsSummary}
+            disabled={saving || !settings.messagingEnabled}
+            onChange={(e) =>
+              void patchFlags({ notifyDailyOpsSummary: e.target.checked })
+            }
+          />
+        </label>
         <p className="text-xs text-slate-500">
-          ส่งไปยังเพื่อน OA ที่พิมพ์รหัสผ่านถูกต้องแล้วเท่านั้น
-          (ไม่แยก role staff/owner)
+          ส่งไปยังเพื่อน OA ที่พิมพ์รหัสผ่านถูกต้องแล้ว · ดูรายการที่{" "}
+          <a href="/admin/ops" className="text-sky-700 underline">
+            /admin/ops
+          </a>
+          {" · "}
+          cron{" "}
+          <code className="rounded bg-slate-100 px-1">
+            /api/cron/platform-ops
+          </code>
         </p>
       </section>
 

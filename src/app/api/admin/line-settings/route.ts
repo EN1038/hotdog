@@ -11,6 +11,7 @@ import {
   deployLineRichMenus,
   linkAdminRichMenuToAllLinkedAdmins,
 } from "@/lib/line-rich-menu";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 const patchSchema = z.object({
   channelAccessToken: z.string().optional(),
@@ -19,6 +20,11 @@ const patchSchema = z.object({
   clearChannelSecret: z.boolean().optional(),
   messagingEnabled: z.boolean().optional(),
   notifyOwnerRegistration: z.boolean().optional(),
+  notifyTrialEnding: z.boolean().optional(),
+  notifyBrandStatus: z.boolean().optional(),
+  notifyInactiveOnboard: z.boolean().optional(),
+  notifySystemErrors: z.boolean().optional(),
+  notifyDailyOpsSummary: z.boolean().optional(),
   /** @deprecated ignored — platform OA no longer notifies staff orders */
   notifyStaffOnNewOrder: z.boolean().optional(),
   /** @deprecated ignored — platform OA no longer sends brand daily summary */
@@ -39,6 +45,7 @@ const testSchema = z.object({
 export async function GET() {
   try {
     await requirePlatformAdmin();
+    await ensureProdSchemaCompat().catch(() => null);
     return jsonOk(await getLineSettingsPublic());
   } catch (error) {
     return handleApiError(error);
@@ -55,6 +62,11 @@ export async function PATCH(request: Request) {
       lineChannelSecret?: string | null;
       lineMessagingEnabled?: boolean;
       lineNotifyOwnerRegistration?: boolean;
+      lineNotifyTrialEnding?: boolean;
+      lineNotifyBrandStatus?: boolean;
+      lineNotifyInactiveOnboard?: boolean;
+      lineNotifySystemErrors?: boolean;
+      lineNotifyDailyOpsSummary?: boolean;
     } = {};
 
     if (body.clearAccessToken) {
@@ -76,6 +88,21 @@ export async function PATCH(request: Request) {
     }
     if (body.notifyOwnerRegistration !== undefined) {
       data.lineNotifyOwnerRegistration = body.notifyOwnerRegistration;
+    }
+    if (body.notifyTrialEnding !== undefined) {
+      data.lineNotifyTrialEnding = body.notifyTrialEnding;
+    }
+    if (body.notifyBrandStatus !== undefined) {
+      data.lineNotifyBrandStatus = body.notifyBrandStatus;
+    }
+    if (body.notifyInactiveOnboard !== undefined) {
+      data.lineNotifyInactiveOnboard = body.notifyInactiveOnboard;
+    }
+    if (body.notifySystemErrors !== undefined) {
+      data.lineNotifySystemErrors = body.notifySystemErrors;
+    }
+    if (body.notifyDailyOpsSummary !== undefined) {
+      data.lineNotifyDailyOpsSummary = body.notifyDailyOpsSummary;
     }
 
     if (Object.keys(data).length === 0) {

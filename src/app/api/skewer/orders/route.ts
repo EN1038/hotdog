@@ -16,6 +16,7 @@ import {
 } from "@/lib/skewer-order";
 import { assertBrandWriteAllowed } from "@/lib/brand-plan";
 import { notifyBranchSmsSkewerOrder } from "@/lib/brand-alert-sms";
+import { notifyBrandOwnersSkewerOrder } from "@/lib/brand-line-notify";
 
 const itemSchema = z.object({
   branchMenuItemId: z.string().min(1),
@@ -286,6 +287,7 @@ export async function POST(request: Request) {
         customerPhone: created.customerPhone,
         requestedDate: String(created.requestedDate),
       });
+      void notifyBrandOwnersSkewerOrder(created.id);
     }
 
     return jsonOk(serializeSkewerOrder(created), 201);

@@ -91,6 +91,10 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."Brand" ALTER COLUMN "lineNotifyNewOrder" SET DEFAULT false`,
         `ALTER TABLE "${schema}"."Brand" ALTER COLUMN "lineNotifySkewerOrder" SET DEFAULT false`,
         `ALTER TABLE "${schema}"."Brand" ALTER COLUMN "lineNotifyDailySummary" SET DEFAULT false`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "lineChannelAccessToken" TEXT`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "lineChannelSecret" TEXT`,
+        `ALTER TABLE "${schema}"."Brand" ADD COLUMN IF NOT EXISTS "lineMessagingEnabled" BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE "${schema}"."Brand" ALTER COLUMN "lineMessagingEnabled" SET DEFAULT false`,
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "alertSmsPhone" TEXT`,
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "smsNotifyNewOrder" BOOLEAN NOT NULL DEFAULT false`,
         `ALTER TABLE "${schema}"."Branch" ADD COLUMN IF NOT EXISTS "smsNotifySkewerOrder" BOOLEAN NOT NULL DEFAULT false`,
@@ -178,11 +182,26 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         await prisma.$executeRawUnsafe(
           `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "lineNotifyOwnerRegistration" BOOLEAN NOT NULL DEFAULT true`,
         );
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "lineNotifyTrialEnding" BOOLEAN NOT NULL DEFAULT true`,
+        );
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "lineNotifyBrandStatus" BOOLEAN NOT NULL DEFAULT true`,
+        );
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "lineNotifyInactiveOnboard" BOOLEAN NOT NULL DEFAULT true`,
+        );
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "lineNotifySystemErrors" BOOLEAN NOT NULL DEFAULT true`,
+        );
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "lineNotifyDailyOpsSummary" BOOLEAN NOT NULL DEFAULT true`,
+        );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (!/already exists|duplicate/i.test(msg)) {
           console.error(
-            "[schema-compat] SiteSettings lineNotifyOwnerRegistration",
+            "[schema-compat] SiteSettings lineNotify ops flags",
             msg,
           );
         }
@@ -205,6 +224,29 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         const msg = e instanceof Error ? e.message : String(e);
         if (!/already exists|duplicate/i.test(msg)) {
           console.error("[schema-compat] PlatformLineUser", msg);
+        }
+      }
+      try {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "${schema}"."PlatformOpsNotifyLog" (
+            "id" TEXT NOT NULL,
+            "kind" TEXT NOT NULL,
+            "brandId" TEXT NOT NULL DEFAULT '',
+            "dayKey" TEXT NOT NULL,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "PlatformOpsNotifyLog_pkey" PRIMARY KEY ("id")
+          )
+        `);
+        await prisma.$executeRawUnsafe(
+          `CREATE UNIQUE INDEX IF NOT EXISTS "PlatformOpsNotifyLog_kind_brandId_dayKey_key" ON "${schema}"."PlatformOpsNotifyLog"("kind", "brandId", "dayKey")`,
+        );
+        await prisma.$executeRawUnsafe(
+          `CREATE INDEX IF NOT EXISTS "PlatformOpsNotifyLog_dayKey_kind_idx" ON "${schema}"."PlatformOpsNotifyLog"("dayKey", "kind")`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error("[schema-compat] PlatformOpsNotifyLog", msg);
         }
       }
       try {

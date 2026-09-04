@@ -93,6 +93,13 @@ const NAV_GROUPS: NavGroup[] = [
             !pathname.endsWith("/admins")),
         icon: IconHome,
       },
+      {
+        href: "/admin/ops",
+        label: "ภาพรวมแพลตฟอร์ม",
+        platformOnly: true,
+        exact: true,
+        icon: IconBell,
+      },
     ],
   },
   {

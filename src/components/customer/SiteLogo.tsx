@@ -30,7 +30,11 @@ export function SiteLogo({
 
   if (logoUrl?.trim()) {
     src = logoUrl.trim();
-    treatAsIcon = true;
+    // Brand/branch uploads are square icons; SkillSale wordmark must stay wide.
+    treatAsIcon =
+      src !== SKILLSALE_LOGO_URL && src !== SKILLSALE_ICON_URL
+        ? true
+        : src === SKILLSALE_ICON_URL;
   } else if (branding.isBrandOverride && branding.logoUrl?.trim()) {
     src = branding.logoUrl.trim();
     treatAsIcon = true;

@@ -28,6 +28,7 @@ import {
   IconChevronRight,
   IconClipboard,
   IconLinkSuffix,
+  IconQrCode,
   IconReceipt,
   IconStar,
 } from "@/components/icons";
@@ -43,10 +44,13 @@ import {
   type StaffSellMode,
 } from "@/lib/staff-sell-mode";
 import { HOTPOT_COUNTER_GROUP } from "@/lib/hotpot-counter-group";
+import { StaffBranchShopShareSheet } from "@/components/staff/StaffBranchShopShareSheet";
 
 type HomeMeta = {
+  branchId?: string;
   branchName?: string;
-  brand?: { name?: string | null; color?: string | null };
+  branchCode?: string | null;
+  brand?: { code?: string | null; name?: string | null; color?: string | null };
   stockEnabled?: boolean;
   brandStockEnabled?: boolean;
   pendingOrderCount?: number;
@@ -67,7 +71,14 @@ type HomeMeta = {
   } | null;
 };
 
-type SoftTone = "amber" | "sky" | "teal" | "rose" | "emerald" | "primary";
+type SoftTone =
+  | "amber"
+  | "sky"
+  | "teal"
+  | "rose"
+  | "emerald"
+  | "primary"
+  | "indigo";
 
 /** บล็อกสีทึบแบบถุงเงิน — กดง่าย อ่านใหญ่ */
 const TILE_TONES: Record<
@@ -96,6 +107,10 @@ const TILE_TONES: Record<
   },
   emerald: {
     card: "bg-site-primary hover:bg-site-primary-hover active:bg-site-primary-active",
+    iconWrap: "bg-white/20 text-white",
+  },
+  indigo: {
+    card: "bg-indigo-600 hover:bg-indigo-700",
     iconWrap: "bg-white/20 text-white",
   },
 };
@@ -232,6 +247,7 @@ export default function StaffHomePage() {
     null,
   );
   const [expensesOpen, setExpensesOpen] = useState(false);
+  const [shopShareOpen, setShopShareOpen] = useState(false);
   const [sellMode, setSellMode] = useState<StaffSellMode>("mala");
   const [aging, setAging] = useState<{
     critical: number;
@@ -631,19 +647,37 @@ export default function StaffHomePage() {
           ) : null}
 
           {showMala ? (
-            <SoftTile
-              href={hasOpenShift ? "/staff/key-order/regular" : undefined}
-              disabled={!hasOpenShift || writeBlocked}
-              disabledHint={writeBlocked ? writeBlockedHint : "เปิดรอบขายก่อน"}
-              title="คีย์ออเดอร์"
-              subtitle={
-                hasOpenShift ? "รับออเดอร์และคิดเงิน" : "เปิดรอบขายก่อน"
-              }
-              icon={<IconCart size={30} />}
-              tone="primary"
-              size="hero"
-              pill={hasOpenShift ? "ใช้งานหลัก" : undefined}
-            />
+            <div className="flex min-h-[7.25rem] flex-[1.05] divide-x divide-white/40">
+              <SoftTile
+                href={hasOpenShift ? "/staff/key-order/regular" : undefined}
+                disabled={!hasOpenShift || writeBlocked}
+                disabledHint={writeBlocked ? writeBlockedHint : "เปิดรอบขายก่อน"}
+                title="คีย์ออเดอร์"
+                subtitle={
+                  hasOpenShift ? "รับออเดอร์และคิดเงิน" : "เปิดรอบขายก่อน"
+                }
+                icon={<IconCart size={30} />}
+                tone="primary"
+                size="hero"
+                pill={hasOpenShift ? "ใช้งานหลัก" : undefined}
+                className="!w-auto min-h-[7.25rem] flex-1"
+              />
+              {meta?.branchId ? (
+                <button
+                  type="button"
+                  onClick={() => setShopShareOpen(true)}
+                  aria-label="QR และลิงก์หน้าร้านลูกค้า"
+                  className="flex w-[5.75rem] shrink-0 flex-col items-center justify-center gap-1.5 bg-indigo-600 px-2 py-3 text-white transition hover:bg-indigo-700 active:brightness-95"
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20">
+                    <IconQrCode size={26} />
+                  </span>
+                  <span className="text-[13px] font-extrabold leading-tight">
+                    QR ร้าน
+                  </span>
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           {showMala && promoButton ? (
@@ -739,6 +773,16 @@ export default function StaffHomePage() {
           onClose={() => setExpensesOpen(false)}
           initialDate={bangkokDateKey()}
         />
+
+        {shopShareOpen && meta?.branchId ? (
+          <StaffBranchShopShareSheet
+            branchId={meta.branchId}
+            branchName={meta.branchName}
+            brandCode={meta.brand?.code}
+            branchCode={meta.branchCode}
+            onClose={() => setShopShareOpen(false)}
+          />
+        ) : null}
       </div>
     </StaffAppShell>
   );

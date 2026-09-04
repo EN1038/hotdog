@@ -165,7 +165,7 @@ export function CustomerEntryGate({
             ? "เข้าดูเมนูและสั่งที่สาขานี้ได้เลย โดยไม่ต้องเข้าสู่ระบบ"
             : "เลือกดูเมนูและสาขาได้ก่อน โดยไม่ต้องเข้าสู่ระบบ"
       }
-      browseLabel={branchCode ? "เข้าชมสาขานี้" : "เข้าชมร้าน"}
+      browseLabel="เข้าชมร้าน"
       onBrowseShop={
         requireLogin ? undefined : () => router.replace(destination)
       }

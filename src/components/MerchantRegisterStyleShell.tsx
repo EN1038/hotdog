@@ -41,7 +41,7 @@ export function MerchantRegisterStyleShell({
   onBack,
   hideBack = false,
   showLogo = true,
-  logoHeight = 52,
+  logoHeight = 56,
   headerBg = MERCHANT_REGISTER_HEADER_BG,
   logo,
 }: MerchantRegisterStyleShellProps) {
@@ -81,7 +81,7 @@ export function MerchantRegisterStyleShell({
         {showLogo || subtitle ? (
           <div className="relative mt-5 flex flex-col items-center text-center">
             {showLogo ? (
-              <div className="rounded-[1.25rem] bg-white px-4 py-4 shadow-[0_10px_32px_-8px_rgba(0,0,0,0.28)]">
+              <div className="flex min-w-[11.5rem] items-center justify-center rounded-[1.25rem] bg-white px-5 py-3.5 shadow-[0_10px_32px_-8px_rgba(0,0,0,0.28)]">
                 {logo ?? (
                   <PlatformMark placement="login" height={logoHeight} priority />
                 )}

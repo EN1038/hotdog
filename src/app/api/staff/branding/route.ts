@@ -38,6 +38,7 @@ export async function GET() {
       brandId: string | null;
       operatingMode: string;
       weighSalesEnabled?: boolean;
+      code: string | null;
       brand: {
         stockEnabled: boolean;
         coverImageUrl: string | null;
@@ -59,6 +60,7 @@ export async function GET() {
             operatingMode: true,
             weighSalesEnabled: true,
             kind: true,
+            code: true,
             brand: {
               select: {
                 stockEnabled: true,
@@ -83,6 +85,7 @@ export async function GET() {
             stockEnabled: true,
             brandId: true,
             operatingMode: true,
+            code: true,
             brand: {
               select: {
                 stockEnabled: true,
@@ -192,6 +195,7 @@ export async function GET() {
     return jsonOk({
       branchId: session.branchId,
       branchName: session.branchName,
+      branchCode: branch?.code ?? null,
       staffDisplayName: session.staffDisplayName,
       staffImageUrl: session.staffImageUrl,
       staffPhone: session.staffPhone,

@@ -5,13 +5,11 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useCustomer } from "./CustomerProvider";
 import { SiteLogo } from "./SiteLogo";
-import { useSiteBranding } from "./SiteBrandingProvider";
 import { PhoneInput } from "@/components/PhoneInput";
 import { IconPhone } from "@/components/icons";
 import { MerchantRegisterStyleShell } from "@/components/MerchantRegisterStyleShell";
 import { getRememberedCustomerPhone } from "@/lib/customer-remember";
 import { formatThaiPhone } from "@/lib/constants";
-import { resolvePlatformMarkForPlacement } from "@/lib/platform-branding";
 import { OtpDigitInput } from "@/components/OtpDigitInput";
 import {
   customerButtonClass,
@@ -95,15 +93,11 @@ function LockIcon() {
   );
 }
 
-function BrandLogo({
-  brandLogoUrl,
-}: {
-  brandLogoUrl?: string | null;
-}) {
+function BrandLogo({ brandLogoUrl }: { brandLogoUrl: string }) {
   return (
     <SiteLogo
       logoUrl={brandLogoUrl}
-      size={52}
+      size={64}
       platformPlacement="login"
     />
   );
@@ -123,10 +117,8 @@ export function CustomerLoginScreen({
 }: CustomerLoginScreenProps) {
   const pathname = usePathname();
   const { login, sendOtp, verifyOtp } = useCustomer();
-  const branding = useSiteBranding();
-  const platformLogin = resolvePlatformMarkForPlacement(branding, "login");
-  const resolvedLogo = brandLogoUrl?.trim() || platformLogin.src;
   const privacyHref = `/privacy?returnTo=${encodeURIComponent(pathname || "/")}`;
+  const customLogo = brandLogoUrl?.trim() || null;
 
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -255,7 +247,9 @@ export function CustomerLoginScreen({
       backHref={backHref}
       onBack={onBack}
       hideBack={!showBackButton}
-      logo={<BrandLogo brandLogoUrl={resolvedLogo} />}
+      logo={
+        customLogo ? <BrandLogo brandLogoUrl={customLogo} /> : undefined
+      }
     >
         <div className="text-center">
           <h2 className={customerTitleClass}>

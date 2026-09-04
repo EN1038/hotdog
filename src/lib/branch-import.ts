@@ -30,6 +30,17 @@ function nonMenuKey(stockType: string, name: string) {
   return `${stockType}::${name.trim()}`;
 }
 
+/** Prefer itemCode; else name within category (case-insensitive). */
+function menuImportDedupeKey(item: {
+  itemCode?: string | null;
+  name: string;
+  categoryId?: string | null;
+}): string {
+  const code = item.itemCode?.trim();
+  if (code) return `code:${code}`;
+  return `name:${item.categoryId ?? ""}:${item.name.trim().toLocaleLowerCase("th")}`;
+}
+
 const optionGroupImportInclude = {
   options: { orderBy: { createdAt: "asc" as const } },
   menuItemSources: { orderBy: { sortOrder: "asc" as const } },
@@ -200,11 +211,46 @@ export async function importBranchCatalog(opts: {
     });
   }
 
+  const existingTargetItems = overwriteMenu
+    ? []
+    : await prisma.branchMenuItem.findMany({
+        where: { branchId: targetBranchId },
+        select: {
+          id: true,
+          itemCode: true,
+          name: true,
+          categoryId: true,
+        },
+      });
+
+  /** dest menu id already on target (or created this run), keyed for dedupe */
+  const destByDedupeKey = new Map<string, string>();
+  for (const existing of existingTargetItems) {
+    destByDedupeKey.set(menuImportDedupeKey(existing), existing.id);
+  }
+
   const menuItemIdMap = new Map<string, string>();
   const locationIdMap = new Map<string, string>();
   const nonMenuItemIdMap = new Map<string, string>();
   let menuItemsCreated = 0;
   for (const item of sourceItems) {
+    const destCategoryId = item.categoryId
+      ? (categoryIdMap.get(item.categoryId) ?? null)
+      : null;
+    // Match target rows by mapped category id (names align after category import).
+    const dedupeKey = menuImportDedupeKey({
+      itemCode: item.itemCode,
+      name: item.name,
+      categoryId: destCategoryId,
+    });
+
+    const existingDestId = destByDedupeKey.get(dedupeKey);
+    if (existingDestId) {
+      // Source duplicate or re-import: reuse one dest row; keep option-source mapping.
+      menuItemIdMap.set(item.id, existingDestId);
+      continue;
+    }
+
     const created = await prisma.branchMenuItem.create({
       data: {
         branchId: targetBranchId,
@@ -224,9 +270,7 @@ export async function importBranchCatalog(opts: {
         promoEndsAt: item.promoEndsAt,
         defaultShelfLifeDays: item.defaultShelfLifeDays,
         description: item.description,
-        categoryId: item.categoryId
-          ? (categoryIdMap.get(item.categoryId) ?? null)
-          : null,
+        categoryId: destCategoryId,
         imageUrl: item.imageUrl,
         skewerImageUrl: item.skewerImageUrl,
         quantityUnit: item.quantityUnit,
@@ -247,6 +291,7 @@ export async function importBranchCatalog(opts: {
       },
     });
     menuItemIdMap.set(item.id, created.id);
+    destByDedupeKey.set(dedupeKey, created.id);
     menuItemsCreated += 1;
   }
 

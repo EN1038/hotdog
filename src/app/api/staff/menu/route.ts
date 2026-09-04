@@ -35,6 +35,8 @@ export async function GET(request: Request) {
         id: true,
         name: true,
         brandId: true,
+        stockEnabled: true,
+        brand: { select: { stockEnabled: true } },
         menuItems: {
           where: { isHidden: false, hideFromStaff: false },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
@@ -90,13 +92,23 @@ export async function GET(request: Request) {
       });
     }
 
+    // Match stock UI: missing BranchMenuItemStock row displays as 0 — not "untracked".
+    const stockActive = Boolean(
+      branch.brandId && branch.brand?.stockEnabled && branch.stockEnabled,
+    );
+
     const menuItems = branch.menuItems.map((item) => {
       const flattened = flattenMenuItemOptionGroups(item);
-      const stockQuantity = item.stock?.quantity ?? null;
+      const rawStockQty = item.stock?.quantity ?? null;
       const isPromo = (flattened.optionGroups ?? []).some(
         (g) => g.mode === "FROM_MENU",
       );
       const stockExempt = Boolean(item.category?.stockExempt) || isPromo;
+      const stockQuantity = stockExempt
+        ? null
+        : stockActive
+          ? (rawStockQty ?? 0)
+          : rawStockQty;
       const schedule = serializePromoSchedule(item);
       return {
         ...flattened,
@@ -109,7 +121,7 @@ export async function GET(request: Request) {
               stockExempt: Boolean(item.category.stockExempt) || isPromo,
             }
           : null,
-        stockQuantity: stockExempt ? null : stockQuantity,
+        stockQuantity,
         // Promo packs / exempt categories: manual sold-out only (not pack stock qty)
         isOutOfStock: stockExempt
           ? flattened.isOutOfStock

@@ -39,7 +39,8 @@ export function isMenuItemSoldOut(item: StockCheckItem): boolean {
 
 /**
  * Max qty staff can add for a tracked menu line.
- * `null` stockQuantity = not tracked yet → no cap (matches API / isMenuItemSoldOut).
+ * `null` stockQuantity = stock module off / exempt → no cap.
+ * When stock is on, menu API sends `0` for missing rows (same as stock UI).
  */
 export function stockQuantityCap(item: StockCheckItem): number {
   if (isStockExemptMenuItem(item)) return Number.POSITIVE_INFINITY;

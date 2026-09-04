@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StaffKeyOrderLayout, STAFF_KEY_ORDER_STICKY_OFFSET } from "@/components/staff/StaffKeyOrderLayout";
@@ -122,6 +122,27 @@ export default function StaffRegularKeyOrderPage() {
     emptyStaffOrderDiscountState,
   );
   const [showStickySummary, setShowStickySummary] = useState(true);
+  const [shakeItemId, setShakeItemId] = useState<string | null>(null);
+  const shakeTimerRef = useRef<number | null>(null);
+
+  function triggerSoldOutShake(itemId: string) {
+    setShakeItemId(itemId);
+    if (shakeTimerRef.current != null) {
+      window.clearTimeout(shakeTimerRef.current);
+    }
+    shakeTimerRef.current = window.setTimeout(() => {
+      setShakeItemId(null);
+      shakeTimerRef.current = null;
+    }, 420);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimerRef.current != null) {
+        window.clearTimeout(shakeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (blocked || roundLoading || !roundState) return;
@@ -558,15 +579,24 @@ export default function StaffRegularKeyOrderPage() {
         className="rounded-2xl border border-gray-200 bg-white p-4 outline-none"
       >
         <div className="mb-3 flex items-end justify-between gap-2">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-gray-900">เลือกเมนู</h2>
             <p className="text-xs text-gray-500">
               เรียงตามพยัญชนะไทย · กด + เพิ่มหลายเมนูในหน้าเดียว
             </p>
+            <p className="mt-1.5 whitespace-nowrap text-[12px] leading-snug text-gray-600">
+              กดเพิ่มไม่ได้ = หมดสต็อก ·{" "}
+              <Link
+                href="/staff/stock?action=stock_in"
+                className="font-semibold text-site-primary underline"
+              >
+                ไปเพิ่มสต็อก
+              </Link>
+            </p>
           </div>
           <Link
             href="/staff/key-order/promo"
-            className="text-xs font-semibold text-site-primary underline"
+            className="shrink-0 text-xs font-semibold text-site-primary underline"
           >
             ไปแบบโปร
           </Link>
@@ -628,7 +658,7 @@ export default function StaffRegularKeyOrderPage() {
                       key={item.id}
                       className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 ${
                         soldOut ? "opacity-50" : ""
-                      }`}
+                      } ${shakeItemId === item.id ? "menu-row-shake" : ""}`}
                     >
                       <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
                         {seq}
@@ -661,23 +691,22 @@ export default function StaffRegularKeyOrderPage() {
                           {item.name}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {soldOut ? (
-                            "หมดชั่วคราว"
-                          ) : (
+                          {item.category?.name ? `${item.category.name} · ` : ""}
+                          {formatPriceLabel(price)}
+                          {!soldOut && tracked ? (
                             <>
-                              {item.category?.name ? `${item.category.name} · ` : ""}
-                              {formatPriceLabel(price)}
-                              {tracked ? (
-                                <>
-                                  {" · "}
-                                  <span className="font-bold text-gray-900">
-                                    เหลือ {item.stockQuantity}
-                                  </span>
-                                </>
-                              ) : null}
+                              {" · "}
+                              <span className="font-bold text-gray-900">
+                                เหลือ {item.stockQuantity}
+                              </span>
                             </>
-                          )}
+                          ) : null}
                         </p>
+                        {soldOut ? (
+                          <p className="mt-0.5 text-[11px] font-medium leading-snug text-gray-500">
+                            รายการนี้ในสต็อกไม่มี
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         <button
@@ -695,9 +724,17 @@ export default function StaffRegularKeyOrderPage() {
                         <button
                           type="button"
                           aria-label="เพิ่ม"
-                          disabled={soldOut || qty >= sq}
-                          onClick={() => setQty(item.id, qty + 1)}
-                          className="flex h-12 w-12 items-center justify-center rounded-xl bg-site-primary text-xl font-bold text-white disabled:opacity-40"
+                          disabled={!soldOut && qty >= sq}
+                          onClick={() => {
+                            if (soldOut) {
+                              triggerSoldOutShake(item.id);
+                              return;
+                            }
+                            setQty(item.id, qty + 1);
+                          }}
+                          className={`flex h-12 w-12 items-center justify-center rounded-xl bg-site-primary text-xl font-bold text-white disabled:opacity-40 ${
+                            soldOut ? "opacity-40" : ""
+                          }`}
                         >
                           +
                         </button>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { formatPrice } from "@/lib/constants";
 import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
+import { IconChevronDown } from "@/components/icons";
 
 export type StaffOrderSummaryLine = {
   id: string;
@@ -20,11 +21,16 @@ export function StaffOrderSummary({
   lines,
   deliveryFee = 0,
   discountAmount = 0,
+  /** When true, item rows start expanded. Default collapsed to save space. */
+  defaultExpanded = false,
 }: {
   lines: StaffOrderSummaryLine[];
   deliveryFee?: number;
   discountAmount?: number;
+  defaultExpanded?: boolean;
 }) {
+  const detailsId = useId();
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const itemsTotal = lines.reduce(
     (sum, line) =>
       sum + (line.unitPrice + line.optionsPrice) * line.quantity,
@@ -51,45 +57,66 @@ export function StaffOrderSummary({
       id="staff-order-summary"
       className="rounded-2xl border border-gray-200 bg-white p-4"
     >
-      <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-gray-900">สรุปรายการ</h2>
-        <p className="text-xs text-gray-500">{pieceCount} ชิ้น</p>
-      </div>
-      <ul className="space-y-2">
-        {lines.map((line) => {
-          const lineTotal =
-            (line.unitPrice + line.optionsPrice) * line.quantity;
-          return (
-            <li
-              key={line.id}
-              className="flex items-start justify-between gap-3 text-sm"
-            >
-              <div className="min-w-0">
-                <p className="font-medium text-gray-900">
-                  {line.productCode ? (
-                    <MenuItemCodeBadge
-                      code={line.productCode}
-                      className="mr-1.5 align-middle text-[10px]"
-                    />
-                  ) : null}
-                  {line.name}{" "}
-                  <span className="font-normal text-gray-500">
-                    ×{line.quantity}
-                  </span>
-                </p>
-                {line.optionNote ? (
-                  <p className="mt-0.5 text-[11px] leading-snug text-gray-500">
-                    {line.optionNote}
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 rounded-xl text-left transition active:bg-gray-50"
+      >
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-gray-900">สรุปรายการ</h2>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {lines.length} รายการ · {pieceCount} ชิ้น
+          </p>
+        </div>
+        <IconChevronDown
+          size={20}
+          aria-hidden
+          className={`shrink-0 text-gray-400 transition-transform duration-200 ${
+            expanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {expanded ? (
+        <ul id={detailsId} className="mt-3 space-y-2">
+          {lines.map((line) => {
+            const lineTotal =
+              (line.unitPrice + line.optionsPrice) * line.quantity;
+            return (
+              <li
+                key={line.id}
+                className="flex items-start justify-between gap-3 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900">
+                    {line.productCode ? (
+                      <MenuItemCodeBadge
+                        code={line.productCode}
+                        className="mr-1.5 align-middle text-[10px]"
+                      />
+                    ) : null}
+                    {line.name}{" "}
+                    <span className="font-normal text-gray-500">
+                      ×{line.quantity}
+                    </span>
                   </p>
-                ) : null}
-              </div>
-              <p className="shrink-0 tabular-nums text-gray-900">
-                {formatPrice(lineTotal)}฿
-              </p>
-            </li>
-          );
-        })}
-      </ul>
+                  {line.optionNote ? (
+                    <p className="mt-0.5 text-[11px] leading-snug text-gray-500">
+                      {line.optionNote}
+                    </p>
+                  ) : null}
+                </div>
+                <p className="shrink-0 tabular-nums text-gray-900">
+                  {formatPrice(lineTotal)}฿
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+
       <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-sm">
         <div className="flex justify-between text-gray-600">
           <span>ค่าอาหาร</span>

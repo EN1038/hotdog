@@ -353,6 +353,9 @@ export async function POST(request: Request) {
         autoAcceptOrders: true,
         name: true,
         operatingMode: true,
+        stockEnabled: true,
+        brandId: true,
+        brand: { select: { stockEnabled: true } },
       },
     });
     if (!branch) return jsonError("ไม่พบสาขา");
@@ -366,6 +369,10 @@ export async function POST(request: Request) {
         "สาขานี้เป็นโหมดหมูกระทะ — ใช้บิลโต๊ะ / จุดชั่งในแอดมินแทนการคีย์ออเดอร์คิว",
       );
     }
+
+    const stockActive = Boolean(
+      branch.brandId && branch.brand?.stockEnabled && branch.stockEnabled,
+    );
 
     let activeShift;
     try {
@@ -452,7 +459,13 @@ export async function POST(request: Request) {
       const optionGroups = orderable.optionGroupLinks.map((l) => ({
         mode: l.group.mode,
       }));
-      const stockQuantity = orderable.stock?.quantity ?? null;
+      const rawStockQty = orderable.stock?.quantity ?? null;
+      const stockQuantity =
+        !isPromoMenuItem({ optionGroups, category: orderable.category }) &&
+        !orderable.category?.stockExempt &&
+        stockActive
+          ? (rawStockQty ?? 0)
+          : rawStockQty;
       const menuLike = {
         isOutOfStock: orderable.isOutOfStock,
         stockQuantity,
@@ -464,7 +477,7 @@ export async function POST(request: Request) {
         unavailableItems.push({
           branchMenuItemId: orderable.id,
           name: orderable.name,
-          reason: "หมดชั่วคราว",
+          reason: "รายการนี้ในสต็อกไม่มี",
         });
         continue;
       }

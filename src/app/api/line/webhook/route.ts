@@ -99,7 +99,9 @@ export async function POST(request: Request) {
         event.message.text,
       );
       if (unlock.handled) {
-        await lineReplyText(event.replyToken, unlock.reply);
+        if (unlock.reply) {
+          await lineReplyText(event.replyToken, unlock.reply);
+        }
         continue;
       }
 
@@ -148,10 +150,7 @@ export async function POST(request: Request) {
         continue;
       }
 
-      await lineReplyText(
-        event.replyToken,
-        "พิมพ์ ช่วยเหลือ เพื่อดูคำสั่ง\nหรือส่งรหัส 6 หลักจาก /admin/line-connect เพื่อเชื่อมสิทธิ์แก้ไข-ลบ",
-      );
+      // Unlocked but unrecognized text — stay quiet (no catch-all auto-reply)
     }
   }
 

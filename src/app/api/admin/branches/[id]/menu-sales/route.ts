@@ -1,4 +1,4 @@
-import { OrderStatus } from "@prisma/client";
+import { BranchOperatingMode, OrderStatus, SkewerOrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -13,6 +13,11 @@ import {
   BESTSELLER_TOP_N,
 } from "@/lib/menu-bestsellers";
 import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
+import {
+  requestedDateToKey,
+  skewerLineSubtotalBaht,
+  skewerOrderUsesConfirmedQty,
+} from "@/lib/skewer-order";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -46,6 +51,48 @@ function normalizeRange(fromRaw: string, toRaw: string) {
     : { from: toRaw, to: fromRaw };
 }
 
+type DayAgg = { quantity: number; revenue: number };
+type MenuAgg = {
+  quantity: number;
+  revenue: number;
+  orderIds: Set<string>;
+  byDay: Map<string, DayAgg>;
+};
+
+function accumulateLine(
+  byMenu: Map<string, MenuAgg>,
+  rangeOrderIds: Set<string>,
+  input: {
+    menuId: string;
+    orderId: string;
+    day: string;
+    quantity: number;
+    lineRev: number;
+    from: string;
+    to: string;
+  },
+) {
+  if (input.quantity <= 0) return;
+  const prev = byMenu.get(input.menuId) ?? {
+    quantity: 0,
+    revenue: 0,
+    orderIds: new Set<string>(),
+    byDay: new Map(),
+  };
+  const dayPrev = prev.byDay.get(input.day) ?? { quantity: 0, revenue: 0 };
+  dayPrev.quantity += input.quantity;
+  dayPrev.revenue += input.lineRev;
+  prev.byDay.set(input.day, dayPrev);
+
+  if (input.day >= input.from && input.day <= input.to) {
+    prev.quantity += input.quantity;
+    prev.revenue += input.lineRev;
+    prev.orderIds.add(input.orderId);
+    rangeOrderIds.add(input.orderId);
+  }
+  byMenu.set(input.menuId, prev);
+}
+
 export async function GET(request: Request, { params }: Params) {
   try {
     const { id: branchId } = await params;
@@ -53,7 +100,7 @@ export async function GET(request: Request, { params }: Params) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: branchId },
-      select: { id: true },
+      select: { id: true, operatingMode: true },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
@@ -85,6 +132,7 @@ export async function GET(request: Request, { params }: Params) {
     const trendDays = buildDayWindow(from, to);
     const dayStart = queueBusinessDateFromKey(trendDays[0]!.date);
     const dayEnd = queueBusinessDateFromKey(to);
+    const isSkewer = branch.operatingMode === BranchOperatingMode.SKEWER;
 
     const menuItems = await prisma.branchMenuItem.findMany({
       where: { branchId },
@@ -101,61 +149,88 @@ export async function GET(request: Request, { params }: Params) {
     });
 
     const menuIds = menuItems.map((m) => m.id);
-
-    const orderItems = await prisma.orderItem.findMany({
-      where: {
-        order: {
-          branchId,
-          status: OrderStatus.COMPLETED,
-          queueBusinessDate: { gte: dayStart, lte: dayEnd },
-        },
-        ...(menuIds.length ? { branchMenuItemId: { in: menuIds } } : {}),
-      },
-      select: {
-        branchMenuItemId: true,
-        quantity: true,
-        unitPrice: true,
-        optionsPrice: true,
-        orderId: true,
-        order: { select: { queueBusinessDate: true } },
-      },
-    });
-
-    type DayAgg = { quantity: number; revenue: number };
-    type MenuAgg = {
-      quantity: number;
-      revenue: number;
-      orderIds: Set<string>;
-      byDay: Map<string, DayAgg>;
-    };
-
     const byMenu = new Map<string, MenuAgg>();
     const rangeOrderIds = new Set<string>();
 
-    for (const row of orderItems) {
-      if (!row.branchMenuItemId) continue;
-      const menuId = row.branchMenuItemId;
-      const day = bangkokDateKey(row.order.queueBusinessDate);
-      const lineRev =
-        (Number(row.unitPrice) + Number(row.optionsPrice)) * row.quantity;
-      const prev = byMenu.get(menuId) ?? {
-        quantity: 0,
-        revenue: 0,
-        orderIds: new Set<string>(),
-        byDay: new Map(),
-      };
-      const dayPrev = prev.byDay.get(day) ?? { quantity: 0, revenue: 0 };
-      dayPrev.quantity += row.quantity;
-      dayPrev.revenue += lineRev;
-      prev.byDay.set(day, dayPrev);
+    if (isSkewer) {
+      const skewerItems = await prisma.skewerOrderItem.findMany({
+        where: {
+          skewerOrder: {
+            branchId,
+            status: {
+              in: [SkewerOrderStatus.CONFIRMED, SkewerOrderStatus.DELIVERED],
+            },
+            requestedDate: { gte: dayStart, lte: dayEnd },
+          },
+          ...(menuIds.length ? { branchMenuItemId: { in: menuIds } } : {}),
+        },
+        select: {
+          branchMenuItemId: true,
+          requestedQuantity: true,
+          confirmedQuantity: true,
+          unitPriceBaht: true,
+          skewerOrderId: true,
+          skewerOrder: {
+            select: { requestedDate: true, status: true },
+          },
+        },
+      });
 
-      if (day >= from && day <= to) {
-        prev.quantity += row.quantity;
-        prev.revenue += lineRev;
-        prev.orderIds.add(row.orderId);
-        rangeOrderIds.add(row.orderId);
+      for (const row of skewerItems) {
+        if (!row.branchMenuItemId) continue;
+        const useConfirmed = skewerOrderUsesConfirmedQty(row.skewerOrder.status);
+        const quantity = useConfirmed
+          ? Math.max(0, row.confirmedQuantity ?? 0)
+          : Math.max(0, row.requestedQuantity);
+        const unit = Number(row.unitPriceBaht ?? 0);
+        const lineRev = skewerLineSubtotalBaht(
+          quantity,
+          Number.isFinite(unit) ? unit : 0,
+        );
+        accumulateLine(byMenu, rangeOrderIds, {
+          menuId: row.branchMenuItemId,
+          orderId: row.skewerOrderId,
+          day: requestedDateToKey(row.skewerOrder.requestedDate),
+          quantity,
+          lineRev,
+          from,
+          to,
+        });
       }
-      byMenu.set(menuId, prev);
+    } else {
+      const orderItems = await prisma.orderItem.findMany({
+        where: {
+          order: {
+            branchId,
+            status: OrderStatus.COMPLETED,
+            queueBusinessDate: { gte: dayStart, lte: dayEnd },
+          },
+          ...(menuIds.length ? { branchMenuItemId: { in: menuIds } } : {}),
+        },
+        select: {
+          branchMenuItemId: true,
+          quantity: true,
+          unitPrice: true,
+          optionsPrice: true,
+          orderId: true,
+          order: { select: { queueBusinessDate: true } },
+        },
+      });
+
+      for (const row of orderItems) {
+        if (!row.branchMenuItemId) continue;
+        const lineRev =
+          (Number(row.unitPrice) + Number(row.optionsPrice)) * row.quantity;
+        accumulateLine(byMenu, rangeOrderIds, {
+          menuId: row.branchMenuItemId,
+          orderId: row.orderId,
+          day: bangkokDateKey(row.order.queueBusinessDate),
+          quantity: row.quantity,
+          lineRev,
+          from,
+          to,
+        });
+      }
     }
 
     const ranked = [...byMenu.entries()]

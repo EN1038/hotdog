@@ -343,6 +343,19 @@ export function bangkokMonthRangeToToday(now = new Date()) {
   return { from: `${y}-${m}-01`, to: today };
 }
 
+/** Bangkok calendar: first → last day of the current month */
+export function bangkokMonthRange(now = new Date()) {
+  const today = bangkokDateKey(now);
+  const [ys, ms] = today.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return {
+    from: `${ys}-${ms}-01`,
+    to: `${ys}-${ms}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 export function startOfBangkokDayFromKey(key: string): Date {
   return new Date(`${key}T00:00:00+07:00`);
 }

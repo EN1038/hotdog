@@ -75,15 +75,19 @@ import {
 } from "@/components/icons";
 import {
   bangkokDateKey,
+  bangkokMonthRange,
   bangkokMonthRangeToToday,
   formatThaiPhone,
   phoneDigits,
 } from "@/lib/constants";
 import {
+  SKEWER_ORDER_STATUS_LABELS,
+  resolveMenuDisplayImageUrl,
+} from "@/lib/skewer-order";
+import {
   assignStableMenuSequence,
   sortMenuItemData,
 } from "@/lib/staff-menu-order";
-import { resolveMenuDisplayImageUrl } from "@/lib/skewer-order";
 import {
   ensureWeeklySchedule,
   formatTodayHoursSummary,
@@ -770,10 +774,15 @@ function BranchDetailContent() {
     () => bangkokMonthRangeToToday().to,
   );
   const [overviewSummary, setOverviewSummary] = useState<{
+    mode?: "NORMAL" | "SKEWER";
     completedRevenue: number;
     cashRevenue: number;
     transferRevenue: number;
     completedOrderCount: number;
+    pendingCount?: number;
+    confirmedCount?: number;
+    deliveredCount?: number;
+    cancelledCount?: number;
     stockQty: number;
     stockValue: number;
     wasteQty: number;
@@ -784,6 +793,16 @@ function BranchDetailContent() {
     transferExpense: number;
     netRevenue: number;
     days: OrderStats["last7Days"];
+    recentSkewerOrders?: Array<{
+      id: string;
+      orderNumber: string;
+      status: string;
+      customerPhone: string;
+      customerName: string;
+      requestedDate: string;
+      total: number;
+      createdAt: string;
+    }>;
   } | null>(null);
   const [overviewStatsLoading, setOverviewStatsLoading] = useState(false);
 
@@ -919,6 +938,16 @@ function BranchDetailContent() {
       cancelled = true;
     };
   }, [id, activeTab, overviewFrom, overviewTo]);
+
+  useEffect(() => {
+    if (!branch) return;
+    if (branch.operatingMode !== "SKEWER") return;
+    const range = bangkokMonthRange();
+    setOverviewFrom((prev) => (prev === range.from ? prev : range.from));
+    setOverviewTo((prev) => (prev === range.to ? prev : range.to));
+    // Only when opening a skewer branch — intentional full-month default.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on branch id/mode only
+  }, [branch?.id, branch?.operatingMode]);
 
   useEffect(() => {
     if (!branch) return;
@@ -2044,6 +2073,19 @@ function BranchDetailContent() {
       <div className="mt-4">
         {activeTab === "overview" && (
           <div className="space-y-4">
+            {branch.operatingMode === "SKEWER" && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                โหมดสั่งเสียบไม้ — สรุปตาม{" "}
+                <strong>วันที่ต้องการ</strong> ของออเดอร์ · ดูรายละเอียดที่แท็บ{" "}
+                <button
+                  type="button"
+                  className="font-semibold underline"
+                  onClick={() => setTab("skewer-orders")}
+                >
+                  ออเดอร์เสียบไม้
+                </button>
+              </div>
+            )}
             {branch.operatingMode === "BBQ_WEIGH" && (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
                 โหมดหมูกระทะชั่งกิโล — ใช้แท็บ{" "}
@@ -2079,28 +2121,42 @@ function BranchDetailContent() {
                     สรุปภาพรวม
                   </h2>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    สรุปรายได้ เงินสด/โอน สต๊อก ของเสีย และค่าใช้จ่ายตามช่วงวันที่เลือก
+                    {branch.operatingMode === "SKEWER"
+                      ? "สรุปยอดออเดอร์เสียบไม้ที่ยืนยัน/ส่งแล้ว สต๊อก และของเสีย ตามช่วงวันที่ต้องการ"
+                      : "สรุปรายได้ เงินสด/โอน สต๊อก ของเสีย และค่าใช้จ่ายตามช่วงวันที่เลือก"}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="w-[10.5rem]">
-                    <label className={adminLabelClass}>วันที่เริ่ม</label>
+                    <label className={adminLabelClass}>
+                      {branch.operatingMode === "SKEWER"
+                        ? "วันเริ่มต้น"
+                        : "วันที่เริ่ม"}
+                    </label>
                     <DateInput
                       className={adminInputClass}
                       value={overviewFrom}
-                      max={overviewTo || bangkokDateKey()}
+                      max={overviewTo || undefined}
                       onChange={(v) => {
                         if (v) setOverviewFrom(v);
                       }}
                     />
                   </div>
                   <div className="w-[10.5rem]">
-                    <label className={adminLabelClass}>วันที่สิ้นสุด</label>
+                    <label className={adminLabelClass}>
+                      {branch.operatingMode === "SKEWER"
+                        ? "วันสิ้นสุด"
+                        : "วันที่สิ้นสุด"}
+                    </label>
                     <DateInput
                       className={adminInputClass}
                       value={overviewTo}
-                      min={overviewFrom}
-                      max={bangkokDateKey()}
+                      min={overviewFrom || undefined}
+                      max={
+                        branch.operatingMode === "SKEWER"
+                          ? undefined
+                          : bangkokDateKey()
+                      }
                       onChange={(v) => {
                         if (v) setOverviewTo(v);
                       }}
@@ -2115,45 +2171,89 @@ function BranchDetailContent() {
                 }`}
               >
                 <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
-                  <p className="text-sm text-emerald-700">รายได้ที่เสร็จสิ้น</p>
+                  <p className="text-sm text-emerald-700">
+                    {branch.operatingMode === "SKEWER"
+                      ? "ยอดที่ยืนยัน/ส่งแล้ว"
+                      : "รายได้ที่เสร็จสิ้น"}
+                  </p>
                   <p className="mt-1 text-2xl font-bold text-emerald-800">
                     {money(stats?.completedRevenue ?? 0)} ฿
                   </p>
                   <p className="mt-1 text-xs text-emerald-600/80">
-                    ออเดอร์สำเร็จในช่วงที่เลือก
+                    {branch.operatingMode === "SKEWER"
+                      ? "รวมออเดอร์ยืนยันแล้ว + ส่งสำเร็จในช่วงที่เลือก"
+                      : "ออเดอร์สำเร็จในช่วงที่เลือก"}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
-                  <p className="text-sm text-sky-700">เงินโอน</p>
-                  <p className="mt-1 text-2xl font-bold text-sky-800">
-                    {money(stats?.transferRevenue ?? 0)} ฿
-                  </p>
-                  <p className="mt-1 text-xs text-sky-600/80">
-                    รายได้สำเร็จชำระโอน
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
-                  <p className="text-sm text-emerald-700">เงินสด</p>
-                  <p className="mt-1 text-2xl font-bold text-emerald-800">
-                    {money(stats?.cashRevenue ?? 0)} ฿
-                  </p>
-                  <p className="mt-1 text-xs text-emerald-600/80">
-                    รายได้สำเร็จชำระเงินสด
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTab("orders")}
-                  className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
-                >
-                  <p className="text-sm text-amber-700">จำนวนออเดอร์</p>
-                  <p className="mt-1 text-2xl font-bold text-amber-800">
-                    {stats?.completedOrderCount ?? 0}
-                  </p>
-                  <p className="mt-1 text-xs text-amber-600/80">
-                    ออเดอร์สำเร็จ · ดูแท็บออเดอร์
-                  </p>
-                </button>
+                {branch.operatingMode !== "SKEWER" && (
+                  <>
+                    <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
+                      <p className="text-sm text-sky-700">เงินโอน</p>
+                      <p className="mt-1 text-2xl font-bold text-sky-800">
+                        {money(stats?.transferRevenue ?? 0)} ฿
+                      </p>
+                      <p className="mt-1 text-xs text-sky-600/80">
+                        รายได้สำเร็จชำระโอน
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
+                      <p className="text-sm text-emerald-700">เงินสด</p>
+                      <p className="mt-1 text-2xl font-bold text-emerald-800">
+                        {money(stats?.cashRevenue ?? 0)} ฿
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-600/80">
+                        รายได้สำเร็จชำระเงินสด
+                      </p>
+                    </div>
+                  </>
+                )}
+                {branch.operatingMode === "SKEWER" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setTab("skewer-orders")}
+                      className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
+                    >
+                      <p className="text-sm text-amber-700">รอยืนยัน</p>
+                      <p className="mt-1 text-2xl font-bold text-amber-800">
+                        {stats?.pendingCount ?? 0}
+                      </p>
+                      <p className="mt-1 text-xs text-amber-600/80">
+                        ออเดอร์รอแอดมินยืนยัน · ดูแท็บออเดอร์เสียบไม้
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab("skewer-orders")}
+                      className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 text-left shadow-sm transition hover:border-sky-300"
+                    >
+                      <p className="text-sm text-sky-700">ยืนยันแล้ว / ส่งแล้ว</p>
+                      <p className="mt-1 text-2xl font-bold text-sky-800">
+                        {(stats?.confirmedCount ?? 0) +
+                          (stats?.deliveredCount ?? 0)}
+                      </p>
+                      <p className="mt-1 text-xs text-sky-600/80">
+                        ยืนยัน {stats?.confirmedCount ?? 0} · ส่งสำเร็จ{" "}
+                        {stats?.deliveredCount ?? 0}
+                      </p>
+                    </button>
+                  </>
+                )}
+                {branch.operatingMode !== "SKEWER" && (
+                  <button
+                    type="button"
+                    onClick={() => setTab("orders")}
+                    className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
+                  >
+                    <p className="text-sm text-amber-700">จำนวนออเดอร์</p>
+                    <p className="mt-1 text-2xl font-bold text-amber-800">
+                      {stats?.completedOrderCount ?? 0}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-600/80">
+                      ออเดอร์สำเร็จ · ดูแท็บออเดอร์
+                    </p>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setTab("stock")}
@@ -2234,64 +2334,80 @@ function BranchDetailContent() {
                     คิดจากราคาเมนู × จำนวนของเสีย · ดูรายการที่ร้านบันทึก
                   </p>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setTab("expenses")}
-                  className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 text-left shadow-sm transition hover:border-rose-300"
-                >
-                  <p className="text-sm text-rose-700">ค่าใช้จ่ายรวม</p>
-                  <p className="mt-1 text-2xl font-bold text-rose-800">
-                    {money(stats?.expenseTotal ?? 0)} ฿
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-rose-800/90">
-                    <span>
-                      เงินสด{" "}
-                      <span className="font-semibold tabular-nums">
-                        {money(stats?.cashExpense ?? 0)} ฿
-                      </span>
-                    </span>
-                    <span className="text-rose-300">·</span>
-                    <span>
-                      เงินโอน{" "}
-                      <span className="font-semibold tabular-nums">
-                        {money(stats?.transferExpense ?? 0)} ฿
-                      </span>
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-xs text-rose-600/80">
-                    {stats?.expenseCount ?? 0} รายการ · กดดูแท็บค่าใช้จ่าย
-                  </p>
-                </button>
-                <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
-                  <p className="text-sm text-indigo-700">รายได้ − ค่าใช้จ่าย</p>
-                  <p className="mt-1 text-2xl font-bold text-indigo-900">
-                    {money(stats?.netRevenue ?? 0)} ฿
-                  </p>
-                  <div className="mt-2 space-y-0.5 text-xs text-indigo-800/85">
-                    <p>
-                      เงินสด{" "}
-                      <span className="font-semibold tabular-nums">
-                        {money(
-                          (stats?.cashRevenue ?? 0) - (stats?.cashExpense ?? 0),
-                        )}{" "}
-                        ฿
-                      </span>
+                {branch.operatingMode !== "SKEWER" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setTab("expenses")}
+                      className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 text-left shadow-sm transition hover:border-rose-300"
+                    >
+                      <p className="text-sm text-rose-700">ค่าใช้จ่ายรวม</p>
+                      <p className="mt-1 text-2xl font-bold text-rose-800">
+                        {money(stats?.expenseTotal ?? 0)} ฿
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-rose-800/90">
+                        <span>
+                          เงินสด{" "}
+                          <span className="font-semibold tabular-nums">
+                            {money(stats?.cashExpense ?? 0)} ฿
+                          </span>
+                        </span>
+                        <span className="text-rose-300">·</span>
+                        <span>
+                          เงินโอน{" "}
+                          <span className="font-semibold tabular-nums">
+                            {money(stats?.transferExpense ?? 0)} ฿
+                          </span>
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-xs text-rose-600/80">
+                        {stats?.expenseCount ?? 0} รายการ · กดดูแท็บค่าใช้จ่าย
+                      </p>
+                    </button>
+                    <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
+                      <p className="text-sm text-indigo-700">รายได้ − ค่าใช้จ่าย</p>
+                      <p className="mt-1 text-2xl font-bold text-indigo-900">
+                        {money(stats?.netRevenue ?? 0)} ฿
+                      </p>
+                      <div className="mt-2 space-y-0.5 text-xs text-indigo-800/85">
+                        <p>
+                          เงินสด{" "}
+                          <span className="font-semibold tabular-nums">
+                            {money(
+                              (stats?.cashRevenue ?? 0) -
+                                (stats?.cashExpense ?? 0),
+                            )}{" "}
+                            ฿
+                          </span>
+                        </p>
+                        <p>
+                          เงินโอน{" "}
+                          <span className="font-semibold tabular-nums">
+                            {money(
+                              (stats?.transferRevenue ?? 0) -
+                                (stats?.transferExpense ?? 0),
+                            )}{" "}
+                            ฿
+                          </span>
+                        </p>
+                      </div>
+                      <p className="mt-1.5 text-xs text-indigo-600/80">
+                        รายได้สำเร็จหักค่าใช้จ่ายช่วงนี้
+                      </p>
+                    </div>
+                  </>
+                )}
+                {branch.operatingMode === "SKEWER" && (
+                  <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 shadow-sm">
+                    <p className="text-sm text-rose-700">ยกเลิกในช่วงนี้</p>
+                    <p className="mt-1 text-2xl font-bold text-rose-800">
+                      {stats?.cancelledCount ?? 0}
                     </p>
-                    <p>
-                      เงินโอน{" "}
-                      <span className="font-semibold tabular-nums">
-                        {money(
-                          (stats?.transferRevenue ?? 0) -
-                            (stats?.transferExpense ?? 0),
-                        )}{" "}
-                        ฿
-                      </span>
+                    <p className="mt-1 text-xs text-rose-600/80">
+                      ออเดอร์เสียบไม้ที่ยกเลิกตามวันที่ต้องการ
                     </p>
                   </div>
-                  <p className="mt-1.5 text-xs text-indigo-600/80">
-                    รายได้สำเร็จหักค่าใช้จ่ายช่วงนี้
-                  </p>
-                </div>
+                )}
               </div>
             </div>
 
@@ -2300,17 +2416,24 @@ function BranchDetailContent() {
               dateFrom={overviewFrom}
               dateTo={overviewTo}
               showDatePicker={false}
+              skewerMode={branch.operatingMode === "SKEWER"}
             />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className={panelClass}>
                 <h3 className="mb-3 font-semibold text-gray-900">
-                  กราฟรายได้ / ยกเลิก
+                  {branch.operatingMode === "SKEWER"
+                    ? "กราฟยอด / ยกเลิก (ตามวันที่ต้องการ)"
+                    : "กราฟรายได้ / ยกเลิก"}
                 </h3>
                 {stats?.days?.length ? (
                   <RevenueBars
                     days={stats.days}
-                    revenueTitle="รายได้ที่เสร็จสิ้นในช่วงที่เลือก"
+                    revenueTitle={
+                      branch.operatingMode === "SKEWER"
+                        ? "ยอดออเดอร์ที่ยืนยัน/ส่งในช่วงที่เลือก"
+                        : "รายได้ที่เสร็จสิ้นในช่วงที่เลือก"
+                    }
                   />
                 ) : (
                   <p className="text-sm text-gray-500">ยังไม่มีข้อมูลพอสำหรับกราฟ</p>
@@ -2343,7 +2466,8 @@ function BranchDetailContent() {
                             ซ่อนจากลูกค้า
                           </span>
                         )}
-                        {branch.deliveryLocations.length === 0 && (
+                        {branch.operatingMode !== "SKEWER" &&
+                          branch.deliveryLocations.length === 0 && (
                           <button
                             type="button"
                             onClick={() => setTab("locations")}
@@ -2363,50 +2487,56 @@ function BranchDetailContent() {
                         statusLabel={serviceStatusLabel(storefrontStatus)}
                         statusTone={serviceStatusTone(storefrontStatus)}
                       />
-                      <ServiceHourCard
-                        icon={
-                          <IconDelivery size={14} className="text-slate-400" />
-                        }
-                        label="เดลิเวอรีวันนี้"
-                        hours={
-                          branch.deliveryLocations.length === 0
-                            ? "ยังไม่มีพื้นที่จัดส่ง"
-                            : formatTodayHoursSummary(deliverySchedule)
-                        }
-                        statusLabel={
-                          branch.deliveryLocations.length === 0
-                            ? "ปิดจัดส่ง"
-                            : serviceStatusLabel(deliveryStatus)
-                        }
-                        statusTone={
-                          branch.deliveryLocations.length === 0
-                            ? "closed"
-                            : serviceStatusTone(deliveryStatus)
-                        }
-                      />
+                      {branch.operatingMode !== "SKEWER" && (
+                        <ServiceHourCard
+                          icon={
+                            <IconDelivery size={14} className="text-slate-400" />
+                          }
+                          label="เดลิเวอรีวันนี้"
+                          hours={
+                            branch.deliveryLocations.length === 0
+                              ? "ยังไม่มีพื้นที่จัดส่ง"
+                              : formatTodayHoursSummary(deliverySchedule)
+                          }
+                          statusLabel={
+                            branch.deliveryLocations.length === 0
+                              ? "ปิดจัดส่ง"
+                              : serviceStatusLabel(deliveryStatus)
+                          }
+                          statusTone={
+                            branch.deliveryLocations.length === 0
+                              ? "closed"
+                              : serviceStatusTone(deliveryStatus)
+                          }
+                        />
+                      )}
                     </div>
 
                     <dl className="mt-3 divide-y divide-slate-100 text-sm">
-                      <div className="flex items-center justify-between gap-3 py-2">
-                        <dt className="text-slate-500">สั่งล่วงหน้า</dt>
-                        <dd>
-                          <StatusPill
-                            on={branch.allowAdvanceOrder}
-                            onLabel="รับ"
-                            offLabel="ไม่รับ"
-                          />
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 py-2">
-                        <dt className="text-slate-500">รับออเดอร์อัตโนมัติ</dt>
-                        <dd>
-                          <StatusPill
-                            on={branch.autoAcceptOrders}
-                            onLabel="เปิด"
-                            offLabel="ปิด"
-                          />
-                        </dd>
-                      </div>
+                      {branch.operatingMode !== "SKEWER" && (
+                        <>
+                          <div className="flex items-center justify-between gap-3 py-2">
+                            <dt className="text-slate-500">สั่งล่วงหน้า</dt>
+                            <dd>
+                              <StatusPill
+                                on={branch.allowAdvanceOrder}
+                                onLabel="รับ"
+                                offLabel="ไม่รับ"
+                              />
+                            </dd>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 py-2">
+                            <dt className="text-slate-500">รับออเดอร์อัตโนมัติ</dt>
+                            <dd>
+                              <StatusPill
+                                on={branch.autoAcceptOrders}
+                                onLabel="เปิด"
+                                offLabel="ปิด"
+                              />
+                            </dd>
+                          </div>
+                        </>
+                      )}
                       <div className="flex items-center justify-between gap-3 py-2">
                         <dt className="text-slate-500">เบอร์สาขา</dt>
                         <dd className="font-medium text-slate-800">
@@ -2420,35 +2550,39 @@ function BranchDetailContent() {
                     </dl>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setTab("staff")}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
-                      >
-                        <IconUser size={14} className="text-slate-400" />
-                        พนักงาน {activeStaff}/{branch.staff.length}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTab("locations")}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
-                          branch.deliveryLocations.length === 0
-                            ? "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white"
-                        }`}
-                      >
-                        <IconPin
-                          size={14}
-                          className={
-                            branch.deliveryLocations.length === 0
-                              ? "text-amber-600"
-                              : "text-slate-400"
-                          }
-                        />
-                        {branch.deliveryLocations.length === 0
-                          ? "ยังไม่มีพื้นที่ส่ง"
-                          : `พื้นที่ส่ง ${branch.deliveryLocations.length}`}
-                      </button>
+                      {branch.operatingMode !== "SKEWER" && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setTab("staff")}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
+                          >
+                            <IconUser size={14} className="text-slate-400" />
+                            พนักงาน {activeStaff}/{branch.staff.length}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTab("locations")}
+                            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                              branch.deliveryLocations.length === 0
+                                ? "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100"
+                                : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white"
+                            }`}
+                          >
+                            <IconPin
+                              size={14}
+                              className={
+                                branch.deliveryLocations.length === 0
+                                  ? "text-amber-600"
+                                  : "text-slate-400"
+                              }
+                            />
+                            {branch.deliveryLocations.length === 0
+                              ? "ยังไม่มีพื้นที่ส่ง"
+                              : `พื้นที่ส่ง ${branch.deliveryLocations.length}`}
+                          </button>
+                        </>
+                      )}
                     </div>
 
                     <button
@@ -2498,16 +2632,71 @@ function BranchDetailContent() {
 
             <div className={panelClass}>
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h3 className="font-semibold text-gray-900">ออเดอร์ล่าสุด</h3>
+                <h3 className="font-semibold text-gray-900">
+                  {branch.operatingMode === "SKEWER"
+                    ? "ออเดอร์เสียบไม้ล่าสุด"
+                    : "ออเดอร์ล่าสุด"}
+                </h3>
                 <button
                   type="button"
-                  onClick={() => setTab("orders")}
+                  onClick={() =>
+                    setTab(
+                      branch.operatingMode === "SKEWER"
+                        ? "skewer-orders"
+                        : "orders",
+                    )
+                  }
                   className="text-sm text-site-primary hover:underline"
                 >
                   ดูตารางทั้งหมด
                 </button>
               </div>
-              <OrdersTable orders={branch.orders.slice(0, 8)} />
+              {branch.operatingMode === "SKEWER" ? (
+                (stats?.recentSkewerOrders?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-gray-500">ยังไม่มีออเดอร์เสียบไม้</p>
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {stats?.recentSkewerOrders?.map((order) => {
+                      const statusLabel =
+                        SKEWER_ORDER_STATUS_LABELS[
+                          order.status as keyof typeof SKEWER_ORDER_STATUS_LABELS
+                        ] ?? order.status;
+                      return (
+                        <li
+                          key={order.id}
+                          className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900">
+                              #{order.orderNumber}
+                              <span className="ml-2 font-normal text-slate-500">
+                                {statusLabel}
+                              </span>
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              ต้องการ{" "}
+                              {new Date(
+                                `${order.requestedDate}T12:00:00+07:00`,
+                              ).toLocaleDateString("th-TH", {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                              {order.customerPhone
+                                ? ` · ${formatThaiPhone(order.customerPhone)}`
+                                : ""}
+                            </p>
+                          </div>
+                          <p className="font-semibold tabular-nums text-slate-800">
+                            {money(order.total)} ฿
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )
+              ) : (
+                <OrdersTable orders={branch.orders.slice(0, 8)} />
+              )}
             </div>
           </div>
         )}

@@ -1,3 +1,4 @@
+import { BranchOperatingMode, SkewerOrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireBranchAccess } from "@/lib/admin-access";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -10,11 +11,17 @@ import {
   expenseDateFromKey,
   summarizeExpenses,
 } from "@/lib/branch-expense";
+import { computeSkewerOrderGrandTotal } from "@/lib/order-discount";
 import {
   isCancelledStatus,
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import {
+  requestedDateToKey,
+  skewerLineSubtotalBaht,
+  skewerOrderUsesConfirmedQty,
+} from "@/lib/skewer-order";
 import { BRANCH_WASTE_HISTORY_TYPES } from "@/lib/stock-outbound";
 
 type Params = { params: Promise<{ id: string }> };
@@ -66,6 +73,86 @@ function rangeCreatedAt(from: string, to: string) {
   };
 }
 
+async function stockAndWasteMetrics(
+  branchId: string,
+  createdAtRange: { gte: Date; lte: Date },
+) {
+  const [menuItems, menuWaste] = await Promise.all([
+    prisma.branchMenuItem.findMany({
+      where: { branchId, isHidden: false },
+      select: {
+        id: true,
+        price: true,
+        stock: { select: { quantity: true } },
+        category: { select: { stockExempt: true } },
+        optionGroupLinks: {
+          select: { group: { select: { mode: true } } },
+        },
+      },
+    }),
+    prisma.branchMenuItemStockHistory.findMany({
+      where: {
+        branchId,
+        type: { in: [...WASTE_HISTORY_TYPES] },
+        createdAt: createdAtRange,
+      },
+      select: { menuItemId: true, quantity: true },
+    }),
+  ]);
+
+  let stockValue = 0;
+  let stockQty = 0;
+  const priceByMenuId = new Map<string, number>();
+  for (const item of menuItems) {
+    const price = Number(item.price ?? 0);
+    priceByMenuId.set(item.id, price);
+    const isPromo = item.optionGroupLinks.some(
+      (l) => l.group.mode === "FROM_MENU",
+    );
+    if (isPromo || item.category?.stockExempt) continue;
+    const qty = Math.max(0, Number(item.stock?.quantity ?? 0));
+    stockQty += qty;
+    stockValue += qty * price;
+  }
+
+  let wasteQty = 0;
+  let wasteValue = 0;
+  for (const row of menuWaste) {
+    const qty = Math.abs(row.quantity);
+    if (qty <= 0) continue;
+    const unitPrice = priceByMenuId.get(row.menuItemId) ?? 0;
+    wasteQty += qty;
+    wasteValue += qty * unitPrice;
+  }
+
+  return {
+    stockQty,
+    stockValue: Math.round(stockValue * 100) / 100,
+    wasteQty,
+    wasteValue: Math.round(wasteValue * 100) / 100,
+  };
+}
+
+function skewerOrderItemsSubtotal(
+  items: Array<{
+    requestedQuantity: number;
+    confirmedQuantity: number | null;
+    unitPriceBaht: { toString(): string } | number | null;
+  }>,
+  status: SkewerOrderStatus,
+): number {
+  const useConfirmed = skewerOrderUsesConfirmedQty(status);
+  let subtotal = 0;
+  for (const it of items) {
+    const qty = useConfirmed
+      ? Math.max(0, it.confirmedQuantity ?? 0)
+      : Math.max(0, it.requestedQuantity);
+    const unit = Number(it.unitPriceBaht ?? 0);
+    subtotal += skewerLineSubtotalBaht(qty, Number.isFinite(unit) ? unit : 0);
+  }
+  return subtotal;
+}
+
 /** GET — branch overview summary for a date range. */
 export async function GET(request: Request, { params }: Params) {
   try {
@@ -74,7 +161,7 @@ export async function GET(request: Request, { params }: Params) {
 
     const branch = await prisma.branch.findUnique({
       where: { id: branchId },
-      select: { id: true },
+      select: { id: true, operatingMode: true },
     });
     if (!branch) return jsonError("ไม่พบสาขา", 404);
 
@@ -92,8 +179,146 @@ export async function GET(request: Request, { params }: Params) {
 
     const { from, to } = normalizeRange(fromParam, toParam);
     const createdAtRange = rangeCreatedAt(from, to);
+    const isSkewer = branch.operatingMode === BranchOperatingMode.SKEWER;
 
-    const [orders, expenses, menuItems, menuWaste] = await Promise.all([
+    if (isSkewer) {
+      const [skewerOrders, stockWaste, recent] = await Promise.all([
+        prisma.skewerOrder.findMany({
+          where: {
+            branchId,
+            requestedDate: {
+              gte: queueBusinessDateFromKey(from),
+              lte: queueBusinessDateFromKey(to),
+            },
+          },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            customerPhone: true,
+            customerName: true,
+            requestedDate: true,
+            shippingCostBaht: true,
+            discountAmount: true,
+            items: {
+              select: {
+                requestedQuantity: true,
+                confirmedQuantity: true,
+                unitPriceBaht: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        stockAndWasteMetrics(branchId, createdAtRange),
+        prisma.skewerOrder.findMany({
+          where: { branchId },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            customerPhone: true,
+            customerName: true,
+            requestedDate: true,
+            createdAt: true,
+            shippingCostBaht: true,
+            discountAmount: true,
+            items: {
+              select: {
+                requestedQuantity: true,
+                confirmedQuantity: true,
+                unitPriceBaht: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+        }),
+      ]);
+
+      let completedRevenue = 0;
+      let completedOrderCount = 0;
+      let pendingCount = 0;
+      let confirmedCount = 0;
+      let deliveredCount = 0;
+      let cancelledCount = 0;
+
+      const days = buildDateRange(from, to);
+      const byDay = new Map(days.map((d) => [d.date, d]));
+
+      for (const order of skewerOrders) {
+        const dayKey = requestedDateToKey(order.requestedDate);
+        const bucket = byDay.get(dayKey);
+        const itemsSubtotal = skewerOrderItemsSubtotal(order.items, order.status);
+        const total = computeSkewerOrderGrandTotal({
+          itemsSubtotal,
+          shippingCostBaht: Number(order.shippingCostBaht ?? 0),
+          discountAmount: Number(order.discountAmount ?? 0),
+        });
+
+        if (order.status === SkewerOrderStatus.PENDING_CONFIRM) {
+          pendingCount += 1;
+        } else if (order.status === SkewerOrderStatus.CONFIRMED) {
+          confirmedCount += 1;
+          completedRevenue += total;
+          completedOrderCount += 1;
+          if (bucket) bucket.revenue += total;
+        } else if (order.status === SkewerOrderStatus.DELIVERED) {
+          deliveredCount += 1;
+          completedRevenue += total;
+          completedOrderCount += 1;
+          if (bucket) bucket.revenue += total;
+        } else if (order.status === SkewerOrderStatus.CANCELLED) {
+          cancelledCount += 1;
+          if (bucket) bucket.cancelled += 1;
+        }
+      }
+
+      const recentOrders = recent.map((order) => {
+        const itemsSubtotal = skewerOrderItemsSubtotal(order.items, order.status);
+        return {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          customerPhone: order.customerPhone,
+          customerName: order.customerName,
+          requestedDate: requestedDateToKey(order.requestedDate),
+          total: computeSkewerOrderGrandTotal({
+            itemsSubtotal,
+            shippingCostBaht: Number(order.shippingCostBaht ?? 0),
+            discountAmount: Number(order.discountAmount ?? 0),
+          }),
+          createdAt: order.createdAt.toISOString(),
+        };
+      });
+
+      return jsonOk({
+        mode: "SKEWER" as const,
+        from,
+        to,
+        completedRevenue: Math.round(completedRevenue * 100) / 100,
+        cashRevenue: 0,
+        transferRevenue: 0,
+        completedOrderCount,
+        pendingCount,
+        confirmedCount,
+        deliveredCount,
+        cancelledCount,
+        stockQty: stockWaste.stockQty,
+        stockValue: stockWaste.stockValue,
+        wasteQty: stockWaste.wasteQty,
+        wasteValue: stockWaste.wasteValue,
+        expenseTotal: 0,
+        expenseCount: 0,
+        cashExpense: 0,
+        transferExpense: 0,
+        netRevenue: Math.round(completedRevenue * 100) / 100,
+        days,
+        recentSkewerOrders: recentOrders,
+      });
+    }
+
+    const [orders, expenses, stockWaste] = await Promise.all([
       prisma.order.findMany({
         where: {
           branchId,
@@ -124,26 +349,7 @@ export async function GET(request: Request, { params }: Params) {
         },
         select: { amount: true, payChannel: true },
       }),
-      prisma.branchMenuItem.findMany({
-        where: { branchId, isHidden: false },
-        select: {
-          id: true,
-          price: true,
-          stock: { select: { quantity: true } },
-          category: { select: { stockExempt: true } },
-          optionGroupLinks: {
-            select: { group: { select: { mode: true } } },
-          },
-        },
-      }),
-      prisma.branchMenuItemStockHistory.findMany({
-        where: {
-          branchId,
-          type: { in: [...WASTE_HISTORY_TYPES] },
-          createdAt: createdAtRange,
-        },
-        select: { menuItemId: true, quantity: true },
-      }),
+      stockAndWasteMetrics(branchId, createdAtRange),
     ]);
 
     let completedRevenue = 0;
@@ -192,36 +398,10 @@ export async function GET(request: Request, { params }: Params) {
       })),
     );
 
-    // สต๊อกขาย (เมนู SALE_ITEM) เท่านั้น — ไม่รวมสิ้นเปลือง/อุปกรณ์ (ถุง แก้ว ซอส ฯลฯ)
-    let stockValue = 0;
-    let stockQty = 0;
-    const priceByMenuId = new Map<string, number>();
-    for (const item of menuItems) {
-      const price = Number(item.price ?? 0);
-      priceByMenuId.set(item.id, price);
-      const isPromo = item.optionGroupLinks.some(
-        (l) => l.group.mode === "FROM_MENU",
-      );
-      if (isPromo || item.category?.stockExempt) continue;
-      const qty = Math.max(0, Number(item.stock?.quantity ?? 0));
-      stockQty += qty;
-      stockValue += qty * price;
-    }
-
-    // ของเสียขาย = waste ของเมนูขาย (SALE_ITEM)
-    let wasteQty = 0;
-    let wasteValue = 0;
-    for (const row of menuWaste) {
-      const qty = Math.abs(row.quantity);
-      if (qty <= 0) continue;
-      const unitPrice = priceByMenuId.get(row.menuItemId) ?? 0;
-      wasteQty += qty;
-      wasteValue += qty * unitPrice;
-    }
-
     const netRevenue = completedRevenue - expenseSummary.total;
 
     return jsonOk({
+      mode: "NORMAL" as const,
       from,
       to,
       completedRevenue: Math.round(completedRevenue * 100) / 100,
@@ -229,10 +409,10 @@ export async function GET(request: Request, { params }: Params) {
       transferRevenue: Math.round(transferRevenue * 100) / 100,
       completedOrderCount,
       cancelledCount,
-      stockQty,
-      stockValue: Math.round(stockValue * 100) / 100,
-      wasteQty,
-      wasteValue: Math.round(wasteValue * 100) / 100,
+      stockQty: stockWaste.stockQty,
+      stockValue: stockWaste.stockValue,
+      wasteQty: stockWaste.wasteQty,
+      wasteValue: stockWaste.wasteValue,
       expenseTotal: expenseSummary.total,
       expenseCount: expenseSummary.count,
       cashExpense: Math.round(expenseSummary.cash * 100) / 100,

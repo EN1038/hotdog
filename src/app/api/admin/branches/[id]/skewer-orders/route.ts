@@ -270,6 +270,8 @@ export async function GET(request: Request, { params }: Params) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const date = searchParams.get("date");
+    const dateFromRaw = (searchParams.get("dateFrom") ?? "").trim();
+    const dateToRaw = (searchParams.get("dateTo") ?? "").trim();
 
     const statusFilter =
       status &&
@@ -277,20 +279,43 @@ export async function GET(request: Request, { params }: Params) {
         ? (status as SkewerOrderStatus)
         : undefined;
 
-    let requestedDateFilter: Date | undefined;
-    if (date) {
+    let requestedDateWhere:
+      | Date
+      | { gte?: Date; lte?: Date }
+      | undefined;
+
+    if (dateFromRaw || dateToRaw) {
+      if (
+        (dateFromRaw && !isBangkokDateKey(dateFromRaw)) ||
+        (dateToRaw && !isBangkokDateKey(dateToRaw))
+      ) {
+        return jsonError("รูปแบบวันที่ไม่ถูกต้อง");
+      }
+      const from =
+        dateFromRaw && dateToRaw && dateFromRaw > dateToRaw
+          ? dateToRaw
+          : dateFromRaw;
+      const to =
+        dateFromRaw && dateToRaw && dateFromRaw > dateToRaw
+          ? dateFromRaw
+          : dateToRaw;
+      requestedDateWhere = {
+        ...(from ? { gte: queueBusinessDateFromKey(from) } : {}),
+        ...(to ? { lte: queueBusinessDateFromKey(to) } : {}),
+      };
+    } else if (date) {
       if (!isBangkokDateKey(date)) {
         return jsonError("รูปแบบวันที่ไม่ถูกต้อง");
       }
-      requestedDateFilter = queueBusinessDateFromKey(date);
+      requestedDateWhere = queueBusinessDateFromKey(date);
     }
 
     const orders = await prisma.skewerOrder.findMany({
       where: {
         branchId,
         ...(statusFilter ? { status: statusFilter } : {}),
-        ...(requestedDateFilter
-          ? { requestedDate: requestedDateFilter }
+        ...(requestedDateWhere
+          ? { requestedDate: requestedDateWhere }
           : {}),
       },
       include: {

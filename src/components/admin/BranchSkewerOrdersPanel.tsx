@@ -40,7 +40,7 @@ import {
 } from "@/components/staff/StaffOrderDiscountSection";
 import { splitLinesBySkewerRole } from "@/components/skewer/SkewerSplitOrderSections";
 import { SkewerOrderShareExtras } from "@/components/skewer/SkewerOrderShareExtras";
-import { bangkokDateKey } from "@/lib/constants";
+import { bangkokDateKey, bangkokMonthRange } from "@/lib/constants";
 import {
   absoluteUrlFromPath,
   captureElementToPng,
@@ -224,7 +224,8 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const { isMobileLayout } = useAdminMobileLayout();
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("PENDING_CONFIRM");
-  const [dateFilter, setDateFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => bangkokMonthRange().from);
+  const [dateTo, setDateTo] = useState(() => bangkokMonthRange().to);
   const [orders, setOrders] = useState<SkewerOrderRow[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -252,16 +253,23 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
   const captureRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(
-    async (opts?: { status?: string; date?: string; keepSelectedId?: string }) => {
+    async (opts?: {
+      status?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      keepSelectedId?: string;
+    }) => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
         const status = opts?.status ?? statusFilter;
-        const date = opts?.date ?? dateFilter;
+        const from = opts?.dateFrom ?? dateFrom;
+        const to = opts?.dateTo ?? dateTo;
         if (status && status !== "ALL") {
           params.set("status", status);
         }
-        if (date) params.set("date", date);
+        if (from) params.set("dateFrom", from);
+        if (to) params.set("dateTo", to);
         const res = await fetch(
           `/api/admin/branches/${branchId}/skewer-orders?${params}`,
         );
@@ -283,7 +291,7 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
         setLoading(false);
       }
     },
-    [branchId, statusFilter, dateFilter, toast],
+    [branchId, statusFilter, dateFrom, dateTo, toast],
   );
 
   useEffect(() => {
@@ -1024,22 +1032,47 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                 <option value="ALL">ทั้งหมด</option>
               </select>
             </div>
-            <div>
-              <label className={adminLabelClass}>วันที่ต้องการ</label>
+            <div className="w-[10.5rem]">
+              <label className={adminLabelClass}>วันเริ่มต้น</label>
               <DateInput
                 className={adminInputClass}
-                value={dateFilter}
-                onChange={setDateFilter}
-                placeholder={bangkokDateKey()}
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(v) => {
+                  if (v) {
+                    setDateFrom(v);
+                    setSelectedId(null);
+                  }
+                }}
               />
             </div>
-            {dateFilter && (
+            <div className="w-[10.5rem]">
+              <label className={adminLabelClass}>วันสิ้นสุด</label>
+              <DateInput
+                className={adminInputClass}
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(v) => {
+                  if (v) {
+                    setDateTo(v);
+                    setSelectedId(null);
+                  }
+                }}
+              />
+            </div>
+            {(dateFrom !== bangkokMonthRange().from ||
+              dateTo !== bangkokMonthRange().to) && (
               <button
                 type="button"
                 className="self-end text-sm text-gray-600 underline"
-                onClick={() => setDateFilter("")}
+                onClick={() => {
+                  const range = bangkokMonthRange();
+                  setDateFrom(range.from);
+                  setDateTo(range.to);
+                  setSelectedId(null);
+                }}
               >
-                ล้างวันที่
+                กลับเป็นเดือนนี้
               </button>
             )}
           </div>

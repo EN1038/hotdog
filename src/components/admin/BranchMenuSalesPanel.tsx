@@ -67,6 +67,8 @@ type Props = {
   dateFrom?: string;
   dateTo?: string;
   showDatePicker?: boolean;
+  /** Skewer branch: copy refers to requested-date confirmed/delivered orders. */
+  skewerMode?: boolean;
 };
 
 export function BranchMenuSalesPanel({
@@ -74,6 +76,7 @@ export function BranchMenuSalesPanel({
   dateFrom: controlledFrom,
   dateTo: controlledTo,
   showDatePicker = true,
+  skewerMode = false,
 }: Props) {
   const defaults = bangkokMonthRangeToToday();
   const [localFrom, setLocalFrom] = useState(defaults.from);
@@ -137,7 +140,9 @@ export function BranchMenuSalesPanel({
         <div>
           <h3 className="text-base font-semibold text-slate-900">ยอดขายเมนู</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            สรุปตามช่วงวันที่เลือก + กราฟแนวโน้มเมนู — ออเดอร์สำเร็จ
+            {skewerMode
+              ? "สรุปตามวันที่ต้องการ + กราฟแนวโน้มเมนู — ออเดอร์ที่ยืนยัน/ส่งแล้ว"
+              : "สรุปตามช่วงวันที่เลือก + กราฟแนวโน้มเมนู — ออเดอร์สำเร็จ"}
           </p>
         </div>
         {showDatePicker && !controlled ? (

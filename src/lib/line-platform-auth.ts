@@ -71,12 +71,9 @@ export async function tryHandlePlatformLineUnlock(
     return { handled: true, reply: PLATFORM_LINE_PASSWORD_WRONG };
   }
 
-  // Already unlocked — ignore accidental re-entry of the password
+  // Already unlocked — ignore accidental re-entry of the password (no reply spam)
   if (isPlatformLinePasswordMatch(text)) {
-    return {
-      handled: true,
-      reply: "บัญชีนี้ปลดล็อกแล้ว\nพิมพ์ ช่วยเหลือ เพื่อดูคำสั่ง",
-    };
+    return { handled: true, reply: "" };
   }
 
   return { handled: false };

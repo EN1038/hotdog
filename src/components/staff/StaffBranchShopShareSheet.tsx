@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/admin/Toast";
-import { IconClose, IconLinkSuffix, IconQrCode, IconShare } from "@/components/icons";
+import { IconClose, IconLink, IconQrCode, IconShare } from "@/components/icons";
 import { appAbsoluteUrl } from "@/lib/app-url";
 import { copyTextToClipboard, sharePublicLink } from "@/lib/share-media";
 
@@ -147,7 +147,7 @@ export function StaffBranchShopShareSheet({
             onClick={() => void copyLink()}
             className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 text-[15px] font-bold text-slate-800"
           >
-            <IconLinkSuffix size={18} />
+            <IconLink size={18} />
             {copied ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
           </button>
           <a

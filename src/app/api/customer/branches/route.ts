@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       branches.map((b) => ({
         ...b,
         menuItems: attachBestsellerFlag(
-          b.menuItems.map(flattenMenuItemOptionGroups),
+          b.menuItems.map((item) => flattenMenuItemOptionGroups(item)),
           bestsellers.get(b.id),
         ),
       })),

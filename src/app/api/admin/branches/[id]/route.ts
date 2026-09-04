@@ -193,7 +193,7 @@ export async function GET(_request: Request, { params }: Params) {
     return jsonOk({
       ...branch,
       menuItems: attachBestsellerFlag(
-        branch.menuItems.map(flattenMenuItemOptionGroups),
+        branch.menuItems.map((item) => flattenMenuItemOptionGroups(item)),
         bestsellerIds,
       ),
       orderStats: {

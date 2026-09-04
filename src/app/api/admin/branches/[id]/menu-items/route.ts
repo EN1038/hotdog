@@ -38,7 +38,7 @@ export async function GET(_request: Request, { params }: Params) {
       include: itemInclude,
       orderBy: [{ isHidden: "asc" }, { sortOrder: "asc" }, { createdAt: "desc" }],
     });
-    return jsonOk(items.map(flattenMenuItemOptionGroups));
+    return jsonOk(items.map((item) => flattenMenuItemOptionGroups(item)));
   } catch (error) {
     return handleApiError(error);
   }
@@ -208,7 +208,7 @@ export async function PATCH(request: Request, { params }: Params) {
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
 
-    return jsonOk(orderedItems.map(flattenMenuItemOptionGroups));
+    return jsonOk(orderedItems.map((item) => flattenMenuItemOptionGroups(item)));
   } catch (error) {
     return handleApiError(error);
   }

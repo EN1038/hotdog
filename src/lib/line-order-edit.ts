@@ -506,7 +506,7 @@ async function previewSave(
         quickReply: hubQuickReply(),
       };
     }
-    const groups = groupsForMenu(menu).map(serializeOptionGroup);
+    const groups = groupsForMenu(menu).map((group) => serializeOptionGroup(group));
     const err = validateOrderItemOptionIds(groups, line.optionIds);
     if (err) {
       return {

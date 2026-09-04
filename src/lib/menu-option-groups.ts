@@ -259,7 +259,7 @@ export function resolveOrderItemOptionsFromPrisma(
       }>;
     }
   | { ok: false; error: string } {
-  const serialized = groups.map(serializeOptionGroup);
+  const serialized = groups.map((group) => serializeOptionGroup(group));
   const validationError = validateOrderItemOptionIds(serialized, optionIds);
   if (validationError) return { ok: false, error: validationError };
   const idToMeta = new Map<

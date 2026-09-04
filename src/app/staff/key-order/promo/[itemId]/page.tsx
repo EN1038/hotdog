@@ -448,7 +448,11 @@ export default function StaffPromoKeyOrderDetailPage() {
 
   if (!item) {
     return (
-      <StaffKeyOrderLayout title="คีย์ออเดอร์แบบโปรโมชั่น">
+      <StaffKeyOrderLayout
+        title="คีย์ออเดอร์แบบโปรโมชั่น"
+        backHref="/staff/key-order/promo"
+        backAriaLabel="กลับไปเลือกรายการโปร"
+      >
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center">
           <p className="text-sm font-medium text-gray-800">
             ไม่พบโปรโมชั่นนี้
@@ -464,10 +468,16 @@ export default function StaffPromoKeyOrderDetailPage() {
     );
   }
 
+  const backToPromoList = promoCount > 1;
+
   return (
     <StaffKeyOrderLayout
       title={item.name}
       subtitle={branchName || "คีย์ออเดอร์แบบโปรโมชั่น"}
+      backHref={backToPromoList ? "/staff/key-order/promo" : "/staff"}
+      backAriaLabel={
+        backToPromoList ? "กลับไปเลือกโปรโมชั่น" : "กลับหน้าหลัก"
+      }
       footer={
         <button
           type="button"
@@ -583,6 +593,15 @@ export default function StaffPromoKeyOrderDetailPage() {
       <div className="w-full min-w-0 space-y-3">
         <p className="text-xs text-gray-500">
           รายการในตัวเลือกเรียงตามพยัญชนะไทย · กรอกแล้วบันทึกในหน้านี้
+        </p>
+        <p className="whitespace-nowrap text-[12px] leading-snug text-gray-600">
+          กดเพิ่มไม่ได้ = หมดสต็อก ·{" "}
+          <Link
+            href="/staff/stock?action=stock_in"
+            className="font-semibold text-site-primary underline"
+          >
+            ไปเพิ่มสต็อก
+          </Link>
         </p>
         {visibleGroups.map((group) => {
           const isPack = group.mode === "FROM_MENU";

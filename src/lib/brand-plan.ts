@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { normalizePhone } from "@/lib/constants";
+import { resolveOwnerPhoneForBrand } from "@/lib/brand-primary-owner";
 import {
   assertBrandStorefrontOpen,
   assertBrandWriteAllowed,
@@ -138,7 +140,12 @@ export async function assertCanCreateStaff(
   if (!brand) throw new BrandLimitError("ไม่พบแบรนด์");
   assertBrandStorefrontOpen(brand);
 
-  const phone = opts?.phone?.trim();
+  const phone = opts?.phone?.trim() ? normalizePhone(opts.phone) : "";
+  const ownerPhone = await resolveBrandOwnerPhone(brandId);
+
+  // Brand owner seat is free — never counts toward maxStaff.
+  if (phone && ownerPhone && phone === ownerPhone) return;
+
   if (phone) {
     const alreadyInBrand = await prisma.staff.findFirst({
       where: { phone, branch: { brandId } },
@@ -148,14 +155,41 @@ export async function assertCanCreateStaff(
     if (alreadyInBrand) return;
   }
 
-  const grouped = await prisma.staff.groupBy({
-    by: ["phone"],
-    where: { branch: { brandId }, isActive: true },
-  });
-  const count = grouped.length;
+  const count = await countBillableStaffPhones(brandId, ownerPhone);
   if (count >= brand.maxStaff) {
     throw new BrandLimitError(
       `แพ็ก ${BRAND_PLAN_LABELS[brand.plan]} เพิ่มพนักงานได้สูงสุด ${brand.maxStaff} คน (ใช้แล้ว ${count})`,
     );
   }
+}
+
+/** Primary owner phone for a brand (normalized), if any. */
+export async function resolveBrandOwnerPhone(
+  brandId: string,
+): Promise<string | null> {
+  const owner = await resolveOwnerPhoneForBrand(brandId);
+  return owner?.phone ?? null;
+}
+
+/**
+ * Unique active staff phones that count toward the package seat limit.
+ * Brand owner phone is excluded (free seat).
+ */
+export async function countBillableStaffPhones(
+  brandId: string,
+  ownerPhone?: string | null,
+): Promise<number> {
+  const exempt =
+    ownerPhone === undefined
+      ? await resolveBrandOwnerPhone(brandId)
+      : ownerPhone;
+  const grouped = await prisma.staff.groupBy({
+    by: ["phone"],
+    where: {
+      branch: { brandId },
+      isActive: true,
+      ...(exempt ? { phone: { not: exempt } } : {}),
+    },
+  });
+  return grouped.length;
 }

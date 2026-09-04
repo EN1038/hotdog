@@ -23,11 +23,16 @@ export function StaffKeyOrderLayout({
   subtitle,
   children,
   footer,
+  backHref = "/staff",
+  backAriaLabel = "กลับหน้าหลัก",
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** Where the header back chevron goes (default: staff home). */
+  backHref?: string;
+  backAriaLabel?: string;
 }) {
   const [mode, setMode] = useState<StaffOrderMode>("instant");
 
@@ -55,9 +60,9 @@ export function StaffKeyOrderLayout({
         <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
           <div className="flex items-center gap-3">
             <Link
-              href="/staff"
+              href={backHref}
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100"
-              aria-label="กลับหน้าหลัก"
+              aria-label={backAriaLabel}
             >
               <IconBack size={22} />
             </Link>

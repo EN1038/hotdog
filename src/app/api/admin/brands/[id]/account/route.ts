@@ -209,7 +209,10 @@ export async function GET(_request: Request, { params }: Params) {
         }
         if (s.isActive) {
           active += 1;
-          uniqueActivePhones.add(s.phone);
+          // Owner seat is free — exclude from package quota display
+          if (!(ownerPhoneOk && s.phone === ownerPhoneOk)) {
+            uniqueActivePhones.add(s.phone);
+          }
           if (hasSeller && hasDelivery) both += 1;
           else if (hasSeller) sellers += 1;
           else if (hasDelivery) delivery += 1;

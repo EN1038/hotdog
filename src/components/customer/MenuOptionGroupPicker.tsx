@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice } from "@/lib/constants";
 import type { MenuOptionData, MenuOptionGroupData } from "@/lib/customer-types";
 import {
@@ -21,6 +21,20 @@ type Props = {
   /** Tighter padding for nested staff quick-order cards */
   compact?: boolean;
 };
+
+function isOptionSoldOut(
+  opt: MenuOptionData,
+  fromMenu: boolean,
+): { soldOut: boolean; tracked: boolean; sq: number } {
+  // MANUAL options: no stock qty — only manual isOutOfStock.
+  // FROM_MENU (skewers): gate by stock when tracked; null = untracked.
+  const tracked = fromMenu && opt.stockQuantity != null;
+  const sq = tracked
+    ? Math.max(0, opt.stockQuantity!)
+    : Number.POSITIVE_INFINITY;
+  const soldOut = Boolean(opt.isOutOfStock) || (tracked && sq <= 0);
+  return { soldOut, tracked, sq };
+}
 
 function OptionThumb({
   name,
@@ -159,6 +173,8 @@ export function MenuOptionGroupPicker({
   compact = false,
 }: Props) {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [shakeOptionId, setShakeOptionId] = useState<string | null>(null);
+  const shakeTimerRef = useRef<number | null>(null);
   const selectedCount = selectionCount(selectedIds);
   const useQty = groupUsesQuantityPicker(group);
   const fromMenu = group.mode === "FROM_MENU";
@@ -166,6 +182,25 @@ export function MenuOptionGroupPicker({
   const showCategoryFilter = fromMenu && categories.length > 1;
   const rowPad = compact ? "py-2.5" : "px-4 py-3";
   const btnSize = compact ? "h-8 w-8" : "h-9 w-9";
+
+  function triggerSoldOutShake(optionId: string) {
+    setShakeOptionId(optionId);
+    if (shakeTimerRef.current != null) {
+      window.clearTimeout(shakeTimerRef.current);
+    }
+    shakeTimerRef.current = window.setTimeout(() => {
+      setShakeOptionId(null);
+      shakeTimerRef.current = null;
+    }, 420);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimerRef.current != null) {
+        window.clearTimeout(shakeTimerRef.current);
+      }
+    };
+  }, []);
 
   const visibleOptions = useMemo(() => {
     const filtered =
@@ -222,14 +257,7 @@ export function MenuOptionGroupPicker({
         <ul className="w-full min-w-0 pb-1">
           {visibleOptions.map((opt, index) => {
             const qty = qtyMap[opt.id] ?? 0;
-            // MANUAL options: no stock qty — only manual isOutOfStock.
-            // FROM_MENU (skewers): gate by stock when tracked; null = untracked.
-            const tracked = fromMenu && opt.stockQuantity != null;
-            const sq = tracked
-              ? Math.max(0, opt.stockQuantity!)
-              : Number.POSITIVE_INFINITY;
-            const disabled =
-              Boolean(opt.isOutOfStock) || (tracked && sq <= 0);
+            const { soldOut, tracked, sq } = isOptionSoldOut(opt, fromMenu);
             const atMax =
               selectedCount >= group.maxSelect || (tracked && qty >= sq);
             const showThumb = fromMenu || Boolean(opt.imageUrl);
@@ -237,8 +265,8 @@ export function MenuOptionGroupPicker({
               <li
                 key={opt.id}
                 className={`grid w-full min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-gray-50 last:border-b-0 ${rowPad} ${
-                  disabled ? "opacity-50" : ""
-                }`}
+                  soldOut ? "opacity-50" : ""
+                } ${shakeOptionId === opt.id ? "menu-row-shake" : ""}`}
               >
                 <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
                   {index + 1}
@@ -256,27 +284,37 @@ export function MenuOptionGroupPicker({
                   <p className="truncate text-[15px] font-medium leading-snug text-gray-900">
                     {opt.name}
                   </p>
-                  {disabled ? (
-                    <p className="mt-0.5 text-xs text-gray-400">หมดชั่วคราว</p>
+                  {soldOut ? (
+                    <p className="mt-0.5 text-[11px] font-medium leading-snug text-gray-500">
+                      รายการนี้ในสต็อกไม่มี
+                    </p>
                   ) : null}
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
-                    {Number(opt.priceDelta) > 0 && (
+                  {!soldOut ? (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
+                      {Number(opt.priceDelta) > 0 && (
+                        <span className="font-medium text-site-primary">
+                          +฿{formatPrice(opt.priceDelta)}
+                        </span>
+                      )}
+                      {tracked && (
+                        <span className="font-bold text-gray-900">
+                          {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ{" "}
+                          {opt.stockQuantity}
+                        </span>
+                      )}
+                    </div>
+                  ) : Number(opt.priceDelta) > 0 ? (
+                    <div className="mt-0.5 text-xs">
                       <span className="font-medium text-site-primary">
                         +฿{formatPrice(opt.priceDelta)}
                       </span>
-                    )}
-                    {tracked && (
-                      <span className="font-bold text-gray-900">
-                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ{" "}
-                        {opt.stockQuantity}
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
-                    disabled={disabled || qty <= 0}
+                    disabled={qty <= 0 || soldOut}
                     onClick={() =>
                       onChange(
                         qtyMapToOptionIds(
@@ -294,15 +332,21 @@ export function MenuOptionGroupPicker({
                   </span>
                   <button
                     type="button"
-                    disabled={disabled || atMax}
-                    onClick={() =>
+                    disabled={!soldOut && atMax}
+                    onClick={() => {
+                      if (soldOut) {
+                        triggerSoldOutShake(opt.id);
+                        return;
+                      }
                       onChange(
                         qtyMapToOptionIds(
                           adjustOptionQty(qtyMap, opt.id, 1, group.maxSelect),
                         ),
-                      )
-                    }
-                    className={`flex ${btnSize} items-center justify-center rounded-full bg-site-primary text-white disabled:opacity-40`}
+                      );
+                    }}
+                    className={`flex ${btnSize} items-center justify-center rounded-full bg-site-primary text-white disabled:opacity-40 ${
+                      soldOut ? "opacity-40" : ""
+                    }`}
                     aria-label={`เพิ่ม ${opt.name}`}
                   >
                     <IconPlus size={compact ? 14 : 16} />
@@ -361,26 +405,30 @@ export function MenuOptionGroupPicker({
       <ul className="w-full min-w-0 divide-y divide-gray-50 pb-1">
         {visibleOptions.map((opt, index) => {
           const active = selectedIds.includes(opt.id);
-          // MANUAL options: no stock qty — only manual isOutOfStock.
-          // FROM_MENU (skewers): gate by stock when tracked; null = untracked.
-          const tracked = fromMenu && opt.stockQuantity != null;
-          const sq = tracked
-            ? Math.max(0, opt.stockQuantity!)
-            : Number.POSITIVE_INFINITY;
-          const isSoldOut =
-            Boolean(opt.isOutOfStock) || (tracked && sq <= 0);
+          const { soldOut, tracked } = isOptionSoldOut(opt, fromMenu);
           const atMax = !isSingle && !active && selectedCount >= group.maxSelect;
           const showThumb = fromMenu || Boolean(opt.imageUrl);
           return (
-            <li key={opt.id} className="min-w-0">
+            <li
+              key={opt.id}
+              className={`min-w-0 ${shakeOptionId === opt.id ? "menu-row-shake" : ""}`}
+            >
               <button
                 type="button"
-                disabled={atMax || isSoldOut}
-                onClick={() => toggle(opt.id)}
+                disabled={atMax && !soldOut}
+                onClick={() => {
+                  if (soldOut) {
+                    triggerSoldOutShake(opt.id);
+                    return;
+                  }
+                  toggle(opt.id);
+                }}
                 className={`grid w-full min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 text-left transition-colors ${rowPad} ${
-                  atMax || isSoldOut
-                    ? "cursor-not-allowed opacity-40"
-                    : "active:bg-gray-50"
+                  soldOut
+                    ? "cursor-not-allowed opacity-50"
+                    : atMax
+                      ? "cursor-not-allowed opacity-40"
+                      : "active:bg-gray-50"
                 } ${active ? "bg-site-primary-soft/40" : ""}`}
               >
                 <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-gray-400">
@@ -403,22 +451,32 @@ export function MenuOptionGroupPicker({
                   >
                     {opt.name}
                   </span>
-                  {isSoldOut ? (
-                    <p className="mt-0.5 text-xs text-gray-400">หมดชั่วคราว</p>
+                  {soldOut ? (
+                    <p className="mt-0.5 text-[11px] font-medium leading-snug text-gray-500">
+                      รายการนี้ในสต็อกไม่มี
+                    </p>
                   ) : null}
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
-                    {Number(opt.priceDelta) > 0 && (
+                  {!soldOut ? (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
+                      {Number(opt.priceDelta) > 0 && (
+                        <span className="font-medium text-site-primary">
+                          +฿{formatPrice(opt.priceDelta)}
+                        </span>
+                      )}
+                      {tracked && (
+                        <span className="font-bold text-gray-900">
+                          {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ{" "}
+                          {opt.stockQuantity}
+                        </span>
+                      )}
+                    </div>
+                  ) : Number(opt.priceDelta) > 0 ? (
+                    <div className="mt-0.5 text-xs">
                       <span className="font-medium text-site-primary">
                         +฿{formatPrice(opt.priceDelta)}
                       </span>
-                    )}
-                    {tracked && (
-                      <span className="font-bold text-gray-900">
-                        {Number(opt.priceDelta) > 0 ? "· " : ""}เหลือ{" "}
-                        {opt.stockQuantity}
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
                 </span>
                 <CheckIndicator
                   checked={active}

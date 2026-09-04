@@ -12,7 +12,10 @@ import {
   markStaffPhoneVerified,
 } from "@/lib/otp-challenge";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
-import { clearOwnerStashCookie } from "@/lib/owner-staff-bridge";
+import {
+  clearOwnerStashCookie,
+  ensureOwnerStaffForLoginPhone,
+} from "@/lib/owner-staff-bridge";
 import {
   issueStaffAuthSession,
   staffDeviceSlotAvailable,
@@ -180,11 +183,23 @@ export async function POST(request: Request) {
         })
         .parse(body);
       const normalized = normalizePhone(staffBody.phone);
-      const memberships = await prisma.staff.findMany({
+      let memberships = await prisma.staff.findMany({
         where: { phone: normalized },
         select: staffLoginSelect,
         orderBy: { createdAt: "asc" },
       });
+
+      if (memberships.length === 0) {
+        // Brand owner phone → auto-provision Staff (free package seat).
+        const provisioned = await ensureOwnerStaffForLoginPhone(normalized);
+        if (provisioned) {
+          memberships = await prisma.staff.findMany({
+            where: { phone: normalized },
+            select: staffLoginSelect,
+            orderBy: { createdAt: "asc" },
+          });
+        }
+      }
 
       if (memberships.length === 0) {
         return jsonError("เบอร์นี้ยังไม่ได้ลงทะเบียน", 404, {

@@ -98,7 +98,9 @@ export async function GET(request: Request) {
     );
 
     const menuItems = branch.menuItems.map((item) => {
-      const flattened = flattenMenuItemOptionGroups(item);
+      // Pass stockActive so FROM_MENU skewer options match regular key-order
+      // (missing BranchMenuItemStock row → 0 when stock module is on).
+      const flattened = flattenMenuItemOptionGroups(item, { stockActive });
       const rawStockQty = item.stock?.quantity ?? null;
       const isPromo = (flattened.optionGroups ?? []).some(
         (g) => g.mode === "FROM_MENU",

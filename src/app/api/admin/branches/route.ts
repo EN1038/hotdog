@@ -23,6 +23,10 @@ import {
   assertOperatingModeAllowed,
   brandUsageSelect,
 } from "@/lib/brand-plan";
+import {
+  ensureOwnerStaffOnBranches,
+  resolveOwnerPhoneForBrand,
+} from "@/lib/owner-staff-bridge";
 
 const branchSchema = z.object({
   name: z.string().min(1),
@@ -227,6 +231,19 @@ export async function POST(request: Request) {
       entityId: branch.id,
       entityName: branch.name,
     });
+
+    // Brand owner gets a free staff seat on every new branch.
+    if (brandId) {
+      const owner = await resolveOwnerPhoneForBrand(brandId).catch(() => null);
+      if (owner) {
+        await ensureOwnerStaffOnBranches({
+          brandId,
+          phone: owner.phone,
+          name: owner.name,
+          branchIds: [branch.id],
+        }).catch(() => null);
+      }
+    }
 
     return jsonOk(branch, 201);
   } catch (error) {

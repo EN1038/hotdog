@@ -5,16 +5,17 @@ import { StaffRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/constants";
 import { assertCanCreateStaff } from "@/lib/brand-plan";
-import {
-  ensureBrandPrimaryAdmin,
-  pickPrimaryAdminId,
-} from "@/lib/brand-primary-owner";
+import { resolveOwnerPhoneForBrand } from "@/lib/brand-primary-owner";
+import { isBrandStorefrontOpen } from "@/lib/brand-plan-shared";
+import { isTestBranch } from "@/lib/branch-test";
 import {
   SESSION_COOKIE_NAME,
   sessionCookieOptions,
   type SessionPayload,
 } from "@/lib/auth";
 import { SESSION_MAX_AGE_SEC } from "@/lib/staff-session-limits";
+
+export { resolveOwnerPhoneForBrand } from "@/lib/brand-primary-owner";
 
 /** Stashed admin JWT while owner sells as staff (sole-operator bridge). */
 export const OWNER_STASH_COOKIE_NAME = "skillsale_owner_stash";
@@ -32,60 +33,6 @@ function resolveJwtSecret(): Uint8Array {
     );
   }
   return new TextEncoder().encode(raw || "dev-secret-local-only");
-}
-
-export async function resolveOwnerPhoneForBrand(brandId: string): Promise<{
-  phone: string;
-  name: string | null;
-  adminId: string;
-} | null> {
-  await ensureBrandPrimaryAdmin(brandId).catch(() => null);
-  const brand = await prisma.brand.findUnique({
-    where: { id: brandId },
-    select: { primaryAdminId: true, contactPhone: true, name: true },
-  });
-  if (!brand) return null;
-
-  const members = await prisma.brandMember.findMany({
-    where: { brandId },
-    include: {
-      admin: {
-        select: {
-          id: true,
-          phone: true,
-          username: true,
-          isPlatformAdmin: true,
-        },
-      },
-    },
-  });
-  const primaryId = pickPrimaryAdminId(members, brand.primaryAdminId);
-  const primary = members.find((m) => m.admin.id === primaryId)?.admin;
-  if (!primary || primary.isPlatformAdmin) return null;
-
-  const candidates = [
-    primary.phone,
-    brand.contactPhone,
-    /^\d{9,}$/.test(primary.username.replace(/\D/g, ""))
-      ? primary.username
-      : null,
-  ];
-  let phone = "";
-  for (const c of candidates) {
-    if (!c) continue;
-    const n = normalizePhone(c);
-    if (n.length >= 9) {
-      phone = n;
-      break;
-    }
-  }
-  if (!phone) return null;
-
-  return {
-    phone,
-    name: brand.name ? `เจ้าของ · ${brand.name}` : primary.username,
-    adminId: primary.id,
-  };
 }
 
 /** Ensure owner phone is active Staff (SELLER) on given branches. */
@@ -148,6 +95,87 @@ export async function ensureOwnerStaffOnBranches(opts: {
       },
     });
   }
+}
+
+/**
+ * If this phone is a brand primary owner, auto-create Staff rows on sellable
+ * branches so /staff/login works without a separate sync step.
+ * Owner seats do not count toward package maxStaff.
+ * @returns true if at least one brand was provisioned
+ */
+export async function ensureOwnerStaffForLoginPhone(
+  phone: string,
+): Promise<boolean> {
+  const normalized = normalizePhone(phone);
+  if (normalized.length < 9) return false;
+
+  const brandIdSet = new Set<string>();
+
+  const memberBrandIds = await prisma.brandMember.findMany({
+    where: {
+      admin: {
+        isPlatformAdmin: false,
+        OR: [{ phone: normalized }, { username: normalized }],
+      },
+    },
+    select: { brandId: true },
+  });
+  for (const row of memberBrandIds) brandIdSet.add(row.brandId);
+
+  const contactBrands = await prisma.brand.findMany({
+    where: { contactPhone: normalized },
+    select: { id: true },
+  });
+  for (const row of contactBrands) brandIdSet.add(row.id);
+
+  if (brandIdSet.size === 0) return false;
+
+  let provisioned = false;
+  for (const brandId of brandIdSet) {
+    const owner = await resolveOwnerPhoneForBrand(brandId);
+    if (!owner || owner.phone !== normalized) continue;
+
+    const brand = await prisma.brand.findUnique({
+      where: { id: brandId },
+      select: {
+        status: true,
+        trialEndsAt: true,
+        nextDueAt: true,
+      },
+    });
+    if (!brand || !isBrandStorefrontOpen(brand)) continue;
+
+    const branches = await prisma.branch.findMany({
+      where: { brandId, isHidden: false },
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        isTest: true,
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const sellBranches = branches.filter(
+      (b) => b.kind !== "WAREHOUSE" && !isTestBranch(b),
+    );
+    const pool =
+      sellBranches.length > 0
+        ? sellBranches
+        : branches.filter((b) => b.kind !== "WAREHOUSE");
+
+    if (pool.length === 0) continue;
+
+    await ensureOwnerStaffOnBranches({
+      brandId,
+      phone: owner.phone,
+      name: owner.name,
+      branchIds: pool.map((b) => b.id),
+    });
+    provisioned = true;
+  }
+
+  return provisioned;
 }
 
 export function ownerStashCookieOptions() {

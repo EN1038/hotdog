@@ -24,6 +24,7 @@ import {
   BRAND_STATUS_LABELS,
   getBrandSubscriptionState,
 } from "@/lib/brand-plan-shared";
+import { countBillableStaffPhones } from "@/lib/brand-plan";
 import { getBrandPlanConfigRow } from "@/lib/brand-plan-catalog";
 import type { BrandPlan, BrandStatus } from "@prisma/client";
 import { getBrandSmsQuota } from "@/lib/brand-sms-quota";
@@ -266,12 +267,7 @@ export async function GET(request: Request) {
     const staffCount =
       liveBranchIds.length === 0
         ? 0
-        : await prisma.staff.count({
-            where: {
-              branchId: { in: liveBranchIds },
-              isActive: true,
-            },
-          });
+        : await countBillableStaffPhones(brand.id);
 
     const plan = brand.plan as BrandPlan;
     const status = brand.status as BrandStatus;

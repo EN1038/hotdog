@@ -18,6 +18,7 @@ import {
   adminHasLiveBrand,
   phoneBlocksOwnerRegister,
 } from "@/lib/owner-register-phone";
+import { ensureOwnerStaffForLoginPhone } from "@/lib/owner-staff-bridge";
 
 const schema = z.object({
   phone: z.string().min(9),
@@ -40,11 +41,21 @@ export async function POST(request: Request) {
 
     let pendingName: string | null = null;
     if (body.purpose === "staff") {
-      const memberships = await prisma.staff.findMany({
+      let memberships = await prisma.staff.findMany({
         where: { phone },
         select: staffLoginSelect,
         orderBy: { createdAt: "asc" },
       });
+      if (memberships.length === 0) {
+        const provisioned = await ensureOwnerStaffForLoginPhone(phone);
+        if (provisioned) {
+          memberships = await prisma.staff.findMany({
+            where: { phone },
+            select: staffLoginSelect,
+            orderBy: { createdAt: "asc" },
+          });
+        }
+      }
       if (memberships.length === 0) {
         return jsonError("เบอร์นี้ยังไม่ได้ลงทะเบียน", 404, {
           reason: STAFF_LOGIN_UNREGISTERED,

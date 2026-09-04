@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { normalizePhone } from "@/lib/constants";
 
 type MemberLite = {
   adminId: string;
@@ -71,4 +72,59 @@ export async function countBrandOwners(
       ...(excludeMembershipId ? { NOT: { id: excludeMembershipId } } : {}),
     },
   });
+}
+
+/** Primary brand owner phone + display name (for staff bridge / seat exemption). */
+export async function resolveOwnerPhoneForBrand(brandId: string): Promise<{
+  phone: string;
+  name: string | null;
+  adminId: string;
+} | null> {
+  await ensureBrandPrimaryAdmin(brandId).catch(() => null);
+  const brand = await prisma.brand.findUnique({
+    where: { id: brandId },
+    select: { primaryAdminId: true, contactPhone: true, name: true },
+  });
+  if (!brand) return null;
+
+  const members = await prisma.brandMember.findMany({
+    where: { brandId },
+    include: {
+      admin: {
+        select: {
+          id: true,
+          phone: true,
+          username: true,
+          isPlatformAdmin: true,
+        },
+      },
+    },
+  });
+  const primaryId = pickPrimaryAdminId(members, brand.primaryAdminId);
+  const primary = members.find((m) => m.admin.id === primaryId)?.admin;
+  if (!primary || primary.isPlatformAdmin) return null;
+
+  const candidates = [
+    primary.phone,
+    brand.contactPhone,
+    /^\d{9,}$/.test(primary.username.replace(/\D/g, ""))
+      ? primary.username
+      : null,
+  ];
+  let phone = "";
+  for (const c of candidates) {
+    if (!c) continue;
+    const n = normalizePhone(c);
+    if (n.length >= 9) {
+      phone = n;
+      break;
+    }
+  }
+  if (!phone) return null;
+
+  return {
+    phone,
+    name: brand.name ? `เจ้าของ · ${brand.name}` : primary.username,
+    adminId: primary.id,
+  };
 }

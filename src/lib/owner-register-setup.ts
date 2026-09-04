@@ -26,6 +26,8 @@ import { syncBrandStockModule } from "@/lib/brand-stock-activation";
 import {
   adminHasLiveBrand,
 } from "@/lib/owner-register-phone";
+import { ensureOwnerStaffOnBranches } from "@/lib/owner-staff-bridge";
+import { normalizePhone } from "@/lib/constants";
 
 export type OwnerRegisterSetupInput = {
   phone: string;
@@ -226,6 +228,14 @@ export async function createOwnerRegistration(
   });
 
   await syncBrandStockModule(created.brand.id, created.brand.stockEnabled);
+
+  // Owner phone is also a free staff seat on the first branch.
+  await ensureOwnerStaffOnBranches({
+    brandId: created.brand.id,
+    phone: normalizePhone(input.phone),
+    name: `เจ้าของ · ${created.brand.name}`,
+    branchIds: [created.branch.id],
+  }).catch(() => null);
 
   let importSummary: OwnerRegisterSetupResult["importSummary"] = null;
 

@@ -13,7 +13,14 @@ export const optionGroupDetailInclude = {
           imageUrl: true,
           isHidden: true,
           isOutOfStock: true,
-          category: { select: { id: true, name: true, sortOrder: true } },
+          category: {
+            select: {
+              id: true,
+              name: true,
+              sortOrder: true,
+              stockExempt: true,
+            },
+          },
           stock: true,
         },
       },
@@ -72,10 +79,23 @@ type GroupWithSources = {
       imageUrl: string | null;
       isHidden: boolean;
       isOutOfStock: boolean;
-      category: { id: string; name: string; sortOrder: number } | null;
+      category: {
+        id: string;
+        name: string;
+        sortOrder: number;
+        stockExempt?: boolean | null;
+      } | null;
       stock: { quantity: number } | null;
     } | null;
   }>;
+};
+
+type ExpandGroupOptionsOpts = {
+  /**
+   * When stock module is on for the branch, missing stock rows count as 0
+   * (same as staff menu / stock UI) — unless the linked item is stock-exempt.
+   */
+  stockActive?: boolean;
 };
 
 type ExpandedMenuSourceOption = {
@@ -105,12 +125,23 @@ function isExpandedMenuSourceOption(
   return "imageUrl" in option;
 }
 
-export function expandGroupOptions(group: GroupWithSources): ExpandedGroupOption[] {
+export function expandGroupOptions(
+  group: GroupWithSources,
+  opts: ExpandGroupOptionsOpts = {},
+): ExpandedGroupOption[] {
+  const stockActive = Boolean(opts.stockActive);
   if (group.mode === "FROM_MENU") {
     return group.menuItemSources
       .filter((s) => s.isEnabled && s.menuItem && !s.menuItem.isHidden)
       .map((s) => {
-        const stockQuantity = s.menuItem!.stock?.quantity ?? null;
+        const stockExempt = Boolean(s.menuItem!.category?.stockExempt);
+        const rawStockQty = s.menuItem!.stock?.quantity ?? null;
+        // Match staff menu top-level: missing row → 0 when stock is on.
+        const stockQuantity = stockExempt
+          ? null
+          : stockActive
+            ? (rawStockQty ?? 0)
+            : rawStockQty;
         return {
           id: s.menuItemId,
           name: s.menuItem!.name,
@@ -118,8 +149,11 @@ export function expandGroupOptions(group: GroupWithSources): ExpandedGroupOption
             typeof s.priceDelta === "object" && s.priceDelta != null && "toString" in s.priceDelta
               ? s.priceDelta
               : s.priceDelta,
-          isOutOfStock:
-            stockQuantity != null ? stockQuantity <= 0 : s.menuItem!.isOutOfStock,
+          isOutOfStock: stockExempt
+            ? s.menuItem!.isOutOfStock
+            : stockQuantity != null
+              ? stockQuantity <= 0
+              : s.menuItem!.isOutOfStock,
           imageUrl: s.menuItem!.imageUrl,
           categoryId: s.menuItem!.category?.id ?? null,
           categoryName: s.menuItem!.category?.name ?? "อื่นๆ",
@@ -136,7 +170,10 @@ export function expandGroupOptions(group: GroupWithSources): ExpandedGroupOption
   }));
 }
 
-export function serializeOptionGroup(group: GroupWithSources) {
+export function serializeOptionGroup(
+  group: GroupWithSources,
+  opts: ExpandGroupOptionsOpts = {},
+) {
   return {
     id: group.id,
     name: group.name,
@@ -148,7 +185,7 @@ export function serializeOptionGroup(group: GroupWithSources) {
     sortOrder: group.sortOrder ?? 0,
     createdAt: group.createdAt,
     visibleWhenOptionIds: group.visibleWhenOptionIds ?? [],
-    options: expandGroupOptions(group).map((o) => {
+    options: expandGroupOptions(group, opts).map((o) => {
       const base = {
         id: o.id,
         name: o.name,
@@ -190,9 +227,9 @@ function linkSortKey(link: LinkedGroup) {
 }
 
 /** Flatten junction → optionGroups for admin/customer APIs */
-export function flattenMenuItemOptionGroups<T extends { optionGroupLinks: LinkedGroup[] }>(
-  item: T,
-) {
+export function flattenMenuItemOptionGroups<
+  T extends { optionGroupLinks: LinkedGroup[] },
+>(item: T, opts: ExpandGroupOptionsOpts = {}) {
   const { optionGroupLinks, ...rest } = item;
   const links = [...optionGroupLinks].sort((a, b) => {
     const ka = linkSortKey(a);
@@ -201,7 +238,7 @@ export function flattenMenuItemOptionGroups<T extends { optionGroupLinks: Linked
   });
   return {
     ...rest,
-    optionGroups: links.map((link) => serializeOptionGroup(link.group)),
+    optionGroups: links.map((link) => serializeOptionGroup(link.group, opts)),
     optionGroupIds: links.map((link) => link.group.id),
   };
 }

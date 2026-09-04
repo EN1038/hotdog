@@ -46,12 +46,9 @@ export function StaffLoginNotice({
         className="relative z-10 w-full max-w-md overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
       >
         <div className="px-6 pb-2 pt-6">
-          <p className="text-3xl" aria-hidden>
-            {kind === "unregistered" ? "📱" : "🔒"}
-          </p>
           <h2
             id="staff-login-notice-title"
-            className="mt-3 text-xl font-extrabold leading-snug text-slate-900"
+            className="text-xl font-extrabold leading-snug text-slate-900"
           >
             {copy.title}
           </h2>

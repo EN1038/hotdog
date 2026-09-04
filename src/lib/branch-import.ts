@@ -244,8 +244,38 @@ export async function importBranchCatalog(opts: {
 
     const existingDestId = destByDedupeKey.get(dedupeKey);
     if (existingDestId) {
-      // Source duplicate or re-import: reuse one dest row; keep option-source mapping.
+      // Reuse row (no duplicate). Refresh photos from source when present so
+      // clone/import carries the latest verified images.
       menuItemIdMap.set(item.id, existingDestId);
+      const srcSale = item.imageUrl?.trim() || null;
+      const srcSkewer = item.skewerImageUrl?.trim() || null;
+      if (srcSale || srcSkewer) {
+        const existing = await prisma.branchMenuItem.findUnique({
+          where: { id: existingDestId },
+          select: { imageUrl: true, skewerImageUrl: true },
+        });
+        if (existing) {
+          const nextSale = srcSale || existing.imageUrl?.trim() || null;
+          const nextSkewer =
+            srcSkewer ||
+            existing.skewerImageUrl?.trim() ||
+            nextSale ||
+            null;
+          const finalSale = nextSale || nextSkewer;
+          if (
+            finalSale !== (existing.imageUrl?.trim() || null) ||
+            nextSkewer !== (existing.skewerImageUrl?.trim() || null)
+          ) {
+            await prisma.branchMenuItem.update({
+              where: { id: existingDestId },
+              data: {
+                imageUrl: finalSale,
+                skewerImageUrl: nextSkewer,
+              },
+            });
+          }
+        }
+      }
       continue;
     }
 
@@ -269,8 +299,9 @@ export async function importBranchCatalog(opts: {
         defaultShelfLifeDays: item.defaultShelfLifeDays,
         description: item.description,
         categoryId: destCategoryId,
-        imageUrl: item.imageUrl,
-        skewerImageUrl: item.skewerImageUrl,
+        imageUrl: item.imageUrl?.trim() || item.skewerImageUrl?.trim() || null,
+        skewerImageUrl:
+          item.skewerImageUrl?.trim() || item.imageUrl?.trim() || null,
         quantityUnit: item.quantityUnit,
         sticksPerUnit: item.sticksPerUnit ?? 1,
         countsAsSticks: item.countsAsSticks ?? true,

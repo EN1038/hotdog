@@ -25,7 +25,9 @@ export async function loadBrandSkewerImageLookup(
     select: {
       itemCode: true,
       skewerImageUrl: true,
+      updatedAt: true,
     },
+    orderBy: { updatedAt: "desc" },
   });
 
   const byItemCode = new Map<string, string>();
@@ -34,6 +36,7 @@ export async function loadBrandSkewerImageLookup(
     const url = row.skewerImageUrl?.trim();
     if (!url) continue;
     const code = row.itemCode?.trim();
+    // First win after updatedAt desc = newest photo per code
     if (code && !byItemCode.has(code)) {
       byItemCode.set(code, url);
     }

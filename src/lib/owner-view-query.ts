@@ -20,8 +20,16 @@ export function ownerHomeHref(opts: {
   branchId?: string | null;
   from?: string | null;
   to?: string | null;
+  /** แท็บหน้าแรก: overview | sell | stock */
+  tab?: "overview" | "sell" | "stock" | null;
 }) {
-  return `/owner${buildOwnerViewQuery(opts)}`;
+  const params = new URLSearchParams();
+  if (opts.branchId) params.set("branchId", opts.branchId);
+  if (opts.from) params.set("from", opts.from);
+  if (opts.to) params.set("to", opts.to);
+  if (opts.tab) params.set("tab", opts.tab);
+  const q = params.toString();
+  return q ? `/owner?${q}` : "/owner";
 }
 
 export function ownerSummaryHref(opts: {

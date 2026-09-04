@@ -36,8 +36,13 @@ export async function POST(request: Request) {
       return jsonError(consumed.message, consumed.status);
     }
 
-    if (body.purpose === "staff") {
-      return jsonOk({ ok: true, purpose: "staff" as const });
+    if (
+      body.purpose === "staff" ||
+      body.purpose === "owner" ||
+      body.purpose === "owner_register" ||
+      body.purpose === "owner_alert_sms"
+    ) {
+      return jsonOk({ ok: true, purpose: body.purpose });
     }
 
     const name = body.name ?? consumed.pendingName;

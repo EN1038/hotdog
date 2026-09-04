@@ -87,6 +87,7 @@ export function OwnerRegisterWizard() {
   const [phone, setPhone] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [challengeId, setChallengeId] = useState("");
+  const [otpVerifiedChallengeId, setOtpVerifiedChallengeId] = useState("");
   const [otpRefNo, setOtpRefNo] = useState("");
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
   const [otpResendIn, setOtpResendIn] = useState(0);
@@ -166,6 +167,7 @@ export function OwnerRegisterWizard() {
     setError("");
     setOtpCode("");
     setChallengeId("");
+    setOtpVerifiedChallengeId("");
     setOtpRefNo("");
     setOtpSecondsLeft(0);
     setOtpResendIn(0);
@@ -179,6 +181,10 @@ export function OwnerRegisterWizard() {
       otpCountdownWasActiveRef.current = false;
       return;
     }
+    if (otpVerifiedChallengeId && otpVerifiedChallengeId === challengeId) {
+      otpCountdownWasActiveRef.current = false;
+      return;
+    }
     if (otpSecondsLeft > 0) {
       otpCountdownWasActiveRef.current = true;
       return;
@@ -186,6 +192,9 @@ export function OwnerRegisterWizard() {
     if (otpCountdownWasActiveRef.current) {
       handleOtpExpired();
     }
+    // Keep deps length stable (step + countdown only). Verified/challenge are
+    // read from the render that fires when the countdown hits zero.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, [step, otpSecondsLeft]);
 
   async function sendOtp() {
@@ -211,12 +220,10 @@ export function OwnerRegisterWizard() {
       };
       if (!res.ok) {
         setError(data.error ?? "ส่ง OTP ไม่สำเร็จ");
-        if (data.redirect) {
-          setError(`${data.error ?? "สมัครแล้ว"} — ไปหน้าเข้าสู่ระบบ`);
-        }
         return;
       }
       setChallengeId(data.challengeId ?? "");
+      setOtpVerifiedChallengeId("");
       setOtpRefNo(data.otpRefNo ?? "");
       setOtpSecondsLeft(
         typeof data.expiresIn === "number" ? data.expiresIn : OTP_TTL_SECONDS,
@@ -236,9 +243,67 @@ export function OwnerRegisterWizard() {
     }
   }
 
+  async function verifyOtpAndContinue() {
+    if (otpSecondsLeft <= 0) {
+      handleOtpExpired();
+      return;
+    }
+    if (otpCode.trim().length < OTP_DIGIT_LENGTH) {
+      setError("กรุณากรอกรหัส OTP");
+      return;
+    }
+    if (!challengeId) {
+      setError("กรุณาขอรหัส OTP ใหม่");
+      return;
+    }
+    if (otpVerifiedChallengeId && otpVerifiedChallengeId === challengeId) {
+      setError("");
+      setStep("category");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          challengeId,
+          otpCode: otpCode.trim(),
+          purpose: "owner_register",
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!res.ok) {
+        const message = data.error ?? "ยืนยัน OTP ไม่สำเร็จ";
+        if (isOtpSessionExpiredMessage(message)) {
+          handleOtpExpired();
+          return;
+        }
+        setError(message);
+        return;
+      }
+      setOtpVerifiedChallengeId(challengeId);
+      setStep("category");
+    } catch {
+      setError("เชื่อมต่อไม่ได้ — ตรวจเน็ตแล้วลองใหม่");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function submitRegistration() {
     if (shopName.trim().length < 2) {
       setError("กรุณากรอกชื่อร้าน");
+      return;
+    }
+    if (!challengeId || otpVerifiedChallengeId !== challengeId) {
+      setError("กรุณายืนยันรหัส OTP ก่อน");
+      setStep("otp");
       return;
     }
     setStep("creating");
@@ -261,7 +326,6 @@ export function OwnerRegisterWizard() {
         body: JSON.stringify({
           phone,
           challengeId,
-          otpCode: otpCode.trim(),
           shopName: shopName.trim(),
           shopCategory,
           importMaster: selectedCategoryAllowsImport(shopCategory)
@@ -307,16 +371,7 @@ export function OwnerRegisterWizard() {
       return;
     }
     if (step === "otp") {
-      if (otpSecondsLeft <= 0) {
-        handleOtpExpired();
-        return;
-      }
-      if (otpCode.trim().length < 4) {
-        setError("กรุณากรอกรหัส OTP");
-        return;
-      }
-      setError("");
-      setStep("category");
+      void verifyOtpAndContinue();
       return;
     }
     if (step === "category") {
@@ -350,7 +405,7 @@ export function OwnerRegisterWizard() {
     step === "phone"
       ? "ส่งรหัส OTP"
       : step === "otp"
-        ? "ถัดไป"
+        ? "ยืนยัน OTP"
         : step === "category"
           ? "ถัดไป"
           : "เปิดร้านเลย";

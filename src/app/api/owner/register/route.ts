@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
 import { handleApiError, jsonError } from "@/lib/api";
 import { normalizePhone } from "@/lib/constants";
 import { attachSessionCookie } from "@/lib/auth";
-import { consumeOtpChallenge } from "@/lib/otp-challenge";
+import { assertRecentlyConsumedOtpChallenge } from "@/lib/otp-challenge";
 import { getDefaultTrialDays } from "@/lib/brand-plan-catalog";
 import { createOwnerRegistration } from "@/lib/owner-register-setup";
 import { OWNER_REGISTER_IMPORT_OPTIONS } from "@/lib/owner-register-shared";
@@ -13,6 +12,7 @@ import {
   resolveOwnerRegisterCategory,
 } from "@/lib/owner-register-category";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+import { phoneBlocksOwnerRegister } from "@/lib/owner-register-phone";
 
 const importIds = OWNER_REGISTER_IMPORT_OPTIONS.map((o) => o.id) as [
   "full",
@@ -22,7 +22,6 @@ const importIds = OWNER_REGISTER_IMPORT_OPTIONS.map((o) => o.id) as [
 const schema = z.object({
   phone: z.string().min(9),
   challengeId: z.string().min(1),
-  otpCode: z.string().min(4).max(8),
   shopName: z.string().trim().min(2, "กรุณากรอกชื่อร้าน").max(80),
   shopCategory: z.string().trim().min(2).max(64),
   importMaster: z.enum(importIds).optional().default("none"),
@@ -42,23 +41,15 @@ export async function POST(request: Request) {
       return jsonError("ประเภทร้านไม่ถูกต้องหรือปิดใช้งานแล้ว", 400);
     }
 
-    const dup = await prisma.admin.findFirst({
-      where: {
-        isPlatformAdmin: false,
-        OR: [{ phone }, { username: phone }],
-      },
-      select: { id: true },
-    });
-    if (dup) {
+    if (await phoneBlocksOwnerRegister(phone)) {
       return jsonError("เบอร์นี้สมัครแล้ว — กรุณาเข้าสู่ระบบ", 409, {
         redirect: "/owner/login",
       });
     }
 
-    const otp = await consumeOtpChallenge({
+    const otp = await assertRecentlyConsumedOtpChallenge({
       phone,
       challengeId: body.challengeId,
-      otpCode: body.otpCode.trim(),
       purpose: "owner_register",
     });
     if (!otp.ok) {

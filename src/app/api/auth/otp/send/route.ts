@@ -14,6 +14,10 @@ import {
   staffLoginSelect,
 } from "@/lib/staff-login";
 import { STAFF_LOGIN_UNREGISTERED } from "@/lib/staff-session-limits";
+import {
+  adminHasLiveBrand,
+  phoneBlocksOwnerRegister,
+} from "@/lib/owner-register-phone";
 
 const schema = z.object({
   phone: z.string().min(9),
@@ -61,21 +65,19 @@ export async function POST(request: Request) {
         },
         select: {
           id: true,
-          brandMembers: { select: { brandId: true }, take: 1 },
+          brandMembers: {
+            select: {
+              brandId: true,
+              brand: { select: { status: true } },
+            },
+          },
         },
       });
-      if (!admin || admin.brandMembers.length === 0) {
+      if (!admin || !adminHasLiveBrand(admin)) {
         return jsonError("เบอร์นี้ยังไม่ได้ลงทะเบียนเป็นเจ้าของร้าน", 404);
       }
     } else if (body.purpose === "owner_register") {
-      const admin = await prisma.admin.findFirst({
-        where: {
-          isPlatformAdmin: false,
-          OR: [{ phone }, { username: phone }],
-        },
-        select: { id: true },
-      });
-      if (admin) {
+      if (await phoneBlocksOwnerRegister(phone)) {
         return jsonError("เบอร์นี้สมัครแล้ว — กรุณาเข้าสู่ระบบ", 409, {
           redirect: "/owner/login",
         });

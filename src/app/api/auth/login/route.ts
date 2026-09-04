@@ -29,6 +29,7 @@ import {
   staffUiRoles,
   toAppStaffRoles,
 } from "@/lib/staff-login";
+import { liveBrandIdsFromMemberships } from "@/lib/owner-register-phone";
 
 const customerSchema = z.object({
   phone: z.string().min(9),
@@ -76,13 +77,21 @@ export async function POST(request: Request) {
             id: true,
             username: true,
             isPlatformAdmin: true,
-            brandMembers: { select: { brandId: true } },
+            brandMembers: {
+              select: {
+                brandId: true,
+                brand: { select: { status: true } },
+              },
+            },
           },
         });
-        if (!admin || admin.brandMembers.length === 0) {
+        if (!admin) {
           return jsonError("ไม่พบบัญชีเจ้าของร้าน", 404);
         }
-        const brandIds = admin.brandMembers.map((m) => m.brandId);
+        const brandIds = liveBrandIdsFromMemberships(admin.brandMembers);
+        if (brandIds.length === 0) {
+          return jsonError("ไม่พบบัญชีเจ้าของร้าน", 404);
+        }
         const res = NextResponse.json({
           ok: true,
           isPlatformAdmin: false,
@@ -119,13 +128,18 @@ export async function POST(request: Request) {
           username: true,
           passwordHash: true,
           isPlatformAdmin: true,
-          brandMembers: { select: { brandId: true } },
+          brandMembers: {
+            select: {
+              brandId: true,
+              brand: { select: { status: true } },
+            },
+          },
         },
       });
       if (!admin || !(await bcrypt.compare(password, admin.passwordHash))) {
         return jsonError("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", 401);
       }
-      const brandIds = admin.brandMembers.map((m) => m.brandId);
+      const brandIds = liveBrandIdsFromMemberships(admin.brandMembers);
       let isPlatformAdmin = admin.isPlatformAdmin;
       // Bootstrap: before any BrandMember rows exist, treat legacy admins as platform
       if (!isPlatformAdmin && brandIds.length === 0) {

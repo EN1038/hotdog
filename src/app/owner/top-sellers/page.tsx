@@ -26,7 +26,7 @@ import {
 } from "@/lib/share-media";
 import {
   buildOwnerViewQuery,
-  ownerSummaryHref,
+  ownerHomeHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
 
@@ -164,10 +164,11 @@ function OwnerTopSellersInner() {
     ? filterBranches.find((b) => b.id === filterBranchId)?.name
     : null;
   const multiBranch = filterBranches.length > 1 && !filterBranchId;
-  const summaryHref = ownerSummaryHref({
+  const homeHref = ownerHomeHref({
     branchId: filterBranchId,
     from,
     to,
+    tab: "overview",
   });
 
   const compareRows = useMemo(() => items.slice(0, 12), [items]);
@@ -815,7 +816,7 @@ function OwnerTopSellersInner() {
       </section>
 
       <p className="mt-4 text-center text-[12px] font-medium text-slate-400">
-        <Link href={summaryHref} className="font-bold text-slate-600">
+        <Link href={homeHref} className="font-bold text-slate-600">
           ← กลับภาพรวมร้าน
         </Link>
       </p>
@@ -825,7 +826,7 @@ function OwnerTopSellersInner() {
 
 export default function OwnerTopSellersPage() {
   return (
-    <OwnerAppShell active="summary">
+    <OwnerAppShell active="home">
       <OwnerTopSellersInner />
     </OwnerAppShell>
   );

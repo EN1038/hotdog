@@ -23,6 +23,9 @@ import {
 } from "@/lib/owner-register-category";
 import { slugifyCode, withUniqueSuffix } from "@/lib/slug";
 import { syncBrandStockModule } from "@/lib/brand-stock-activation";
+import {
+  adminHasLiveBrand,
+} from "@/lib/owner-register-phone";
 
 export type OwnerRegisterSetupInput = {
   phone: string;
@@ -156,15 +159,42 @@ export async function createOwnerRegistration(
       },
     });
 
-    const admin = await tx.admin.create({
-      data: {
-        username: input.phone,
-        phone: input.phone,
-        passwordHash,
-        passwordEnc,
+    // Soft-deleted brands leave the Admin row; reuse so the phone can register again.
+    const existingAdmin = await tx.admin.findFirst({
+      where: {
         isPlatformAdmin: false,
+        OR: [{ phone: input.phone }, { username: input.phone }],
+      },
+      select: {
+        id: true,
+        brandMembers: {
+          select: { brand: { select: { status: true } } },
+        },
       },
     });
+    if (existingAdmin && adminHasLiveBrand(existingAdmin)) {
+      throw new Error("เบอร์นี้สมัครแล้ว — กรุณาเข้าสู่ระบบ");
+    }
+
+    const admin = existingAdmin
+      ? await tx.admin.update({
+          where: { id: existingAdmin.id },
+          data: {
+            username: input.phone,
+            phone: input.phone,
+            passwordHash,
+            passwordEnc,
+          },
+        })
+      : await tx.admin.create({
+          data: {
+            username: input.phone,
+            phone: input.phone,
+            passwordHash,
+            passwordEnc,
+            isPlatformAdmin: false,
+          },
+        });
 
     await tx.brandMember.create({
       data: {

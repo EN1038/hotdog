@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MerchantAuthShell } from "@/components/MerchantAuthShell";
 import { OtpDigitInput, OTP_DIGIT_LENGTH } from "@/components/OtpDigitInput";
 import {
+  AuthAdminContact,
   AuthFooterLink,
   AuthHintBanner,
   AuthOwnerLoginHint,
@@ -324,11 +325,17 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
       </form>
 
       {mode === "owner" ? (
-        <AuthFooterLink
-          prompt="ยังไม่มีบัญชี?"
-          href="/owner/register"
-          linkLabel="สมัครเป็นร้านค้า"
-        />
+        <>
+          <AuthFooterLink
+            prompt="ยังไม่มีบัญชี?"
+            href="/owner/register"
+            linkLabel="สมัครเป็นร้านค้า"
+          />
+          <AuthAdminContact
+            prompt="ลืมรหัสผ่าน หรือเข้าไม่ได้?"
+            className="mt-4"
+          />
+        </>
       ) : null}
     </MerchantAuthShell>
   );

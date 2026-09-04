@@ -14,6 +14,7 @@ import {
   effectiveBrandStatus,
   isBrandStorefrontOpen,
 } from "./brand-plan-shared";
+import { liveBrandIdsFromMemberships } from "./owner-register-phone";
 
 export const SESSION_COOKIE_NAME = "skillsale_session";
 
@@ -171,7 +172,14 @@ export async function requireAdmin() {
   // Always refresh role/membership from DB (JWT may predate multi-brand fields)
   const admin = await prisma.admin.findUnique({
     where: { id: session.adminId },
-    include: { brandMembers: { select: { brandId: true } } },
+    include: {
+      brandMembers: {
+        select: {
+          brandId: true,
+          brand: { select: { status: true } },
+        },
+      },
+    },
   });
   if (!admin) {
     throw new Error("UNAUTHORIZED");
@@ -181,7 +189,7 @@ export async function requireAdmin() {
     ...session,
     username: admin.username,
     isPlatformAdmin: admin.isPlatformAdmin,
-    brandIds: admin.brandMembers.map((m) => m.brandId),
+    brandIds: liveBrandIdsFromMemberships(admin.brandMembers),
   };
   await renewSessionCookieIfNeeded(next, verified?.exp ?? null);
 

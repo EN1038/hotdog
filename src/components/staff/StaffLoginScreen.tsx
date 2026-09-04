@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MerchantAuthShell } from "@/components/MerchantAuthShell";
 import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 import {
+  AuthAdminContact,
   AuthBranchOption,
   AuthHintBanner,
   AuthOtpMetaRow,
@@ -384,6 +385,9 @@ export function StaffLoginScreen() {
             </RegisterPrimaryButton>
           </form>
         )}
+        {!branches && !otpStep ? (
+          <AuthAdminContact prompt="เข้าไม่ได้ หรือยังไม่มีเบอร์ในระบบ?" />
+        ) : null}
       </MerchantAuthShell>
       {notice ? (
         <StaffLoginNotice

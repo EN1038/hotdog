@@ -10,6 +10,9 @@ export const OTP_PURPOSES = [
 ] as const;
 export type OtpPurpose = (typeof OTP_PURPOSES)[number];
 
+/** How long a consumed OTP may still authorize owner registration finish. */
+export const REGISTER_OTP_PROOF_TTL_MS = 30 * 60_000;
+
 export type ConsumeOtpResult =
   | { ok: true; pendingName: string | null }
   | { ok: false; message: string; status: number };
@@ -56,6 +59,46 @@ export async function consumeOtpChallenge(opts: {
     where: { id: challenge.id },
     data: { consumedAt: new Date() },
   });
+
+  return { ok: true, pendingName: challenge.pendingName };
+}
+
+/**
+ * Confirm an OTP was already verified (consumed) recently — used after the
+ * wizard verifies at the OTP step, then finishes registration later.
+ */
+export async function assertRecentlyConsumedOtpChallenge(opts: {
+  phone: string;
+  challengeId: string;
+  purpose: OtpPurpose;
+  maxAgeMs?: number;
+}): Promise<ConsumeOtpResult> {
+  const maxAgeMs = opts.maxAgeMs ?? REGISTER_OTP_PROOF_TTL_MS;
+  const challenge = await prisma.customerOtpChallenge.findUnique({
+    where: { id: opts.challengeId },
+  });
+
+  if (
+    !challenge ||
+    challenge.phone !== opts.phone ||
+    challenge.purpose !== opts.purpose
+  ) {
+    return { ok: false, message: "ไม่พบคำขอรหัส OTP", status: 400 };
+  }
+  if (!challenge.consumedAt) {
+    return {
+      ok: false,
+      message: "กรุณายืนยันรหัส OTP ก่อน",
+      status: 400,
+    };
+  }
+  if (challenge.consumedAt.getTime() + maxAgeMs < Date.now()) {
+    return {
+      ok: false,
+      message: "รหัสหมดอายุ กรุณาขอรหัสใหม่",
+      status: 400,
+    };
+  }
 
   return { ok: true, pendingName: challenge.pendingName };
 }

@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { jsonOk } from "@/lib/api";
+import { liveBrandIdsFromMemberships } from "@/lib/owner-register-phone";
 
 export async function GET() {
   const session = await getSession();
@@ -11,7 +12,14 @@ export async function GET() {
   // Refresh membership flags so role changes apply without re-login delay issues
   const admin = await prisma.admin.findUnique({
     where: { id: session.adminId },
-    include: { brandMembers: { select: { brandId: true } } },
+    include: {
+      brandMembers: {
+        select: {
+          brandId: true,
+          brand: { select: { status: true } },
+        },
+      },
+    },
   });
   if (!admin) {
     return jsonOk({ session: null });
@@ -21,7 +29,7 @@ export async function GET() {
     session: {
       ...session,
       isPlatformAdmin: admin.isPlatformAdmin,
-      brandIds: admin.brandMembers.map((m) => m.brandId),
+      brandIds: liveBrandIdsFromMemberships(admin.brandMembers),
     },
   });
 }

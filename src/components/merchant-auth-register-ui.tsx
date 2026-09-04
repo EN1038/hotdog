@@ -159,30 +159,11 @@ export function LoginMethodSelector({
   );
 }
 
-export function AuthLineContactLink({
-  children = "ติดต่อแอดมิน",
-}: {
-  children?: ReactNode;
-}) {
-  return (
-    <a
-      href={PLATFORM_LINE_ADD_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 font-bold text-[#06C755] underline decoration-[#06C755]/40 underline-offset-2 transition-opacity hover:opacity-80"
-    >
-      <IconLine className="h-4 w-4 shrink-0" />
-      {children}
-    </a>
-  );
-}
-
 export function AuthOwnerLoginHint() {
   return (
     <AuthHintBanner>
       <p>
-        แนะนำเข้าด้วย OTP ถ้าต้องการเข้าด้วยรหัสผ่านให้{" "}
-        <AuthLineContactLink />
+        แนะนำเข้าด้วย OTP — ใช้รหัสผ่านได้หลังตั้งค่ากับแอดมินแล้ว
       </p>
     </AuthHintBanner>
   );
@@ -442,6 +423,34 @@ export function AuthFooterLink({
         {linkLabel}
       </Link>
     </p>
+  );
+}
+
+/** ช่องทางติดต่อแอดมิน SkillSale บนหน้า login พนักงาน / เจ้าของร้าน */
+export function AuthAdminContact({
+  prompt = "มีปัญหาเข้าสู่ระบบ?",
+  className = "mt-8",
+}: {
+  prompt?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 ${className}`}
+    >
+      <p className="text-center text-[14px] leading-relaxed text-slate-600">
+        {prompt}
+      </p>
+      <a
+        href={PLATFORM_LINE_ADD_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#06C755] px-4 py-2.5 text-[15px] font-extrabold text-white shadow-sm transition-all hover:brightness-105 active:brightness-95"
+      >
+        <IconLine className="h-5 w-5 shrink-0" />
+        ติดต่อแอดมินทาง LINE
+      </a>
+    </div>
   );
 }
 

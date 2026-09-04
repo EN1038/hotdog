@@ -446,7 +446,7 @@ function OwnerHomeInner() {
   const today = bangkokDateKey();
   const initialView = readOwnerViewRangeParams(searchParams, today);
   const [linkOpen, setLinkOpen] = useState(false);
-  const [homeTab, setHomeTab] = useState<OwnerHomeTab>("sell");
+  const [homeTab, setHomeTab] = useState<OwnerHomeTab>("overview");
   const [datePreset, setDatePreset] = useState<MobileDatePresetId | null>(
     initialView.hasRange
       ? (matchMobileDatePreset(
@@ -494,6 +494,16 @@ function OwnerHomeInner() {
       }
       return;
     }
+    if (tabParam === "overview" || tabParam === "stock") {
+      setHomeTab(tabParam);
+      homeTabReady.current = true;
+      try {
+        window.sessionStorage.setItem(OWNER_HOME_TAB_KEY, tabParam);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (initialView.branchId) {
       setHomeTab("overview");
       homeTabReady.current = true;
@@ -505,10 +515,15 @@ function OwnerHomeInner() {
       homeTabReady.current = true;
       return;
     }
+    // ค่าเริ่มต้นหลัง login / เปิดหน้าแรก — ภาพรวมเสมอ (สาขาเดียวหรือหลายสาขา)
     if (!loading && data) {
-      const multi = ownerLiveBranches(data.branches ?? []).length > 1;
-      setHomeTab(multi ? "overview" : "sell");
+      setHomeTab("overview");
       homeTabReady.current = true;
+      try {
+        window.sessionStorage.setItem(OWNER_HOME_TAB_KEY, "overview");
+      } catch {
+        /* ignore */
+      }
     }
   }, [loading, data, initialView.branchId, searchParams]);
 

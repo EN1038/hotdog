@@ -105,6 +105,11 @@ export function LoginForm({ type, title, redirectTo }: LoginFormProps) {
 
 export async function logout(redirectTo = "/") {
   clearStaffBrand();
+  try {
+    window.sessionStorage.removeItem("skillsale_owner_home_tab_v2");
+  } catch {
+    /* ignore */
+  }
   await fetch("/api/auth/logout", { method: "POST" });
   window.location.href = redirectTo;
 }

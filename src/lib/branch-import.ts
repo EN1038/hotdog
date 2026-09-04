@@ -30,14 +30,12 @@ function nonMenuKey(stockType: string, name: string) {
   return `${stockType}::${name.trim()}`;
 }
 
-/** Prefer itemCode; else name within category (case-insensitive). */
+/** Name within category — itemCode often differs after re-import / code assign. */
 function menuImportDedupeKey(item: {
   itemCode?: string | null;
   name: string;
   categoryId?: string | null;
 }): string {
-  const code = item.itemCode?.trim();
-  if (code) return `code:${code}`;
   return `name:${item.categoryId ?? ""}:${item.name.trim().toLocaleLowerCase("th")}`;
 }
 

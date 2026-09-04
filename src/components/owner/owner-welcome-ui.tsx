@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PlatformMark } from "@/components/PlatformMark";
-import { IconBag, IconChevronRight } from "@/components/icons";
+import { IconChevronRight } from "@/components/icons";
 import {
   OWNER_REGISTER_HEADER_BG,
   OWNER_REGISTER_TRIAL_ICON,
@@ -403,18 +403,11 @@ export function OwnerWelcomeContent({
             >
               สิ่งที่พร้อมแล้ว
             </p>
-            <ul className="relative z-[1] mt-3 space-y-2 pr-14 sm:pr-16">
+            <ul className="relative z-[1] mt-3 space-y-2">
               {readyItems.map((item) => (
                 <WelcomeReadyRow key={item.id}>{item.label}</WelcomeReadyRow>
               ))}
             </ul>
-            <div
-              className="pointer-events-none absolute bottom-3 right-3 flex h-14 w-14 items-center justify-center rounded-2xl opacity-90"
-              style={{ backgroundColor: W.soft }}
-              aria-hidden
-            >
-              <IconBag size={28} style={{ color: W.mid }} />
-            </div>
           </section>
 
           <section className="mt-4 rounded-[1.35rem] bg-white p-4 shadow-[0_4px_24px_-10px_rgba(15,23,42,0.1)] ring-1 ring-slate-100">

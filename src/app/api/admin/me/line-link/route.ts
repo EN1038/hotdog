@@ -11,6 +11,7 @@ async function getSelfAdmin(adminId: string) {
     select: {
       id: true,
       username: true,
+      isPlatformAdmin: true,
       lineUserId: true,
       lineNotifyEnabled: true,
       lineNotifyDailySummary: true,
@@ -70,9 +71,9 @@ export async function POST() {
 
     const admin = await getSelfAdmin(session.adminId);
     if (!admin) return jsonError("ไม่พบผู้ใช้", 404);
-    if (admin.brandMembers.length === 0) {
+    if (!admin.isPlatformAdmin) {
       return jsonError(
-        "ต้องเป็นเจ้าของหรือผู้จัดการแบรนด์จึงจะเชื่อม LINE สำหรับสรุปรอบขายได้",
+        "ต้องเป็นแอดมินแพลตฟอร์มจึงจะเชื่อม LINE หลังบ้านได้",
         403,
       );
     }

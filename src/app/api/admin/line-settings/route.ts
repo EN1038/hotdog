@@ -7,7 +7,6 @@ import {
   getLineSettingsPublic,
   linePushText,
 } from "@/lib/line";
-import { runLineDailySummaries } from "@/lib/line-daily-summary";
 import {
   deployLineRichMenus,
   linkAdminRichMenuToAllLinkedAdmins,
@@ -19,7 +18,10 @@ const patchSchema = z.object({
   clearAccessToken: z.boolean().optional(),
   clearChannelSecret: z.boolean().optional(),
   messagingEnabled: z.boolean().optional(),
+  notifyOwnerRegistration: z.boolean().optional(),
+  /** @deprecated ignored — platform OA no longer notifies staff orders */
   notifyStaffOnNewOrder: z.boolean().optional(),
+  /** @deprecated ignored — platform OA no longer sends brand daily summary */
   notifyBrandDailySummary: z.boolean().optional(),
 });
 
@@ -28,11 +30,6 @@ const testSchema = z.object({
   adminId: z.string().min(1).optional(),
   lineUserId: z.string().min(1).optional(),
   message: z.string().trim().min(1).max(500).optional(),
-  /** Send closed-day (or date) summary to brand owners */
-  dailySummary: z.boolean().optional(),
-  branchId: z.string().min(1).optional(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  force: z.boolean().optional(),
   /** Create/upload admin rich menu and link to all linked admins */
   deployRichMenu: z.boolean().optional(),
   /** Re-link existing rich menu to all linked admins */
@@ -57,8 +54,7 @@ export async function PATCH(request: Request) {
       lineChannelAccessToken?: string | null;
       lineChannelSecret?: string | null;
       lineMessagingEnabled?: boolean;
-      lineNotifyStaffOnNewOrder?: boolean;
-      lineNotifyBrandDailySummary?: boolean;
+      lineNotifyOwnerRegistration?: boolean;
     } = {};
 
     if (body.clearAccessToken) {
@@ -78,11 +74,8 @@ export async function PATCH(request: Request) {
     if (body.messagingEnabled !== undefined) {
       data.lineMessagingEnabled = body.messagingEnabled;
     }
-    if (body.notifyStaffOnNewOrder !== undefined) {
-      data.lineNotifyStaffOnNewOrder = body.notifyStaffOnNewOrder;
-    }
-    if (body.notifyBrandDailySummary !== undefined) {
-      data.lineNotifyBrandDailySummary = body.notifyBrandDailySummary;
+    if (body.notifyOwnerRegistration !== undefined) {
+      data.lineNotifyOwnerRegistration = body.notifyOwnerRegistration;
     }
 
     if (Object.keys(data).length === 0) {
@@ -146,15 +139,6 @@ export async function POST(request: Request) {
     if (body.linkRichMenu) {
       const result = await linkAdminRichMenuToAllLinkedAdmins();
       return jsonOk({ ok: true, richMenuLink: result });
-    }
-
-    if (body.dailySummary) {
-      const result = await runLineDailySummaries({
-        branchId: body.branchId,
-        operatingDay: body.date,
-        force: body.force ?? true,
-      });
-      return jsonOk({ ok: true, dailySummary: result });
     }
 
     let lineUserId = body.lineUserId?.trim() || "";

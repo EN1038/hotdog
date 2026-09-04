@@ -175,6 +175,39 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         }
       }
       try {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${schema}"."SiteSettings" ADD COLUMN IF NOT EXISTS "lineNotifyOwnerRegistration" BOOLEAN NOT NULL DEFAULT true`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error(
+            "[schema-compat] SiteSettings lineNotifyOwnerRegistration",
+            msg,
+          );
+        }
+      }
+      try {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "${schema}"."PlatformLineUser" (
+            "id" TEXT NOT NULL,
+            "lineUserId" TEXT NOT NULL,
+            "unlockedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL,
+            CONSTRAINT "PlatformLineUser_pkey" PRIMARY KEY ("id")
+          )
+        `);
+        await prisma.$executeRawUnsafe(
+          `CREATE UNIQUE INDEX IF NOT EXISTS "PlatformLineUser_lineUserId_key" ON "${schema}"."PlatformLineUser"("lineUserId")`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/already exists|duplicate/i.test(msg)) {
+          console.error("[schema-compat] PlatformLineUser", msg);
+        }
+      }
+      try {
         await prisma.$executeRawUnsafe(`
           CREATE TABLE IF NOT EXISTS "${schema}"."BrandPlanConfig" (
             "id" TEXT NOT NULL,

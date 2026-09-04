@@ -28,23 +28,31 @@ async function setNotify(
   admin: LinkedAdmin,
   enabled: boolean,
 ): Promise<LineReplyPayload> {
-  await prisma.admin.update({
-    where: { id: admin.id },
-    data: {
-      lineNotifyEnabled: enabled,
-      lineNotifyDailySummary: enabled,
+  if (!admin.isPlatformAdmin) {
+    return {
+      text: "เปิด/ปิดแจ้งเตือนสมัคร Owner ได้เฉพาะแอดมินแพลตฟอร์ม\nตั้งค่าได้ที่ /admin/line",
+    };
+  }
+
+  await prisma.siteSettings.upsert({
+    where: { id: "default" },
+    update: { lineNotifyOwnerRegistration: enabled },
+    create: {
+      id: "default",
+      lineNotifyOwnerRegistration: enabled,
     },
   });
+
   await logLineAdminActivity(admin, {
     action: enabled ? "line.notify.enable" : "line.notify.disable",
     summary: enabled
-      ? `เปิดแจ้งเตือน LINE (ผ่านแชท) — ${admin.username}`
-      : `ปิดแจ้งเตือน LINE (ผ่านแชท) — ${admin.username}`,
+      ? `เปิดแจ้งเตือนสมัคร Owner (ผ่านแชท) — ${admin.username}`
+      : `ปิดแจ้งเตือนสมัคร Owner (ผ่านแชท) — ${admin.username}`,
   });
   return {
     text: enabled
-      ? "เปิดรับแจ้งเตือน LINE แล้ว (สรุปรอบขาย)"
-      : "ปิดรับแจ้งเตือน LINE แล้ว",
+      ? "เปิดรับแจ้งเตือนเมื่อมีคนสมัคร Owner แล้ว"
+      : "ปิดรับแจ้งเตือนสมัคร Owner แล้ว",
   };
 }
 
@@ -114,32 +122,23 @@ async function exitAllModes(admin: LinkedAdmin): Promise<LineReplyPayload> {
 }
 
 async function infoReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
-  const full = await prisma.admin.findUnique({
-    where: { id: admin.id },
-    select: {
-      username: true,
-      isPlatformAdmin: true,
-      lineNotifyEnabled: true,
-      lineNotifyDailySummary: true,
-      lineDeleteModeExpiresAt: true,
-      lineEditModeExpiresAt: true,
-      brandMembers: {
-        where: { role: { in: ["OWNER", "MANAGER"] } },
-        select: {
-          role: true,
-          brand: { select: { name: true } },
-        },
+  const [full, settings] = await Promise.all([
+    prisma.admin.findUnique({
+      where: { id: admin.id },
+      select: {
+        username: true,
+        isPlatformAdmin: true,
+        lineDeleteModeExpiresAt: true,
+        lineEditModeExpiresAt: true,
       },
-    },
-  });
+    }),
+    prisma.siteSettings.findUnique({
+      where: { id: "default" },
+      select: { lineNotifyOwnerRegistration: true },
+    }),
+  ]);
 
-  const brands =
-    full?.brandMembers.map(
-      (m) => `${m.brand.name} (${m.role === "OWNER" ? "เจ้าของ" : "ผู้จัดการ"})`,
-    ) ?? [];
-  const notifyOn =
-    (full?.lineNotifyEnabled ?? admin.lineNotifyEnabled) ||
-    (full?.lineNotifyDailySummary ?? admin.lineNotifyDailySummary);
+  const notifyOn = settings?.lineNotifyOwnerRegistration ?? true;
   const deleteOn =
     Boolean(full?.lineDeleteModeExpiresAt) &&
     (full?.lineDeleteModeExpiresAt?.getTime() ?? 0) >= Date.now();
@@ -154,11 +153,10 @@ async function infoReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
 
   return {
     text: [
-      "ข้อมูลบัญชี LINE",
+      "ข้อมูลบัญชี LINE หลังบ้าน",
       `ผู้ใช้: ${full?.username ?? admin.username}`,
-      full?.isPlatformAdmin ? "บทบาท: แพลตฟอร์มแอดมิน" : null,
-      brands.length ? `แบรนด์: ${brands.join(", ")}` : "แบรนด์: —",
-      `แจ้งเตือน: ${notifyOn ? "เปิด" : "ปิด"}`,
+      full?.isPlatformAdmin ? "บทบาท: แพลตฟอร์มแอดมิน" : "บทบาท: —",
+      `แจ้งสมัคร Owner: ${notifyOn ? "เปิด" : "ปิด"}`,
       `โหมดลบ: ${deleteOn ? "เปิดอยู่" : "ปิด"}`,
       `โหมดแก้ไข: ${editOn ? "เปิดอยู่" : "ปิด"}`,
       "",
@@ -196,8 +194,12 @@ async function logoutReply(
   };
 }
 
-function helpReply(admin: LinkedAdmin): LineReplyPayload {
-  const notifyOn = admin.lineNotifyEnabled || admin.lineNotifyDailySummary;
+async function helpReply(admin: LinkedAdmin): Promise<LineReplyPayload> {
+  const settings = await prisma.siteSettings.findUnique({
+    where: { id: "default" },
+    select: { lineNotifyOwnerRegistration: true },
+  });
+  const notifyOn = settings?.lineNotifyOwnerRegistration ?? true;
   void logLineAdminActivity(admin, {
     action: "line.help",
     summary: `เปิดช่วยเหลือผ่าน LINE — ${admin.username}`,
@@ -206,7 +208,7 @@ function helpReply(admin: LinkedAdmin): LineReplyPayload {
     text: [
       LINE_ADMIN_HELP_TEXT,
       "",
-      `สถานะแจ้งเตือน: ${notifyOn ? "เปิด" : "ปิด"}`,
+      `สถานะแจ้งสมัคร Owner: ${notifyOn ? "เปิด" : "ปิด"}`,
       `โหมดลบ: ${
         admin.lineDeleteModeExpiresAt &&
         admin.lineDeleteModeExpiresAt.getTime() >= Date.now()
@@ -312,7 +314,7 @@ export async function tryHandleLineAdminPostback(
     payload === LINE_POSTBACK.HELP ||
     payload === "admin:help"
   ) {
-    return { handled: true, reply: helpReply(admin) };
+    return { handled: true, reply: await helpReply(admin) };
   }
 
   const editReply = await handleEditPostback(admin, payload);

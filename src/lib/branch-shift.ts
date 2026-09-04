@@ -532,9 +532,9 @@ export async function closeActiveShift(params: {
     } satisfies ActiveShift;
   });
 
-  // Summary/LINE must never fail the close (DB already committed).
-  // Awaiting external LINE or heavy stock summary used to 504 the gateway
-  // while the shop was already closed — staff saw "ปิดไม่สำเร็จ" and stuck UI.
+  // Summary must never fail the close (DB already committed).
+  // Heavy stock summary used to 504 the gateway while the shop was already
+  // closed — staff saw "ปิดไม่สำเร็จ" and stuck UI.
   let summary: ShiftSummary;
   try {
     summary = await buildShiftSummary(closed.id);
@@ -546,18 +546,6 @@ export async function closeActiveShift(params: {
     );
     summary = fallbackShiftSummary(closed);
   }
-
-  void import("@/lib/line-shift-summary")
-    .then(({ sendShiftCloseLineSummary }) =>
-      sendShiftCloseLineSummary(summary),
-    )
-    .catch((e) => {
-      console.error(
-        "[branch-shift] LINE shift summary failed",
-        closed.id,
-        e instanceof Error ? e.message : e,
-      );
-    });
 
   return { shift: closed, summary };
 }

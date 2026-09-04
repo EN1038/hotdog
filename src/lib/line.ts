@@ -1,10 +1,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { StaffRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { normalizePhone, formatPrice } from "@/lib/constants";
-import { appAbsoluteUrl, appAbsoluteUrlOrNull } from "@/lib/app-url";
+import { normalizePhone } from "@/lib/constants";
+import { appAbsoluteUrl } from "@/lib/app-url";
 import type { LineSettingsPublic } from "@/lib/line-settings-types";
-import { orderGrandTotal } from "@/lib/order-totals";
 
 export type { LineSettingsPublic } from "@/lib/line-settings-types";
 
@@ -24,8 +22,7 @@ export async function getLineSettingsPublic(): Promise<LineSettingsPublic> {
       lineChannelAccessToken: true,
       lineChannelSecret: true,
       lineMessagingEnabled: true,
-      lineNotifyStaffOnNewOrder: true,
-      lineNotifyBrandDailySummary: true,
+      lineNotifyOwnerRegistration: true,
       lineAdminRichMenuId: true,
       lineGuestRichMenuId: true,
     },
@@ -49,20 +46,24 @@ export async function getLineSettingsPublic(): Promise<LineSettingsPublic> {
 
   const hasAccessToken = accessTokenSource !== "none";
   const hasChannelSecret = channelSecretSource !== "none";
-  const [linkedStaffCount, linkedAdminCount] = await Promise.all([
-    prisma.staff.count({
-      where: { lineUserId: { not: null } },
-    }),
-    prisma.admin.count({
-      where: { lineUserId: { not: null } },
-    }),
-  ]);
+  const [linkedStaffCount, linkedAdminCount, unlockedLineUserCount] =
+    await Promise.all([
+      prisma.staff.count({
+        where: { lineUserId: { not: null } },
+      }),
+      prisma.admin.count({
+        where: { lineUserId: { not: null } },
+      }),
+      prisma.platformLineUser.count().catch(() => 0),
+    ]);
 
   return {
     configured: hasAccessToken && hasChannelSecret,
     messagingEnabled: row?.lineMessagingEnabled ?? false,
-    notifyStaffOnNewOrder: row?.lineNotifyStaffOnNewOrder ?? true,
-    notifyBrandDailySummary: row?.lineNotifyBrandDailySummary ?? true,
+    notifyStaffOnNewOrder: false,
+    notifyBrandDailySummary: false,
+    notifyOwnerRegistration: row?.lineNotifyOwnerRegistration ?? true,
+    unlockedLineUserCount,
     hasAccessToken,
     hasChannelSecret,
     accessTokenSource,
@@ -307,7 +308,7 @@ export async function tryLinkAdminByLinkCodeMessage(
     return {
       linked: false,
       reply:
-        "เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักในแชทนี้\nพนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678",
+        "ส่งรหัส 6 หลักจาก /admin/line-connect เพื่อเชื่อมสิทธิ์แก้ไข-ลบออเดอร์",
     };
   }
 
@@ -336,10 +337,7 @@ export async function tryLinkAdminByLinkCodeMessage(
     };
   }
 
-  const brandRoles = admin.brandMembers.filter(
-    (m) => m.role === "OWNER" || m.role === "MANAGER",
-  );
-  if (brandRoles.length === 0) {
+  if (!admin.isPlatformAdmin) {
     await prisma.admin.update({
       where: { id: admin.id },
       data: { lineLinkCode: null, lineLinkCodeExpiresAt: null },
@@ -347,7 +345,7 @@ export async function tryLinkAdminByLinkCodeMessage(
     return {
       linked: false,
       reply:
-        "บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงผูกเพื่อรับสรุปรอบขายไม่ได้",
+        "บัญชีนี้ไม่มีสิทธิ์เชื่อม LINE หลังบ้าน (ต้องเป็นแอดมินแพลตฟอร์ม)",
     };
   }
 
@@ -375,26 +373,17 @@ export async function tryLinkAdminByLinkCodeMessage(
     );
   }
 
-  const brandNames = brandRoles.map((m) => m.brand.name).filter(Boolean);
-  const brandLine =
-    brandNames.slice(0, 3).join(", ") +
-    (brandNames.length > 3 ? ` และอีก ${brandNames.length - 3}` : "");
-
   const { logLineAdminActivity } = await import("@/lib/line-activity");
   await logLineAdminActivity(
     {
       id: admin.id,
       username: admin.username,
-      isPlatformAdmin: admin.isPlatformAdmin,
-      brandMembers: brandRoles.map((m) => ({
-        role: m.role,
-        brandId: m.brandId,
-        brand: m.brand,
-      })),
+      isPlatformAdmin: true,
+      brandMembers: [],
     },
     {
       action: "line.link",
-      summary: `เชื่อม LINE สำเร็จ — ${admin.username} · ${brandLine}`,
+      summary: `เชื่อม LINE สำเร็จ — ${admin.username} · แอดมินแพลตฟอร์ม`,
       metadata: { source: "line_chat_code" },
     },
   );
@@ -403,9 +392,8 @@ export async function tryLinkAdminByLinkCodeMessage(
     linked: true,
     reply: [
       "เชื่อมต่อแอดมินสำเร็จ",
-      `${admin.username} · ${brandLine}`,
-      "จะได้รับสรุปรอบขายของสาขาทาง LINE",
-      "ใช้เมนูล่าง: เปิด/ปิดแจ้งเตือน · โหมดลบ · ช่วยเหลือ",
+      `${admin.username} · แอดมินแพลตฟอร์ม`,
+      "ใช้เมนูล่าง: โหมดลบ · โหมดแก้ไข · ช่วยเหลือ",
       "หรือพิมพ์ เช่น ลบ A1048 แล้วกดยืนยัน",
     ].join("\n"),
   };
@@ -426,7 +414,7 @@ export async function tryLinkLineAccountFromMessage(
 }
 
 export const LINE_FOLLOW_REPLY =
-  "ยินดีต้อนรับ\n• พนักงาน: ส่งเบอร์โทรในระบบ เช่น 0812345678\n• เจ้าของแบรนด์: เข้าแอดมิน → เชื่อม LINE แล้วส่งรหัส 6 หลักมาที่นี่\n• แอดมิน: ใช้เมนูล่าง หรือพิมพ์ ลบ A1048";
+  "ระบบ SkillSale POS หลังบ้าน\nโปรดบอกรหัสผ่าน";
 
 export const ADMIN_LINE_LINK_CODE_TTL_MS = 10 * 60 * 1000;
 
@@ -441,153 +429,7 @@ export type NewOrderNotifyInput = {
   status: string;
 };
 
-function formatNewOrderNotifyText(input: {
-  orderNumber: string;
-  queueNumber: number | null;
-  branchName: string;
-  fulfillmentType: string;
-  customerName: string;
-  customerPhone: string;
-  addressLine: string | null;
-  note: string | null;
-  items: Array<{ name: string; quantity: number; optionsText: string | null }>;
-  total: number;
-  staffUrl: string | null;
-}): string {
-  const fulfillment =
-    input.fulfillmentType === "PICKUP" ? "รับที่ร้าน" : "จัดส่ง";
-  const customer =
-    input.customerName.trim() ||
-    (input.customerPhone ? `ลูกค้า ${input.customerPhone}` : "ลูกค้า");
-
-  const itemLines =
-    input.items.length === 0
-      ? ["· (ไม่มีรายการ)"]
-      : input.items.map((it) => {
-          const opts = it.optionsText?.trim();
-          return opts
-            ? `· ${it.name} ×${it.quantity} (${opts})`
-            : `· ${it.name} ×${it.quantity}`;
-        });
-
-  const lines = [
-    "ออเดอร์ใหม่",
-    input.queueNumber != null
-      ? `คิว ${input.queueNumber} · #${input.orderNumber}`
-      : `#${input.orderNumber}`,
-    input.branchName,
-    "",
-    fulfillment,
-    `ลูกค้า: ${customer}`,
-    input.customerPhone ? `โทร: ${input.customerPhone}` : null,
-    input.addressLine ? `ที่อยู่: ${input.addressLine}` : null,
-    input.note ? `หมายเหตุ: ${input.note}` : null,
-    "",
-    "รายการ:",
-    ...itemLines,
-    "",
-    `รวม ฿${formatPrice(input.total)}`,
-    input.staffUrl ? `\nเปิดดู: ${input.staffUrl}` : null,
-  ];
-
-  return lines.filter((l) => l !== null).join("\n");
-}
-
-/** Fire-and-forget safe: never throws to callers. */
-export async function notifyStaffNewOrder(order: NewOrderNotifyInput) {
-  try {
-    if (!(await isLineMessagingReady())) return;
-
-    const settings = await prisma.siteSettings.findUnique({
-      where: { id: "default" },
-      select: { lineNotifyStaffOnNewOrder: true },
-    });
-    if (!settings?.lineNotifyStaffOnNewOrder) return;
-
-    const staff = await prisma.staff.findMany({
-      where: {
-        branchId: order.branchId,
-        isActive: true,
-        lineNotifyEnabled: true,
-        lineUserId: { not: null },
-        roles: { some: { role: StaffRole.SELLER } },
-      },
-      select: { lineUserId: true },
-    });
-    if (staff.length === 0) return;
-
-    const full = await prisma.order.findUnique({
-      where: { id: order.id },
-      select: {
-        orderNumber: true,
-        queueNumber: true,
-        fulfillmentType: true,
-        customerName: true,
-        customerPhone: true,
-        addressDetail: true,
-        note: true,
-        deliveryFee: true,
-        discountAmount: true,
-        branch: { select: { name: true } },
-        deliveryLocation: { select: { name: true, address: true } },
-        items: {
-          select: {
-            itemName: true,
-            quantity: true,
-            unitPrice: true,
-            optionsPrice: true,
-            optionsText: true,
-          },
-        },
-      },
-    });
-    if (!full) return;
-
-    const total = orderGrandTotal(
-      full.items.map((it) => ({
-        quantity: it.quantity,
-        unitPrice: Number(it.unitPrice),
-        optionsPrice: Number(it.optionsPrice),
-      })),
-      Number(full.deliveryFee),
-      Number(full.discountAmount),
-    );
-
-    let addressLine: string | null = null;
-    if (full.fulfillmentType === "DELIVERY") {
-      const parts = [
-        full.deliveryLocation?.name,
-        full.deliveryLocation?.address,
-        full.addressDetail?.trim(),
-      ].filter(Boolean);
-      addressLine = parts.length ? parts.join(" · ") : null;
-    }
-
-    const staffUrl = appAbsoluteUrlOrNull("/staff");
-    const text = formatNewOrderNotifyText({
-      orderNumber: full.orderNumber,
-      queueNumber: full.queueNumber,
-      branchName: full.branch.name,
-      fulfillmentType: full.fulfillmentType,
-      customerName: full.customerName,
-      customerPhone: full.customerPhone,
-      addressLine,
-      note: full.note,
-      items: full.items.map((it) => ({
-        name: it.itemName,
-        quantity: it.quantity,
-        optionsText: it.optionsText,
-      })),
-      total,
-      staffUrl,
-    });
-
-    await Promise.allSettled(
-      staff.map((s) =>
-        s.lineUserId ? linePushText(s.lineUserId, text) : Promise.resolve(),
-      ),
-    );
-  } catch (error) {
-    console.error("[line] notifyStaffNewOrder failed", error);
-  }
+/** @deprecated Platform OA no longer notifies staff on new orders. */
+export async function notifyStaffNewOrder(_order: NewOrderNotifyInput) {
+  return;
 }

@@ -25,11 +25,9 @@ import {
   isChannelSellEnabled,
   resolveSellPrice,
 } from "@/lib/menu-pricing";
-import { notifyStaffNewOrder } from "@/lib/line";
 import {
   notifyBranchSmsNewOrder,
 } from "@/lib/brand-alert-sms";
-import { notifyBrandOwnersNewOrder } from "@/lib/brand-line-notify";
 import { orderGrandTotal } from "@/lib/order-totals";
 import { createOrderWithDailyQueue } from "@/lib/order-queue";
 import {
@@ -440,17 +438,6 @@ export async function POST(request: Request) {
       }
     }
 
-    void notifyStaffNewOrder({
-      id: order.id,
-      orderNumber: order.orderNumber,
-      queueNumber: order.queueNumber,
-      branchId: order.branchId,
-      fulfillmentType: order.fulfillmentType,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      status: order.status,
-    });
-
     const brandId = branch.brandId;
     if (brandId) {
       const totalBaht = orderGrandTotal(
@@ -470,7 +457,6 @@ export async function POST(request: Request) {
         customerName: order.customerName,
         totalBaht,
       });
-      void notifyBrandOwnersNewOrder(order.id);
     }
 
     return jsonOk(order, 201);

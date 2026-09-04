@@ -375,10 +375,12 @@ model SiteSettings {
   lineChannelSecret           String?
   /// Master switch for outbound LINE notifications
   lineMessagingEnabled        Boolean  @default(false)
-  /// Notify linked branch staff when a new order arrives
+  /// Notify linked branch staff when a new order arrives (legacy; unused for platform OA)
   lineNotifyStaffOnNewOrder   Boolean  @default(true)
-  /// Notify linked brand owners/managers with daily cutoff summary
+  /// Notify linked brand owners/managers with daily cutoff summary (legacy)
   lineNotifyBrandDailySummary Boolean  @default(true)
+  /// Notify unlocked platform LINE users when a new owner self-registers
+  lineNotifyOwnerRegistration Boolean  @default(true)
   /// LINE rich menu id for linked brand admins (Messaging API)
   lineAdminRichMenuId         String?
   /// Default rich menu for guests (login / help) before admin link
@@ -386,6 +388,18 @@ model SiteSettings {
   /// Default trial length for new self-register / trial brands (days)
   defaultTrialDays            Int      @default(7)
   updatedAt                   DateTime @updatedAt
+}
+
+/**
+ * LINE OA friends who unlocked SkillSale platform backend via chat password.
+ * Used for ops alerts (e.g. new owner registration) — not brand staff roles.
+ */
+model PlatformLineUser {
+  id         String   @id @default(cuid())
+  lineUserId String   @unique
+  unlockedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 /**

@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
 import {
   getLineCredentials,
-  LINE_FOLLOW_REPLY,
   lineReplyText,
-  tryLinkLineAccountFromMessage,
+  tryLinkAdminByLinkCodeMessage,
   verifyLineWebhookSignature,
 } from "@/lib/line";
 import { tryHandleLineAdminPostback } from "@/lib/line-admin-menu";
 import { tryHandleLineOrderDelete } from "@/lib/line-order-delete";
 import { tryHandleLineOrderEdit } from "@/lib/line-order-edit";
+import {
+  PLATFORM_LINE_PASSWORD_PROMPT,
+  isPlatformLineUnlocked,
+  tryHandlePlatformLineUnlock,
+} from "@/lib/line-platform-auth";
 import type { LineReplyPayload } from "@/lib/line-postback";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 export const runtime = "nodejs";
 
@@ -32,11 +37,12 @@ async function replyPayload(replyToken: string, payload: LineReplyPayload) {
 }
 
 /**
- * LINE Messaging API webhook.
- * Staff link by phone; brand admins link by 6-digit code.
- * Linked admins: rich menu postbacks + hard-delete confirm flow.
+ * LINE Messaging API webhook — SkillSale platform backend OA.
+ * Password gate unlocks ops functions; edit/delete still need platform admin link.
  */
 export async function POST(request: Request) {
+  await ensureProdSchemaCompat().catch(() => null);
+
   const rawBody = await request.text();
   const creds = await getLineCredentials();
   if (!creds) {
@@ -61,11 +67,17 @@ export async function POST(request: Request) {
     if (!userId) continue;
 
     if (event.type === "follow" && event.replyToken) {
-      await lineReplyText(event.replyToken, LINE_FOLLOW_REPLY);
+      await lineReplyText(event.replyToken, PLATFORM_LINE_PASSWORD_PROMPT);
       continue;
     }
 
+    const unlocked = await isPlatformLineUnlocked(userId);
+
     if (event.type === "postback" && event.replyToken && event.postback?.data) {
+      if (!unlocked) {
+        await lineReplyText(event.replyToken, PLATFORM_LINE_PASSWORD_PROMPT);
+        continue;
+      }
       const result = await tryHandleLineAdminPostback(
         userId,
         event.postback.data,
@@ -82,6 +94,20 @@ export async function POST(request: Request) {
       event.message.text &&
       event.replyToken
     ) {
+      const unlock = await tryHandlePlatformLineUnlock(
+        userId,
+        event.message.text,
+      );
+      if (unlock.handled) {
+        await lineReplyText(event.replyToken, unlock.reply);
+        continue;
+      }
+
+      if (!unlocked) {
+        await lineReplyText(event.replyToken, PLATFORM_LINE_PASSWORD_PROMPT);
+        continue;
+      }
+
       const deleteResult = await tryHandleLineOrderDelete(
         userId,
         event.message.text,
@@ -111,11 +137,21 @@ export async function POST(request: Request) {
         }
       }
 
-      const { reply } = await tryLinkLineAccountFromMessage(
-        userId,
-        event.message.text,
+      // Platform admin link by 6-digit code (edit/delete identity)
+      const digits = event.message.text.replace(/\D/g, "");
+      if (digits.length === 6) {
+        const { reply } = await tryLinkAdminByLinkCodeMessage(
+          userId,
+          event.message.text,
+        );
+        await lineReplyText(event.replyToken, reply);
+        continue;
+      }
+
+      await lineReplyText(
+        event.replyToken,
+        "พิมพ์ ช่วยเหลือ เพื่อดูคำสั่ง\nหรือส่งรหัส 6 หลักจาก /admin/line-connect เพื่อเชื่อมสิทธิ์แก้ไข-ลบ",
       );
-      await lineReplyText(event.replyToken, reply);
     }
   }
 

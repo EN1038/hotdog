@@ -60,6 +60,10 @@ export default function AdminLineConnectPage() {
       router.replace("/admin/login");
       return;
     }
+    if (!session.isPlatformAdmin) {
+      router.replace("/admin");
+      return;
+    }
     void load();
   }, [session, sessionLoaded, router, load]);
 
@@ -132,7 +136,7 @@ export default function AdminLineConnectPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="เชื่อม LINE"
-        description="ผูกบัญชีแอดมินกับ LINE OA เพื่อรับสรุปรอบขายสาขา — ต้องล็อกอินและใช้รหัสครั้งเดียว"
+        description="ผูกแอดมินแพลตฟอร์มกับ LINE OA หลังบ้าน เพื่อแก้ไข/ลบออเดอร์ผ่านแชท"
       />
 
       <section className={`${adminCardClass} space-y-3`}>
@@ -146,79 +150,61 @@ export default function AdminLineConnectPage() {
             <strong>{status.linked ? "เชื่อมแล้ว" : "ยังไม่เชื่อม"}</strong>
           </li>
           <li>
-            สิทธิ์รับสรุปรอบขาย:{" "}
-            <strong>
-              {status.canReceiveDailySummary ? "ได้" : "ไม่ได้ (ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์)"}
-            </strong>
+            สิทธิ์: <strong>แอดมินแพลตฟอร์ม · แก้ไข/ลบออเดอร์</strong>
           </li>
-          {status.brands.length > 0 && (
-            <li>
-              แบรนด์:{" "}
-              {status.brands
-                .map(
-                  (b) =>
-                    `${b.name} (${b.role === "OWNER" ? "เจ้าของ" : "ผู้จัดการ"})`,
-                )
-                .join(", ")}
-            </li>
-          )}
         </ul>
       </section>
 
       <section className={`${adminCardClass} space-y-4`}>
         <h2 className="text-base font-semibold text-slate-900">วิธีเชื่อมต่อ</h2>
         <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+          <li>
+            แอดเพื่อน OA แล้วพิมพ์รหัสผ่านแชท{" "}
+            <code className="rounded bg-slate-100 px-1">อร่อยจังเลย</code>{" "}
+            ให้ปลดล็อกก่อน
+          </li>
           <li>กดสร้างรหัสด้านล่าง (ใช้ได้ 10 นาที)</li>
-          <li>เปิด LINE แล้วเพิ่มเพื่อน Official Account ของร้าน</li>
           <li>ส่งรหัส 6 หลักในแชท OA</li>
           <li>รอข้อความยืนยันการเชื่อมต่อ</li>
         </ol>
 
-        {!status.canReceiveDailySummary ? (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
-            บัญชีนี้ไม่ใช่เจ้าของ/ผู้จัดการแบรนด์ จึงสร้างรหัสเชื่อมสำหรับสรุปรอบขายไม่ได้
-          </p>
-        ) : (
-          <>
-            {code && remainingSec > 0 ? (
-              <div className="rounded-xl bg-slate-50 px-4 py-5 text-center ring-1 ring-slate-200">
-                <p className="text-xs font-medium text-slate-500">รหัสเชื่อมต่อ</p>
-                <p className="mt-1 font-mono text-4xl font-bold tracking-[0.2em] text-slate-900">
-                  {code}
-                </p>
-                <p className="mt-2 text-sm text-slate-600">
-                  หมดอายุใน {Math.floor(remainingSec / 60)}:
-                  {String(remainingSec % 60).padStart(2, "0")} นาที
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void copyCode()}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-white"
-                  >
-                    คัดลอกรหัส
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void issueCode()}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-white disabled:opacity-50"
-                  >
-                    สร้างรหัสใหม่
-                  </button>
-                </div>
-              </div>
-            ) : (
+        {code && remainingSec > 0 ? (
+          <div className="rounded-xl bg-slate-50 px-4 py-5 text-center ring-1 ring-slate-200">
+            <p className="text-xs font-medium text-slate-500">รหัสเชื่อมต่อ</p>
+            <p className="mt-1 font-mono text-4xl font-bold tracking-[0.2em] text-slate-900">
+              {code}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              หมดอายุใน {Math.floor(remainingSec / 60)}:
+              {String(remainingSec % 60).padStart(2, "0")} นาที
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copyCode()}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-white"
+              >
+                คัดลอกรหัส
+              </button>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void issueCode()}
-                className={btnPrimary}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-white disabled:opacity-50"
               >
-                {busy ? "กำลังสร้าง..." : "สร้างรหัสเชื่อม LINE"}
+                สร้างรหัสใหม่
               </button>
-            )}
-          </>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void issueCode()}
+            className={btnPrimary}
+          >
+            {busy ? "กำลังสร้าง..." : "สร้างรหัสเชื่อม LINE"}
+          </button>
         )}
       </section>
 

@@ -14,17 +14,9 @@ import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { useToast } from "@/components/admin/Toast";
 import type { LineSettingsPublic } from "@/lib/line-settings-types";
 
-type LinkedStaff = {
-  id: string;
-  name: string | null;
-  phone: string;
-  branchName: string;
-};
-
 type LinkedAdmin = {
   id: string;
   username: string;
-  lineNotifyDailySummary: boolean;
   brands: string[];
 };
 
@@ -36,22 +28,18 @@ export default function AdminLinePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [summaryTesting, setSummaryTesting] = useState(false);
   const [richMenuBusy, setRichMenuBusy] = useState(false);
   const [settings, setSettings] = useState<LineSettingsPublic | null>(null);
   const [token, setToken] = useState("");
   const [secret, setSecret] = useState("");
-  const [testStaffId, setTestStaffId] = useState("");
   const [testAdminId, setTestAdminId] = useState("");
-  const [linkedStaff, setLinkedStaff] = useState<LinkedStaff[]>([]);
   const [linkedAdmins, setLinkedAdmins] = useState<LinkedAdmin[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsRes, staffRes, adminRes] = await Promise.all([
+      const [settingsRes, adminRes] = await Promise.all([
         fetch("/api/admin/line-settings"),
-        fetch("/api/admin/line-settings/linked-staff"),
         fetch("/api/admin/line-settings/linked-admins"),
       ]);
       if (settingsRes.status === 403) {
@@ -61,10 +49,6 @@ export default function AdminLinePage() {
       if (!settingsRes.ok) throw new Error("โหลดไม่สำเร็จ");
       const data = (await settingsRes.json()) as LineSettingsPublic;
       setSettings(data);
-      if (staffRes.ok) {
-        const staffData = (await staffRes.json()) as { items: LinkedStaff[] };
-        setLinkedStaff(staffData.items ?? []);
-      }
       if (adminRes.ok) {
         const adminData = (await adminRes.json()) as { items: LinkedAdmin[] };
         setLinkedAdmins(adminData.items ?? []);
@@ -175,28 +159,6 @@ export default function AdminLinePage() {
     }
   }
 
-  async function sendTestStaff() {
-    if (!testStaffId) {
-      toast.error("เลือกพนักงานที่เชื่อม LINE แล้ว");
-      return;
-    }
-    setTesting(true);
-    try {
-      const res = await fetch("/api/admin/line-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId: testStaffId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "ส่งไม่สำเร็จ");
-      toast.success("ส่งข้อความทดสอบแล้ว");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "ส่งไม่สำเร็จ");
-    } finally {
-      setTesting(false);
-    }
-  }
-
   async function sendTestAdmin() {
     if (!testAdminId) {
       toast.error("เลือกแอดมินที่เชื่อม LINE แล้ว");
@@ -216,35 +178,6 @@ export default function AdminLinePage() {
       toast.error(err instanceof Error ? err.message : "ส่งไม่สำเร็จ");
     } finally {
       setTesting(false);
-    }
-  }
-
-  async function sendDailySummaryTest() {
-    setSummaryTesting(true);
-    try {
-      const res = await fetch("/api/admin/line-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dailySummary: true, force: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "ส่งไม่สำเร็จ");
-      const summary = data.dailySummary as
-        | { sent?: number; skipped?: number; errors?: string[] }
-        | undefined;
-      const sent = summary?.sent ?? 0;
-      const skipped = summary?.skipped ?? 0;
-      if (sent > 0) {
-        toast.success(`ส่งสรุปรอบขายแล้ว ${sent} สาขา`);
-      } else if (summary?.errors?.length) {
-        toast.error(summary.errors[0] ?? "ส่งไม่สำเร็จ");
-      } else {
-        toast.success(`ไม่มีสาขาที่ส่งได้ (ข้าม ${skipped})`);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "ส่งไม่สำเร็จ");
-    } finally {
-      setSummaryTesting(false);
     }
   }
 
@@ -298,7 +231,7 @@ export default function AdminLinePage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="LINE Official Account"
-        description="แจ้งออเดอร์ใหม่ให้พนักงาน และสรุปรอบขายให้เจ้าของแบรนด์"
+        description="OA หลังบ้าน SkillSale POS — รหัสผ่านแชท · แจ้งสมัคร Owner · แก้ไข/ลบออเดอร์"
       />
 
       <section className={`${adminCardClass} space-y-3`}>
@@ -320,8 +253,9 @@ export default function AdminLinePage() {
             </strong>
           </li>
           <li>
-            พนักงานที่เชื่อม LINE:{" "}
-            <strong>{settings.linkedStaffCount}</strong> คน · แอดมินแบรนด์:{" "}
+            เพื่อน OA ที่ปลดล็อกรหัสผ่าน:{" "}
+            <strong>{settings.unlockedLineUserCount}</strong> คน ·
+            แอดมินที่เชื่อมสิทธิ์แก้ไข-ลบ:{" "}
             <strong>{settings.linkedAdminCount}</strong> คน
           </li>
         </ul>
@@ -350,15 +284,14 @@ export default function AdminLinePage() {
           </li>
           <li>วางค่าด้านล่าง ตั้ง Webhook URL แล้วเปิดใช้ Webhook</li>
           <li>
-            พนักงาน: แอดเพื่อน OA แล้วส่งเบอร์ในระบบ เช่น{" "}
-            <code>0812345678</code>
+            แอดเพื่อน OA แล้วพิมพ์รหัสผ่านแชท{" "}
+            <code className="rounded bg-slate-100 px-1">อร่อยจังเลย</code>
           </li>
           <li>
-            เจ้าของแบรนด์: เข้าแอดมิน →{" "}
-            <strong>เชื่อม LINE</strong> → สร้างรหัส 6 หลัก → ส่งรหัสในแชท OA
-            (ไม่ใช้ username แล้ว)
+            ต้องการแก้ไข/ลบออเดอร์: เข้า{" "}
+            <strong>/admin/line-connect</strong> สร้างรหัส 6 หลัก แล้วส่งในแชท
           </li>
-          <li>เปิดสวิตช์แจ้งเตือนด้านล่าง แล้วทดสอบส่งข้อความ</li>
+          <li>เปิดสวิตช์แจ้งเตือนด้านล่างเมื่อต้องการรับแจ้งสมัคร Owner</li>
         </ol>
       </section>
 
@@ -452,9 +385,8 @@ export default function AdminLinePage() {
           เมนูแอดมิน (Rich Menu)
         </h2>
         <p className="text-sm text-slate-600">
-          สร้าง 2 เมนู: <strong>เมนูทั่วไป</strong> (เข้าสู่ระบบ / ช่วยเหลือ)
-          เป็นค่าเริ่มต้นทั้ง OA และ <strong>เมนูแอดมิน</strong>{" "}
-          (แจ้งเตือน / โหมดลบ / ดูข้อมูล / ออกจากระบบ) ให้เฉพาะแอดมินที่เชื่อมแล้ว
+          สร้างเมนูสำหรับแอดมินแพลตฟอร์มที่เชื่อมแล้ว (โหมดลบ / แก้ไข /
+          ช่วยเหลือ)
         </p>
         <ul className="space-y-1 text-sm text-slate-700">
           <li>
@@ -469,16 +401,6 @@ export default function AdminLinePage() {
               {settings.guestRichMenuId ? "สร้างแล้ว" : "ยังไม่สร้าง"}
             </strong>
           </li>
-          {settings.adminRichMenuId ? (
-            <li className="break-all text-xs text-slate-500">
-              admin: {settings.adminRichMenuId}
-            </li>
-          ) : null}
-          {settings.guestRichMenuId ? (
-            <li className="break-all text-xs text-slate-500">
-              guest: {settings.guestRichMenuId}
-            </li>
-          ) : null}
         </ul>
         <div className="flex flex-wrap gap-2">
           <button
@@ -517,87 +439,31 @@ export default function AdminLinePage() {
           />
         </label>
         <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
-          <span>แจ้ง staff (บทบาทขาย) เมื่อมีออเดอร์ใหม่</span>
+          <span>แจ้งเมื่อมีคนสมัครเข้าใช้งาน Owner</span>
           <input
             type="checkbox"
             className="h-4 w-4"
-            checked={settings.notifyStaffOnNewOrder}
-            disabled={saving}
+            checked={settings.notifyOwnerRegistration}
+            disabled={saving || !settings.messagingEnabled}
             onChange={(e) =>
-              void patchFlags({ notifyStaffOnNewOrder: e.target.checked })
-            }
-          />
-        </label>
-        <label className="flex items-center justify-between gap-3 text-sm text-slate-800">
-          <span>สรุปรอบขายให้เจ้าของ/ผู้จัดการแบรนด์</span>
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={settings.notifyBrandDailySummary}
-            disabled={saving}
-            onChange={(e) =>
-              void patchFlags({ notifyBrandDailySummary: e.target.checked })
+              void patchFlags({ notifyOwnerRegistration: e.target.checked })
             }
           />
         </label>
         <p className="text-xs text-slate-500">
-          ระบบจะส่งสรุปรอบที่เพิ่งปิดของแต่ละสาขาอัตโนมัติหลังเที่ยงคืนไทย /
-          เมื่อพนักงานปิดรอบ (ต้องตั้ง CRON เรียก{" "}
-          <code className="rounded bg-slate-100 px-1">
-            /api/cron/line-daily-summary
-          </code>
-          )
+          ส่งไปยังเพื่อน OA ที่พิมพ์รหัสผ่านถูกต้องแล้วเท่านั้น
+          (ไม่แยก role staff/owner)
         </p>
       </section>
 
       <section className={`${adminCardClass} space-y-4`}>
         <h2 className="text-base font-semibold text-slate-900">
-          ทดสอบ · พนักงาน
-        </h2>
-        {linkedStaff.length === 0 ? (
-          <p className="text-sm text-slate-600">
-            ยังไม่มีพนักงานเชื่อม LINE — ให้เพิ่มเพื่อน OA แล้วส่งเบอร์โทรในแชท
-          </p>
-        ) : (
-          <>
-            <div>
-              <label className={adminLabelClass} htmlFor="test-staff">
-                พนักงาน
-              </label>
-              <select
-                id="test-staff"
-                className={adminInputClass}
-                value={testStaffId}
-                onChange={(e) => setTestStaffId(e.target.value)}
-              >
-                <option value="">เลือก...</option>
-                {linkedStaff.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {(s.name || s.phone) + " · " + s.branchName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              disabled={testing}
-              onClick={() => void sendTestStaff()}
-              className={btnPrimary}
-            >
-              {testing ? "กำลังส่ง..." : "ส่งข้อความทดสอบ"}
-            </button>
-          </>
-        )}
-      </section>
-
-      <section className={`${adminCardClass} space-y-4`}>
-        <h2 className="text-base font-semibold text-slate-900">
-          ทดสอบ · เจ้าของแบรนด์ / สรุปรอบขาย
+          ทดสอบ · แอดมินที่เชื่อมแล้ว
         </h2>
         {linkedAdmins.length === 0 ? (
           <p className="text-sm text-slate-600">
-            ยังไม่มีแอดมินเชื่อม LINE — ให้เจ้าของเข้าเมนู{" "}
-            <strong>เชื่อม LINE</strong> สร้างรหัสแล้วส่งในแชท OA
+            ยังไม่มีแอดมินเชื่อม LINE — เข้า{" "}
+            <strong>/admin/line-connect</strong> สร้างรหัสแล้วส่งในแชท OA
           </p>
         ) : (
           <>
@@ -633,24 +499,10 @@ export default function AdminLinePage() {
               onClick={() => void sendTestAdmin()}
               className={btnPrimary}
             >
-              {testing ? "กำลังส่ง..." : "ส่งข้อความทดสอบแอดมิน"}
+              {testing ? "กำลังส่ง..." : "ส่งข้อความทดสอบ"}
             </button>
           </>
         )}
-        <button
-          type="button"
-          disabled={summaryTesting || !settings.messagingEnabled}
-          onClick={() => void sendDailySummaryTest()}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
-        >
-          {summaryTesting
-            ? "กำลังส่งสรุป..."
-            : "ส่งสรุปรอบขายรอบล่าสุด (ทดสอบ)"}
-        </button>
-        <p className="text-xs text-slate-500">
-          สรุปจะมียอดสำเร็จ/ยกเลิก รายการที่ขายออก เหตุผลยกเลิก
-          และลิงก์เปิดดูในแอดมิน
-        </p>
       </section>
     </div>
   );

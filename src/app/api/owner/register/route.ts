@@ -11,6 +11,7 @@ import {
   categoryAllowsMasterImportFrom,
   resolveOwnerRegisterCategory,
 } from "@/lib/owner-register-category";
+import { notifyPlatformOwnerRegistration } from "@/lib/line-owner-register-notify";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 import { phoneBlocksOwnerRegister } from "@/lib/owner-register-phone";
 
@@ -67,6 +68,13 @@ export async function POST(request: Request) {
       shopCategory: body.shopCategory,
       importMaster,
       category,
+    });
+
+    void notifyPlatformOwnerRegistration({
+      shopName: result.brandName,
+      brandCode: result.brandCode,
+      phone,
+      branchId: result.branchId,
     });
 
     const importRequested =

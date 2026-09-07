@@ -8,6 +8,21 @@ import {
   isOrderCountableRevenue,
   orderGrandTotal,
 } from "@/lib/order-totals";
+import {
+  addCookSlice,
+  emptyCookBreakdown,
+  parseCookMethod,
+  roundCookBreakdown,
+  type CookBreakdown,
+  type CookMethod,
+} from "@/lib/cook-method";
+import {
+  addOptionSlice,
+  extractFilterableOptionTokens,
+  OPTION_FILTER_NONE,
+  optionSummaryFromMap,
+  type OptionQtySlice,
+} from "@/lib/order-option-tokens";
 
 export const SHOP_TOP_SELLERS_N = 10;
 
@@ -22,6 +37,7 @@ export type ShopTopSellerBranchSlice = {
   branchName: string;
   quantity: number;
   revenueBaht: number;
+  byCook: CookBreakdown;
 };
 
 /** เมนูขายดีพร้อมแยกสาขา — สำหรับหน้าวิเคราะห์ */
@@ -31,7 +47,14 @@ export type ShopTopSellerDetail = {
   quantity: number;
   revenueBaht: number;
   branchCount: number;
+  byCook: CookBreakdown;
   byBranch: ShopTopSellerBranchSlice[];
+};
+
+export type ShopTopSellersDetailedResult = {
+  items: ShopTopSellerDetail[];
+  cookSummary: CookBreakdown;
+  optionSummary: OptionQtySlice[];
 };
 
 export type ShopDailyPoint = {
@@ -137,17 +160,35 @@ function normalizeSellerName(name: string) {
 /**
  * Top sellers with per-branch breakdown (compare across branches).
  * Groups by menu item display name so the same dish at different branches aligns.
+ * Optionally filter by option token (or legacy cook method) from optionsText.
  */
 export async function loadShopTopSellersDetailed(
   branchIds: string[],
   branchNames: Map<string, string>,
   from: string,
   to: string,
-  opts?: { limit?: number; q?: string },
-): Promise<ShopTopSellerDetail[]> {
-  if (branchIds.length === 0) return [];
+  opts?: {
+    limit?: number;
+    q?: string;
+    cook?: CookMethod;
+    option?: string | null;
+  },
+): Promise<ShopTopSellersDetailedResult> {
+  if (branchIds.length === 0) {
+    return {
+      items: [],
+      cookSummary: emptyCookBreakdown(),
+      optionSummary: [],
+    };
+  }
   const limit = opts?.limit ?? 50;
   const q = opts?.q?.trim().toLowerCase() ?? "";
+  let optionFilter = opts?.option?.trim() || null;
+  if (!optionFilter && opts?.cook) {
+    if (opts.cook === "grill") optionFilter = "ย่าง";
+    else if (opts.cook === "fry") optionFilter = "ทอด";
+    else if (opts.cook === "unknown") optionFilter = OPTION_FILTER_NONE;
+  }
 
   const orders = await prisma.order.findMany({
     where: {
@@ -168,11 +209,20 @@ export async function loadShopTopSellersDetailed(
           giftQuantity: true,
           unitPrice: true,
           optionsPrice: true,
+          optionsText: true,
         },
       },
     },
     take: 12000,
   });
+
+  type BranchAgg = {
+    branchId: string;
+    branchName: string;
+    quantity: number;
+    revenueBaht: number;
+    byCook: CookBreakdown;
+  };
 
   const byName = new Map<
     string,
@@ -180,12 +230,17 @@ export async function loadShopTopSellersDetailed(
       name: string;
       quantity: number;
       revenueBaht: number;
-      byBranch: Map<
-        string,
-        { branchId: string; branchName: string; quantity: number; revenueBaht: number }
-      >;
+      byCook: CookBreakdown;
+      byBranch: Map<string, BranchAgg>;
     }
   >();
+  const cookSummary = emptyCookBreakdown();
+  const optionSummaryMap = new Map<
+    string,
+    { quantity: number; revenueBaht: number }
+  >();
+  let noneQty = 0;
+  let noneRevenue = 0;
 
   for (const order of orders) {
     if (!isOrderCountableRevenue(order)) continue;
@@ -197,8 +252,27 @@ export async function loadShopTopSellersDetailed(
       const name = normalizeSellerName(it.itemName || "ไม่ระบุชื่อ");
       if (!name) continue;
       if (q && !name.toLowerCase().includes(q)) continue;
+      const cook = parseCookMethod(it.optionsText);
+      const tokens = extractFilterableOptionTokens(it.optionsText);
       const unit = Number(it.unitPrice) + Number(it.optionsPrice);
       const revenue = sold * unit;
+
+      addCookSlice(cookSummary, cook, sold, revenue);
+      if (tokens.length === 0) {
+        noneQty += sold;
+        noneRevenue += revenue;
+      } else {
+        for (const token of tokens) {
+          addOptionSlice(optionSummaryMap, token, sold, revenue);
+        }
+      }
+
+      if (optionFilter === OPTION_FILTER_NONE) {
+        if (tokens.length > 0) continue;
+      } else if (optionFilter) {
+        if (!tokens.includes(optionFilter)) continue;
+      }
+
       const key = name.toLowerCase();
       let row = byName.get(key);
       if (!row) {
@@ -206,35 +280,43 @@ export async function loadShopTopSellersDetailed(
           name,
           quantity: 0,
           revenueBaht: 0,
+          byCook: emptyCookBreakdown(),
           byBranch: new Map(),
         };
         byName.set(key, row);
       }
       row.quantity += sold;
       row.revenueBaht += revenue;
+      addCookSlice(row.byCook, cook, sold, revenue);
       const branchRow = row.byBranch.get(order.branchId) ?? {
         branchId: order.branchId,
         branchName,
         quantity: 0,
         revenueBaht: 0,
+        byCook: emptyCookBreakdown(),
       };
       branchRow.quantity += sold;
       branchRow.revenueBaht += revenue;
+      addCookSlice(branchRow.byCook, cook, sold, revenue);
       row.byBranch.set(order.branchId, branchRow);
     }
   }
 
-  return [...byName.entries()]
+  const items = [...byName.entries()]
     .map(([key, row]) => ({
       key,
       name: row.name,
       quantity: row.quantity,
       revenueBaht: Math.round(row.revenueBaht * 100) / 100,
       branchCount: row.byBranch.size,
+      byCook: roundCookBreakdown(row.byCook),
       byBranch: [...row.byBranch.values()]
         .map((b) => ({
-          ...b,
+          branchId: b.branchId,
+          branchName: b.branchName,
+          quantity: b.quantity,
           revenueBaht: Math.round(b.revenueBaht * 100) / 100,
+          byCook: roundCookBreakdown(b.byCook),
         }))
         .sort(
           (a, b) =>
@@ -243,6 +325,16 @@ export async function loadShopTopSellersDetailed(
     }))
     .sort((a, b) => b.quantity - a.quantity || b.revenueBaht - a.revenueBaht)
     .slice(0, limit);
+
+  return {
+    items,
+    cookSummary: roundCookBreakdown(cookSummary),
+    optionSummary: optionSummaryFromMap(
+      optionSummaryMap,
+      noneQty,
+      noneRevenue,
+    ),
+  };
 }
 
 export async function loadShopDailySeries(

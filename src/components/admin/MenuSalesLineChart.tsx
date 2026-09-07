@@ -6,6 +6,7 @@ type Series = {
   id: string;
   name: string;
   points: Point[];
+  color?: string;
 };
 
 type DayMeta = { date: string; label: string };
@@ -62,6 +63,9 @@ export function MenuSalesLineChart({
         : Math.round(maxY * t).toLocaleString("th-TH"),
   }));
 
+  const colorOf = (s: Series, si: number) =>
+    s.color ?? COLORS[si % COLORS.length]!;
+
   return (
     <div>
       <svg
@@ -93,7 +97,7 @@ export function MenuSalesLineChart({
         ))}
 
         {series.map((s, si) => {
-          const color = COLORS[si % COLORS.length]!;
+          const color = colorOf(s, si);
           const pts = s.points
             .map((p, i) => {
               const v = metric === "quantity" ? p.quantity : p.revenue;
@@ -155,7 +159,7 @@ export function MenuSalesLineChart({
           >
             <span
               className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: COLORS[si % COLORS.length] }}
+              style={{ backgroundColor: colorOf(s, si) }}
             />
             <span className="max-w-[9rem] truncate">{s.name}</span>
           </span>

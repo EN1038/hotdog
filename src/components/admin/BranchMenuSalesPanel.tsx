@@ -1,14 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { adminInputClass, adminLabelClass } from "@/components/admin/AdminShell";
 import { DateInput } from "@/components/DateInput";
 import { MenuSalesLineChart } from "@/components/admin/MenuSalesLineChart";
 import {
+  CookProportionBar,
+  COOK_CHART_COLORS,
+} from "@/components/admin/GrillFryCompareChart";
+import {
   bangkokDateKey,
   bangkokMonthRangeToToday,
 } from "@/lib/constants";
+import { type CookBreakdown } from "@/lib/cook-method";
+import {
+  OPTION_FILTER_NONE,
+  optionFilterLabel,
+  type OptionQtySlice,
+} from "@/lib/order-option-tokens";
 
 type SalesItem = {
   id: string;
@@ -20,6 +30,7 @@ type SalesItem = {
   category: { id: string; name: string } | null;
   quantity: number;
   revenue: number;
+  byCook?: CookBreakdown;
   isBestSeller: boolean;
 };
 
@@ -41,6 +52,13 @@ type TrendPayload = {
     totalRevenue: number;
     points: { date: string; quantity: number; revenue: number }[];
   }[];
+  cookSeries?: {
+    id: string;
+    name: string;
+    totalQty: number;
+    totalRevenue: number;
+    points: { date: string; quantity: number; revenue: number }[];
+  }[];
 };
 
 type SalesPayload = {
@@ -48,6 +66,9 @@ type SalesPayload = {
   to?: string;
   date: string;
   operatingDay?: string;
+  option?: string | null;
+  optionSummary?: OptionQtySlice[];
+  cookSummary?: CookBreakdown;
   summary: SalesSummary;
   items: SalesItem[];
   trend: TrendPayload | null;
@@ -58,6 +79,18 @@ function money(n: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
+}
+
+function formatCookBreakdownLine(byCook: CookBreakdown | undefined): string {
+  if (!byCook) return "";
+  const parts: string[] = [];
+  if (byCook.grill.quantity > 0) {
+    parts.push(`ย่าง ${byCook.grill.quantity.toLocaleString("th-TH")}`);
+  }
+  if (byCook.fry.quantity > 0) {
+    parts.push(`ทอด ${byCook.fry.quantity.toLocaleString("th-TH")}`);
+  }
+  return parts.join(" · ");
 }
 
 type Props = {
@@ -86,6 +119,8 @@ export function BranchMenuSalesPanel({
 
   const [operatingDay, setOperatingDay] = useState("");
   const [metric, setMetric] = useState<"quantity" | "revenue">("quantity");
+  const [chartView, setChartView] = useState<"menu" | "cook">("menu");
+  const [optionFilter, setOptionFilter] = useState<string | null>(null);
   const [data, setData] = useState<SalesPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +132,7 @@ export function BranchMenuSalesPanel({
     const from = dateFrom <= dateTo ? dateFrom : dateTo;
     const to = dateFrom <= dateTo ? dateTo : dateFrom;
     const qs = new URLSearchParams({ from, to, trend: "1" });
+    if (optionFilter) qs.set("option", optionFilter);
     fetch(`/api/admin/branches/${branchId}/menu-sales?${qs}`)
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -123,15 +159,45 @@ export function BranchMenuSalesPanel({
     return () => {
       cancelled = true;
     };
-  }, [branchId, dateFrom, dateTo]);
+  }, [branchId, dateFrom, dateTo, optionFilter]);
+
+  useEffect(() => {
+    if (chartView === "cook" && (data?.trend?.cookSeries?.length ?? 0) === 0) {
+      setChartView("menu");
+    }
+  }, [chartView, data?.trend?.cookSeries]);
 
   const summary = data?.summary;
+  const optionSummary = data?.optionSummary ?? [];
   const soldItems = data?.items.filter((i) => i.quantity > 0) ?? [];
   const unsoldItems = data?.items.filter((i) => i.quantity === 0) ?? [];
   const maxDate = operatingDay || bangkokDateKey();
   const isSingleDay = dateFrom === dateTo;
   const isTodayRange =
     isSingleDay && dateFrom === operatingDay && dateTo === operatingDay;
+  const showCookCompare = optionFilter == null && !skewerMode;
+  const optionLabel = optionFilter
+    ? optionFilterLabel(optionFilter)
+    : "ทุกตัวเลือก";
+
+  const optionChips = useMemo(() => {
+    const totalQty = optionSummary.reduce((s, o) => s + o.quantity, 0);
+    const chips: { id: string | null; label: string; count: number }[] = [
+      { id: null, label: "รวมทั้งหมด", count: totalQty },
+    ];
+    for (const row of optionSummary) {
+      if (row.quantity <= 0) continue;
+      chips.push({
+        id: row.name,
+        label:
+          row.name === OPTION_FILTER_NONE
+            ? "ไม่มีตัวเลือก"
+            : `อันดับ${row.name}`,
+        count: row.quantity,
+      });
+    }
+    return chips;
+  }, [optionSummary]);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -141,7 +207,7 @@ export function BranchMenuSalesPanel({
           <p className="mt-0.5 text-xs text-slate-500">
             {skewerMode
               ? "สรุปตามวันที่ต้องการ + กราฟแนวโน้มเมนู — ออเดอร์ที่ยืนยัน/ส่งแล้ว"
-              : "สรุปตามช่วงวันที่เลือก + กราฟแนวโน้มเมนู — ออเดอร์สำเร็จ"}
+              : "สรุปตามช่วงวันที่เลือก + กราฟแนวโน้มเมนู — ออเดอร์สำเร็จ · กรองตามตัวเลือกได้"}
           </p>
         </div>
         {showDatePicker && !controlled ? (
@@ -220,100 +286,204 @@ export function BranchMenuSalesPanel({
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
-                  กราฟแนวโน้มเมนูในช่วงที่เลือก
+                  กราฟแนวโน้มในช่วงที่เลือก
                 </p>
                 <p className="text-xs text-slate-500">
-                  แสดง Top เมนูตามยอดชิ้นในช่วงนั้น — วางเมาส์ที่จุดเพื่อดูรายละเอียด
+                  {chartView === "cook"
+                    ? "เปรียบเทียบยอดย่าง vs ทอดรายวัน — สลับชิ้น/บาทได้"
+                    : `แสดง Top เมนูตามยอดชิ้นในช่วงนั้น${
+                        optionFilter ? ` · เฉพาะ${optionLabel}` : ""
+                      } — วางเมาส์ที่จุดเพื่อดูรายละเอียด`}
                 </p>
               </div>
-              <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
-                <button
-                  type="button"
-                  className={`rounded-md px-2.5 py-1 ${
-                    metric === "quantity"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-500"
-                  }`}
-                  onClick={() => setMetric("quantity")}
-                >
-                  ชิ้น
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-md px-2.5 py-1 ${
-                    metric === "revenue"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-500"
-                  }`}
-                  onClick={() => setMetric("revenue")}
-                >
-                  บาท
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {!skewerMode && (data?.trend?.cookSeries?.length ?? 0) > 0 ? (
+                  <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
+                    <button
+                      type="button"
+                      className={`rounded-md px-2.5 py-1 ${
+                        chartView === "menu"
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500"
+                      }`}
+                      onClick={() => setChartView("menu")}
+                    >
+                      Top เมนู
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-md px-2.5 py-1 ${
+                        chartView === "cook"
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500"
+                      }`}
+                      onClick={() => setChartView("cook")}
+                    >
+                      ย่าง / ทอด
+                    </button>
+                  </div>
+                ) : null}
+                <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
+                  <button
+                    type="button"
+                    className={`rounded-md px-2.5 py-1 ${
+                      metric === "quantity"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500"
+                    }`}
+                    onClick={() => setMetric("quantity")}
+                  >
+                    ชิ้น
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-md px-2.5 py-1 ${
+                      metric === "revenue"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500"
+                    }`}
+                    onClick={() => setMetric("revenue")}
+                  >
+                    บาท
+                  </button>
+                </div>
               </div>
             </div>
             <MenuSalesLineChart
               days={data?.trend?.days ?? []}
-              series={data?.trend?.series ?? []}
+              series={
+                chartView === "cook"
+                  ? (data?.trend?.cookSeries ?? []).map((s) => ({
+                      ...s,
+                      color:
+                        s.id === "grill"
+                          ? COOK_CHART_COLORS.grill
+                          : s.id === "fry"
+                            ? COOK_CHART_COLORS.fry
+                            : undefined,
+                    }))
+                  : (data?.trend?.series ?? [])
+              }
               metric={metric}
             />
           </div>
 
           <div className="mt-4 space-y-2">
-            <p className="text-xs font-medium text-slate-600">
-              อันดับยอดขาย
-              {isTodayRange
-                ? "วันนี้"
-                : isSingleDay
-                  ? "วันที่เลือก"
-                  : "ในช่วงที่เลือก"}
-              {soldItems.length === 0 ? " — ยังไม่มียอด" : ""}
-            </p>
+            <div>
+              <p className="text-xs font-medium text-slate-600">
+                อันดับเมนูขายดี
+                {isTodayRange
+                  ? "วันนี้"
+                  : isSingleDay
+                    ? "วันที่เลือก"
+                    : "ในช่วงที่เลือก"}
+                {optionFilter ? ` · ${optionLabel}` : ""}
+                {soldItems.length === 0 ? " — ยังไม่มียอด" : ""}
+              </p>
+              {!skewerMode && optionChips.length > 1 ? (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto">
+                    {optionChips.map((opt) => {
+                      const active = optionFilter === opt.id;
+                      return (
+                        <button
+                          key={opt.id ?? "all"}
+                          type="button"
+                          onClick={() => setOptionFilter(opt.id)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-extrabold tabular-nums ${
+                            active
+                              ? "bg-amber-600 text-white"
+                              : "bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {opt.label}
+                          {opt.count > 0 ? (
+                            <span
+                              className={`ml-1 ${active ? "opacity-90" : "text-slate-400"}`}
+                            >
+                              {opt.count.toLocaleString("th-TH")}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] font-medium text-slate-500">
+                    {optionFilter == null
+                      ? "รวมทั้งหมด · กดชิปตัวเลือกเพื่อจัดอันดับเฉพาะตัวนั้น (เช่น ย่าง ทอด ชาบู เผ็ด) — แต่ละรายการยังมีแถบสัดส่วนย่าง/ทอดถ้ามี"
+                      : `จัดอันดับเฉพาะ「${optionLabel}」— ยอดและลำดับนับเฉพาะบรรทัดที่มีตัวเลือกนี้`}
+                  </p>
+                </div>
+              ) : null}
+            </div>
             {soldItems.length > 0 && (
               <ul className="max-h-72 space-y-1.5 overflow-y-auto">
-                {soldItems.map((item, index) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2"
-                  >
-                    <span className="w-5 shrink-0 text-center text-xs font-semibold text-slate-400">
-                      {index + 1}
-                    </span>
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt=""
-                        className="h-8 w-8 shrink-0 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-[9px] text-slate-400">
-                        —
+                {soldItems.map((item, index) => {
+                  const cookLine = showCookCompare
+                    ? formatCookBreakdownLine(item.byCook)
+                    : "";
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2"
+                    >
+                      <span className="w-5 shrink-0 text-center text-xs font-semibold text-slate-400">
+                        {index + 1}
+                      </span>
+                      {item.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.imageUrl}
+                          alt=""
+                          className="h-8 w-8 shrink-0 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-[9px] text-slate-400">
+                          —
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Link
+                            href={`/admin/branches/${branchId}/menu/${item.id}`}
+                            className="truncate text-sm font-medium text-slate-900 hover:text-site-primary"
+                          >
+                            {item.name}
+                          </Link>
+                          {item.isBestSeller && (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                              ขายดี
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          {item.category?.name ?? "ไม่มีหมวด"} · {item.quantity}{" "}
+                          ชิ้น
+                        </p>
+                        {cookLine ? (
+                          <p className="mt-0.5 text-[11px] font-semibold text-amber-800">
+                            {cookLine}
+                          </p>
+                        ) : optionFilter && !skewerMode ? (
+                          <p className="mt-0.5 text-[11px] font-semibold text-amber-700">
+                            เฉพาะ{optionLabel}
+                          </p>
+                        ) : null}
+                        {showCookCompare &&
+                        ((item.byCook?.grill.quantity ?? 0) > 0 ||
+                          (item.byCook?.fry.quantity ?? 0) > 0) ? (
+                          <CookProportionBar
+                            byCook={item.byCook}
+                            className="mt-1.5 max-w-[11rem]"
+                          />
+                        ) : null}
                       </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Link
-                          href={`/admin/branches/${branchId}/menu/${item.id}`}
-                          className="truncate text-sm font-medium text-slate-900 hover:text-site-primary"
-                        >
-                          {item.name}
-                        </Link>
-                        {item.isBestSeller && (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
-                            ขายดี
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        {item.category?.name ?? "ไม่มีหมวด"} · {item.quantity}{" "}
-                        ชิ้น
+                      <p className="shrink-0 text-sm font-semibold text-slate-800">
+                        ฿{money(item.revenue)}
                       </p>
-                    </div>
-                    <p className="shrink-0 text-sm font-semibold text-slate-800">
-                      ฿{money(item.revenue)}
-                    </p>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             )}
 

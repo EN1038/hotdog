@@ -9,6 +9,26 @@ import {
 import { isTestBranch } from "@/lib/branch-test";
 import { getCalendarDayState } from "@/lib/operating-day";
 import { loadShopTopSellersDetailed } from "@/lib/shop-overview-metrics";
+import type { CookMethod } from "@/lib/cook-method";
+import { OPTION_FILTER_NONE } from "@/lib/order-option-tokens";
+
+function parseCookParam(raw: string | null): CookMethod | undefined {
+  if (raw === "grill" || raw === "fry" || raw === "unknown") return raw;
+  return undefined;
+}
+
+function parseOptionParam(searchParams: URLSearchParams): string | null {
+  const option = searchParams.get("option")?.trim();
+  if (option) {
+    if (option === OPTION_FILTER_NONE) return OPTION_FILTER_NONE;
+    return option.slice(0, 80);
+  }
+  const cook = parseCookParam(searchParams.get("cook"));
+  if (cook === "grill") return "ย่าง";
+  if (cook === "fry") return "ทอด";
+  if (cook === "unknown") return OPTION_FILTER_NONE;
+  return null;
+}
 
 export async function GET(request: Request) {
   try {
@@ -48,6 +68,7 @@ export async function GET(request: Request) {
     const includeTest = searchParams.get("includeTest") === "1";
     const branchIdParam = searchParams.get("branchId")?.trim() || null;
     const q = searchParams.get("q")?.trim() || "";
+    const option = parseOptionParam(searchParams);
     const limitRaw = Number(searchParams.get("limit") || "50");
     const limit = Number.isFinite(limitRaw)
       ? Math.min(100, Math.max(10, Math.floor(limitRaw)))
@@ -82,14 +103,15 @@ export async function GET(request: Request) {
     const branchIds = reportBranches.map((b) => b.id);
     const branchNames = new Map(reportBranches.map((b) => [b.id, b.name]));
 
-    let items = await loadShopTopSellersDetailed(
+    const detailed = await loadShopTopSellersDetailed(
       branchIds,
       branchNames,
       rangeFrom,
       rangeTo,
-      { limit: 100, q: q || undefined },
+      { limit: 100, q: q || undefined, option },
     );
 
+    let items = detailed.items;
     if (sort === "revenue") {
       items = [...items].sort(
         (a, b) =>
@@ -109,6 +131,9 @@ export async function GET(request: Request) {
       includeTest,
       sort,
       q,
+      option,
+      optionSummary: detailed.optionSummary,
+      cookSummary: detailed.cookSummary,
       summary: {
         itemCount: items.length,
         totalQty,

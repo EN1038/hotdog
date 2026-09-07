@@ -18,6 +18,13 @@ import {
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import type { OwnerBranchRow } from "@/lib/owner-dashboard";
 import type { ShopTopSellerDetail } from "@/lib/shop-overview-metrics";
+import { type CookBreakdown } from "@/lib/cook-method";
+import {
+  OPTION_FILTER_NONE,
+  optionFilterLabel,
+  type OptionQtySlice,
+} from "@/lib/order-option-tokens";
+import { CookProportionBar } from "@/components/admin/GrillFryCompareChart";
 import {
   captureElementToPng,
   copyTextToClipboard,
@@ -40,9 +47,26 @@ type TopSellersPayload = {
     totalQty: number;
     totalRevenue: number;
   };
+  optionSummary?: OptionQtySlice[];
+  cookSummary?: CookBreakdown;
   branches: OwnerBranchRow[];
   hasTestBranch?: boolean;
 };
+
+function formatCookBreakdownLine(byCook: CookBreakdown | undefined): string {
+  if (!byCook) return "";
+  const parts: string[] = [];
+  if (byCook.grill.quantity > 0) {
+    parts.push(`ย่าง ${formatPrice(byCook.grill.quantity)}`);
+  }
+  if (byCook.fry.quantity > 0) {
+    parts.push(`ทอด ${formatPrice(byCook.fry.quantity)}`);
+  }
+  if (byCook.unknown.quantity > 0) {
+    parts.push(`ไม่ระบุ ${formatPrice(byCook.unknown.quantity)}`);
+  }
+  return parts.join(" · ");
+}
 
 function OwnerTopSellersInner() {
   const { data } = useOwnerDashboard();
@@ -64,6 +88,7 @@ function OwnerTopSellersInner() {
   const [loading, setLoading] = useState(false);
   const [includeTest, setIncludeTest] = useState(false);
   const [sort, setSort] = useState<SortMode>("quantity");
+  const [optionFilter, setOptionFilter] = useState<string | null>(null);
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -129,6 +154,7 @@ function OwnerTopSellersInner() {
         if (includeTest) params.set("includeTest", "1");
         if (filterBranchId) params.set("branchId", filterBranchId);
         if (q) params.set("q", q);
+        if (optionFilter) params.set("option", optionFilter);
         const res = await fetch(`/api/owner/top-sellers?${params}`, {
           signal: ac.signal,
         });
@@ -143,7 +169,7 @@ function OwnerTopSellersInner() {
       }
     })();
     return () => ac.abort();
-  }, [from, to, filterBranchId, includeTest, sort, q]);
+  }, [from, to, filterBranchId, includeTest, sort, q, optionFilter]);
 
   const items = payload?.items ?? [];
   const summary = payload?.summary ?? {
@@ -151,6 +177,12 @@ function OwnerTopSellersInner() {
     totalQty: 0,
     totalRevenue: 0,
   };
+  const optionSummary = payload?.optionSummary ?? [];
+  const optionLabel = optionFilter
+    ? optionFilterLabel(optionFilter)
+    : "ทุกตัวเลือก";
+  const showCookCompare = optionFilter == null;
+  const optionTotalQty = optionSummary.reduce((s, o) => s + o.quantity, 0);
   const hasTestBranch =
     payload?.hasTestBranch ??
     data?.hasTestBranch ??
@@ -219,7 +251,7 @@ function OwnerTopSellersInner() {
     } catch {
       return "";
     }
-  }, [items, sort, from, to]);
+  }, [items, sort, from, to, optionFilter]);
 
   function buildListCopyText() {
     const lines: string[] = [];
@@ -228,14 +260,19 @@ function OwnerTopSellersInner() {
     if (filterBranchName) lines.push(`สาขา ${filterBranchName}`);
     lines.push(`ช่วง ${rangeLabel}`);
     lines.push(sortLabel);
+    lines.push(`ตัวเลือก · ${optionLabel}`);
     lines.push(
       `${formatPrice(summary.itemCount)} เมนู · ${formatPrice(summary.totalQty)} ชิ้น · ฿${formatPrice(summary.totalRevenue)}`,
     );
     if (q) lines.push(`ค้นหา: ${q}`);
     lines.push("");
     items.forEach((item, index) => {
+      const cookLine =
+        showCookCompare && item.byCook
+          ? formatCookBreakdownLine(item.byCook)
+          : "";
       lines.push(
-        `${index + 1}. ${item.name} — ${formatPrice(item.quantity)} ชิ้น · ฿${formatPrice(item.revenueBaht)}`,
+        `${index + 1}. ${item.name} — ${formatPrice(item.quantity)} ชิ้น · ฿${formatPrice(item.revenueBaht)}${cookLine ? ` (${cookLine})` : ""}`,
       );
     });
     return lines.join("\n");
@@ -318,6 +355,7 @@ function OwnerTopSellersInner() {
     if (brandName) lines.push(brandName);
     if (rangeLabel) lines.push(`ช่วง ${rangeLabel}`);
     lines.push(sortLabel);
+    lines.push(`ตัวเลือก · ${optionLabel}`);
     lines.push(
       `${formatPrice(summary.itemCount)} เมนู · ${formatPrice(summary.totalQty)} ชิ้น · ฿${formatPrice(summary.totalRevenue)}`,
     );
@@ -337,6 +375,10 @@ function OwnerTopSellersInner() {
         String(item.quantity),
       ];
       lines.push(cols.join("\t"));
+      if (showCookCompare && item.byCook) {
+        const cookLine = formatCookBreakdownLine(item.byCook);
+        if (cookLine) lines.push(`  ${cookLine}`);
+      }
     }
     return lines.join("\n");
   }
@@ -429,7 +471,7 @@ function OwnerTopSellersInner() {
           วิเคราะห์เมนูขายดี
         </h1>
         <p className="mt-1 text-[14px] font-medium text-slate-500">
-          ค้นหา · เรียงลำดับ · เทียบสาขา
+          ค้นหา · กรองตัวเลือก · เทียบสาขา
           {hasTestBranch && !includeTest ? " · ไม่รวมสาขาทดลอง" : ""}
         </p>
       </header>
@@ -509,6 +551,59 @@ function OwnerTopSellersInner() {
             );
           })}
         </div>
+        <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto">
+          {(
+            [
+              {
+                id: null as string | null,
+                label: "รวมทั้งหมด",
+                count: optionTotalQty,
+              },
+              ...optionSummary
+                .filter((o) => o.quantity > 0)
+                .map((o) => ({
+                  id: o.name as string | null,
+                  label:
+                    o.name === OPTION_FILTER_NONE
+                      ? "ไม่มีตัวเลือก"
+                      : `อันดับ${o.name}`,
+                  count: o.quantity,
+                })),
+            ] as const
+          ).map((opt) => {
+            const active = optionFilter === opt.id;
+            return (
+              <button
+                key={opt.id ?? "all"}
+                type="button"
+                onClick={() => setOptionFilter(opt.id)}
+                className={`rounded-full px-3.5 py-2 text-[13px] font-extrabold tabular-nums ${
+                  active
+                    ? "bg-amber-600 text-white"
+                    : "bg-white text-slate-600 ring-1 ring-slate-200"
+                }`}
+              >
+                {opt.label}
+                {opt.count > 0 ? (
+                  <span
+                    className={`ml-1 ${active ? "opacity-90" : "text-slate-400"}`}
+                  >
+                    {formatPrice(opt.count)}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        {optionFilter != null ? (
+          <p className="text-[12px] font-semibold text-amber-800">
+            จัดอันดับเฉพาะ · {optionLabel} — ยอดและลำดับนับเฉพาะตัวเลือกนี้
+          </p>
+        ) : optionSummary.length > 0 ? (
+          <p className="text-[12px] font-medium text-slate-500">
+            กดชิปตัวเลือกเพื่อจัดอันดับเฉพาะ (ย่าง ทอด ชาบู ฯลฯ) — แต่ละรายการมีแถบสัดส่วนย่าง/ทอดถ้ามี
+          </p>
+        ) : null}
       </div>
 
       <section
@@ -600,6 +695,7 @@ function OwnerTopSellersInner() {
                       brandName || null,
                       `ช่วง ${rangeLabel}`,
                       sortLabel,
+                      `ตัวเลือก · ${optionLabel}`,
                       `${formatPrice(summary.itemCount)} เมนู · ${formatPrice(summary.totalQty)} ชิ้น · ฿${formatPrice(summary.totalRevenue)}`,
                     ]
                       .filter(Boolean)
@@ -643,8 +739,13 @@ function OwnerTopSellersInner() {
                           key={item.key}
                           className="border-t border-slate-50"
                         >
-                          <td className="sticky left-0 max-w-[7rem] truncate bg-white px-3 py-2 font-semibold text-slate-900">
-                            {item.name}
+                          <td className="sticky left-0 max-w-[8.5rem] bg-white px-3 py-2 text-slate-900">
+                            <p className="truncate font-semibold">{item.name}</p>
+                            {showCookCompare && item.byCook ? (
+                              <p className="mt-0.5 text-[10px] font-medium text-slate-500">
+                                {formatCookBreakdownLine(item.byCook)}
+                              </p>
+                            ) : null}
                           </td>
                           {compareBranches.map((b) => {
                             const qty = qtyForBranch(item, b.id);
@@ -727,6 +828,7 @@ function OwnerTopSellersInner() {
                 filterBranchName ? `สาขา ${filterBranchName}` : null,
                 `ช่วง ${rangeLabel}`,
                 sortLabel,
+                `ตัวเลือก · ${optionLabel}`,
                 `${formatPrice(summary.itemCount)} เมนู · ${formatPrice(summary.totalQty)} ชิ้น · ฿${formatPrice(summary.totalRevenue)}`,
               ]
                 .filter(Boolean)
@@ -775,6 +877,24 @@ function OwnerTopSellersInner() {
                             : ""}
                           {open ? " · ซ่อน" : " · กดเทียบ"}
                         </p>
+                        {showCookCompare && item.byCook ? (
+                          <p className="mt-1 text-[12px] font-bold text-amber-800">
+                            {formatCookBreakdownLine(item.byCook) ||
+                              "ยังไม่มีแยกย่าง/ทอด"}
+                          </p>
+                        ) : optionFilter != null ? (
+                          <p className="mt-1 text-[12px] font-semibold text-amber-700">
+                            เฉพาะ{optionLabel}
+                          </p>
+                        ) : null}
+                        {showCookCompare &&
+                        ((item.byCook?.grill.quantity ?? 0) > 0 ||
+                          (item.byCook?.fry.quantity ?? 0) > 0) ? (
+                          <CookProportionBar
+                            byCook={item.byCook}
+                            className="mt-1.5 max-w-[12rem]"
+                          />
+                        ) : null}
                       </div>
                       <span className="shrink-0 text-[13px] font-black tabular-nums text-site-primary-medium">
                         ฿{formatPrice(item.revenueBaht)}
@@ -786,6 +906,10 @@ function OwnerTopSellersInner() {
                           const pct = Math.round(
                             (b.quantity / maxBranchQty) * 100,
                           );
+                          const branchCook =
+                            showCookCompare && b.byCook
+                              ? formatCookBreakdownLine(b.byCook)
+                              : "";
                           return (
                             <div key={b.branchId}>
                               <div className="mb-1 flex items-center justify-between gap-2 text-[12px]">
@@ -797,9 +921,14 @@ function OwnerTopSellersInner() {
                                   {formatPrice(b.revenueBaht)}
                                 </span>
                               </div>
+                              {branchCook ? (
+                                <p className="mb-1 text-[11px] font-semibold text-amber-800">
+                                  {branchCook}
+                                </p>
+                              ) : null}
                               <div className="h-2 overflow-hidden rounded-full bg-slate-200">
                                 <div
-                                  className="h-full rounded-full bg-site-primary-soft0"
+                                  className="h-full rounded-full bg-site-primary"
                                   style={{ width: `${pct}%` }}
                                 />
                               </div>

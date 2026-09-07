@@ -18,10 +18,44 @@ import {
   skewerLineSubtotalBaht,
   skewerOrderUsesConfirmedQty,
 } from "@/lib/skewer-order";
+import {
+  addCookSlice,
+  COOK_METHOD_LABEL,
+  emptyCookBreakdown,
+  parseCookMethod,
+  roundCookBreakdown,
+  type CookBreakdown,
+  type CookMethod,
+} from "@/lib/cook-method";
+import {
+  extractFilterableOptionTokens,
+  OPTION_FILTER_NONE,
+  optionSummaryFromMap,
+} from "@/lib/order-option-tokens";
 
 type Params = { params: Promise<{ id: string }> };
 
 const TREND_SERIES_TOP = 5;
+
+type QtyRev = { quantity: number; revenue: number };
+
+function emptyQtyRev(): QtyRev {
+  return { quantity: 0, revenue: 0 };
+}
+
+/** Prefer explicit option=…; map legacy cook= for older clients. */
+function parseOptionFilter(searchParams: URLSearchParams): string | null {
+  const option = searchParams.get("option")?.trim();
+  if (option) {
+    if (option === OPTION_FILTER_NONE) return OPTION_FILTER_NONE;
+    return option.slice(0, 80);
+  }
+  const cook = searchParams.get("cook")?.trim();
+  if (cook === "grill") return "ย่าง";
+  if (cook === "fry") return "ทอด";
+  if (cook === "unknown") return OPTION_FILTER_NONE;
+  return null;
+}
 
 function addDaysYmd(dateYmd: string, delta: number): string {
   const start = new Date(`${dateYmd}T12:00:00+07:00`);
@@ -51,46 +85,132 @@ function normalizeRange(fromRaw: string, toRaw: string) {
     : { from: toRaw, to: fromRaw };
 }
 
-type DayAgg = { quantity: number; revenue: number };
+type DayAgg = {
+  quantity: number;
+  revenue: number;
+  byCook: CookBreakdown;
+  byOption: Map<string, QtyRev>;
+  none: QtyRev;
+};
+
 type MenuAgg = {
   quantity: number;
   revenue: number;
+  byCook: CookBreakdown;
+  byOption: Map<string, QtyRev>;
+  none: QtyRev;
   orderIds: Set<string>;
   byDay: Map<string, DayAgg>;
 };
 
+function emptyDayAgg(): DayAgg {
+  return {
+    quantity: 0,
+    revenue: 0,
+    byCook: emptyCookBreakdown(),
+    byOption: new Map(),
+    none: emptyQtyRev(),
+  };
+}
+
+function emptyMenuAgg(): MenuAgg {
+  return {
+    quantity: 0,
+    revenue: 0,
+    byCook: emptyCookBreakdown(),
+    byOption: new Map(),
+    none: emptyQtyRev(),
+    orderIds: new Set(),
+    byDay: new Map(),
+  };
+}
+
+function addQtyRev(target: QtyRev, quantity: number, revenue: number) {
+  target.quantity += quantity;
+  target.revenue += revenue;
+}
+
+function addOptionQtyRev(
+  map: Map<string, QtyRev>,
+  name: string,
+  quantity: number,
+  revenue: number,
+) {
+  const cur = map.get(name) ?? emptyQtyRev();
+  addQtyRev(cur, quantity, revenue);
+  map.set(name, cur);
+}
+
 function accumulateLine(
   byMenu: Map<string, MenuAgg>,
   rangeOrderIds: Set<string>,
+  cookSummary: CookBreakdown,
+  optionSummary: Map<string, QtyRev>,
+  noneSummary: QtyRev,
   input: {
     menuId: string;
     orderId: string;
     day: string;
     quantity: number;
     lineRev: number;
+    optionsText: string | null | undefined;
     from: string;
     to: string;
   },
 ) {
   if (input.quantity <= 0) return;
-  const prev = byMenu.get(input.menuId) ?? {
-    quantity: 0,
-    revenue: 0,
-    orderIds: new Set<string>(),
-    byDay: new Map(),
-  };
-  const dayPrev = prev.byDay.get(input.day) ?? { quantity: 0, revenue: 0 };
+  const cook = parseCookMethod(input.optionsText);
+  const tokens = extractFilterableOptionTokens(input.optionsText);
+  const prev = byMenu.get(input.menuId) ?? emptyMenuAgg();
+  const dayPrev = prev.byDay.get(input.day) ?? emptyDayAgg();
+
   dayPrev.quantity += input.quantity;
   dayPrev.revenue += input.lineRev;
+  addCookSlice(dayPrev.byCook, cook, input.quantity, input.lineRev);
+  if (tokens.length === 0) {
+    addQtyRev(dayPrev.none, input.quantity, input.lineRev);
+  } else {
+    for (const token of tokens) {
+      addOptionQtyRev(dayPrev.byOption, token, input.quantity, input.lineRev);
+    }
+  }
   prev.byDay.set(input.day, dayPrev);
 
   if (input.day >= input.from && input.day <= input.to) {
     prev.quantity += input.quantity;
     prev.revenue += input.lineRev;
+    addCookSlice(prev.byCook, cook, input.quantity, input.lineRev);
+    addCookSlice(cookSummary, cook, input.quantity, input.lineRev);
+    if (tokens.length === 0) {
+      addQtyRev(prev.none, input.quantity, input.lineRev);
+      addQtyRev(noneSummary, input.quantity, input.lineRev);
+    } else {
+      for (const token of tokens) {
+        addOptionQtyRev(prev.byOption, token, input.quantity, input.lineRev);
+        addOptionQtyRev(optionSummary, token, input.quantity, input.lineRev);
+      }
+    }
     prev.orderIds.add(input.orderId);
     rangeOrderIds.add(input.orderId);
   }
   byMenu.set(input.menuId, prev);
+}
+
+function sliceForOption(
+  quantity: number,
+  revenue: number,
+  byOption: Map<string, QtyRev>,
+  none: QtyRev,
+  optionFilter: string | null,
+): QtyRev {
+  if (!optionFilter) return { quantity, revenue };
+  if (optionFilter === OPTION_FILTER_NONE) {
+    return { quantity: none.quantity, revenue: none.revenue };
+  }
+  const hit = byOption.get(optionFilter);
+  return hit
+    ? { quantity: hit.quantity, revenue: hit.revenue }
+    : emptyQtyRev();
 }
 
 export async function GET(request: Request, { params }: Params) {
@@ -109,6 +229,7 @@ export async function GET(request: Request, { params }: Params) {
     const fromParam = searchParams.get("from")?.trim();
     const toParam = searchParams.get("to")?.trim();
     const dateParam = searchParams.get("date")?.trim();
+    const optionFilter = parseOptionFilter(searchParams);
 
     let from: string;
     let to: string;
@@ -151,6 +272,9 @@ export async function GET(request: Request, { params }: Params) {
     const menuIds = menuItems.map((m) => m.id);
     const byMenu = new Map<string, MenuAgg>();
     const rangeOrderIds = new Set<string>();
+    const cookSummary = emptyCookBreakdown();
+    const optionSummaryMap = new Map<string, QtyRev>();
+    const noneSummary = emptyQtyRev();
 
     if (isSkewer) {
       const skewerItems = await prisma.skewerOrderItem.findMany({
@@ -187,15 +311,23 @@ export async function GET(request: Request, { params }: Params) {
           quantity,
           Number.isFinite(unit) ? unit : 0,
         );
-        accumulateLine(byMenu, rangeOrderIds, {
-          menuId: row.branchMenuItemId,
-          orderId: row.skewerOrderId,
-          day: requestedDateToKey(row.skewerOrder.requestedDate),
-          quantity,
-          lineRev,
-          from,
-          to,
-        });
+        accumulateLine(
+          byMenu,
+          rangeOrderIds,
+          cookSummary,
+          optionSummaryMap,
+          noneSummary,
+          {
+            menuId: row.branchMenuItemId,
+            orderId: row.skewerOrderId,
+            day: requestedDateToKey(row.skewerOrder.requestedDate),
+            quantity,
+            lineRev,
+            optionsText: null,
+            from,
+            to,
+          },
+        );
       }
     } else {
       const orderItems = await prisma.orderItem.findMany({
@@ -212,6 +344,7 @@ export async function GET(request: Request, { params }: Params) {
           quantity: true,
           unitPrice: true,
           optionsPrice: true,
+          optionsText: true,
           orderId: true,
           order: { select: { queueBusinessDate: true } },
         },
@@ -221,24 +354,41 @@ export async function GET(request: Request, { params }: Params) {
         if (!row.branchMenuItemId) continue;
         const lineRev =
           (Number(row.unitPrice) + Number(row.optionsPrice)) * row.quantity;
-        accumulateLine(byMenu, rangeOrderIds, {
-          menuId: row.branchMenuItemId,
-          orderId: row.orderId,
-          day: bangkokDateKey(row.order.queueBusinessDate),
-          quantity: row.quantity,
-          lineRev,
-          from,
-          to,
-        });
+        accumulateLine(
+          byMenu,
+          rangeOrderIds,
+          cookSummary,
+          optionSummaryMap,
+          noneSummary,
+          {
+            menuId: row.branchMenuItemId,
+            orderId: row.orderId,
+            day: bangkokDateKey(row.order.queueBusinessDate),
+            quantity: row.quantity,
+            lineRev,
+            optionsText: row.optionsText,
+            from,
+            to,
+          },
+        );
       }
     }
 
     const ranked = [...byMenu.entries()]
-      .map(([menuItemId, agg]) => ({
-        menuItemId,
-        quantity: agg.quantity,
-        revenue: Math.round(agg.revenue * 100) / 100,
-      }))
+      .map(([menuItemId, agg]) => {
+        const sliced = sliceForOption(
+          agg.quantity,
+          agg.revenue,
+          agg.byOption,
+          agg.none,
+          optionFilter,
+        );
+        return {
+          menuItemId,
+          quantity: sliced.quantity,
+          revenue: Math.round(sliced.revenue * 100) / 100,
+        };
+      })
       .filter((r) => r.quantity >= BESTSELLER_MIN_QTY)
       .sort(
         (a, b) =>
@@ -250,20 +400,29 @@ export async function GET(request: Request, { params }: Params) {
 
     const items = menuItems
       .map((m) => {
-        const agg = byMenu.get(m.id);
+        const agg = byMenu.get(m.id) ?? emptyMenuAgg();
+        const byCook = roundCookBreakdown(agg.byCook);
+        const sliced = sliceForOption(
+          agg.quantity,
+          agg.revenue,
+          agg.byOption,
+          agg.none,
+          optionFilter,
+        );
         return {
           id: m.id,
           name: m.name,
           productCode: resolveMenuItemProductCode({
             id: m.id,
-            itemCode: m.itemCode,
+            itemCode: m.itemCode ?? null,
           }),
           imageUrl: m.imageUrl,
           isHidden: m.isHidden,
           isOutOfStock: m.isOutOfStock,
           category: m.category,
-          quantity: agg?.quantity ?? 0,
-          revenue: Math.round((agg?.revenue ?? 0) * 100) / 100,
+          quantity: sliced.quantity,
+          revenue: Math.round(sliced.revenue * 100) / 100,
+          byCook,
           isBestSeller: bestsellerIds.has(m.id),
         };
       })
@@ -279,15 +438,18 @@ export async function GET(request: Request, { params }: Params) {
       Math.round(items.reduce((s, i) => s + i.revenue, 0) * 100) / 100;
     const menusSold = items.filter((i) => i.quantity > 0).length;
 
+    type TrendSeries = {
+      id: string;
+      name: string;
+      totalQty: number;
+      totalRevenue: number;
+      points: { date: string; quantity: number; revenue: number }[];
+    };
+
     let trend: {
       days: { date: string; label: string }[];
-      series: {
-        id: string;
-        name: string;
-        totalQty: number;
-        totalRevenue: number;
-        points: { date: string; quantity: number; revenue: number }[];
-      }[];
+      series: TrendSeries[];
+      cookSeries: TrendSeries[];
     } | null = null;
 
     if (includeTrend) {
@@ -298,10 +460,16 @@ export async function GET(request: Request, { params }: Params) {
         if (agg) {
           for (const d of trendDays) {
             const p = agg.byDay.get(d.date);
-            if (p) {
-              totalQtyW += p.quantity;
-              totalRevW += p.revenue;
-            }
+            if (!p) continue;
+            const sliced = sliceForOption(
+              p.quantity,
+              p.revenue,
+              p.byOption,
+              p.none,
+              optionFilter,
+            );
+            totalQtyW += sliced.quantity;
+            totalRevW += sliced.revenue;
           }
         }
         return { id: m.id, name: m.name, totalQtyW, totalRevW };
@@ -315,6 +483,64 @@ export async function GET(request: Request, { params }: Params) {
         )
         .slice(0, TREND_SERIES_TOP);
 
+      const cookDayTotals = new Map<
+        string,
+        { grill: QtyRev; fry: QtyRev }
+      >();
+      for (const d of trendDays) {
+        cookDayTotals.set(d.date, {
+          grill: emptyQtyRev(),
+          fry: emptyQtyRev(),
+        });
+      }
+      for (const agg of byMenu.values()) {
+        for (const d of trendDays) {
+          const p = agg.byDay.get(d.date);
+          if (!p) continue;
+          const bucket = cookDayTotals.get(d.date)!;
+          addQtyRev(
+            bucket.grill,
+            p.byCook.grill.quantity,
+            p.byCook.grill.revenueBaht,
+          );
+          addQtyRev(
+            bucket.fry,
+            p.byCook.fry.quantity,
+            p.byCook.fry.revenueBaht,
+          );
+        }
+      }
+
+      const buildCookSeries = (
+        id: "grill" | "fry",
+        label: string,
+      ): TrendSeries => {
+        const points = trendDays.map((d) => {
+          const bucket = cookDayTotals.get(d.date)!;
+          const slice = bucket[id];
+          return {
+            date: d.date,
+            quantity: slice.quantity,
+            revenue: Math.round(slice.revenue * 100) / 100,
+          };
+        });
+        const totalQty = points.reduce((s, p) => s + p.quantity, 0);
+        const totalRevenue =
+          Math.round(points.reduce((s, p) => s + p.revenue, 0) * 100) / 100;
+        return {
+          id,
+          name: label,
+          totalQty,
+          totalRevenue,
+          points,
+        };
+      };
+
+      const cookSeries = [
+        buildCookSeries("grill", COOK_METHOD_LABEL.grill),
+        buildCookSeries("fry", COOK_METHOD_LABEL.fry),
+      ].filter((s) => s.totalQty > 0);
+
       trend = {
         days: trendDays,
         series: top.map((m) => {
@@ -326,22 +552,54 @@ export async function GET(request: Request, { params }: Params) {
             totalRevenue: Math.round(m.totalRevW * 100) / 100,
             points: trendDays.map((d) => {
               const p = agg?.byDay.get(d.date);
+              if (!p) {
+                return { date: d.date, quantity: 0, revenue: 0 };
+              }
+              const sliced = sliceForOption(
+                p.quantity,
+                p.revenue,
+                p.byOption,
+                p.none,
+                optionFilter,
+              );
               return {
                 date: d.date,
-                quantity: p?.quantity ?? 0,
-                revenue: Math.round((p?.revenue ?? 0) * 100) / 100,
+                quantity: sliced.quantity,
+                revenue: Math.round(sliced.revenue * 100) / 100,
               };
             }),
           };
         }),
+        cookSeries,
       };
     }
+
+    const optionSummary = optionSummaryFromMap(
+      new Map(
+        [...optionSummaryMap].map(([name, v]) => [
+          name,
+          { quantity: v.quantity, revenueBaht: v.revenue },
+        ]),
+      ),
+      noneSummary.quantity,
+      noneSummary.revenue,
+    );
+
+    // Legacy cook field for older UI — derived from option filter when possible
+    let cookLegacy: CookMethod | null = null;
+    if (optionFilter === "ย่าง") cookLegacy = "grill";
+    else if (optionFilter === "ทอด") cookLegacy = "fry";
+    else if (optionFilter === OPTION_FILTER_NONE) cookLegacy = "unknown";
 
     return jsonOk({
       from,
       to,
       date: to,
       operatingDay: dayState.operatingDay,
+      option: optionFilter,
+      optionSummary,
+      cook: cookLegacy,
+      cookSummary: roundCookBreakdown(cookSummary),
       summary: {
         completedOrders: rangeOrderIds.size,
         totalQty,

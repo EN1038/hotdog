@@ -1298,7 +1298,7 @@ function OwnerHomeInner() {
               className="flex items-center justify-center gap-2 rounded-[1.15rem] bg-white px-3 py-4 text-[14px] font-extrabold text-rose-800 shadow-sm ring-1 ring-rose-200 active:bg-rose-50"
             >
               <IconExpense size={20} />
-              ค่าใช้จ่าย
+              บัญชี
             </Link>
             <Link
               href={wasteHref}
@@ -1358,8 +1358,8 @@ function OwnerHomeInner() {
           />
           <SoftTile
             href={expensesHref}
-            title="ค่าใช้จ่าย"
-            subtitle="ดูรายการและยอดจ่าย"
+            title="บัญชี"
+            subtitle="รายรับ · รายจ่าย · ภาพรวม"
             icon={<IconReceipt size={26} />}
             tone="rose"
             size="hero"

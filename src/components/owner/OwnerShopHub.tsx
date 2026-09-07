@@ -664,7 +664,7 @@ export function buildOwnerShopLinks(input: {
   const hiddenSetup = new Set([
     "รวมทุกสาขา",
     "รอบขาย",
-    "ค่าใช้จ่าย",
+    "บัญชี",
     "โต๊ะ / BBQ",
   ]);
   return groups.setup.filter((l) => !hiddenSetup.has(l.label));
@@ -723,11 +723,6 @@ export function buildOwnerShopLinkGroups(input: {
         label: "รอบขาย",
         hint: "ดูรอบเปิด–ปิดและสรุปรายรอบ",
       },
-      {
-        href: `${branchBase}?tab=expenses`,
-        label: "ค่าใช้จ่าย",
-        hint: "บันทึกและดูรายจ่ายสาขา",
-      },
     );
     if (bbqEnabled) {
       setup.push({
@@ -737,6 +732,12 @@ export function buildOwnerShopLinkGroups(input: {
       });
     }
   }
+
+  setup.push({
+    href: "/owner/accounts",
+    label: "บัญชี",
+    hint: "รายรับ · รายจ่าย · ภาพรวม",
+  });
 
   const stock: OwnerShopLink[] = [];
   if (stockEnabled) {

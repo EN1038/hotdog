@@ -53,7 +53,11 @@ export function ownerExpensesHref(opts: {
   from?: string | null;
   to?: string | null;
 }) {
-  return `/owner/expenses${buildOwnerViewQuery(opts)}`;
+  // Accounts is per-branch; date range is chosen inside the ledger UI.
+  const q = opts.branchId
+    ? `?branchId=${encodeURIComponent(opts.branchId)}`
+    : "";
+  return `/owner/accounts${q}`;
 }
 
 export function ownerAgingHref(opts: {

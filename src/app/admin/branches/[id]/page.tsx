@@ -239,12 +239,11 @@ type TabId =
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "ภาพรวม" },
-  { id: "orders", label: "ออเดอร์" },
   { id: "skewer-orders", label: "ออเดอร์เสียบไม้" },
   { id: "bbq-tables", label: "โต๊ะ / QR" },
   { id: "bbq-sessions", label: "บิลเปิด / ชั่ง" },
   { id: "bbq-bills", label: "บิลปิดแล้ว" },
-  { id: "shifts", label: "รอบขาย" },
+  { id: "shifts", label: "ขาย" },
   { id: "stock", label: "สต๊อก" },
   { id: "expenses", label: "ค่าใช้จ่าย" },
   { id: "menu", label: "เมนู" },
@@ -255,6 +254,19 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "settings", label: "ตั้งค่าสาขา" },
   { id: "copy", label: "คัดลอก" },
 ];
+
+/** Inner tabs under 「ขาย」 (shifts) */
+type SalesSubId = "rounds" | "orders" | "bestsellers";
+
+const SALES_SUB_TABS: { id: SalesSubId; label: string }[] = [
+  { id: "rounds", label: "รอบ" },
+  { id: "orders", label: "ออเดอร์" },
+  { id: "bestsellers", label: "สินค้าขายดี" },
+];
+
+function isSalesSubId(value: string | null): value is SalesSubId {
+  return SALES_SUB_TABS.some((t) => t.id === value);
+}
 
 type TabGroupId = "sales" | "menu" | "team" | "settings";
 
@@ -268,7 +280,6 @@ const TAB_GROUPS: {
     label: "ขาย",
     tabIds: [
       "overview",
-      "orders",
       "skewer-orders",
       "bbq-tables",
       "bbq-sessions",
@@ -367,7 +378,7 @@ function defaultTabForMode(
   if (kind === "WAREHOUSE") return "staff";
   if (mode === "SKEWER") return "skewer-orders";
   if (mode === "BBQ_WEIGH") return "bbq-tables";
-  return "orders";
+  return "shifts";
 }
 
 type TabAttention = {
@@ -483,6 +494,7 @@ function getTabAttention(
   branch: BranchDetail,
 ): TabAttention | null {
   switch (tabId) {
+    case "shifts":
     case "orders": {
       const open = branch.orderStats?.openCount ?? 0;
       if (open <= 0) return null;
@@ -595,7 +607,10 @@ function ServiceHourCard({
 }
 
 function isTabId(value: string | null): value is TabId {
-  return TABS.some((t) => t.id === value);
+  if (!value) return false;
+  if (TABS.some((t) => t.id === value)) return true;
+  // Legacy top-level 「ออเดอร์」 — redirected into ขาย → ออเดอร์
+  return value === "orders";
 }
 
 export default function BranchDetailPage() {
@@ -616,7 +631,19 @@ function BranchDetailContent() {
   const searchParams = useSearchParams();
   const { session } = useAdminSession();
   const tabParam = embed?.tab ?? searchParams.get("tab");
-  const activeTab: TabId = isTabId(tabParam) ? tabParam : "overview";
+  const activeTab: TabId =
+    tabParam === "orders"
+      ? "shifts"
+      : isTabId(tabParam)
+        ? tabParam
+        : "overview";
+  const salesSubParam = searchParams.get("salesSub");
+  const salesSub: SalesSubId =
+    tabParam === "orders"
+      ? "orders"
+      : isSalesSubId(salesSubParam)
+        ? salesSubParam
+        : "rounds";
   const sectionParam =
     embed?.settingsSection ??
     (searchParams.get("section") === "hours" ||
@@ -807,16 +834,44 @@ function BranchDetailContent() {
   const [overviewStatsLoading, setOverviewStatsLoading] = useState(false);
 
   function setTab(next: TabId) {
+    if (next === "orders") {
+      setSalesTab("orders");
+      return;
+    }
     if (embed) {
       embed.setTab(next);
       return;
     }
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", next);
+    if (next !== "shifts") params.delete("salesSub");
     if (focusMode) params.set("focus", "1");
     if (settingsSection) params.set("section", settingsSection);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
+
+  function setSalesTab(next: SalesSubId) {
+    if (embed) {
+      embed.setTab("shifts");
+      // Owner embed may not support salesSub — still switch outer tab
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "shifts");
+    params.set("salesSub", next);
+    if (focusMode) params.set("focus", "1");
+    if (settingsSection) params.set("section", settingsSection);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  // Normalize legacy ?tab=orders in the URL
+  useEffect(() => {
+    if (searchParams.get("tab") !== "orders") return;
+    if (embed) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "shifts");
+    params.set("salesSub", "orders");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [searchParams, pathname, router, embed]);
 
   async function load() {
     const [branchRes, brandsRes, typesRes] = await Promise.all([
@@ -2242,7 +2297,7 @@ function BranchDetailContent() {
                 {branch.operatingMode !== "SKEWER" && (
                   <button
                     type="button"
-                    onClick={() => setTab("orders")}
+                    onClick={() => setSalesTab("orders")}
                     className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
                   >
                     <p className="text-sm text-amber-700">จำนวนออเดอร์</p>
@@ -2250,7 +2305,7 @@ function BranchDetailContent() {
                       {stats?.completedOrderCount ?? 0}
                     </p>
                     <p className="mt-1 text-xs text-amber-600/80">
-                      ออเดอร์สำเร็จ · ดูแท็บออเดอร์
+                      ออเดอร์สำเร็จ · ดูแท็บขาย
                     </p>
                   </button>
                 )}
@@ -2640,11 +2695,9 @@ function BranchDetailContent() {
                 <button
                   type="button"
                   onClick={() =>
-                    setTab(
-                      branch.operatingMode === "SKEWER"
-                        ? "skewer-orders"
-                        : "orders",
-                    )
+                    branch.operatingMode === "SKEWER"
+                      ? setTab("skewer-orders")
+                      : setSalesTab("orders")
                   }
                   className="text-sm text-site-primary hover:underline"
                 >
@@ -3169,8 +3222,6 @@ function BranchDetailContent() {
           </div>
         )}
 
-        {activeTab === "orders" && <BranchOrdersPanel branchId={id} />}
-
         {activeTab === "skewer-orders" && (
           <BranchSkewerOrdersPanel branchId={id} />
         )}
@@ -3194,7 +3245,44 @@ function BranchDetailContent() {
             />
           )}
 
-        {activeTab === "shifts" && <BranchShiftsPanel branchId={id} />}
+        {activeTab === "shifts" && (
+          <div className="space-y-4">
+            <div className="flex gap-1 overflow-x-auto rounded-full bg-slate-100 p-1">
+              {SALES_SUB_TABS.map((sub) => {
+                const active = salesSub === sub.id;
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => setSalesTab(sub.id)}
+                    className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${
+                      active
+                        ? "bg-site-primary text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white/70"
+                    }`}
+                  >
+                    {sub.label}
+                  </button>
+                );
+              })}
+            </div>
+            {salesSub === "rounds" ? (
+              <BranchShiftsPanel branchId={id} />
+            ) : null}
+            {salesSub === "orders" ? (
+              <BranchOrdersPanel branchId={id} />
+            ) : null}
+            {salesSub === "bestsellers" ? (
+              <div className={panelClass}>
+                <BranchMenuSalesPanel
+                  branchId={id}
+                  showDatePicker
+                  skewerMode={branch.operatingMode === "SKEWER"}
+                />
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {activeTab === "stock" &&
           (isWarehouse ? (

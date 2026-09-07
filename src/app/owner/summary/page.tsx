@@ -269,11 +269,11 @@ function OwnerSummaryInner() {
         >
           <div className="min-w-0">
             <p className="text-[15px] font-extrabold text-rose-950">
-              รายการค่าใช้จ่าย
+              เปิดบัญชี
             </p>
             <p className="mt-0.5 text-[12px] font-semibold text-rose-800/80">
-              {formatPrice(stats.expenseCount ?? 0)} รายการ · ฿
-              {formatPrice(stats.expenseTotal ?? 0)} · กดดูรายละเอียด
+              {formatPrice(stats.expenseCount ?? 0)} รายจ่าย · ฿
+              {formatPrice(stats.expenseTotal ?? 0)} · รายรับ–รายจ่าย
             </p>
           </div>
           <IconChevronRight size={18} className="shrink-0 text-rose-700" aria-hidden />

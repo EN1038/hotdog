@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
 import { handleApiError, jsonOk } from "@/lib/api";
 import {
   bangkokDateKey,
@@ -11,16 +10,26 @@ import {
   summarizeExpenses,
 } from "@/lib/branch-expense";
 import { summarizeIncomes } from "@/lib/branch-income";
+import {
+  requireOwnerBranch,
+  requireOwnerSession,
+} from "@/lib/owner-accounts-access";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 
 type PayChannel = "CASH" | "TRANSFER";
 
-/** GET — accounts dashboard totals + merged ledger entries. */
+/** GET — owner accounts summary for one branch. */
 export async function GET(request: Request) {
   try {
-    const session = await requireStaff();
+    const { session, brandIds } = await requireOwnerSession();
     await ensureProdSchemaCompat().catch(() => null);
     const { searchParams } = new URL(request.url);
+    const branch = await requireOwnerBranch(
+      session,
+      brandIds,
+      searchParams.get("branchId"),
+    );
+
     const fromParam = searchParams.get("from");
     const toParam = searchParams.get("to");
     const today = bangkokDateKey();
@@ -43,7 +52,7 @@ export async function GET(request: Request) {
     const [expenseRows, incomeRows] = await Promise.all([
       prisma.branchExpense.findMany({
         where: {
-          branchId: session.branchId,
+          branchId: branch.id,
           expenseDate: { gte: dateGte, lte: dateLte },
         },
         orderBy: [{ expenseDate: "desc" }, { createdAt: "desc" }],
@@ -54,7 +63,7 @@ export async function GET(request: Request) {
       }),
       prisma.branchIncome.findMany({
         where: {
-          branchId: session.branchId,
+          branchId: branch.id,
           incomeDate: { gte: dateGte, lte: dateLte },
         },
         orderBy: [{ incomeDate: "desc" }, { createdAt: "desc" }],
@@ -119,6 +128,9 @@ export async function GET(request: Request) {
     return jsonOk({
       from: fromKey,
       to: toKey,
+      branchId: branch.id,
+      branchName: branch.name,
+      brandName: branch.brand?.name ?? "",
       income: incomeSummary,
       expense: expenseSummary,
       net,

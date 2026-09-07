@@ -2,6 +2,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getAccessibleBrandIds } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
+import { getActiveShift } from "@/lib/branch-shift";
 import {
   bangkokDateKey,
   isBangkokDateKey,
@@ -9,10 +10,22 @@ import {
 } from "@/lib/constants";
 import { isTestBranch } from "@/lib/branch-test";
 import {
+  expenseCreateSchema,
+  expenseDateFromKey,
   serializeExpense,
   summarizeExpenses,
 } from "@/lib/branch-expense";
+import { assertBrandWriteAllowedByBranchId } from "@/lib/brand-plan";
+import {
+  requireOwnerBranch,
+  requireOwnerSession,
+} from "@/lib/owner-accounts-access";
 import { getCalendarDayState } from "@/lib/operating-day";
+import { z } from "zod";
+
+const ownerExpenseCreateSchema = expenseCreateSchema.extend({
+  branchId: z.string().trim().min(1),
+});
 
 export async function GET(request: Request) {
   try {
@@ -121,6 +134,40 @@ export async function GET(request: Request) {
       expenses,
       summary: summarizeExpenses(expenses),
     });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+/** POST — owner creates an expense (createdByAdminId). */
+export async function POST(request: Request) {
+  try {
+    const { session, brandIds } = await requireOwnerSession();
+    const body = ownerExpenseCreateSchema.parse(await request.json());
+    const branch = await requireOwnerBranch(session, brandIds, body.branchId);
+    await assertBrandWriteAllowedByBranchId(branch.id);
+    const activeShift = await getActiveShift(branch.id);
+
+    const created = await prisma.branchExpense.create({
+      data: {
+        branchId: branch.id,
+        shiftId: activeShift?.id ?? null,
+        title: body.title,
+        amount: body.amount,
+        paymentMode: "IMMEDIATE",
+        schedule: null,
+        payChannel: body.payChannel,
+        expenseDate: expenseDateFromKey(body.expenseDate),
+        note: body.note?.trim() || null,
+        createdByAdminId: session.adminId!,
+      },
+      include: {
+        createdByStaff: { select: { name: true } },
+        createdByAdmin: { select: { username: true } },
+      },
+    });
+
+    return jsonOk({ expense: serializeExpense(created) }, 201);
   } catch (error) {
     return handleApiError(error);
   }

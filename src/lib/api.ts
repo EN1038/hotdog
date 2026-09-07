@@ -7,6 +7,7 @@ import {
   BrandInactiveError,
   BrandLimitError,
 } from "@/lib/brand-plan-shared";
+import { OwnerAccountsAccessError } from "@/lib/owner-accounts-access";
 
 export function jsonOk<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
@@ -49,6 +50,10 @@ function formatZodError(error: ZodError): string {
 export function handleApiError(error: unknown) {
   if (error instanceof ForbiddenError) {
     return jsonError(error.message || "ไม่มีสิทธิ์เข้าถึง", 403);
+  }
+
+  if (error instanceof OwnerAccountsAccessError) {
+    return jsonError(error.message, error.status, error.body);
   }
 
   if (error instanceof BrandInactiveError) {

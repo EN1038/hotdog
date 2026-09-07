@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MenuItemNameWithCode, MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import {
   AdminEmptyState,
   AdminLoadingState,
@@ -401,7 +400,6 @@ export function BranchStockRecommendationPanel({ branchId }: Props) {
                         aria-label="เลือกทั้งหมด"
                       />
                     </th>
-                    <th className="px-3 py-3">รหัส</th>
                     <th className="px-3 py-3">เมนู</th>
                     <th className="px-3 py-3">กลุ่ม</th>
                     <th className="px-3 py-3 text-right">ขายได้</th>
@@ -440,9 +438,6 @@ export function BranchStockRecommendationPanel({ branchId }: Props) {
                               }))
                             }
                           />
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          <MenuItemCodeBadge code={row.productCode} />
                         </td>
                         <td className="px-3 py-2.5 align-top">
                           <p className="font-medium text-gray-900">{row.name}</p>
@@ -535,10 +530,7 @@ export function BranchStockRecommendationPanel({ branchId }: Props) {
                 {reviewApplyLines.map(({ row, qty }) => (
                   <tr key={row.menuItemId}>
                     <td className="px-3 py-2 font-medium text-gray-900">
-                      <MenuItemNameWithCode
-                        name={row.name}
-                        productCode={row.productCode}
-                      />
+                      {row.name}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {row.currentStock.toLocaleString("th-TH")}

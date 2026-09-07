@@ -45,8 +45,6 @@ import {
   assignStableMenuSequence,
   sortMenuItemData,
 } from "@/lib/staff-menu-order";
-import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
-import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
 import { isRegularMenuItem } from "@/lib/staff-key-order";
 import { compareThaiText } from "@/lib/thai-sort";
 
@@ -1005,15 +1003,6 @@ function SkewerOrderPageInner({ params }: PageProps) {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-gray-900">
-                              {item.itemCode?.trim() ? (
-                                <MenuItemCodeBadge
-                                  code={resolveMenuItemProductCode({
-                                    id: item.id,
-                                    itemCode: item.itemCode,
-                                  })}
-                                  className="mr-1.5 align-middle text-[10px]"
-                                />
-                              ) : null}
                               {item.name}
                             </p>
                             <p className="truncate text-xs text-gray-500">

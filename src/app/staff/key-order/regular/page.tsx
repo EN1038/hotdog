@@ -67,7 +67,6 @@ import {
   assignStableMenuSequence,
   sortMenuItemData,
 } from "@/lib/staff-menu-order";
-import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import { resolveMenuItemProductCode } from "@/lib/inventory/inventory-menu-code";
 import {
   autoPrintQueueTickets,
@@ -679,15 +678,6 @@ export default function StaffRegularKeyOrderPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="truncate font-medium leading-snug text-gray-900">
-                          {item.itemCode?.trim() ? (
-                            <MenuItemCodeBadge
-                              code={resolveMenuItemProductCode({
-                                id: item.id,
-                                itemCode: item.itemCode,
-                              })}
-                              className="mr-1.5 align-middle text-[10px]"
-                            />
-                          ) : null}
                           {item.name}
                         </p>
                         <p className="text-xs text-gray-500">

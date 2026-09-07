@@ -16,7 +16,6 @@ import {
 import { AdminModal } from "@/components/admin/AdminModal";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import {
   bangkokWeekdayLabel,
   formatBangkokDateTime,
@@ -713,14 +712,11 @@ export function BranchTomorrowPlanRecordsPanel({
                           <MenuThumb url={line.imageUrl} name={line.name} />
                           <div>
                             <p className="font-medium text-gray-900">{line.name}</p>
-                            <div className="mt-0.5 flex items-center gap-2">
-                              <MenuItemCodeBadge code={line.productCode} />
-                              {line.category ? (
-                                <span className="text-xs text-gray-400">
-                                  {line.category}
-                                </span>
-                              ) : null}
-                            </div>
+                            {line.category ? (
+                              <p className="mt-0.5 text-xs text-gray-400">
+                                {line.category}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       </td>

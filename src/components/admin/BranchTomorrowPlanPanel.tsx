@@ -10,7 +10,6 @@ import {
   btnPrimary,
 } from "@/components/admin/AdminShell";
 import { useToast } from "@/components/admin/Toast";
-import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import {
   DATA_QUALITY_TONE,
   dataQualityLabel,
@@ -760,7 +759,6 @@ export function BranchTomorrowPlanPanel({
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
                     <tr>
-                      <th className="px-3 py-3">รหัส</th>
                       <th className="px-3 py-3">สินค้า</th>
                       <th className="px-3 py-3">กลุ่มขาย</th>
                       <th className="px-3 py-3 text-right">{PAR_STOCK_SHORT_LABEL}</th>
@@ -782,9 +780,6 @@ export function BranchTomorrowPlanPanel({
                   <tbody className="divide-y divide-gray-100">
                     {captureRows.map((row) => (
                       <tr key={row.menuItemId} className="hover:bg-gray-50/80">
-                        <td className="px-3 py-2.5 align-top">
-                          <MenuItemCodeBadge code={row.productCode} />
-                        </td>
                         <td className="px-3 py-2.5 align-top">
                           <div className="flex items-start gap-2.5">
                             <MenuThumb url={row.imageUrl} name={row.name} />

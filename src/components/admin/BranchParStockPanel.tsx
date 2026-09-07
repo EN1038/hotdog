@@ -13,7 +13,6 @@ import {
 import { AdminModal } from "@/components/admin/AdminModal";
 import { DateInput } from "@/components/DateInput";
 import { useToast } from "@/components/admin/Toast";
-import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import { bangkokDateKey, bangkokMonthRangeToToday } from "@/lib/constants";
 import { formatBangkokDateTime } from "@/lib/inventory/inventory-date";
 import {
@@ -1365,13 +1364,6 @@ export function BranchParStockPanel({
                     </th>
                     ) : null}
                     <SortTh
-                      label="รหัส"
-                      sortKey="code"
-                      activeKey={sortKey}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <SortTh
                       label="เมนู"
                       sortKey="name"
                       activeKey={sortKey}
@@ -1500,9 +1492,6 @@ export function BranchParStockPanel({
                         />
                       </td>
                       ) : null}
-                      <td className="px-3 py-2.5 align-top">
-                        <MenuItemCodeBadge code={row.productCode} />
-                      </td>
                       <td className="px-3 py-2.5 align-top">
                         <div className="flex min-w-0 items-center gap-2.5">
                           <MenuThumb url={row.imageUrl} name={row.name} />
@@ -1690,7 +1679,6 @@ export function BranchParStockPanel({
               <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-600">
                 <tr>
                   <th className="px-3 py-2">เมนู</th>
-                  <th className="px-3 py-2">รหัส</th>
                   <th className="px-3 py-2 text-right">{PAR_STOCK_SHORT_LABEL}ปัจจุบัน</th>
                   <th className="px-3 py-2 text-right">{PAR_STOCK_SHORT_LABEL}ที่แนะนำ</th>
                 </tr>
@@ -1703,9 +1691,6 @@ export function BranchParStockPanel({
                         <MenuThumb url={row.imageUrl} name={row.name} />
                         <span className="font-medium">{row.name}</span>
                       </div>
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-gray-600">
-                      {row.productCode}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {row.currentParStock.toLocaleString("th-TH")}

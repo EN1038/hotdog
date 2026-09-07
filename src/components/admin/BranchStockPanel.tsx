@@ -40,7 +40,6 @@ import { BranchStockUsageView } from "@/components/admin/BranchStockUsageView";
 import { BranchParStockPanel } from "@/components/admin/BranchParStockPanel";
 import { BranchTomorrowPlanPanel } from "@/components/admin/BranchTomorrowPlanPanel";
 import { BranchTomorrowPlanRecordsPanel } from "@/components/admin/BranchTomorrowPlanRecordsPanel";
-import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import {
   STOCK_OUTBOUND_PURPOSE_LABEL,
   type StockOutboundPurpose,
@@ -1227,11 +1226,6 @@ export function BranchStockPanel({
                               <p className="truncate text-sm font-bold text-slate-900">
                                 {seq}. {item.name}
                               </p>
-                              {item.productCode ? (
-                                <p className="text-[11px] text-slate-500">
-                                  {item.productCode}
-                                </p>
-                              ) : null}
                             </div>
                             <div className="flex shrink-0 items-stretch gap-1.5">
                               {hasPar ? (
@@ -1274,7 +1268,6 @@ export function BranchStockPanel({
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
                       <tr>
                         <th className="px-4 py-3 font-semibold w-12">#</th>
-                        <th className="px-4 py-3 font-semibold w-16">รหัส</th>
                         <th className="px-4 py-3 font-semibold">รายการ</th>
                         <th className="px-4 py-3 font-semibold">หมวดหมู่</th>
                         <th className="hidden sm:table-cell px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
@@ -1289,7 +1282,7 @@ export function BranchStockPanel({
                       {visibleItems.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={showParColumn ? 8 : 7}
+                            colSpan={showParColumn ? 7 : 6}
                             className="px-4 py-10 text-center text-sm text-slate-500"
                           >
                             {manageQ.trim()
@@ -1312,13 +1305,6 @@ export function BranchStockPanel({
                           <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3 text-sm font-bold tabular-nums text-slate-400 align-top">
                               {seq || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-sm align-top">
-                              {item.productCode ? (
-                                <MenuItemCodeBadge code={item.productCode} />
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
@@ -1667,14 +1653,6 @@ export function BranchStockPanel({
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-900 leading-tight">
-                              {item.productCode ? (
-                                <>
-                                  <MenuItemCodeBadge
-                                    code={item.productCode}
-                                    className="mr-1.5 align-middle text-[10px]"
-                                  />
-                                </>
-                              ) : null}
                               {item.name}
                             </p>
                             <p className="mt-0.5 text-xs text-slate-500">

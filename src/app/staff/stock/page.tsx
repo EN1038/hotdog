@@ -44,7 +44,6 @@ import {
   type StockDocumentKind,
 } from "@/lib/stock-document-no-format";
 import { MAX_STOCK_MOVEMENT_IMAGES } from "@/lib/stock-movement-images";
-import { MenuItemCodeBadge } from "@/components/MenuItemCodeDisplay";
 import { StaffPrepTipBanner } from "@/components/staff/StaffPrepTipBanner";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
@@ -113,7 +112,6 @@ function StockItemName({
   name,
   unit,
   stockType,
-  productCode,
 }: {
   name: string;
   unit?: string | null;
@@ -125,9 +123,6 @@ function StockItemName({
     Boolean(unit?.trim());
   return (
     <div className="min-w-0">
-      {productCode ? (
-        <MenuItemCodeBadge code={productCode} className="mb-0.5 text-[10px]" />
-      ) : null}
       <p className="truncate text-sm font-bold text-gray-900 leading-tight">
         {name}
         {showUnit ? (

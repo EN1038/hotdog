@@ -819,7 +819,7 @@ export function StaffPackageInPanel({
                           {item.name}
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          {item.itemCode ?? "—"} · {item.category?.name ?? "—"} ·{" "}
+                          {item.category?.name ?? "—"} ·{" "}
                           {resolveMenuItemPackageUnit(item)}
                         </p>
                       </div>
@@ -866,7 +866,7 @@ export function StaffPackageInPanel({
                           {item.name}
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          {item.itemCode ?? "—"} · {item.unit}
+                          {item.unit}
                         </p>
                       </div>
                     </button>

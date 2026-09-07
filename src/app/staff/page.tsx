@@ -16,11 +16,10 @@ import {
   StaffShiftControls,
 } from "@/components/staff/StaffShiftControls";
 import { StaffPrepTipBanner } from "@/components/staff/StaffPrepTipBanner";
-import { StaffExpensesSheet } from "@/components/staff/StaffExpensesSheet";
 import { AddToHomeScreenBanner } from "@/components/staff/AddToHomeScreenBanner";
 import { takeStaffOrderFeedback } from "@/lib/staff-order-feedback";
 import { formatQueueNumber } from "@/lib/order-queue-format";
-import { bangkokDateKey, formatPrice } from "@/lib/constants";
+import { formatPrice } from "@/lib/constants";
 import {
   IconBoxes,
   IconCart,
@@ -29,8 +28,8 @@ import {
   IconClipboard,
   IconLinkSuffix,
   IconQrCode,
-  IconReceipt,
   IconStar,
+  IconWallet,
 } from "@/components/icons";
 import {
   autoPrintQueueTickets,
@@ -246,7 +245,6 @@ export default function StaffHomePage() {
   const [promoButton, setPromoButton] = useState<StaffHomePromoButton | null>(
     null,
   );
-  const [expensesOpen, setExpensesOpen] = useState(false);
   const [shopShareOpen, setShopShareOpen] = useState(false);
   const [sellMode, setSellMode] = useState<StaffSellMode>("mala");
   const [aging, setAging] = useState<{
@@ -260,8 +258,7 @@ export default function StaffHomePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (new URLSearchParams(window.location.search).get("expenses") === "1") {
-      setExpensesOpen(true);
-      router.replace("/staff", { scroll: false });
+      router.replace("/staff/accounts?tab=expense");
     }
   }, [router]);
 
@@ -744,10 +741,10 @@ export default function StaffHomePage() {
                   size="half"
                 />
                 <SoftTile
-                  onClick={() => setExpensesOpen(true)}
-                  title="ค่าใช้จ่าย"
-                  subtitle="บันทึกยอดจ่าย"
-                  icon={<IconReceipt size={26} />}
+                  href="/staff/accounts"
+                  title="บัญชี"
+                  subtitle="รายรับ · รายจ่าย · ภาพรวม"
+                  icon={<IconWallet size={26} />}
                   tone="rose"
                   size="half"
                 />
@@ -755,10 +752,10 @@ export default function StaffHomePage() {
             ) : (
               <>
                 <SoftTile
-                  onClick={() => setExpensesOpen(true)}
-                  title="ค่าใช้จ่าย"
-                  subtitle="บันทึกยอดจ่าย"
-                  icon={<IconReceipt size={26} />}
+                  href="/staff/accounts"
+                  title="บัญชี"
+                  subtitle="รายรับ · รายจ่าย · ภาพรวม"
+                  icon={<IconWallet size={26} />}
                   tone="rose"
                   size="half"
                   className="col-span-2"
@@ -767,12 +764,6 @@ export default function StaffHomePage() {
             )}
           </div>
         </section>
-
-        <StaffExpensesSheet
-          open={expensesOpen}
-          onClose={() => setExpensesOpen(false)}
-          initialDate={bangkokDateKey()}
-        />
 
         {shopShareOpen && meta?.branchId ? (
           <StaffBranchShopShareSheet

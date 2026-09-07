@@ -3,17 +3,17 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-/** ค่าใช้จ่ายเปิดเป็น sheet จากหน้าหลัก — deep link กลับ /staff */
+/** ค่าใช้จ่ายย้ายไปเมนูบัญชีแล้ว — deep link ไป /staff/accounts */
 export default function StaffExpensesPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/staff?expenses=1");
+    router.replace("/staff/accounts?tab=expense");
   }, [router]);
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4 text-sm font-semibold text-slate-500">
-      กำลังเปิดค่าใช้จ่าย…
+      กำลังเปิดบัญชี…
     </main>
   );
 }

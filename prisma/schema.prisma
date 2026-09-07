@@ -188,6 +188,7 @@ model Admin {
   activityLogs           AdminActivityLog[]
   branchStockSummaries   BranchStockSummary[]
   branchExpenses         BranchExpense[]
+  branchIncomes          BranchIncome[]
   confirmedSkewerOrders  SkewerOrder[]      @relation("SkewerOrderConfirmedByAdmin")
   closedTableSessions    TableSession[]     @relation("TableSessionClosedByAdmin")
   tableSessionLines      TableSessionLine[] @relation("TableSessionLineCreatedByAdmin")
@@ -561,6 +562,7 @@ model Branch {
   tomorrowPlans                BranchTomorrowPlan[]
   branchNonMenuItems           BranchNonMenuItem[]
   expenses                     BranchExpense[]
+  incomes                      BranchIncome[]
   smsSendLogs                  SmsSendLog[]
   stockLabels                  StockLabel[]
   sourceStockLabels            StockLabel[]                 @relation("StockLabelSource")
@@ -598,6 +600,7 @@ model BranchShift {
   orders          Order[]
   branchStockSummaries BranchStockSummary[]
   expenses        BranchExpense[]
+  incomes         BranchIncome[]
 
   @@unique([branchId, calendarDate, roundNumber])
   @@index([branchId, closedAt])
@@ -629,6 +632,7 @@ model Staff {
   branchStockSummaries         BranchStockSummary[]         @relation("BranchStockSummaryByStaff")
   branchNonMenuItemHistories   BranchNonMenuItemHistory[]
   expenses                     BranchExpense[]
+  incomes                      BranchIncome[]
   createdStockLabels           StockLabel[]                 @relation("StockLabelCreatedBy")
   consumedStockLabels          StockLabel[]                 @relation("StockLabelConsumedBy")
   receivedStockLabels          StockLabel[]                 @relation("StockLabelReceivedBy")
@@ -1386,6 +1390,33 @@ model BranchExpense {
   createdByAdmin   Admin?             @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
   @@index([branchId, expenseDate])
+  @@index([branchId, payChannel])
+  @@index([createdByStaffId])
+  @@index([createdByAdminId])
+}
+
+/// Branch operating income (cash in) — manual ledger, separate from sales/stock
+model BranchIncome {
+  id               String            @id @default(cuid())
+  branchId         String
+  shiftId          String?
+  title            String
+  amount           Decimal           @db.Decimal(12, 2)
+  payChannel       ExpensePayChannel @default(CASH)
+  /// Bangkok calendar date of the income
+  incomeDate       DateTime          @db.Date
+  note             String?
+  createdByStaffId String?
+  createdByAdminId String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shift            BranchShift?      @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  createdByStaff   Staff?            @relation(fields: [createdByStaffId], references: [id], onDelete: SetNull)
+  createdByAdmin   Admin?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, incomeDate])
   @@index([branchId, payChannel])
   @@index([createdByStaffId])
   @@index([createdByAdminId])

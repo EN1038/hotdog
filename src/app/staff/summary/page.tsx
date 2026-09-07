@@ -7,7 +7,6 @@ import { StaffAppShell } from "@/components/staff/StaffAppShell";
 import { LoadingState } from "@/components/LoadingState";
 import { StaffShiftSummarySheet } from "@/components/staff/StaffShiftSummarySheet";
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
-import { StaffExpensesSheet } from "@/components/staff/StaffExpensesSheet";
 import { StaffSalesHistoryPanel } from "@/components/staff/StaffSalesHistoryPanel";
 import { StaffWasteDetailSheet } from "@/components/staff/StaffWasteDetailSheet";
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
@@ -175,7 +174,6 @@ export default function StaffSummaryPage() {
   const [loading, setLoading] = useState(true);
   const [showMore, setShowMore] = useState(false);
   const [dailySalesOpen, setDailySalesOpen] = useState(false);
-  const [expensesOpen, setExpensesOpen] = useState(false);
   const [wasteOpen, setWasteOpen] = useState(false);
   const [showOverviewShifts, setShowOverviewShifts] = useState(false);
   const [exportBusy, setExportBusy] = useState<"save" | "share" | "copy" | null>(
@@ -602,17 +600,17 @@ export default function StaffSummaryPage() {
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => setExpensesOpen(true)}
+                onClick={() => router.push("/staff/accounts?tab=expense")}
                 className="min-h-[4.75rem] rounded-2xl border border-rose-200/80 bg-rose-50 px-2.5 py-2.5 text-left active:scale-[0.99]"
               >
-                <p className="text-[12px] font-bold text-rose-700">ค่าใช้จ่าย</p>
+                <p className="text-[12px] font-bold text-rose-700">รายจ่าย</p>
                 <p className="mt-1 text-[17px] font-black tabular-nums leading-none text-rose-800">
                   ฿{formatPrice(stats.expenseTotal)}
                 </p>
                 <p className="mt-1.5 text-[11px] font-semibold text-rose-600/80">
                   {stats.expenseCount > 0
                     ? `${stats.expenseCount} รายการ`
-                    : "กดบันทึก"}
+                    : "เปิดบัญชี"}
                 </p>
               </button>
               <button
@@ -933,14 +931,6 @@ export default function StaffSummaryPage() {
           initialDate={to}
           brandName={payload?.brandName ?? ""}
           branchName={payload?.branchName ?? ""}
-        />
-        <StaffExpensesSheet
-          open={expensesOpen}
-          onClose={() => {
-            setExpensesOpen(false);
-            void loadSummary(from, to);
-          }}
-          initialDate={to}
         />
         <StaffWasteDetailSheet
           open={wasteOpen}

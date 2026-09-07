@@ -333,6 +333,38 @@ export async function ensureProdSchemaCompat(): Promise<void> {
           }
         }
       }
+      const incomeTableSql = [
+        `CREATE TABLE IF NOT EXISTS "${schema}"."BranchIncome" ("id" TEXT NOT NULL, "branchId" TEXT NOT NULL, "shiftId" TEXT, "title" TEXT NOT NULL, "amount" DECIMAL(12,2) NOT NULL, "payChannel" "${schema}"."ExpensePayChannel" NOT NULL DEFAULT 'CASH', "incomeDate" DATE NOT NULL, "note" TEXT, "createdByStaffId" TEXT, "createdByAdminId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "BranchIncome_pkey" PRIMARY KEY ("id"))`,
+        `CREATE INDEX IF NOT EXISTS "BranchIncome_branchId_incomeDate_idx" ON "${schema}"."BranchIncome"("branchId", "incomeDate")`,
+        `CREATE INDEX IF NOT EXISTS "BranchIncome_branchId_payChannel_idx" ON "${schema}"."BranchIncome"("branchId", "payChannel")`,
+        `CREATE INDEX IF NOT EXISTS "BranchIncome_createdByStaffId_idx" ON "${schema}"."BranchIncome"("createdByStaffId")`,
+        `CREATE INDEX IF NOT EXISTS "BranchIncome_createdByAdminId_idx" ON "${schema}"."BranchIncome"("createdByAdminId")`,
+      ];
+      for (const sql of incomeTableSql) {
+        try {
+          await prisma.$executeRawUnsafe(sql);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!/already exists|duplicate/i.test(msg)) {
+            console.error("[schema-compat] BranchIncome", msg);
+          }
+        }
+      }
+      for (const sql of [
+        `ALTER TABLE "${schema}"."BranchIncome" ADD CONSTRAINT "BranchIncome_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "${schema}"."Branch"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+        `ALTER TABLE "${schema}"."BranchIncome" ADD CONSTRAINT "BranchIncome_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "${schema}"."BranchShift"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+        `ALTER TABLE "${schema}"."BranchIncome" ADD CONSTRAINT "BranchIncome_createdByStaffId_fkey" FOREIGN KEY ("createdByStaffId") REFERENCES "${schema}"."Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+        `ALTER TABLE "${schema}"."BranchIncome" ADD CONSTRAINT "BranchIncome_createdByAdminId_fkey" FOREIGN KEY ("createdByAdminId") REFERENCES "${schema}"."Admin"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+      ]) {
+        try {
+          await prisma.$executeRawUnsafe(sql);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!/already exists|duplicate/i.test(msg)) {
+            // constraint may already exist under another name — ignore
+          }
+        }
+      }
       for (const sql of statements) {
         try {
           await prisma.$executeRawUnsafe(sql);

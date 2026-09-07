@@ -5,20 +5,25 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/admin/Toast";
 import { DateInput } from "@/components/DateInput";
 import {
-  EXPENSE_QUICK_TITLES,
-  PAY_CHANNEL_LABEL,
-} from "@/lib/branch-expense-ui";
-import { bangkokDateKey, bangkokMonthRangeToToday, formatPrice, isBangkokDateKey } from "@/lib/constants";
+  INCOME_QUICK_TITLES,
+  INCOME_PAY_CHANNEL_LABEL,
+} from "@/lib/branch-income-ui";
+import {
+  bangkokDateKey,
+  bangkokMonthRangeToToday,
+  formatPrice,
+  isBangkokDateKey,
+} from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 
 type PayChannel = "CASH" | "TRANSFER";
 
-type Expense = {
+type Income = {
   id: string;
   title: string;
   amount: number;
   payChannel: PayChannel;
-  expenseDate: string;
+  incomeDate: string;
   note: string | null;
   createdAt: string;
   createdByStaff: { name: string | null } | null;
@@ -59,17 +64,17 @@ function formatTimeTh(iso: string) {
   }
 }
 
-function formatExpenseDateTh(key: string) {
+function formatIncomeDateTh(key: string) {
   return formatOperatingDayLabel(key) || key;
 }
 
 function rangeLabel(from: string, to: string) {
-  const a = formatExpenseDateTh(from);
-  const b = formatExpenseDateTh(to);
+  const a = formatIncomeDateTh(from);
+  const b = formatIncomeDateTh(to);
   return from === to ? a : `${a} – ${b}`;
 }
 
-export function StaffExpensesSheet({
+export function StaffIncomesSheet({
   open,
   onClose,
   initialDate,
@@ -89,13 +94,13 @@ export function StaffExpensesSheet({
 
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(defaultTo);
-  const [formExpenseDate, setFormExpenseDate] = useState(defaultTo);
+  const [formIncomeDate, setFormIncomeDate] = useState(defaultTo);
   const [channelFilter, setChannelFilter] = useState<"ALL" | PayChannel>(
     "ALL",
   );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [incomes, setIncomes] = useState<Income[]>([]);
   const [summary, setSummary] = useState<Summary>({
     count: 0,
     total: 0,
@@ -114,7 +119,7 @@ export function StaffExpensesSheet({
     const [y, m] = to.split("-");
     setDateFrom(`${y}-${m}-01`);
     setDateTo(to);
-    setFormExpenseDate(to);
+    setFormIncomeDate(to);
     setChannelFilter("ALL");
     setEditingId(null);
     setForm(emptyForm());
@@ -129,17 +134,17 @@ export function StaffExpensesSheet({
       const to = dateFrom <= dateTo ? dateTo : dateFrom;
       const params = new URLSearchParams({ from, to });
       if (channelFilter !== "ALL") params.set("payChannel", channelFilter);
-      const res = await fetch(`/api/staff/expenses?${params}`);
+      const res = await fetch(`/api/staff/incomes?${params}`);
       if (res.status === 401) {
         router.replace("/staff/login");
         return;
       }
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(body.error || "โหลดค่าใช้จ่ายไม่สำเร็จ");
+        toast.error(body.error || "โหลดรายรับไม่สำเร็จ");
         return;
       }
-      setExpenses(body.expenses || []);
+      setIncomes(body.incomes || []);
       setSummary(
         body.summary || { count: 0, total: 0, cash: 0, transfer: 0 },
       );
@@ -154,9 +159,9 @@ export function StaffExpensesSheet({
     void load();
   }, [load]);
 
-  function startEdit(row: Expense) {
+  function startEdit(row: Income) {
     setEditingId(row.id);
-    setFormExpenseDate(row.expenseDate || bangkokDateKey());
+    setFormIncomeDate(row.incomeDate || bangkokDateKey());
     setForm({
       title: row.title,
       amount: String(row.amount),
@@ -169,7 +174,7 @@ export function StaffExpensesSheet({
   function resetForm() {
     setEditingId(null);
     setForm(emptyForm());
-    setFormExpenseDate(bangkokDateKey());
+    setFormIncomeDate(bangkokDateKey());
   }
 
   async function submit() {
@@ -182,7 +187,7 @@ export function StaffExpensesSheet({
       toast.error("กรุณาระบุจำนวนเงินที่ถูกต้อง");
       return;
     }
-    if (!isBangkokDateKey(formExpenseDate)) {
+    if (!isBangkokDateKey(formIncomeDate)) {
       toast.error("วันที่รายการไม่ถูกต้อง");
       return;
     }
@@ -193,11 +198,11 @@ export function StaffExpensesSheet({
         title: form.title.trim(),
         amount,
         payChannel: form.payChannel,
-        expenseDate: formExpenseDate,
+        incomeDate: formIncomeDate,
         note: form.note.trim() || null,
       };
       const res = await fetch(
-        editingId ? `/api/staff/expenses/${editingId}` : "/api/staff/expenses",
+        editingId ? `/api/staff/incomes/${editingId}` : "/api/staff/incomes",
         {
           method: editingId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -209,7 +214,7 @@ export function StaffExpensesSheet({
         toast.error(body.error || "บันทึกไม่สำเร็จ");
         return;
       }
-      toast.success(editingId ? "แก้ไขแล้ว" : "บันทึกค่าใช้จ่ายแล้ว");
+      toast.success(editingId ? "แก้ไขแล้ว" : "บันทึกรายรับแล้ว");
       resetForm();
       setShowForm(false);
       await load();
@@ -221,7 +226,7 @@ export function StaffExpensesSheet({
 
   async function remove(id: string, title: string) {
     if (!window.confirm(`ลบรายการ “${title}” ออกจากระบบ?`)) return;
-    const res = await fetch(`/api/staff/expenses/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/staff/incomes/${id}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       toast.error(body.error || "ลบไม่สำเร็จ");
@@ -243,7 +248,7 @@ export function StaffExpensesSheet({
       className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="ค่าใช้จ่าย"
+      aria-label="รายรับ"
       onClick={onClose}
     >
       <div
@@ -255,9 +260,9 @@ export function StaffExpensesSheet({
             <p className="text-base font-bold text-gray-900">
               {showForm
                 ? editingId
-                  ? "แก้ไขค่าใช้จ่าย"
-                  : "บันทึกค่าใช้จ่าย"
-                : "ค่าใช้จ่าย"}
+                  ? "แก้ไขรายรับ"
+                  : "บันทึกรายรับ"
+                : "รายรับ"}
             </p>
             <p className="text-xs text-gray-500">
               {showForm
@@ -314,9 +319,9 @@ export function StaffExpensesSheet({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2 rounded-xl bg-rose-600 px-3 py-2.5 text-white">
+                <div className="col-span-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-white">
                   <p className="text-[11px] font-medium text-white/85">
-                    รวมค่าใช้จ่าย {rangeLabel(from, to)}
+                    รวมรายรับ {rangeLabel(from, to)}
                   </p>
                   <p className="mt-0.5 text-xl font-black tabular-nums">
                     {formatPrice(summary.total)}฿
@@ -367,9 +372,9 @@ export function StaffExpensesSheet({
 
               {loading ? (
                 <p className="text-sm text-gray-500">กำลังโหลด…</p>
-              ) : expenses.length === 0 ? (
+              ) : incomes.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
-                  ยังไม่มีค่าใช้จ่ายในช่วง {rangeLabel(from, to)}
+                  ยังไม่มีรายรับในช่วง {rangeLabel(from, to)}
                 </p>
               ) : (
                 <div>
@@ -377,7 +382,7 @@ export function StaffExpensesSheet({
                     ประวัติรายการ
                   </p>
                   <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200">
-                    {expenses.map((row) => (
+                    {incomes.map((row) => (
                       <li key={row.id} className="bg-white px-3 py-2.5">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
@@ -385,8 +390,8 @@ export function StaffExpensesSheet({
                               {row.title}
                             </p>
                             <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                              {formatExpenseDateTh(row.expenseDate)}
-                              {` · ${PAY_CHANNEL_LABEL[row.payChannel]}`}
+                              {formatIncomeDateTh(row.incomeDate)}
+                              {` · ${INCOME_PAY_CHANNEL_LABEL[row.payChannel]}`}
                               {formatTimeTh(row.createdAt)
                                 ? ` · ${formatTimeTh(row.createdAt)} น.`
                                 : ""}
@@ -402,7 +407,7 @@ export function StaffExpensesSheet({
                               </p>
                             ) : null}
                           </div>
-                          <p className="shrink-0 text-sm font-bold tabular-nums text-rose-700">
+                          <p className="shrink-0 text-sm font-bold tabular-nums text-emerald-700">
                             {formatPrice(row.amount)}฿
                           </p>
                         </div>
@@ -429,7 +434,7 @@ export function StaffExpensesSheet({
               )}
             </>
           ) : (
-            <div className="space-y-3 rounded-xl border border-rose-100 bg-rose-50/40 p-3">
+            <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
               <p className="text-sm font-bold text-gray-900">
                 {editingId ? "แก้ไขรายการ" : "บันทึกรายการใหม่"}
               </p>
@@ -437,17 +442,17 @@ export function StaffExpensesSheet({
               <label className="block text-xs font-medium text-gray-600">
                 วันที่รายการ
                 <DateInput
-                  value={formExpenseDate}
+                  value={formIncomeDate}
                   aria-label="วันที่รายการ"
                   onChange={(v) => {
-                    if (v) setFormExpenseDate(v);
+                    if (v) setFormIncomeDate(v);
                   }}
                   className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
                 />
               </label>
 
               <div className="flex flex-wrap gap-1.5">
-                {EXPENSE_QUICK_TITLES.map((t) => {
+                {INCOME_QUICK_TITLES.map((t) => {
                   const active = form.title === t;
                   return (
                     <button
@@ -461,7 +466,7 @@ export function StaffExpensesSheet({
                       }
                       className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
                         active
-                          ? "bg-rose-600 text-white"
+                          ? "bg-emerald-600 text-white"
                           : "bg-white text-gray-700 ring-1 ring-gray-200"
                       }`}
                     >
@@ -478,7 +483,7 @@ export function StaffExpensesSheet({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, title: e.target.value }))
                   }
-                  placeholder="เช่น ก๊าซ / น้ำแข็ง"
+                  placeholder="เช่น เงินทุนหมุนเวียน"
                   className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
                 />
               </label>
@@ -498,7 +503,7 @@ export function StaffExpensesSheet({
 
               <div>
                 <p className="mb-1.5 text-xs font-medium text-gray-600">
-                  ช่องทางจ่าย
+                  ช่องทางรับ
                 </p>
                 <div className="flex gap-2">
                   {(["CASH", "TRANSFER"] as const).map((ch) => {
@@ -512,11 +517,11 @@ export function StaffExpensesSheet({
                         }
                         className={`flex-1 rounded-xl py-2 text-sm font-bold ${
                           active
-                            ? "bg-rose-600 text-white"
+                            ? "bg-emerald-600 text-white"
                             : "bg-white text-gray-700 ring-1 ring-gray-200"
                         }`}
                       >
-                        {PAY_CHANNEL_LABEL[ch]}
+                        {INCOME_PAY_CHANNEL_LABEL[ch]}
                       </button>
                     );
                   })}
@@ -546,13 +551,13 @@ export function StaffExpensesSheet({
                 type="button"
                 disabled={saving}
                 onClick={() => void submit()}
-                className="w-full rounded-xl bg-rose-600 py-3 text-sm font-extrabold text-white shadow-sm disabled:opacity-60 active:scale-[0.99]"
+                className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-extrabold text-white shadow-sm disabled:opacity-60 active:scale-[0.99]"
               >
                 {saving
                   ? "กำลังบันทึก…"
                   : editingId
                     ? "บันทึกการแก้ไข"
-                    : "บันทึกค่าใช้จ่าย"}
+                    : "บันทึกรายรับ"}
               </button>
               <button
                 type="button"
@@ -572,9 +577,9 @@ export function StaffExpensesSheet({
                 resetForm();
                 setShowForm(true);
               }}
-              className="w-full rounded-xl bg-rose-600 py-3 text-sm font-extrabold text-white shadow-sm active:scale-[0.99]"
+              className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-extrabold text-white shadow-sm active:scale-[0.99]"
             >
-              บันทึกค่าใช้จ่ายใหม่
+              บันทึกรายรับใหม่
             </button>
           )}
         </div>

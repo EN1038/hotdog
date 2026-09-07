@@ -64,8 +64,10 @@ function bangkokMonthBounds(now = new Date()) {
 }
 
 const summaryLineSchema = z.object({
-  brandProductId: z.string(), // BranchMenuItem.id
+  brandProductId: z.string(), // BranchMenuItem.id or BranchNonMenuItem.id
   countedQty: z.number().int().min(0),
+  /** Optional evidence photo for this count line (not product catalog image) */
+  imageUrl: z.string().trim().min(1).max(2000).nullable().optional(),
 });
 
 import {
@@ -739,6 +741,7 @@ export async function POST(request: Request) {
         unit: string;
         stockType: typeof stockType;
         seq: number;
+        imageUrl?: string | null;
       }> = [];
 
       if (stockType === "SALE_ITEM") {
@@ -801,6 +804,7 @@ export async function POST(request: Request) {
             unit: "รายการ",
             stockType,
             seq: seqById.get(menu.id) ?? 0,
+            imageUrl: line.imageUrl?.trim() || null,
           });
         }
       } else {
@@ -839,6 +843,7 @@ export async function POST(request: Request) {
             unit: item.unit,
             stockType,
             seq: seqById.get(item.id) ?? 0,
+            imageUrl: line.imageUrl?.trim() || null,
           });
         }
       }

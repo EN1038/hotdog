@@ -8,6 +8,7 @@ type NoteLine = {
   name: string;
   systemQty: number;
   countedQty: number;
+  imageUrl?: string | null;
 };
 
 type NotePayload = {

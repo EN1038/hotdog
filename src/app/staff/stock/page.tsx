@@ -11,6 +11,7 @@ import { StaffPackageOutPanel } from "@/components/staff/StaffPackageOutPanel";
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { compareThaiText } from "@/lib/thai-sort";
 import {
   PAR_COMPARISON_LABELS,
@@ -23,9 +24,13 @@ import {
 import { formatPrice, bangkokDateKey } from "@/lib/constants";
 import { DateInput } from "@/components/DateInput";
 import {
+  IconBack,
   IconCamera,
   IconClose,
+  IconImage,
+  IconPlus,
   IconSkewerPlaceholder,
+  IconTrash,
   IconUpload,
 } from "@/components/icons";
 import {
@@ -227,6 +232,7 @@ function StaffStockContent() {
       ? openViewTypeParam
       : "SALE_ITEM";
   const toast = useToast();
+  const { confirm } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -274,9 +280,22 @@ function StaffStockContent() {
   const issueImageInputRef = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraBusy, setCameraBusy] = useState(false);
-  const [cameraFor, setCameraFor] = useState<"issue" | "stock_in">("issue");
+  const [cameraFor, setCameraFor] = useState<"issue" | "stock_in" | "item">(
+    "issue",
+  );
+  const [cameraItemId, setCameraItemId] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const itemImageInputRef = useRef<HTMLInputElement>(null);
+  const [itemImageBusyId, setItemImageBusyId] = useState<string | null>(null);
+  const [itemImageTargetId, setItemImageTargetId] = useState<string | null>(
+    null,
+  );
+  const [itemImageSheetOpen, setItemImageSheetOpen] = useState(false);
+  /** Evidence photos for this count — not product catalog images */
+  const [countAttachByItemId, setCountAttachByItemId] = useState<
+    Record<string, string>
+  >({});
 
   const [cashVal, setCashVal] = useState("");
   const [transferVal, setTransferVal] = useState("");
@@ -1232,6 +1251,71 @@ function StaffStockContent() {
     await uploadMovementImages(files, "issue");
   }
 
+  function applyCountAttach(itemId: string, imageUrl: string | null) {
+    setCountAttachByItemId((prev) => {
+      if (!imageUrl) {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      }
+      return { ...prev, [itemId]: imageUrl };
+    });
+  }
+
+  async function uploadCountAttachImage(itemId: string, file: File) {
+    setItemImageBusyId(itemId);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("folder", "Branch");
+      const up = await fetch("/api/staff/uploads", { method: "POST", body });
+      const json = await up.json().catch(() => ({}));
+      if (!up.ok) {
+        throw new Error(
+          typeof json.error === "string" ? json.error : "อัปโหลดรูปไม่สำเร็จ",
+        );
+      }
+      const url = typeof json.url === "string" ? json.url.trim() : "";
+      if (!url) throw new Error("ไม่พบ URL รูป");
+      applyCountAttach(itemId, url);
+      toast.success("แนบรูปแล้ว");
+    } catch (e) {
+      toast.error(
+        "อัปโหลดรูปไม่สำเร็จ",
+        e instanceof Error ? e.message : "",
+      );
+    } finally {
+      setItemImageBusyId(null);
+    }
+  }
+
+  function openItemImagePicker(itemId: string) {
+    setItemImageTargetId(itemId);
+    if (itemImageInputRef.current) {
+      itemImageInputRef.current.value = "";
+      itemImageInputRef.current.click();
+    }
+  }
+
+  function openItemImageSheet(itemId: string) {
+    setItemImageTargetId(itemId);
+    setItemImageSheetOpen(true);
+  }
+
+  async function removeCountAttach(itemId: string) {
+    const ok = await confirm({
+      title: "ลบรูปแนบ?",
+      message: "ลบรูปหลักฐานของรายการนี้จากการนับครั้งนี้เท่านั้น ไม่กระทบรูปสินค้าในระบบ",
+      confirmLabel: "ลบรูปแนบ",
+      cancelLabel: "ยกเลิก",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setItemImageSheetOpen(false);
+    applyCountAttach(itemId, null);
+    toast.success("ลบรูปแนบแล้ว");
+  }
+
   useEffect(() => {
     if (!cameraOpen) return;
     let cancelled = false;
@@ -1303,12 +1387,23 @@ function StaffStockContent() {
         }
         const file = new File(
           [blob],
-          `${cameraFor === "stock_in" ? "stock-in" : "issue"}-${Date.now()}.jpg`,
+          `${
+            cameraFor === "stock_in"
+              ? "stock-in"
+              : cameraFor === "item"
+                ? "item"
+                : "issue"
+          }-${Date.now()}.jpg`,
           { type: "image/jpeg" },
         );
         closeIssueCamera();
         if (cameraFor === "stock_in") {
           void uploadStockInImages([file]);
+          return;
+        }
+        if (cameraFor === "item" && cameraItemId) {
+          void uploadCountAttachImage(cameraItemId, file);
+          setCameraItemId(null);
           return;
         }
         void uploadIssueImages([file]);
@@ -1429,6 +1524,7 @@ function StaffStockContent() {
     const lines = summaryItems.map((p) => ({
       brandProductId: p.id,
       countedQty: summaryCountedQty(p.id),
+      imageUrl: countAttachByItemId[p.id]?.trim() || null,
     }));
 
     if (lines.length === 0) {
@@ -1469,6 +1565,7 @@ function StaffStockContent() {
       setChangeVal("");
       setCustomersVal("");
       setQtyByItemId({});
+      setCountAttachByItemId({});
       setAttemptedSummary(false);
       setSummaryTiming(DEFAULT_STOCK_COUNT_TIMING);
       if (openAsDailySummary) {
@@ -1709,12 +1806,14 @@ function StaffStockContent() {
               />
             ) : mode === "summary" ? (
               <>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="mb-2 flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleBack}
-                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                    aria-label="กลับ"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm"
                   >
-                    ← กลับ
+                    <IconBack size={22} />
                   </button>
                   <div className="min-w-0">
                     <h2 className="text-lg font-extrabold text-slate-900">
@@ -1722,32 +1821,34 @@ function StaffStockContent() {
                         ? "สรุปยอดสต๊อกและขายราย"
                         : "สรุปยอดสต๊อก"}
                     </h2>
-                    <p className="text-xs font-semibold text-slate-700">
+                    <p className="text-xs font-semibold text-slate-600">
                       {summaryTimingLabel} · {summaryTypeLabel} · วันที่{" "}
                       {summaryTodayLabel}
-                      <span className="ml-1 font-medium text-slate-500">
-                        (วันนี้เสมอ)
-                      </span>
                     </p>
                   </div>
                 </div>
 
-                <div className="space-y-6 mt-4 pb-36">
-                  <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
-                    <div className="mb-4 flex items-end justify-between gap-3 border-b pb-2">
-                      <h3 className="font-bold text-slate-900">
-                        1. กรอกยอดคงเหลือ ({summaryTypeLabel})
-                      </h3>
-                      <div className="text-right text-xs font-semibold text-slate-800">
-                        <p>
-                          จำนวนรายการ{" "}
-                          <span className="tabular-nums font-black text-slate-900">
-                            {summaryEnteredStats.itemCount}
-                          </span>
+                <div className="mt-3 space-y-5 pb-36">
+                  <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="mb-3 flex items-end justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="min-w-0">
+                        <h3 className="text-base font-extrabold text-slate-900">
+                          ยอดคงเหลือ{summaryTypeLabel}
+                        </h3>
+                        <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                          ช่องที่ไม่กรอกถือเป็น 0
+                          {summaryIncludesSales
+                            ? " — กรอกเงินสด / โอน / ทอน / จำนวนลูกค้าด้านล่างด้วย"
+                            : " — นับของจริงท้ายวันเพื่อสรุปการใช้"}
                         </p>
-                        <p className="mt-0.5">
-                          รวมสต๊อกปัจจุบัน{" "}
-                          <span className="tabular-nums font-black text-slate-900">
+                      </div>
+                      <div className="shrink-0 text-right text-[11px] font-semibold text-slate-600">
+                        <p>
+                          {summaryEnteredStats.itemCount} รายการ
+                        </p>
+                        <p className="mt-0.5 tabular-nums">
+                          ปัจจุบัน{" "}
+                          <span className="font-black text-slate-900">
                             {formatPrice(
                               summaryItems.reduce((sum, item) => {
                                 const bal =
@@ -1759,20 +1860,14 @@ function StaffStockContent() {
                             )}
                           </span>
                         </p>
-                        <p className="mt-0.5">
-                          รวมสต๊อกที่นับได้{" "}
-                          <span className="tabular-nums font-black text-slate-900">
+                        <p className="mt-0.5 tabular-nums">
+                          นับได้{" "}
+                          <span className="font-black text-slate-900">
                             {formatPrice(summaryEnteredStats.totalQty)}
                           </span>
                         </p>
                       </div>
                     </div>
-                    <p className="mb-3 text-xs font-medium text-slate-500">
-                      ช่องที่ไม่กรอกถือเป็น 0
-                      {summaryIncludesSales
-                        ? " — เมนูขายต้องเลื่อนลงกรอกเงินสด / โอน / ทอน / จำนวนลูกค้าด้วย"
-                        : " — นับของจริงท้ายวัน (เช่น น้ำแข็งเหลือกี่กระสอบ แก้วเหลือกี่ใบ) เพื่อให้หลังบ้านสรุปการใช้/ต้นทุนได้"}
-                    </p>
                     {summaryDiffItems.length > 0 ? (
                       <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
                         พบ {summaryDiffItems.length} รายการที่ยอดกรอกต่างจากสต๊อกปัจจุบัน
@@ -1824,7 +1919,7 @@ function StaffStockContent() {
                         </div>
                       </div>
                     ) : null}
-                    <div className="mb-2 grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 px-0.5 text-[11px] font-bold text-slate-500">
+                    <div className="mb-2 grid grid-cols-[minmax(0,1fr)_3.75rem_4.75rem] items-center gap-2 px-0.5 text-[11px] font-bold text-slate-500">
                       <span>รายการ</span>
                       <span className="text-center">ปัจจุบัน</span>
                       <span className="text-center">นับได้</span>
@@ -1854,7 +1949,7 @@ function StaffStockContent() {
                               </span>
                             </div>
                           ) : null}
-                          <ul className="divide-y divide-gray-100">
+                          <ul className="divide-y divide-slate-100">
                             {section.items.map((item) => {
                               const rawQty = qtyByItemId[item.id];
                               const qty =
@@ -1869,25 +1964,73 @@ function StaffStockContent() {
                               const counted = summaryCountedQty(item.id);
                               const isDiff = counted !== dbBalance;
                               const seq = summarySeqById.get(item.id) ?? 0;
+                              const catalogThumb =
+                                item.imageUrl?.trim() || null;
+                              const attachUrl =
+                                countAttachByItemId[item.id]?.trim() || null;
+                              const thumb = attachUrl || catalogThumb;
+                              const imageBusy = itemImageBusyId === item.id;
                               return (
                                 <li
                                   key={item.id}
-                                  className={`grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 py-3 ${
+                                  className={`grid grid-cols-[minmax(0,1fr)_3.75rem_4.75rem] items-center gap-2 py-3 ${
                                     isDiff
                                       ? "-mx-2 rounded-xl bg-red-50 px-2 ring-1 ring-red-200"
                                       : ""
                                   }`}
                                 >
-                                  <div className="flex min-w-0 items-center gap-2">
+                                  <div className="flex min-w-0 items-center gap-2.5">
                                     <span
-                                      className={`w-6 shrink-0 text-center text-sm font-bold tabular-nums ${
+                                      className={`w-5 shrink-0 text-center text-xs font-bold tabular-nums ${
                                         isDiff
                                           ? "text-red-600"
-                                          : "text-slate-500"
+                                          : "text-slate-400"
                                       }`}
                                     >
                                       {seq}
                                     </span>
+                                    <button
+                                      type="button"
+                                      disabled={imageBusy}
+                                      onClick={() =>
+                                        openItemImageSheet(item.id)
+                                      }
+                                      aria-label={
+                                        attachUrl
+                                          ? `จัดการรูปแนบ ${item.name}`
+                                          : `แนบรูป ${item.name}`
+                                      }
+                                      className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl transition active:scale-[0.97] ${
+                                        thumb
+                                          ? "bg-slate-100 ring-1 ring-slate-200"
+                                          : "bg-site-primary-soft ring-2 ring-dashed ring-site-primary/45"
+                                      } ${imageBusy ? "opacity-60" : ""}`}
+                                    >
+                                      {thumb ? (
+                                        <>
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                            src={thumb}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                          />
+                                          <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-black/55 py-1 text-[9px] font-extrabold tracking-wide text-white">
+                                            <IconCamera size={10} />
+                                            {attachUrl ? "แก้แนบ" : "แนบรูป"}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="relative flex h-full w-full flex-col items-center justify-center text-site-primary">
+                                          <IconImage size={22} />
+                                          <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-site-primary text-white shadow-sm ring-2 ring-white">
+                                            <IconPlus
+                                              size={14}
+                                              strokeWidth={2.5}
+                                            />
+                                          </span>
+                                        </span>
+                                      )}
+                                    </button>
                                     <div className="min-w-0 flex-1">
                                       <div
                                         className={
@@ -1907,7 +2050,15 @@ function StaffStockContent() {
                                         <p className="mt-0.5 text-[11px] font-bold text-red-600">
                                           ต่างจากสต๊อกปัจจุบัน
                                         </p>
-                                      ) : null}
+                                      ) : attachUrl ? (
+                                        <p className="mt-0.5 text-[11px] font-bold text-emerald-700">
+                                          แนบรูปแล้ว · ไม่กระทบรูปในระบบ
+                                        </p>
+                                      ) : (
+                                        <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                                          แนบรูปหลักฐานได้ (ถ้ามี)
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div
@@ -1960,7 +2111,7 @@ function StaffStockContent() {
                                               : parseInt(e.target.value),
                                         }))
                                       }
-                                      className={`w-full rounded-lg border-2 px-2 py-2 text-center text-sm font-bold tabular-nums focus:outline-none focus:ring-1 ${
+                                      className={`w-full rounded-lg border-2 px-1.5 py-2 text-center text-sm font-bold tabular-nums focus:outline-none focus:ring-1 ${
                                         isDiff
                                           ? "border-red-500 bg-red-50 text-red-800 focus:border-red-500 focus:ring-red-500"
                                           : "border-slate-300 bg-white text-black focus:border-site-primary focus:ring-site-primary"
@@ -3346,7 +3497,9 @@ function StaffStockContent() {
           aria-label="ถ่ายรูปประกอบ"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white">
-            <p className="text-sm font-bold">ถ่ายรูปประกอบ</p>
+            <p className="text-sm font-bold">
+              {cameraFor === "item" ? "ถ่ายรูปสินค้า" : "ถ่ายรูปประกอบ"}
+            </p>
             <button
               type="button"
               onClick={dismissIssueCamera}
@@ -3379,6 +3532,149 @@ function StaffStockContent() {
             >
               <IconCamera size={28} aria-hidden />
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      <input
+        ref={itemImageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const itemId = itemImageTargetId;
+          if (file && itemId && file.type.startsWith("image/")) {
+            setItemImageSheetOpen(false);
+            void uploadCountAttachImage(itemId, file);
+          }
+          e.target.value = "";
+        }}
+      />
+
+      {itemImageSheetOpen && itemImageTargetId ? (
+        <div
+          className="fixed inset-0 z-[85] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="แนบรูปหลักฐาน"
+          onClick={() => setItemImageSheetOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const sheetItem = data?.products.find(
+                (p) => p.id === itemImageTargetId,
+              );
+              const sheetAttach =
+                countAttachByItemId[itemImageTargetId]?.trim() || null;
+              const sheetCatalog = sheetItem?.imageUrl?.trim() || null;
+              const sheetThumb = sheetAttach || sheetCatalog;
+              return (
+                <>
+                  <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-3.5">
+                    <div
+                      className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl ${
+                        sheetThumb
+                          ? "bg-slate-100 ring-1 ring-slate-200"
+                          : "bg-site-primary-soft ring-2 ring-dashed ring-site-primary/45"
+                      }`}
+                    >
+                      {sheetThumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={sheetThumb}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="relative flex h-full w-full items-center justify-center text-site-primary">
+                          <IconImage size={22} />
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-site-primary text-white ring-2 ring-white">
+                            <IconPlus size={14} strokeWidth={2.5} />
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <p className="truncate text-base font-extrabold text-slate-900">
+                        {sheetItem?.name ?? "แนบรูป"}
+                      </p>
+                      <p className="mt-0.5 text-xs font-medium text-slate-500">
+                        {sheetAttach
+                          ? "แก้รูปแนบของรอบนับนี้ — ไม่เปลี่ยนรูปสินค้าในระบบ"
+                          : "แนบรูปหลักฐานรอบนับนี้ (ถ้ามี) — ไม่เปลี่ยนรูปสินค้าในระบบ"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setItemImageSheetOpen(false)}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+                      aria-label="ปิด"
+                    >
+                      <IconClose size={18} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5 px-4 py-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItemImageSheetOpen(false);
+                        setCameraItemId(itemImageTargetId);
+                        setCameraFor("item");
+                        setCameraOpen(true);
+                      }}
+                      className="flex flex-col items-center gap-2 rounded-2xl bg-amber-50 px-3 py-4 text-center ring-1 ring-amber-100 active:bg-amber-100"
+                    >
+                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm">
+                        <IconCamera size={24} />
+                      </span>
+                      <span className="text-sm font-extrabold text-amber-950">
+                        ถ่ายรูป
+                      </span>
+                      <span className="text-[11px] font-medium text-amber-800/80">
+                        เปิดกล้องทันที
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openItemImagePicker(itemImageTargetId)}
+                      className="flex flex-col items-center gap-2 rounded-2xl bg-sky-50 px-3 py-4 text-center ring-1 ring-sky-100 active:bg-sky-100"
+                    >
+                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-sm">
+                        <IconImage size={24} />
+                      </span>
+                      <span className="text-sm font-extrabold text-sky-950">
+                        เลือกจากอัลบั้ม
+                      </span>
+                      <span className="text-[11px] font-medium text-sky-800/80">
+                        เลือกรูปที่มีอยู่
+                      </span>
+                    </button>
+                  </div>
+                  {sheetAttach ? (
+                    <div className="border-t border-slate-100 px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void removeCountAttach(itemImageTargetId)
+                        }
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-3 text-sm font-bold text-red-700 active:bg-red-100"
+                      >
+                        <IconTrash size={16} />
+                        ลบรูปแนบ
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="px-4 pb-4 text-center text-[11px] font-medium text-slate-400">
+                      ไม่บังคับ — ไม่มีรูปก็บันทึกยอดได้อยู่
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       ) : null}

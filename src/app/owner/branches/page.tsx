@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { IconPlus, IconChevronRight, IconLinkSuffix } from "@/components/icons";
+import { IconPlus, IconChevronRight, IconClose, IconLinkSuffix } from "@/components/icons";
 import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShell";
 import { useToast } from "@/components/admin/Toast";
 import {
@@ -533,9 +533,10 @@ function OwnerBranchesInner() {
               <button
                 type="button"
                 onClick={() => setStaffBranches(null)}
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-slate-500"
+                aria-label="ปิด"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
               >
-                ปิด
+                <IconClose size={18} />
               </button>
             </div>
             <div className="space-y-2">

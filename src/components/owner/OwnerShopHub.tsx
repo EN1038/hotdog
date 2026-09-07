@@ -250,9 +250,10 @@ export function OwnerShopMenuSection({
               <button
                 type="button"
                 onClick={() => setStaffBranches(null)}
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-slate-500"
+                aria-label="ปิด"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
               >
-                ปิด
+                <IconClose size={18} />
               </button>
             </div>
             <p className="mb-3 text-sm text-slate-500">
@@ -358,9 +359,10 @@ export function OwnerShopMenuSection({
               <button
                 type="button"
                 onClick={() => setTaskPicker(null)}
-                className="min-h-12 w-full rounded-2xl bg-slate-900 text-[15px] font-bold text-white active:bg-slate-800"
+                aria-label="ปิด"
+                className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-900 text-white active:bg-slate-800"
               >
-                ปิด
+                <IconClose size={18} />
               </button>
             </div>
           </div>

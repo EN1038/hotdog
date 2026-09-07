@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, type ReactNode, type SVGProps } from "react";
 import { PhoneInput } from "@/components/PhoneInput";
-import { IconPhone } from "@/components/icons";
+import { IconBack, IconPhone } from "@/components/icons";
 import {
   MerchantRegisterStyleShell,
   MERCHANT_REGISTER_HEADER_BG,
@@ -475,18 +475,10 @@ export function RegisterWizardBackButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex min-h-[3rem] w-full items-center justify-center gap-1.5 rounded-2xl text-[16px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800 active:bg-slate-100 disabled:opacity-40"
+      aria-label="ย้อนกลับ"
+      className="flex min-h-[3rem] w-full items-center justify-center rounded-2xl text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800 active:bg-slate-100 disabled:opacity-40"
     >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path
-          d="M15 5l-7 7 7 7"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      ย้อนกลับ
+      <IconBack size={22} />
     </button>
   );
 }

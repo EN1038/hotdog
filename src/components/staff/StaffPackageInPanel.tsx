@@ -15,7 +15,7 @@ import {
   planLotNumbersForRows,
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
-import { IconPrinter, IconChevronDown, IconLinkSuffix } from "@/components/icons";
+import { IconBack, IconPrinter, IconChevronDown, IconLinkSuffix } from "@/components/icons";
 
 type MenuItem = {
   id: string;
@@ -468,9 +468,10 @@ export function StaffPackageInPanel({
         <button
           type="button"
           onClick={onBack}
-          className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+          aria-label="กลับ"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
         >
-          ← กลับ
+          <IconBack size={22} />
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-extrabold leading-snug text-slate-900">

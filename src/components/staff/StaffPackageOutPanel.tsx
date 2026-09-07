@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { IconQrScan } from "@/components/icons";
+import { IconBack, IconQrScan } from "@/components/icons";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { StaffQrCameraScanner } from "@/components/staff/StaffQrCameraScanner";
@@ -98,9 +98,10 @@ export function StaffPackageOutPanel({ onBack }: Props) {
         <button
           type="button"
           onClick={onBack}
-          className="flex h-10 shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+          aria-label="กลับ"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
         >
-          ← กลับ
+          <IconBack size={22} />
         </button>
         <div className="min-w-0">
           <h2 className="text-lg font-extrabold text-slate-900">จ่ายออกรายการ</h2>

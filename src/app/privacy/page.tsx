@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PrivacyBackLink } from "@/components/PrivacyBackLink";
+import { IconBack } from "@/components/icons";
 
 export const metadata: Metadata = {
   title: "นโยบายความเป็นส่วนตัว | SkillSale",
   description:
     "นโยบายความเป็นส่วนตัวและการคุ้มครองข้อมูลส่วนบุคคลของแพลตฟอร์ม SkillSale",
 };
+
+const backButtonClass =
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-red-600 shadow-sm";
 
 function BackFallback({
   className,
@@ -25,10 +29,14 @@ export default function PrivacyPolicyPage() {
         <p className="text-sm font-medium text-red-600">
           <Suspense
             fallback={
-              <BackFallback className="hover:underline">← กลับ</BackFallback>
+              <BackFallback className={backButtonClass}>
+                <IconBack size={22} />
+              </BackFallback>
             }
           >
-            <PrivacyBackLink className="hover:underline">← กลับ</PrivacyBackLink>
+            <PrivacyBackLink className={backButtonClass} ariaLabel="กลับ">
+              <IconBack size={22} />
+            </PrivacyBackLink>
           </Suspense>
         </p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
@@ -187,13 +195,16 @@ export default function PrivacyPolicyPage() {
         <div className="mt-10 border-t border-gray-100 pt-6">
           <Suspense
             fallback={
-              <BackFallback className="text-sm font-semibold text-red-600">
-                ← กลับไปหน้าก่อนหน้า
+              <BackFallback className={backButtonClass}>
+                <IconBack size={22} />
               </BackFallback>
             }
           >
-            <PrivacyBackLink className="text-sm font-semibold text-red-600 hover:underline">
-              ← กลับไปหน้าก่อนหน้า
+            <PrivacyBackLink
+              className={backButtonClass}
+              ariaLabel="กลับไปหน้าก่อนหน้า"
+            >
+              <IconBack size={22} />
             </PrivacyBackLink>
           </Suspense>
         </div>

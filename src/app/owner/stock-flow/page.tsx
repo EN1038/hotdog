@@ -25,6 +25,7 @@ import {
   ownerWasteHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
+import { IconBack } from "@/components/icons";
 
 type StockFlowPayload = StockFlowAnalyticsData & {
   hasTestBranch?: boolean;
@@ -152,9 +153,10 @@ function OwnerStockFlowInner() {
         <button
           type="button"
           onClick={goBack}
-          className="mt-2 inline-block text-[13px] font-bold text-slate-500"
+          aria-label="กลับ"
+          className="mt-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
         >
-          ← กลับ
+          <IconBack size={22} />
         </button>
       </header>
 

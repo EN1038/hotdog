@@ -9,6 +9,7 @@ import {
 } from "@/lib/branch-expense-ui";
 import { INCOME_QUICK_TITLES } from "@/lib/branch-income-ui";
 import { bangkokDateKey, isBangkokDateKey } from "@/lib/constants";
+import { IconClose } from "@/components/icons";
 
 export type AccountEntryKind = "income" | "expense";
 
@@ -183,9 +184,10 @@ export function StaffAccountEntrySheet({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-50"
+            aria-label="ปิด"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
           >
-            ปิด
+            <IconClose size={18} />
           </button>
         </div>
 

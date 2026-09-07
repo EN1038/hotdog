@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatPrice } from "@/lib/constants";
+import { IconClose } from "@/components/icons";
 
 export type ActiveShiftInfo = {
   id: string;
@@ -812,9 +813,10 @@ export function StaffShiftControls({
               <button
                 type="button"
                 onClick={() => setDetailModal(false)}
-                className="w-full rounded-xl bg-site-primary px-3 py-2.5 text-sm font-bold text-white"
+                aria-label="ปิด"
+                className="flex w-full items-center justify-center rounded-xl bg-site-primary px-3 py-2.5 text-sm font-bold text-white"
               >
-                ปิด
+                <IconClose size={18} />
               </button>
             </div>
           </div>

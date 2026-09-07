@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { logout } from "@/components/LoginForm";
-import { IconChevronRight, IconLogout } from "@/components/icons";
+import { IconChevronRight, IconClose, IconLogout } from "@/components/icons";
 import {
   assignOwnerViewHome,
   getOwnerViewPreference,
@@ -311,9 +311,10 @@ export function OwnerProfileMenuButton({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="mt-3 w-full rounded-2xl py-3 text-[14px] font-bold text-slate-500"
+              aria-label="ปิด"
+              className="mt-3 flex w-full items-center justify-center rounded-2xl py-3 text-slate-500"
             >
-              ปิด
+              <IconClose size={18} />
             </button>
           </div>
         </div>

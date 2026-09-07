@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { IconBack } from "@/components/icons";
 
 function safeReturnPath(path: string | null): string | null {
   if (!path || !path.startsWith("/") || path.startsWith("//")) return null;
@@ -10,9 +11,11 @@ function safeReturnPath(path: string | null): string | null {
 
 export function PrivacyBackLink({
   className,
-  children = "กลับ",
+  ariaLabel = "กลับ",
+  children = <IconBack size={22} />,
 }: {
   className?: string;
+  ariaLabel?: string;
   children?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -29,6 +32,7 @@ export function PrivacyBackLink({
         }
         router.back();
       }}
+      aria-label={ariaLabel}
       className={className}
     >
       {children}

@@ -7,6 +7,7 @@ import {
 } from "@/components/admin/AdminShell";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { IconClose } from "@/components/icons";
 
 type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
 
@@ -245,9 +246,10 @@ export function AdminCreateStockCountSheet({
             type="button"
             disabled={saving}
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100"
+            aria-label="ปิด"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-50"
           >
-            ปิด
+            <IconClose size={18} />
           </button>
         </div>
 

@@ -18,6 +18,7 @@ import { ZoomableImage } from "@/components/ZoomableImage";
 import {
   isConvertStyleHistoryNote,
 } from "@/lib/history-source-link";
+import { IconClose } from "@/components/icons";
 
 type Movement = {
   id: string;
@@ -885,9 +886,10 @@ export function BranchStockMovementsView({
                 setModal(null);
                 setCancelNote("");
               }}
-              className={`flex-1 ${btnOutline}`}
+              aria-label="ปิด"
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center ${btnOutline}`}
             >
-              ปิด
+              <IconClose size={18} />
             </button>
             <button
               type="button"

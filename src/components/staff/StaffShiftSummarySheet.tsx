@@ -14,7 +14,7 @@ import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDet
 import { ShareExportMenu } from "@/components/staff/ShareExportMenu";
 import { DateInput } from "@/components/DateInput";
 import { formatQueueNumber } from "@/lib/order-queue-format";
-import { IconLinkSuffix } from "@/components/icons";
+import { IconClose, IconLinkSuffix } from "@/components/icons";
 
 type ShiftListItem = {
   id: string;
@@ -572,9 +572,10 @@ export function StaffShiftSummarySheet({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-50"
+                aria-label="ปิด"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
               >
-                ปิด
+                <IconClose size={18} />
               </button>
             ) : null}
           </div>

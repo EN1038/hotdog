@@ -2422,10 +2422,12 @@ function StaffStockContent() {
               <>
                 <div className="flex items-center gap-2 mb-4">
                   <button
+                    type="button"
                     onClick={handleBack}
-                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                    aria-label="กลับ"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
                   >
-                    ← กลับ
+                    <IconBack size={22} />
                   </button>
                   <h2 className="text-lg font-extrabold text-slate-900">
                     เลือกจังหวะนับสต๊อก
@@ -2479,9 +2481,10 @@ function StaffStockContent() {
                   <button
                     type="button"
                     onClick={handleBack}
-                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                    aria-label="กลับ"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
                   >
-                    ← กลับ
+                    <IconBack size={22} />
                   </button>
                   <h2 className="text-lg font-extrabold text-slate-900">
                     ประเภทการจ่ายออก
@@ -2552,10 +2555,12 @@ function StaffStockContent() {
               <>
                 <div className="flex items-center gap-2 mb-4">
                   <button
+                    type="button"
                     onClick={handleBack}
-                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                    aria-label="กลับ"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
                   >
-                    ← กลับ
+                    <IconBack size={22} />
                   </button>
                   <h2 className="text-lg font-extrabold text-slate-900">
                     {actionType === "view"
@@ -2686,10 +2691,12 @@ function StaffStockContent() {
               <>
                 <div className="flex items-center gap-2 mb-4">
                   <button
+                    type="button"
                     onClick={handleBack}
-                    className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                    aria-label="กลับ"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
                   >
-                    ← กลับ
+                    <IconBack size={22} />
                   </button>
                   <div className="min-w-0">
                     <h2 className="text-lg font-extrabold text-slate-900">

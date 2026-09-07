@@ -32,7 +32,7 @@ import {
   ShareExportMenu,
   type ShareExportAction,
 } from "@/components/staff/ShareExportMenu";
-import { IconChevronDown, IconEdit, IconSkewerPlaceholder, IconTrash } from "@/components/icons";
+import { IconBack, IconChevronDown, IconEdit, IconSkewerPlaceholder, IconTrash } from "@/components/icons";
 import { ImageField } from "@/components/admin/ImageField";
 import { BranchStockCountsView } from "@/components/admin/BranchStockCountsView";
 import { BranchStockMovementsView } from "@/components/admin/BranchStockMovementsView";
@@ -1426,9 +1426,10 @@ export function BranchStockPanel({
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="flex h-10 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-200"
+                  aria-label="กลับ"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition hover:bg-slate-200"
                 >
-                  ← กลับ
+                  <IconBack size={22} />
                 </button>
                 <h2 className="text-xl font-black text-slate-900">
                   ประเภทการจ่ายออก
@@ -1473,11 +1474,13 @@ export function BranchStockPanel({
           ) : mode === "select_type" ? (
             <div className="space-y-6">
               <div className="flex items-center gap-2 mb-6">
-                <button 
+                <button
+                  type="button"
                   onClick={handleBack}
-                  className="flex h-10 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-200"
+                  aria-label="กลับ"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition hover:bg-slate-200"
                 >
-                  ← กลับ
+                  <IconBack size={22} />
                 </button>
                 <h2 className="text-xl font-black text-slate-900">
                   {actionType === "stock_in"
@@ -1519,11 +1522,13 @@ export function BranchStockPanel({
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-6">
-                <button 
+                <button
+                  type="button"
                   onClick={handleBack}
-                  className="flex h-10 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-200"
+                  aria-label="กลับ"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition hover:bg-slate-200"
                 >
-                  ← กลับ
+                  <IconBack size={22} />
                 </button>
                 <h2 className="text-lg font-bold text-slate-900">
                   {actionType === "stock_in"

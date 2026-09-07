@@ -10,7 +10,7 @@ import { DateInput } from "@/components/DateInput";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { ZoomableImage } from "@/components/ZoomableImage";
-import { IconChevronRight, IconSkewerPlaceholder } from "@/components/icons";
+import { IconBack, IconChevronRight, IconSkewerPlaceholder } from "@/components/icons";
 import { useAdminMobileLayout } from "@/hooks/useAdminMobileLayout";
 import {
   SKEWER_ORDER_STATUS_LABELS,
@@ -1174,9 +1174,10 @@ export function BranchSkewerOrdersPanel({ branchId }: Props) {
                   <button
                     type="button"
                     onClick={() => setSelectedId(null)}
-                    className="flex items-center gap-1 text-sm font-semibold text-gray-700 hover:text-gray-900"
+                    aria-label="กลับรายการ"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-gray-700 shadow-sm"
                   >
-                    <span aria-hidden>←</span> กลับรายการ
+                    <IconBack size={22} />
                   </button>
                 ) : null}
                 <div className="space-y-2">

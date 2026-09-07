@@ -10,6 +10,7 @@ import {
 } from "@/lib/branch-expense-ui";
 import { bangkokDateKey, bangkokMonthRangeToToday, formatPrice, isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
+import { IconClose } from "@/components/icons";
 
 type PayChannel = "CASH" | "TRANSFER";
 
@@ -277,9 +278,14 @@ export function StaffExpensesSheet({
                   }
                 : onClose
             }
-            className="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-50"
+            aria-label={showForm ? undefined : "ปิด"}
+            className={
+              showForm
+                ? "rounded-lg px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-50"
+                : "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
+            }
           >
-            {showForm ? "ยกเลิก" : "ปิด"}
+            {showForm ? "ยกเลิก" : <IconClose size={18} />}
           </button>
         </div>
 

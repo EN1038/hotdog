@@ -14,6 +14,7 @@ import {
   type PromoScheduleStatus,
 } from "@/lib/promo-schedule";
 import { StatusBadge } from "@/components/StatusBadge";
+import { IconBack } from "@/components/icons";
 
 type PromoRow = {
   id: string;
@@ -125,9 +126,10 @@ export default function StaffPromoManagePage() {
         <div className="flex items-start gap-2">
           <Link
             href="/staff/settings"
-            className="flex h-10 shrink-0 items-center rounded-xl bg-white px-3 text-sm font-bold text-slate-700 shadow-sm"
+            aria-label="กลับ"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
           >
-            ← กลับ
+            <IconBack size={22} />
           </Link>
           <div className="min-w-0">
             <h1 className="text-lg font-extrabold text-slate-900">

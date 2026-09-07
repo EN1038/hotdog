@@ -235,9 +235,10 @@ export function OwnerBillingModal({ brandId, open, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="min-h-12 w-full rounded-2xl bg-slate-900 text-[15px] font-bold text-white active:bg-slate-800"
+            aria-label="ปิด"
+            className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-900 text-white active:bg-slate-800"
           >
-            ปิด
+            <IconClose size={18} />
           </button>
         </div>
       </div>

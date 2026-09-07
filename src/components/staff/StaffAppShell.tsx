@@ -12,6 +12,7 @@ import {
   IconLogout,
   IconReceipt,
   IconStore,
+  IconClose,
 } from "@/components/icons";
 import { syncStaffBrandFromLogin } from "@/components/staff/StaffBrandingShell";
 import { StaffOrderModeProvider } from "@/components/staff/StaffOrderModeContext";
@@ -479,9 +480,10 @@ function StaffAppShellInner({
                 type="button"
                 disabled={switchingBranch}
                 onClick={() => setBranchPickerOpen(false)}
-                className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-500"
+                aria-label="ปิด"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
               >
-                ปิด
+                <IconClose size={18} />
               </button>
             </div>
             {switchError ? (

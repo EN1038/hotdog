@@ -3,6 +3,7 @@
 import { PLATFORM_LINE_ADD_URL } from "@/lib/platform-support";
 import { formatThaiPhone } from "@/lib/constants";
 import { STAFF_MAX_DEVICES } from "@/lib/staff-session-limits";
+import { IconClose } from "@/components/icons";
 
 export type StaffLoginNoticeKind = "unregistered" | "deviceLimit";
 
@@ -71,9 +72,10 @@ export function StaffLoginNotice({
           <button
             type="button"
             onClick={onClose}
+            aria-label={kind === "unregistered" ? undefined : "ปิด"}
             className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-100 px-4 text-[15px] font-bold text-slate-700"
           >
-            {kind === "unregistered" ? "ลองเบอร์อื่น" : "ปิด"}
+            {kind === "unregistered" ? "ลองเบอร์อื่น" : <IconClose size={18} />}
           </button>
         </div>
       </div>

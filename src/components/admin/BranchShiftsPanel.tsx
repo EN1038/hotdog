@@ -15,6 +15,7 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { DateInput } from "@/components/DateInput";
 import { bangkokDateKey, formatPrice, isBangkokDateKey } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
+import { IconClose } from "@/components/icons";
 
 type ShiftListItem = {
   id: string;
@@ -931,9 +932,10 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
               type="button"
               disabled={statusBusy}
               onClick={() => setCancelModalOpen(false)}
-              className={`flex-1 ${btnOutline}`}
+              aria-label="ปิด"
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center ${btnOutline}`}
             >
-              ปิด
+              <IconClose size={18} />
             </button>
             <button
               type="button"
@@ -973,9 +975,10 @@ export function BranchShiftsPanel({ branchId }: { branchId: string }) {
               type="button"
               disabled={statusBusy}
               onClick={() => setRestoreModalOpen(false)}
-              className={`flex-1 ${btnOutline}`}
+              aria-label="ปิด"
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center ${btnOutline}`}
             >
-              ปิด
+              <IconClose size={18} />
             </button>
             <button
               type="button"

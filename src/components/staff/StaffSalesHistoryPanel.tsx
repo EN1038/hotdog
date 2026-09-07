@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 import { formatQueueNumber } from "@/lib/order-queue-format";
 import { StaffOrderHistoryDetail } from "@/components/staff/StaffOrderHistoryDetail";
-import { IconClose, IconSearch, IconChevronDown, IconLinkSuffix } from "@/components/icons";
+import { IconBack, IconClose, IconSearch, IconChevronDown, IconLinkSuffix } from "@/components/icons";
 
 type ShiftRow = {
   id: string;
@@ -526,9 +526,10 @@ export function StaffSalesHistoryPanel({
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className="text-sm font-semibold text-site-primary"
+            aria-label="กลับไปรายการรอบ"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
           >
-            ‹ กลับไปรายการรอบ
+            <IconBack size={22} />
           </button>
 
           <ShiftRoundDetailHeader shift={selected} />

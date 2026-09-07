@@ -7,6 +7,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { formatPrice } from "@/lib/constants";
 import { formatOperatingDayLabel } from "@/lib/operating-day";
+import { IconBack } from "@/components/icons";
 import type {
   StockAgingItem,
   StockAgingLevel,
@@ -296,9 +297,10 @@ function StaffStockAgingContent() {
             <button
               type="button"
               onClick={() => router.push("/staff/stock")}
-              className="text-[12px] font-semibold text-slate-500"
+              aria-label="กลับสต๊อก"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
             >
-              ← กลับสต๊อก
+              <IconBack size={22} />
             </button>
             <h1 className="mt-1 text-[20px] font-black text-slate-900">
               ของค้าง / ใกล้เสีย

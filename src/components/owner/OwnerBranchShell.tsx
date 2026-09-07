@@ -48,10 +48,10 @@ export function OwnerBranchShell({
       <div className="px-4 pt-3">
         <Link
           href={backHref}
-          className="inline-flex items-center gap-1.5 text-[13px] font-bold text-site-primary"
+          aria-label={backLabel}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-site-primary shadow-sm"
         >
-          <IconBack size={16} />
-          {backLabel}
+          <IconBack size={22} />
         </Link>
       </div>
       {isOwnerBranchAdminPath(pathname) && !focusMode ? (

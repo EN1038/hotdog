@@ -29,6 +29,7 @@ import {
   ownerHomeHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
+import { IconBack } from "@/components/icons";
 
 type SortMode = "quantity" | "revenue";
 
@@ -816,8 +817,12 @@ function OwnerTopSellersInner() {
       </section>
 
       <p className="mt-4 text-center text-[12px] font-medium text-slate-400">
-        <Link href={homeHref} className="font-bold text-slate-600">
-          ← กลับภาพรวมร้าน
+        <Link
+          href={homeHref}
+          aria-label="กลับภาพรวมร้าน"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
+        >
+          <IconBack size={22} />
         </Link>
       </p>
     </div>

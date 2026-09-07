@@ -30,7 +30,7 @@ import {
 import { reprintPackageBatchLabels } from "@/lib/stock-package-label-print";
 import { StaffPrinterStatusChip } from "@/components/staff/StaffPrinterStatusChip";
 import type { PackageHistoryLine } from "@/lib/stock-package-history-types";
-import { IconChevronRight } from "@/components/icons";
+import { IconBack, IconChevronRight, IconClose } from "@/components/icons";
 
 function historyKindTone(
   kind: Exclude<BranchHistoryKind, "all">,
@@ -475,9 +475,10 @@ export function StaffBranchStockHistoryPanel({
             <button
               type="button"
               onClick={onBack}
-              className="flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+              aria-label="กลับ"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm"
             >
-              ← กลับ
+              <IconBack size={22} />
             </button>
           ) : null}
           <div className="min-w-0">
@@ -703,9 +704,10 @@ export function StaffBranchStockHistoryPanel({
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-500"
+                aria-label="ปิด"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
               >
-                ปิด
+                <IconClose size={18} />
               </button>
             </div>
 

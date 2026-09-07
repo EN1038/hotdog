@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { IconImage, IconCalendar, IconTrend, IconLinkSuffix } from "@/components/icons";
+import { IconImage, IconCalendar, IconClose, IconTrend, IconLinkSuffix } from "@/components/icons";
 import { formatPrice } from "@/lib/constants";
 import type {
   ShopDailyPoint,
@@ -99,9 +99,10 @@ function WastePhotoButton({ src }: { src: string }) {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] rounded-full bg-white/95 px-3 py-1.5 text-sm font-bold text-slate-800 shadow"
+              aria-label="ปิด"
+              className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow"
             >
-              ปิด
+              <IconClose size={18} />
             </button>
           </div>,
           document.body,

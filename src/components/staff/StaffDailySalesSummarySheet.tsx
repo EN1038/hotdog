@@ -19,6 +19,7 @@ import {
   type StockCountTiming,
 } from "@/lib/stock-count-timing";
 import { staffHistoryHrefForSummary } from "@/lib/history-source-link";
+import { IconClose } from "@/components/icons";
 
 type StockLine = {
   name: string;
@@ -636,9 +637,10 @@ export function StaffDailySalesSummarySheet({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-50"
+            aria-label="ปิด"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
           >
-            ปิด
+            <IconClose size={18} />
           </button>
         </div>
 

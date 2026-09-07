@@ -50,6 +50,7 @@ import {
   downloadPngDataUrl,
   sharePngDataUrl,
 } from "@/lib/share-media";
+import { IconBack } from "@/components/icons";
 
 type Props = {
   branchId: string;
@@ -508,10 +509,11 @@ export function BranchTomorrowPlanPanel({
             {onBackToList ? (
               <button
                 type="button"
-                className={btnOutline}
                 onClick={onBackToList}
+                aria-label="กลับไปรายการแผน"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700"
               >
-                กลับไปรายการแผน
+                <IconBack size={22} />
               </button>
             ) : null}
             <button

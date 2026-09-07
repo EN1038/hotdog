@@ -349,9 +349,10 @@ export function OwnerBrandProfileSetupModal({
           <button
             type="button"
             onClick={dismiss}
-            className="min-h-[3rem] flex-1 rounded-2xl border border-slate-200 bg-white px-3 text-[15px] font-bold text-slate-700 active:bg-slate-50"
+            aria-label={isSettings ? "ปิด" : undefined}
+            className="flex min-h-[3rem] flex-1 items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-[15px] font-bold text-slate-700 active:bg-slate-50"
           >
-            {isSettings ? "ปิด" : "ไว้ทีหลัง"}
+            {isSettings ? <IconClose size={18} /> : "ไว้ทีหลัง"}
           </button>
           <button
             type="button"

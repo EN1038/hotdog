@@ -7,6 +7,7 @@ import type {
   SalesReportWasteEntry,
   SalesReportWasteItem,
 } from "@/lib/sales-report-shared";
+import { IconBack, IconClose } from "@/components/icons";
 
 type Props = {
   open: boolean;
@@ -122,9 +123,10 @@ export function StaffWasteDetailSheet({
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
-                className="mb-0.5 text-left text-[12px] font-semibold text-orange-700"
+                aria-label="กลับรายการของเสีย"
+                className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-orange-700 shadow-sm"
               >
-                ← กลับรายการของเสีย
+                <IconBack size={22} />
               </button>
             ) : null}
             <p className="truncate text-base font-bold text-orange-900">
@@ -139,9 +141,10 @@ export function StaffWasteDetailSheet({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+            aria-label="ปิด"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200"
           >
-            ปิด
+            <IconClose size={18} />
           </button>
         </div>
 

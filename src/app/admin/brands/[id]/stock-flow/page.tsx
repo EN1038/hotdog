@@ -12,6 +12,7 @@ import {
 } from "@/components/admin/AdminShell";
 import { useAdminSession } from "@/components/admin/AdminSessionProvider";
 import { DateInput } from "@/components/DateInput";
+import { IconBack } from "@/components/icons";
 import {
   StockFlowAnalyticsPanel,
   type StockFlowAnalyticsData,
@@ -133,9 +134,10 @@ export default function AdminBrandStockFlowPage() {
       <div className="mb-4">
         <Link
           href={backHref}
-          className="text-sm font-semibold text-slate-500 hover:text-slate-800"
+          aria-label="กลับภาพรวมร้าน"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800"
         >
-          ← กลับภาพรวมร้าน
+          <IconBack size={22} />
         </Link>
       </div>
       <AdminPageHeader

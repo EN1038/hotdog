@@ -75,10 +75,10 @@ export function SkewerMenuItemQtyDetail({
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex w-fit items-center gap-1.5 rounded-lg px-1 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+        aria-label="ย้อนกลับ"
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-700 hover:bg-gray-100"
       >
-        <IconBack size={18} />
-        ย้อนกลับ
+        <IconBack size={22} />
       </button>
 
       <div

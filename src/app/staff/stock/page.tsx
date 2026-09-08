@@ -9,6 +9,7 @@ import { StaffBranchStockHistoryPanel } from "@/components/staff/StaffBranchStoc
 import { StaffPackageInPanel } from "@/components/staff/StaffPackageInPanel";
 import { StaffPackageOutPanel } from "@/components/staff/StaffPackageOutPanel";
 import { StaffDailySalesSummarySheet } from "@/components/staff/StaffDailySalesSummarySheet";
+import { StaffPhotoPickSheet } from "@/components/staff/StaffPhotoPickSheet";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -3560,130 +3561,37 @@ function StaffStockContent() {
       />
 
       {itemImageSheetOpen && itemImageTargetId ? (
-        <div
-          className="fixed inset-0 z-[85] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="แนบรูปหลักฐาน"
-          onClick={() => setItemImageSheetOpen(false)}
-        >
-          <div
-            className="w-full max-w-lg rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const sheetItem = data?.products.find(
-                (p) => p.id === itemImageTargetId,
-              );
-              const sheetAttach =
-                countAttachByItemId[itemImageTargetId]?.trim() || null;
-              const sheetCatalog = sheetItem?.imageUrl?.trim() || null;
-              const sheetThumb = sheetAttach || sheetCatalog;
-              return (
-                <>
-                  <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-3.5">
-                    <div
-                      className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl ${
-                        sheetThumb
-                          ? "bg-slate-100 ring-1 ring-slate-200"
-                          : "bg-site-primary-soft ring-2 ring-dashed ring-site-primary/45"
-                      }`}
-                    >
-                      {sheetThumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={sheetThumb}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="relative flex h-full w-full items-center justify-center text-site-primary">
-                          <IconImage size={22} />
-                          <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-site-primary text-white ring-2 ring-white">
-                            <IconPlus size={14} strokeWidth={2.5} />
-                          </span>
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1 pt-0.5">
-                      <p className="truncate text-base font-extrabold text-slate-900">
-                        {sheetItem?.name ?? "แนบรูป"}
-                      </p>
-                      <p className="mt-0.5 text-xs font-medium text-slate-500">
-                        {sheetAttach
-                          ? "แก้รูปแนบของรอบนับนี้ — ไม่เปลี่ยนรูปสินค้าในระบบ"
-                          : "แนบรูปหลักฐานรอบนับนี้ (ถ้ามี) — ไม่เปลี่ยนรูปสินค้าในระบบ"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setItemImageSheetOpen(false)}
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
-                      aria-label="ปิด"
-                    >
-                      <IconClose size={18} />
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2.5 px-4 py-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setItemImageSheetOpen(false);
-                        setCameraItemId(itemImageTargetId);
-                        setCameraFor("item");
-                        setCameraOpen(true);
-                      }}
-                      className="flex flex-col items-center gap-2 rounded-2xl bg-amber-50 px-3 py-4 text-center ring-1 ring-amber-100 active:bg-amber-100"
-                    >
-                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm">
-                        <IconCamera size={24} />
-                      </span>
-                      <span className="text-sm font-extrabold text-amber-950">
-                        ถ่ายรูป
-                      </span>
-                      <span className="text-[11px] font-medium text-amber-800/80">
-                        เปิดกล้องทันที
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openItemImagePicker(itemImageTargetId)}
-                      className="flex flex-col items-center gap-2 rounded-2xl bg-sky-50 px-3 py-4 text-center ring-1 ring-sky-100 active:bg-sky-100"
-                    >
-                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-sm">
-                        <IconImage size={24} />
-                      </span>
-                      <span className="text-sm font-extrabold text-sky-950">
-                        เลือกจากอัลบั้ม
-                      </span>
-                      <span className="text-[11px] font-medium text-sky-800/80">
-                        เลือกรูปที่มีอยู่
-                      </span>
-                    </button>
-                  </div>
-                  {sheetAttach ? (
-                    <div className="border-t border-slate-100 px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void removeCountAttach(itemImageTargetId)
-                        }
-                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-3 text-sm font-bold text-red-700 active:bg-red-100"
-                      >
-                        <IconTrash size={16} />
-                        ลบรูปแนบ
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="px-4 pb-4 text-center text-[11px] font-medium text-slate-400">
-                      ไม่บังคับ — ไม่มีรูปก็บันทึกยอดได้อยู่
-                    </p>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        </div>
+        <StaffPhotoPickSheet
+          open
+          onClose={() => setItemImageSheetOpen(false)}
+          title={
+            data?.products.find((p) => p.id === itemImageTargetId)?.name ??
+            "แนบรูป"
+          }
+          subtitle={
+            countAttachByItemId[itemImageTargetId]?.trim()
+              ? "แก้รูปแนบของรอบนับนี้ — ไม่เปลี่ยนรูปสินค้าในระบบ"
+              : "แนบรูปหลักฐานรอบนับนี้ (ถ้ามี) — ไม่เปลี่ยนรูปสินค้าในระบบ"
+          }
+          thumbUrl={
+            countAttachByItemId[itemImageTargetId]?.trim() ||
+            data?.products.find((p) => p.id === itemImageTargetId)?.imageUrl ||
+            null
+          }
+          onCamera={() => {
+            setItemImageSheetOpen(false);
+            setCameraItemId(itemImageTargetId);
+            setCameraFor("item");
+            setCameraOpen(true);
+          }}
+          onAlbum={() => openItemImagePicker(itemImageTargetId)}
+          onRemove={
+            countAttachByItemId[itemImageTargetId]?.trim()
+              ? () => void removeCountAttach(itemImageTargetId)
+              : undefined
+          }
+          footerText="ไม่บังคับ — ไม่มีรูปก็บันทึกยอดได้อยู่"
+        />
       ) : null}
 
       <StaffDailySalesSummarySheet

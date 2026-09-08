@@ -27,6 +27,7 @@ import {
   IconChevronRight,
   IconClipboard,
   IconLinkSuffix,
+  IconPackage,
   IconQrCode,
   IconStar,
   IconWallet,
@@ -690,7 +691,7 @@ export default function StaffHomePage() {
             />
           ) : null}
 
-          <div className="grid min-h-[16rem] flex-[1.35] grid-cols-2 grid-rows-2 divide-x divide-y divide-white/40">
+          <div className="grid min-h-[16rem] flex-[1.35] grid-cols-2 divide-x divide-y divide-white/40">
             {showMala ? (
               <SoftTile
                 href="/staff/orders"
@@ -726,42 +727,38 @@ export default function StaffHomePage() {
               size="half"
             />
             {stockOn ? (
-              <>
-                <SoftTile
-                  href={
-                    (meta?.pendingStockCount ?? 0) > 0
-                      ? "/staff/stock?action=pending"
-                      : "/staff/stock"
-                  }
-                  title="สต๊อก"
-                  subtitle="รับของ / ตรวจนับ"
-                  icon={<IconBoxes size={26} />}
-                  badge={meta?.pendingStockCount}
-                  tone="teal"
-                  size="half"
-                />
-                <SoftTile
-                  href="/staff/accounts"
-                  title="บัญชี"
-                  subtitle="รายรับ · รายจ่าย · ภาพรวม"
-                  icon={<IconWallet size={26} />}
-                  tone="rose"
-                  size="half"
-                />
-              </>
-            ) : (
-              <>
-                <SoftTile
-                  href="/staff/accounts"
-                  title="บัญชี"
-                  subtitle="รายรับ · รายจ่าย · ภาพรวม"
-                  icon={<IconWallet size={26} />}
-                  tone="rose"
-                  size="half"
-                  className="col-span-2"
-                />
-              </>
-            )}
+              <SoftTile
+                href={
+                  (meta?.pendingStockCount ?? 0) > 0
+                    ? "/staff/stock?action=pending"
+                    : "/staff/stock"
+                }
+                title="สต๊อก"
+                subtitle="รับของ / ตรวจนับ"
+                icon={<IconBoxes size={26} />}
+                badge={meta?.pendingStockCount}
+                tone="teal"
+                size="half"
+              />
+            ) : null}
+            <SoftTile
+              href="/staff/purchases"
+              title="จัดซื้อ"
+              subtitle="เอกสาร · รับเข้าสต๊อก"
+              icon={<IconPackage size={26} />}
+              tone="indigo"
+              size="half"
+              className={stockOn ? undefined : undefined}
+            />
+            <SoftTile
+              href="/staff/accounts"
+              title="บัญชี"
+              subtitle="รายรับ · รายจ่าย · ภาพรวม"
+              icon={<IconWallet size={26} />}
+              tone="rose"
+              size="half"
+              className={stockOn ? "col-span-2" : undefined}
+            />
           </div>
         </section>
 

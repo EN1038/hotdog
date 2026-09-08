@@ -18,6 +18,7 @@ import {
   IconGridView,
   IconLink,
   IconLinkSuffix,
+  IconPackage,
   IconReceipt,
   IconStore,
   IconWaste,
@@ -40,8 +41,8 @@ import {
 import { OwnerBranchFilterBar } from "@/components/owner/OwnerBranchFilterBar";
 import {
   OwnerWeekdayRevenueBars,
-  OwnerTopSellersList,
 } from "@/components/owner/OwnerOverviewExtras";
+import { OwnerHomeTopSellersPanel } from "@/components/owner/OwnerHomeTopSellersPanel";
 import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
 import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
 import { SalesShareSection } from "@/components/merchant/SalesSummaryView";
@@ -614,10 +615,10 @@ function OwnerHomeInner() {
     setOverviewLoading(true);
     void (async () => {
       try {
+        // Default: ไม่รวมสาขาทดลอง (สอดคล้อง /owner/summary, top-sellers, stock-flow)
         const params = new URLSearchParams({
           from: rangeFrom,
           to: rangeTo,
-          includeTest: "1",
         });
         if (filterBranchId) params.set("branchId", filterBranchId);
         const res = await fetch(`/api/owner/dashboard?${params}`, {
@@ -678,7 +679,6 @@ function OwnerHomeInner() {
   const overviewCashRevenue = overviewStats?.cashRevenue ?? 0;
   const overviewTransferRevenue = overviewStats?.transferRevenue ?? 0;
   const overviewSoldQty = overviewStats?.soldQty ?? 0;
-  const overviewTopSellers = (pulseSource?.topSellers ?? []).slice(0, 5);
   const overviewByFulfillment = pulseSource?.byFulfillment ?? [];
   const overviewByPayment = pulseSource?.byPayment ?? [];
   const overviewWeekdays = pulseSource?.weekdays ?? [];
@@ -815,6 +815,10 @@ function OwnerHomeInner() {
     const path =
       pending > 0 ? "/staff/stock?focus=convert" : "/staff/stock";
     await goStaff(path, branchId);
+  }
+
+  async function goStaffPurchases(branchId?: string) {
+    await goStaff("/staff/purchases", branchId);
   }
 
   // เริ่มที่หน้าร้าน — เฉพาะเมื่อตั้งค่า「เริ่มที่หน้าร้านเสมอ」
@@ -1240,6 +1244,8 @@ function OwnerHomeInner() {
                 slices={overviewByFulfillment}
                 totalRevenue={overviewCompletedRevenue}
                 chartStyle="donut"
+                cardChrome
+                icon={<IconClipboard size={20} />}
               />
             ) : null}
             {overviewByPayment.length > 0 ? (
@@ -1248,17 +1254,21 @@ function OwnerHomeInner() {
                 slices={overviewByPayment}
                 totalRevenue={overviewCompletedRevenue}
                 chartStyle="donut"
+                cardChrome
+                icon={<IconReceipt size={20} />}
               />
             ) : null}
           </div>
 
-          {/* 6) เมนูขายดี */}
-          <OwnerTopSellersList
+          {/* 6) เมนูขายดี — กรองตามตัวเลือกได้ */}
+          <OwnerHomeTopSellersPanel
+            from={rangeFrom}
+            to={rangeTo}
+            branchId={filterBranchId}
+            href={topSellersHref}
             title="เมนูขายดี"
             linkLabel="วิเคราะห์ · เทียบสาขา"
-            items={overviewTopSellers}
-            loading={overviewLoading}
-            href={topSellersHref}
+            limit={5}
           />
 
           {/* 6) ยกเลิก — โชว์เมื่อมี */}
@@ -1302,6 +1312,15 @@ function OwnerHomeInner() {
               <IconExpense size={20} />
               บัญชี
             </Link>
+            <button
+              type="button"
+              onClick={() => void goStaffPurchases(filterBranchId ?? undefined)}
+              disabled={enteringStaff}
+              className="flex items-center justify-center gap-2 rounded-[1.15rem] bg-white px-3 py-4 text-[14px] font-extrabold text-indigo-800 shadow-sm ring-1 ring-indigo-200 active:bg-indigo-50 disabled:opacity-60"
+            >
+              <IconPackage size={20} />
+              {enteringStaff ? "กำลังเข้า…" : "จัดซื้อ"}
+            </button>
             <Link
               href={wasteHref}
               className="flex items-center justify-center gap-2 rounded-[1.15rem] bg-white px-3 py-4 text-[14px] font-extrabold text-orange-800 shadow-sm ring-1 ring-orange-200 active:bg-orange-50"
@@ -1366,6 +1385,17 @@ function OwnerHomeInner() {
             tone="rose"
             size="hero"
           />
+          <SoftTile
+            onClick={() => void goStaffPurchases(filterBranchId ?? undefined)}
+            title={enteringStaff ? "กำลังเข้า…" : "จัดซื้อ"}
+            subtitle="เอกสารจัดซื้อ · แนบรูป · รับเข้าสต๊อก"
+            icon={<IconPackage size={26} />}
+            tone="indigo"
+            size="hero"
+            className={
+              enteringStaff ? "pointer-events-none opacity-60" : undefined
+            }
+          />
         </section>
       ) : null}
 
@@ -1427,6 +1457,18 @@ function OwnerHomeInner() {
                       data?.pendingStockConvertCount)
                     : undefined
                 }
+                className={
+                  enteringStaff ? "pointer-events-none opacity-60" : undefined
+                }
+              />
+              <SoftTile
+                onClick={() => void goStaffPurchases(filterBranchId ?? undefined)}
+                title={enteringStaff ? "กำลังเข้า…" : "จัดซื้อ"}
+                subtitle="สร้างเอกสาร · ดึงจาก master · รับเข้าสต๊อก"
+                icon={<IconPackage size={26} />}
+                tone="indigo"
+                size="hero"
+                pill="งานวันต่อวัน"
                 className={
                   enteringStaff ? "pointer-events-none opacity-60" : undefined
                 }
@@ -1535,7 +1577,9 @@ function OwnerHomeInner() {
               </button>
             </div>
             <p className="mb-3 text-sm text-slate-500">
-              {staffTargetHref.includes("/stock")
+              {staffTargetHref.includes("/purchases")
+                ? "เข้าจัดซื้อหน้าร้านด้วยบัญชีเจ้าของ — สร้างเอกสารและรับเข้าสต๊อก"
+                : staffTargetHref.includes("/stock")
                 ? "เข้าจัดการสต๊อกหน้าร้านด้วยบัญชีเจ้าของ — เมนูเดียวกับพนักงาน"
                 : "แม่ค้าคนเดียว — เข้าหน้าร้านด้วยบัญชีเจ้าของ แล้วกลับหลังบ้านได้"}
             </p>

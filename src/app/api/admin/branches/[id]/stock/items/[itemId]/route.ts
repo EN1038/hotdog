@@ -39,6 +39,23 @@ export async function PATCH(
         : typeof body.imageUrl === "string"
           ? body.imageUrl.trim() || null
           : null;
+    const itemCode =
+      body.itemCode === undefined
+        ? existing.itemCode
+        : typeof body.itemCode === "string"
+          ? body.itemCode.trim() || null
+          : null;
+    if (itemCode && itemCode !== existing.itemCode) {
+      const clash = await prisma.branchNonMenuItem.findFirst({
+        where: {
+          branchId,
+          itemCode,
+          NOT: { id: itemId },
+        },
+        select: { id: true },
+      });
+      if (clash) return jsonError("รหัสสินค้านี้มีอยู่แล้วในสาขา", 400);
+    }
     let nextPrice: Prisma.Decimal | null | undefined = undefined;
     if (body.price !== undefined) {
       if (body.price === "" || body.price == null) {
@@ -78,6 +95,7 @@ export async function PATCH(
         unit,
         description,
         imageUrl,
+        itemCode,
         ...(nextPrice !== undefined ? { price: nextPrice } : {}),
         ...(showOnKeyOrder !== undefined &&
         existing.stockType === "CONSUMABLE"

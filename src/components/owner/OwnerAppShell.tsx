@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -29,6 +30,7 @@ import {
 import { OwnerTrialBanner } from "@/components/owner/OwnerTrialBanner";
 import { OwnerDashboardHeaderDecor } from "@/components/owner/OwnerDashboardHeaderDecor";
 import { PageLoadingScreen } from "@/components/PageLoadingScreen";
+import { tryRestoreOwnerSessionFromStash } from "@/lib/owner-enter-staff";
 
 export type OwnerShellTab = "home" | "today" | "summary" | "settings";
 
@@ -57,9 +59,10 @@ export function OwnerAppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { session, loaded } = useAdminSession();
+  const { session, loaded, refresh } = useAdminSession();
   const [data, setData] = useState<OwnerDashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const stashRestorePromiseRef = useRef<Promise<boolean> | null>(null);
 
   const reload = useCallback(() => {
     fetch("/api/owner/dashboard?period=day")
@@ -84,16 +87,49 @@ export function OwnerAppShell({
 
   useEffect(() => {
     if (!loaded) return;
-    if (!session) {
-      router.replace("/owner/login");
-      return;
-    }
+    if (!session) return;
     if (session.isPlatformAdmin) {
       router.replace("/admin");
       return;
     }
     reload();
   }, [loaded, session, router, reload, pathname]);
+
+  useEffect(() => {
+    if (!loaded || session) return;
+    let cancelled = false;
+
+    if (!stashRestorePromiseRef.current) {
+      stashRestorePromiseRef.current = (async () => {
+        if (await tryRestoreOwnerSessionFromStash()) return true;
+        // Strict Mode may have restored on a cancelled run — probe active cookie.
+        try {
+          const res = await fetch("/api/auth/session", { cache: "no-store" });
+          if (!res.ok) return false;
+          const data = (await res.json()) as {
+            session?: { type?: string } | null;
+          };
+          return data.session?.type === "admin";
+        } catch {
+          return false;
+        }
+      })();
+    }
+
+    void (async () => {
+      const ok = await stashRestorePromiseRef.current!;
+      if (cancelled) return;
+      if (ok) {
+        await refresh();
+        return;
+      }
+      router.replace("/owner/login");
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, session, router, refresh]);
 
   useOwnerViewHomeSoftRedirect(
     loaded && session && !session.isPlatformAdmin && pathname === "/owner"

@@ -97,3 +97,14 @@ export async function canReturnToOwnerFromStaff(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * If owner JWT is stashed (after enter-staff / shop floor), restore it.
+ * Used when opening /owner or /owner/login while the active cookie is staff.
+ */
+export async function tryRestoreOwnerSessionFromStash(): Promise<boolean> {
+  const can = await canReturnToOwnerFromStaff();
+  if (!can) return false;
+  const result = await returnToOwnerFromStaff();
+  return result.ok;
+}

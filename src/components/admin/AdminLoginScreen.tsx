@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MerchantAuthShell } from "@/components/MerchantAuthShell";
 import { OtpDigitInput, OTP_DIGIT_LENGTH } from "@/components/OtpDigitInput";
 import {
@@ -22,7 +22,10 @@ import {
   OTP_TTL_SECONDS,
   formatOtpCountdown,
 } from "@/lib/otp-ttl";
-import { assignOwnerViewHome } from "@/lib/owner-view-preference";
+import { assignOwnerViewHome, ownerViewHomePath, resolveOwnerView } from "@/lib/owner-view-preference";
+import { useAdminSession } from "@/components/admin/AdminSessionProvider";
+import { tryRestoreOwnerSessionFromStash } from "@/lib/owner-enter-staff";
+import { PageLoadingScreen } from "@/components/PageLoadingScreen";
 
 export type AdminLoginMode = "owner" | "platform";
 
@@ -46,6 +49,7 @@ const LOGIN_COPY: Record<
 
 export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode }) {
   const copy = LOGIN_COPY[mode];
+  const { session, loaded } = useAdminSession();
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -57,6 +61,60 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [booting, setBooting] = useState(mode === "owner");
+  const ownerBootPromiseRef = useRef<Promise<"home" | "login"> | null>(null);
+
+  useEffect(() => {
+    if (mode !== "owner") return;
+    if (!loaded) return;
+    let cancelled = false;
+
+    if (!ownerBootPromiseRef.current) {
+      ownerBootPromiseRef.current = (async () => {
+        if (session) {
+          return "home" as const;
+        }
+        if (await tryRestoreOwnerSessionFromStash()) {
+          return "home" as const;
+        }
+        try {
+          const res = await fetch("/api/auth/session", { cache: "no-store" });
+          if (res.ok) {
+            const data = (await res.json()) as {
+              session?: { type?: string } | null;
+            };
+            if (data.session?.type === "admin") return "home" as const;
+          }
+        } catch {
+          /* fall through */
+        }
+        return "login" as const;
+      })();
+    }
+
+    void (async () => {
+      const next = await ownerBootPromiseRef.current!;
+      if (cancelled) return;
+      if (next === "home") {
+        if (session?.isPlatformAdmin) {
+          window.location.assign("/admin");
+          return;
+        }
+        if (session) {
+          await assignOwnerViewHome();
+          return;
+        }
+        // Restored from stash — keep skip-shop flag.
+        window.location.assign(ownerViewHomePath(resolveOwnerView()));
+        return;
+      }
+      setBooting(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, loaded, session]);
 
   useEffect(() => {
     if (!otpStep || otpSecondsLeft <= 0) return;
@@ -210,6 +268,10 @@ export function AdminLoginScreen({ mode = "platform" }: { mode?: AdminLoginMode 
         : otpStep
           ? otpSecondsLeft <= 0 || !otpReady
           : !phoneReady);
+
+  if (mode === "owner" && (booting || !loaded)) {
+    return <PageLoadingScreen label="กำลังเข้าสู่ร้าน…" />;
+  }
 
   return (
     <MerchantAuthShell

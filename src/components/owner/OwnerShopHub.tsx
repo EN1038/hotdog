@@ -751,6 +751,12 @@ export function buildOwnerShopLinkGroups(input: {
       });
     }
     stock.push({
+      href: "/staff/purchases",
+      label: "จัดซื้อ",
+      hint: "สร้างรายการจัดซื้อ · แนบรูป · รับเข้าสต๊อก",
+      enterStaff: true,
+    });
+    stock.push({
       href: "/staff/stock",
       label: "นับสต๊อกหน้าร้าน",
       hint: "เข้าเมนูพนักงาน — นับสต๊อก · มีเลขที่เอกสาร",

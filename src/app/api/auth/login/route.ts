@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { attachSessionCookie } from "@/lib/auth";
+import { attachSessionCookie, getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/constants";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
@@ -13,8 +13,10 @@ import {
 } from "@/lib/otp-challenge";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
 import {
+  attachOwnerStashCookie,
   clearOwnerStashCookie,
   ensureOwnerStaffForLoginPhone,
+  readSessionCookieToken,
 } from "@/lib/owner-staff-bridge";
 import {
   issueStaffAuthSession,
@@ -285,6 +287,28 @@ export async function POST(request: Request) {
         roles: [...roles],
         brand: staffLoginBrandPayload(brand),
       });
+
+      // Sole operator: staff login replaces admin cookie — stash so /owner can restore.
+      const existing = await getSession();
+      const existingToken = await readSessionCookieToken();
+      if (
+        existing?.type === "admin" &&
+        existingToken &&
+        !existing.isPlatformAdmin &&
+        existing.adminId
+      ) {
+        const admin = await prisma.admin.findUnique({
+          where: { id: existing.adminId },
+          select: { phone: true, username: true },
+        });
+        const ownerPhone = normalizePhone(
+          admin?.phone || admin?.username || "",
+        );
+        if (ownerPhone && ownerPhone === normalized) {
+          attachOwnerStashCookie(res, existingToken);
+        }
+      }
+
       await attachSessionCookie(res, {
         type: "staff",
         staffPhone: normalized,

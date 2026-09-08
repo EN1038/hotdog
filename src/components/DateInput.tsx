@@ -134,6 +134,7 @@ export function DateInput({
   }
 
   const displayClass = [
+    "box-border w-full",
     className,
     showCalendar ? "pr-9" : "",
     pickerMode ? "cursor-pointer" : "",
@@ -142,7 +143,11 @@ export function DateInput({
     .join(" ");
 
   return (
-    <div className={`relative w-full ${pickerMode && !disabled ? "cursor-pointer" : ""}`}>
+    <div
+      className={`relative w-full min-w-0 ${
+        pickerMode && !disabled ? "cursor-pointer" : ""
+      }`}
+    >
       <input
         id={inputId}
         name={name}
@@ -184,7 +189,7 @@ export function DateInput({
 
       {showCalendar ? (
         <span
-          className="pointer-events-none absolute top-1/2 right-2 z-10 -translate-y-1/2 text-slate-400"
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-9 items-center justify-center text-slate-400"
           aria-hidden
         >
           <svg
@@ -196,6 +201,7 @@ export function DateInput({
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            className="block"
           >
             <rect x="3" y="4" width="18" height="18" rx="2" />
             <path d="M16 2v4M8 2v4M3 10h18" />

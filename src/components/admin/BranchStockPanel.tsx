@@ -45,18 +45,28 @@ import {
   type StockOutboundPurpose,
 } from "@/lib/stock-outbound";
 
-type StockType = "SALE_ITEM" | "CONSUMABLE" | "EQUIPMENT";
+type StockType =
+  | "SALE_ITEM"
+  | "CONSUMABLE"
+  | "RAW_MATERIAL"
+  | "EQUIPMENT"
+  | "OTHER";
+
+type NonMenuStockType = Exclude<StockType, "SALE_ITEM">;
 
 const STOCK_TYPE_LABEL: Record<StockType, string> = {
   SALE_ITEM: "เมนูขาย",
-  CONSUMABLE: "ของสิ้นเปลือง",
+  CONSUMABLE: "สินค้าสิ้นเปลือง",
+  RAW_MATERIAL: "วัตถุดิบ",
   EQUIPMENT: "อุปกรณ์",
+  OTHER: "อื่น ๆ",
 };
 
 type Product = {
   id: string;
   name: string;
   productCode?: string | null;
+  itemCode?: string | null;
   unit: string;
   stockType: StockType;
   category?: string | null;
@@ -178,10 +188,12 @@ export function BranchStockPanel({
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
 
   // Modal state for non-menu items (create or edit)
-  const [showCreateModal, setShowCreateModal] = useState<"CONSUMABLE" | "EQUIPMENT" | null>(null);
+  const [showCreateModal, setShowCreateModal] =
+    useState<NonMenuStockType | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [newItemData, setNewItemData] = useState({
     name: "",
+    itemCode: "",
     description: "",
     unit: "ชิ้น",
     price: "",
@@ -195,6 +207,7 @@ export function BranchStockPanel({
     setEditingItemId(null);
     setNewItemData({
       name: "",
+      itemCode: "",
       description: "",
       unit: "ชิ้น",
       price: "",
@@ -204,10 +217,11 @@ export function BranchStockPanel({
     });
   }
 
-  function openCreateItem(type: "CONSUMABLE" | "EQUIPMENT") {
+  function openCreateItem(type: NonMenuStockType) {
     setEditingItemId(null);
     setNewItemData({
       name: "",
+      itemCode: "",
       description: "",
       unit: "ชิ้น",
       price: "",
@@ -220,10 +234,18 @@ export function BranchStockPanel({
   }
 
   function openEditNonMenu(item: Product) {
-    if (item.stockType !== "CONSUMABLE" && item.stockType !== "EQUIPMENT") return;
+    if (
+      item.stockType !== "CONSUMABLE" &&
+      item.stockType !== "RAW_MATERIAL" &&
+      item.stockType !== "EQUIPMENT" &&
+      item.stockType !== "OTHER"
+    ) {
+      return;
+    }
     setEditingItemId(item.id);
     setNewItemData({
       name: item.name,
+      itemCode: item.itemCode ?? item.productCode ?? "",
       description: item.description ?? "",
       unit: item.unit || "ชิ้น",
       price:
@@ -722,7 +744,12 @@ export function BranchStockPanel({
           method: isEdit ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...newItemData,
+            name: newItemData.name,
+            itemCode: newItemData.itemCode.trim() || null,
+            description: newItemData.description,
+            unit: newItemData.unit,
+            price: newItemData.price,
+            imageUrl: newItemData.imageUrl,
             stockType: showCreateModal,
             showOnKeyOrder:
               showCreateModal === "CONSUMABLE"
@@ -777,7 +804,7 @@ export function BranchStockPanel({
 
   async function deleteNonMenuItem(item: Product) {
     const typeLabel =
-      item.stockType === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์";
+      STOCK_TYPE_LABEL[item.stockType] ?? item.stockType;
     const ok = await confirm({
       title: `ลบ${typeLabel}?`,
       message: `ลบ “${item.name}” ออกจากสต๊อกสาขา ไม่สามารถกู้คืนได้`,
@@ -945,24 +972,36 @@ export function BranchStockPanel({
                 </span>
               </button>
               {showCreateDropdown && (
-                <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg border border-slate-100 py-1 z-50">
+                <div className="absolute right-0 mt-2 w-56 rounded-xl bg-white shadow-lg border border-slate-100 py-1 z-50">
                   <Link
                     href={`/admin/branches/${branchId}/menu/new`}
                     className="block px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
                   >
-                    🍜 เมนูขาย
+                    เมนูขาย
                   </Link>
                   <button
                     onClick={() => openCreateItem("CONSUMABLE")}
                     className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
                   >
-                    📦 ของสิ้นเปลือง
+                    สินค้าสิ้นเปลือง
+                  </button>
+                  <button
+                    onClick={() => openCreateItem("RAW_MATERIAL")}
+                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
+                  >
+                    วัตถุดิบ
                   </button>
                   <button
                     onClick={() => openCreateItem("EQUIPMENT")}
                     className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
                   >
-                    🛠️ อุปกรณ์
+                    อุปกรณ์
+                  </button>
+                  <button
+                    onClick={() => openCreateItem("OTHER")}
+                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-site-primary"
+                  >
+                    อื่น ๆ
                   </button>
                 </div>
               )}
@@ -1136,8 +1175,10 @@ export function BranchStockPanel({
                     {[
                       { id: "ALL", label: "ทั้งหมด" },
                       { id: "SALE_ITEM", label: "เมนูขาย" },
-                      { id: "CONSUMABLE", label: "ของสิ้นเปลือง" },
+                      { id: "CONSUMABLE", label: "สินค้าสิ้นเปลือง" },
+                      { id: "RAW_MATERIAL", label: "วัตถุดิบ" },
                       { id: "EQUIPMENT", label: "อุปกรณ์" },
+                      { id: "OTHER", label: "อื่น ๆ" },
                     ].map((type) => (
                       <button
                         key={type.id}
@@ -1321,7 +1362,7 @@ export function BranchStockPanel({
                                 <div>
                                   <div className="font-semibold text-slate-900">{item.name}</div>
                                   <div className="text-xs text-slate-500">
-                                    {item.stockType === "SALE_ITEM" ? "เมนูขาย" : item.stockType === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์"}
+                                    {STOCK_TYPE_LABEL[item.stockType] ?? item.stockType}
                                     {" · "}
                                     หน่วย {item.unit}
                                     {item.stockType === "CONSUMABLE" &&
@@ -1495,27 +1536,36 @@ export function BranchStockPanel({
                 </h2>
               </div>
               
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <button
                   onClick={() => handleTypeSelectClick("SALE_ITEM")}
                   className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
                 >
-                  <div className="text-3xl">🍜</div>
                   <h3 className="text-lg font-bold">เมนูขาย</h3>
                 </button>
                 <button
                   onClick={() => handleTypeSelectClick("CONSUMABLE")}
                   className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
                 >
-                  <div className="text-3xl">📦</div>
-                  <h3 className="text-lg font-bold">ของสิ้นเปลือง</h3>
+                  <h3 className="text-lg font-bold">สินค้าสิ้นเปลือง</h3>
+                </button>
+                <button
+                  onClick={() => handleTypeSelectClick("RAW_MATERIAL")}
+                  className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                >
+                  <h3 className="text-lg font-bold">วัตถุดิบ</h3>
                 </button>
                 <button
                   onClick={() => handleTypeSelectClick("EQUIPMENT")}
                   className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
                 >
-                  <div className="text-3xl">🛠️</div>
                   <h3 className="text-lg font-bold">อุปกรณ์</h3>
+                </button>
+                <button
+                  onClick={() => handleTypeSelectClick("OTHER")}
+                  className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-slate-700 shadow-sm hover:border-site-primary hover:text-site-primary transition-all active:scale-[0.98]"
+                >
+                  <h3 className="text-lg font-bold">อื่น ๆ</h3>
                 </button>
               </div>
             </div>
@@ -1570,8 +1620,10 @@ export function BranchStockPanel({
                 {[
                   { id: "ALL", label: "ทั้งหมด" },
                   { id: "SALE_ITEM", label: "เมนูขาย" },
-                  { id: "CONSUMABLE", label: "ของสิ้นเปลือง" },
+                  { id: "CONSUMABLE", label: "สินค้าสิ้นเปลือง" },
+                  { id: "RAW_MATERIAL", label: "วัตถุดิบ" },
                   { id: "EQUIPMENT", label: "อุปกรณ์" },
+                  { id: "OTHER", label: "อื่น ๆ" },
                 ].map((type) => (
                   <button
                     key={type.id}
@@ -1751,7 +1803,7 @@ export function BranchStockPanel({
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-900">
                 {editingItemId ? "แก้ไข" : "สร้าง"}
-                {showCreateModal === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์"}
+                {STOCK_TYPE_LABEL[showCreateModal]}
                 {editingItemId ? "" : "ใหม่"}
               </h2>
               <button onClick={closeItemModal} className="text-slate-400 hover:text-slate-600 p-2">✕</button>
@@ -1777,6 +1829,17 @@ export function BranchStockPanel({
                   onChange={(e) => setNewItemData({...newItemData, name: e.target.value})}
                   className={adminInputClass}
                   placeholder="เช่น น้ำจิ้ม, น้ำแข็ง, แก้วน้ำ..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">รหัสสินค้า</label>
+                <input
+                  type="text"
+                  value={newItemData.itemCode}
+                  onChange={(e) => setNewItemData({...newItemData, itemCode: e.target.value})}
+                  className={adminInputClass}
+                  placeholder="เช่น RM-001 (ถ้ามี)"
                 />
               </div>
 

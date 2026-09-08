@@ -142,7 +142,14 @@ export async function GET(_request: Request, { params }: Params) {
 
     // Map Non-Menu Items
     for (const item of nonMenuItems) {
-      const typeLabel = item.stockType === "CONSUMABLE" ? "ของสิ้นเปลือง" : "อุปกรณ์";
+      const typeLabel =
+        item.stockType === "CONSUMABLE"
+          ? "สินค้าสิ้นเปลือง"
+          : item.stockType === "RAW_MATERIAL"
+            ? "วัตถุดิบ"
+            : item.stockType === "OTHER"
+              ? "อื่น ๆ"
+              : "อุปกรณ์";
       const productCode = resolveMenuItemProductCode({
         id: item.id,
         itemCode: item.itemCode,
@@ -151,6 +158,7 @@ export async function GET(_request: Request, { params }: Params) {
         id: item.id,
         name: item.name,
         productCode,
+        itemCode: item.itemCode,
         unit: item.unit,
         stockType: item.stockType,
         category: typeLabel,
@@ -172,6 +180,7 @@ export async function GET(_request: Request, { params }: Params) {
           id: item.id,
           name: item.name,
           productCode,
+          itemCode: item.itemCode,
           unit: item.unit,
           stockType: item.stockType,
           category: typeLabel,

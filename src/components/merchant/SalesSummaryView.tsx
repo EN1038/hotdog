@@ -517,6 +517,9 @@ export function SalesShareSection({
   /** โหมดโดนัท + % นอกวง + การ์ดแถบสี (ช่องทางการขาย) */
   chartStyle = "bars",
   defaultOpen = false,
+  /** การ์ดขาวพร้อมไอคอน — ให้โทนเดียวกับบล็อกวิเคราะห์หน้าแรก owner */
+  cardChrome = false,
+  icon,
 }: {
   title: string;
   slices: SalesShareSlice[];
@@ -524,6 +527,8 @@ export function SalesShareSection({
   chartStyle?: "bars" | "donut";
   /** เปิดกราฟทันทีหรือไม่ — ค่าเริ่มต้นปิด เพื่อประหยัดพื้นที่ */
   defaultOpen?: boolean;
+  cardChrome?: boolean;
+  icon?: ReactNode;
 }) {
   const visible = slices.filter((s) => s.completedRevenue > 0);
   const [show, setShow] = useState(defaultOpen);
@@ -539,83 +544,113 @@ export function SalesShareSection({
     return `${color} ${start}% ${cursor}%`;
   });
 
+  const switchBtn = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={show}
+      onClick={() => setShow((v) => !v)}
+      className={`relative h-8 w-14 shrink-0 rounded-full transition ${
+        show ? "bg-site-primary" : "bg-slate-300"
+      }`}
+    >
+      <span
+        className="absolute top-1 h-6 w-6 rounded-full bg-white shadow-sm transition"
+        style={{ left: show ? "1.65rem" : "0.2rem" }}
+      />
+    </button>
+  );
+
+  const body = !show ? null : visible.length === 0 ? (
+    <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-[15px] text-slate-500">
+      ยังไม่มียอดขายในช่วงนี้
+    </p>
+  ) : (
+    <div
+      className={
+        cardChrome
+          ? "mt-3"
+          : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      }
+    >
+      {useDonut ? (
+        <DonutChartWithOutsideLabels
+          slices={visible}
+          totalRevenue={totalRevenue}
+        />
+      ) : (
+        <div className="relative mx-auto mb-5 h-48 w-48">
+          <div
+            className="relative h-full w-full rounded-full"
+            style={{
+              background: `conic-gradient(${stops.join(", ")})`,
+            }}
+          >
+            <div className="absolute inset-[2.35rem] flex flex-col items-center justify-center rounded-full bg-white">
+              <p className="text-[11px] font-semibold text-slate-400">รวม</p>
+              <p className="text-[15px] font-black tabular-nums text-slate-900">
+                {formatPrice(totalRevenue)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        className={
+          chartStyle === "donut"
+            ? "space-y-2.5"
+            : "grid grid-cols-1 gap-2.5 sm:grid-cols-2"
+        }
+      >
+        {visible.map((row, index) => {
+          const pct =
+            totalRevenue > 0
+              ? Math.round((row.completedRevenue / totalRevenue) * 1000) / 10
+              : 0;
+          const color = SALES_SHARE_COLORS[index % SALES_SHARE_COLORS.length]!;
+          return (
+            <ShareAccentCard
+              key={row.key}
+              label={row.label}
+              pct={pct}
+              amount={row.completedRevenue}
+              color={color}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  if (cardChrome) {
+    return (
+      <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {icon ? (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-site-primary-soft text-site-primary">
+                {icon}
+              </span>
+            ) : null}
+            <h2 className="text-[14px] font-extrabold text-[#0b2a4a]">
+              {title}
+            </h2>
+          </div>
+          {switchBtn}
+        </div>
+        {body}
+      </section>
+    );
+  }
+
   return (
     <section className="mt-6">
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-[17px] font-extrabold text-slate-900">{title}</p>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={show}
-          onClick={() => setShow((v) => !v)}
-          className={`relative h-8 w-14 shrink-0 rounded-full transition ${
-            show ? "bg-site-primary" : "bg-slate-300"
-          }`}
-        >
-          <span
-            className="absolute top-1 h-6 w-6 rounded-full bg-white shadow-sm transition"
-            style={{ left: show ? "1.65rem" : "0.2rem" }}
-          />
-        </button>
+        {switchBtn}
       </div>
-
-      {!show ? null : visible.length === 0 ? (
-        <p className="rounded-2xl border border-slate-200 bg-white px-4 py-10 text-center text-[15px] text-slate-500">
-          ยังไม่มียอดขายในช่วงนี้
-        </p>
-      ) : (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          {useDonut ? (
-            <DonutChartWithOutsideLabels
-              slices={visible}
-              totalRevenue={totalRevenue}
-            />
-          ) : (
-            <div className="relative mx-auto mb-5 h-48 w-48">
-              <div
-                className="relative h-full w-full rounded-full"
-                style={{
-                  background: `conic-gradient(${stops.join(", ")})`,
-                }}
-              >
-                <div className="absolute inset-[2.35rem] flex flex-col items-center justify-center rounded-full bg-white">
-                  <p className="text-[11px] font-semibold text-slate-400">รวม</p>
-                  <p className="text-[15px] font-black tabular-nums text-slate-900">
-                    {formatPrice(totalRevenue)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div
-            className={
-              chartStyle === "donut"
-                ? "space-y-2.5"
-                : "grid grid-cols-1 gap-2.5 sm:grid-cols-2"
-            }
-          >
-            {visible.map((row, index) => {
-              const pct =
-                totalRevenue > 0
-                  ? Math.round((row.completedRevenue / totalRevenue) * 1000) /
-                    10
-                  : 0;
-              const color =
-                SALES_SHARE_COLORS[index % SALES_SHARE_COLORS.length]!;
-              return (
-                <ShareAccentCard
-                  key={row.key}
-                  label={row.label}
-                  pct={pct}
-                  amount={row.completedRevenue}
-                  color={color}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {body}
     </section>
   );
 }

@@ -563,6 +563,7 @@ model Branch {
   branchNonMenuItems           BranchNonMenuItem[]
   expenses                     BranchExpense[]
   incomes                      BranchIncome[]
+  purchaseOrders               BranchPurchaseOrder[]
   smsSendLogs                  SmsSendLog[]
   stockLabels                  StockLabel[]
   sourceStockLabels            StockLabel[]                 @relation("StockLabelSource")
@@ -633,6 +634,7 @@ model Staff {
   branchNonMenuItemHistories   BranchNonMenuItemHistory[]
   expenses                     BranchExpense[]
   incomes                      BranchIncome[]
+  purchaseOrders               BranchPurchaseOrder[]
   createdStockLabels           StockLabel[]                 @relation("StockLabelCreatedBy")
   consumedStockLabels          StockLabel[]                 @relation("StockLabelConsumedBy")
   receivedStockLabels          StockLabel[]                 @relation("StockLabelReceivedBy")
@@ -1306,7 +1308,8 @@ model BranchNonMenuItem {
   unit        String   @default("ชิ้น")
   price       Decimal? @db.Decimal(10, 2)
   imageUrl    String?
-  stockType   String   // "CONSUMABLE" | "EQUIPMENT"
+  /// "CONSUMABLE" | "RAW_MATERIAL" | "EQUIPMENT" | "OTHER"
+  stockType   String
   quantity    Int      @default(0)
   /// Show on staff key-order “เลือกสินค้าสิ้นเปลือง”
   showOnKeyOrder Boolean @default(false)
@@ -1319,10 +1322,12 @@ model BranchNonMenuItem {
   histories   BranchNonMenuItemHistory[]
   orderLines  OrderConsumableLine[]
   stockLabels StockLabel[]
+  purchaseLines BranchPurchaseOrderLine[]
 
   @@unique([branchId, itemCode])
   @@index([branchId])
   @@index([branchId, showOnKeyOrder])
+  @@index([branchId, stockType])
 }
 
 /// Consumables (cups/bags/etc.) used on a staff order — deducted from BranchNonMenuItem
@@ -1363,6 +1368,59 @@ model BranchNonMenuItemHistory {
   @@index([branchNonMenuItemId])
   @@index([batchId])
   @@index([type, createdAt])
+}
+
+/// Branch purchase order (จัดซื้อ) — confirm posts STOCK_IN to non-menu items
+model BranchPurchaseOrder {
+  id               String   @id @default(cuid())
+  branchId         String
+  /// Bangkok calendar date on the document
+  documentDate     DateTime @db.Date
+  documentNo       String   @unique
+  /// CASH | TRANSFER | CREDIT | OTHER
+  channel          String   @default("CASH")
+  channelNote      String?
+  /// DRAFT | CONFIRMED | CANCELLED
+  status           String   @default("DRAFT")
+  /// JSON array of image URLs (max 20)
+  imageUrls        String?
+  note             String?
+  /// batchId shared with BranchNonMenuItemHistory after confirm
+  stockBatchId     String?
+  createdByStaffId String?
+  confirmedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  branch           Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdByStaff   Staff?   @relation(fields: [createdByStaffId], references: [id], onDelete: SetNull)
+  lines            BranchPurchaseOrderLine[]
+
+  @@index([branchId, documentDate])
+  @@index([branchId, status])
+  @@index([createdByStaffId])
+}
+
+model BranchPurchaseOrderLine {
+  id                  String   @id @default(cuid())
+  purchaseOrderId     String
+  branchNonMenuItemId String?
+  itemName            String
+  itemCode            String?
+  unit                String
+  unitPrice           Decimal? @db.Decimal(12, 2)
+  /// Snapshot of BranchNonMenuItem.price at save time (reference / compare)
+  systemUnitPrice     Decimal? @db.Decimal(12, 2)
+  quantity            Int
+  /// Snapshot: CONSUMABLE | RAW_MATERIAL | EQUIPMENT | OTHER
+  stockType           String
+  sortOrder           Int      @default(0)
+
+  purchaseOrder       BranchPurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item                BranchNonMenuItem?  @relation(fields: [branchNonMenuItemId], references: [id], onDelete: SetNull)
+
+  @@index([purchaseOrderId])
+  @@index([branchNonMenuItemId])
 }
 
 /// Branch operating expense (cash out) — separate from stock movements

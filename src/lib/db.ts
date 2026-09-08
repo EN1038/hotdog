@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /** Bump when Prisma schema/models change so Next.js HMR drops a stale client. */
-const PRISMA_CLIENT_VERSION = 54;
+const PRISMA_CLIENT_VERSION = 55;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

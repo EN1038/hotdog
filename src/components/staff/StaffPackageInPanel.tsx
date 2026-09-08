@@ -438,11 +438,9 @@ export function StaffPackageInPanel({
       );
       if (toPrint.length > 0) {
         await openPackageLabelPrint(toPrint);
+      } else {
+        playScanSuccessSound("บันทึกสำเร็จ");
       }
-
-      playScanSuccessSound(
-        willPrintAny ? "บันทึกและพิมพ์แล้ว" : "บันทึกสำเร็จ",
-      );
       toast.success(
         "บันทึกสำเร็จ",
         `${body.packageCount ?? validRows.length} รายการ${body.documentNo ? ` · ${body.documentNo}` : ""}`,

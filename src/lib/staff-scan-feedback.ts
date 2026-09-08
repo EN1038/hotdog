@@ -1,11 +1,24 @@
-/** Scan / package feedback: short beep + Thai spoken name via Web Speech API. */
+/** Scan / package feedback: short beep + Thai spoken name via Web Speech API.
+ * Disabled inside SkillSale Print WebView — AudioContext/TTS can break the native print bridge.
+ */
 
 let sharedCtx: AudioContext | null = null;
 let preferredThaiVoice: SpeechSynthesisVoice | null = null;
 let voicesReady = false;
 
+/** Native print APK WebView — skip Web Audio / speechSynthesis entirely. */
+function isNativePrintWebView(): boolean {
+  if (typeof window === "undefined") return true;
+  if (window.__SKILLSALE_PRINT__) return true;
+  if (window.Android) return true;
+  if (typeof navigator !== "undefined" && /SkillSalePrint/i.test(navigator.userAgent)) {
+    return true;
+  }
+  return false;
+}
+
 function getAudioContext(): AudioContext | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || isNativePrintWebView()) return null;
   const AC =
     window.AudioContext ||
     (window as unknown as { webkitAudioContext?: typeof AudioContext })
@@ -39,6 +52,7 @@ function beep(
 
 function refreshThaiVoice() {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
+  if (isNativePrintWebView()) return;
   const voices = window.speechSynthesis.getVoices();
   if (voices.length === 0) return;
   voicesReady = true;
@@ -50,6 +64,7 @@ function refreshThaiVoice() {
 
 function ensureVoices() {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
+  if (isNativePrintWebView()) return;
   refreshThaiVoice();
   if (!voicesReady) {
     window.speechSynthesis.addEventListener(
@@ -62,6 +77,7 @@ function ensureVoices() {
 
 function speakThai(text: string) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
+  if (isNativePrintWebView()) return;
   const cleaned = text.replace(/\s+/g, " ").trim();
   if (!cleaned) return;
 
@@ -82,15 +98,19 @@ function speakThai(text: string) {
 }
 
 function withRunningContext(play: (ctx: AudioContext) => void): void {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (ctx.state === "suspended") {
-    void ctx.resume().then(() => {
-      if (ctx.state === "running") play(ctx);
-    });
-    return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      void ctx.resume().then(() => {
+        if (ctx.state === "running") play(ctx);
+      });
+      return;
+    }
+    if (ctx.state === "running") play(ctx);
+  } catch {
+    /* ignore — never break scan/print flows */
   }
-  if (ctx.state === "running") play(ctx);
 }
 
 function playSuccessBeep() {
@@ -111,27 +131,33 @@ function playErrorBeep() {
 
 /** Call from a click / scan gesture so audio + speech are allowed. */
 export async function unlockScanFeedbackSound(): Promise<void> {
-  const ctx = getAudioContext();
-  if (ctx?.state === "suspended") {
-    try {
-      await ctx.resume();
-    } catch {
-      /* ignore */
-    }
-  }
+  if (isNativePrintWebView()) return;
 
-  ensureVoices();
-  if (typeof window !== "undefined" && window.speechSynthesis) {
-    try {
-      // iOS often needs a speak() inside a user gesture to unlock TTS.
-      const warm = new SpeechSynthesisUtterance(" ");
-      warm.volume = 0;
-      warm.rate = 2;
-      window.speechSynthesis.speak(warm);
-      window.speechSynthesis.cancel();
-    } catch {
-      /* ignore */
+  try {
+    const ctx = getAudioContext();
+    if (ctx?.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {
+        /* ignore */
+      }
     }
+
+    ensureVoices();
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      try {
+        // iOS often needs a speak() inside a user gesture to unlock TTS.
+        const warm = new SpeechSynthesisUtterance(" ");
+        warm.volume = 0;
+        warm.rate = 2;
+        window.speechSynthesis.speak(warm);
+        window.speechSynthesis.cancel();
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -140,17 +166,26 @@ export async function unlockScanFeedbackSound(): Promise<void> {
  * Pass a Thai label (product name) to speak it after a short chirp.
  */
 export function playScanSuccessSound(spokenLabel?: string | null): void {
-  playSuccessBeep();
-  const label = spokenLabel?.trim();
-  if (label) {
-    // Slight delay so the chirp is heard before speech starts.
-    window.setTimeout(() => speakThai(label), 120);
+  if (isNativePrintWebView()) return;
+  try {
+    playSuccessBeep();
+    const label = spokenLabel?.trim();
+    if (label) {
+      window.setTimeout(() => speakThai(label), 120);
+    }
+  } catch {
+    /* ignore */
   }
 }
 
 /** Not found / failed — optional spoken reason */
 export function playScanErrorSound(spokenLabel?: string | null): void {
-  playErrorBeep();
-  const label = spokenLabel?.trim() || "ไม่พบรายการ";
-  window.setTimeout(() => speakThai(label), 80);
+  if (isNativePrintWebView()) return;
+  try {
+    playErrorBeep();
+    const label = spokenLabel?.trim() || "ไม่พบรายการ";
+    window.setTimeout(() => speakThai(label), 80);
+  } catch {
+    /* ignore */
+  }
 }

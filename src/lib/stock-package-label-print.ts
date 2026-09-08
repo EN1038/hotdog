@@ -103,6 +103,12 @@ export async function openPackageLabelPrint(
   const layoutPayload = await resolvePrintLayout(brandId);
 
   if (hasPrintBridge()) {
+    // Stop any leftover Web Speech / audio from scan feedback before native print.
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* ignore */
+    }
     if (!isPrinterConfigured()) {
       window.alert(
         "ยังไม่ได้เชื่อมเครื่องพิมพ์ — แตะสถานะเครื่องพิมพ์ด้านบนเพื่อเลือก Bluetooth",

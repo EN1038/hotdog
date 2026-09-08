@@ -9,6 +9,11 @@ import {
   fetchPackageLabelPreview,
   type StockLabelScanPreview,
 } from "@/lib/stock-label-scan";
+import {
+  playScanErrorSound,
+  playScanSuccessSound,
+  unlockScanFeedbackSound,
+} from "@/lib/staff-scan-feedback";
 
 type Props = {
   onBack: () => void;
@@ -34,12 +39,19 @@ export function StaffPackageReceivePanel({
     async (raw: string) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
+      void unlockScanFeedbackSound();
       setLoading(true);
       try {
         const body = await fetchPackageLabelPreview("package-receive", trimmed);
         setPreview(body);
+        playScanSuccessSound(
+          `${body.productName} ${body.quantity} ${body.unit}`,
+        );
       } catch (e) {
         setPreview(null);
+        playScanErrorSound(
+          e instanceof Error ? e.message : "ไม่พบรายการ",
+        );
         toast.error(
           "ค้นหาไม่สำเร็จ",
           e instanceof Error ? e.message : "ไม่พบรายการ",
@@ -59,6 +71,7 @@ export function StaffPackageReceivePanel({
 
   async function confirmReceive() {
     if (!preview) return;
+    void unlockScanFeedbackSound();
     setBusy(true);
     try {
       const res = await fetch("/api/staff/stock/package-receive", {
@@ -76,6 +89,7 @@ export function StaffPackageReceivePanel({
           typeof body.error === "string" ? body.error : "รับเข้าไม่สำเร็จ",
         );
       }
+      playScanSuccessSound(preview.productName);
       toast.success(
         "รับรายการสำเร็จ",
         `${preview.productName} · ${preview.quantity} ${preview.unit}`,
@@ -84,6 +98,7 @@ export function StaffPackageReceivePanel({
       setScanValue("");
       onSuccess?.();
     } catch (e) {
+      playScanErrorSound();
       toast.error(
         "รับเข้าไม่สำเร็จ",
         e instanceof Error ? e.message : "ลองใหม่",
@@ -95,6 +110,7 @@ export function StaffPackageReceivePanel({
 
   function handleScanned(value: string) {
     setScannerOpen(false);
+    void unlockScanFeedbackSound();
     setScanValue(value);
     void lookup(value);
   }
@@ -124,7 +140,10 @@ export function StaffPackageReceivePanel({
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <button
             type="button"
-            onClick={() => setScannerOpen(true)}
+            onClick={() => {
+              void unlockScanFeedbackSound();
+              setScannerOpen(true);
+            }}
             disabled={loading}
             className="group flex w-full flex-col items-center gap-4 px-6 py-10 transition active:scale-[0.99] disabled:opacity-60"
           >

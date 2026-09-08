@@ -3,6 +3,7 @@
 import { useState, type RefObject } from "react";
 import { IconQrScan } from "@/components/icons";
 import { StaffQrCameraScanner } from "@/components/staff/StaffQrCameraScanner";
+import { unlockScanFeedbackSound } from "@/lib/staff-scan-feedback";
 
 type Props = {
   label: string;
@@ -44,7 +45,10 @@ export function StaffMenuScanField({
         <div className="flex items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-100">
           <button
             type="button"
-            onClick={() => setScannerOpen(true)}
+            onClick={() => {
+              void unlockScanFeedbackSound();
+              setScannerOpen(true);
+            }}
             disabled={busy}
             className="flex w-12 shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 text-teal-700 transition hover:bg-teal-50 active:bg-teal-100 disabled:opacity-50"
             aria-label="เปิดกล้องสแกน QR"
@@ -58,6 +62,7 @@ export function StaffMenuScanField({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
+                void unlockScanFeedbackSound();
                 submitCurrent();
               }
             }}
@@ -80,6 +85,7 @@ export function StaffMenuScanField({
         onClose={() => setScannerOpen(false)}
         onScan={(scanned) => {
           setScannerOpen(false);
+          void unlockScanFeedbackSound();
           onChange(scanned);
           onSubmit(scanned);
         }}

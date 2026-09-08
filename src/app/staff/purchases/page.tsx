@@ -38,10 +38,34 @@ import {
 import { formatOperatingDayLabel } from "@/lib/operating-day";
 
 /** ประเภทที่ใช้ในฟอร์มจัดซื้อ (ตามสเปกหน้าร้าน) */
-const PURCHASE_FORM_STOCK_TYPES = ["CONSUMABLE", "EQUIPMENT"] as const;
+const PURCHASE_FORM_STOCK_TYPES = [
+  "RAW_MATERIAL",
+  "CONSUMABLE",
+  "EQUIPMENT",
+] as const;
+
+function isPurchaseFormStockType(
+  v: string | null | undefined,
+): v is (typeof PURCHASE_FORM_STOCK_TYPES)[number] {
+  return (
+    !!v &&
+    (PURCHASE_FORM_STOCK_TYPES as readonly string[]).includes(v)
+  );
+}
+
+const PRICE_DRAFT_RE = /^\d*\.?\d{0,2}$/;
+
+function parseUnitPriceDraft(raw: string): number | null {
+  const trimmed = raw.trim().replace(/,/g, "");
+  if (trimmed === "" || trimmed === ".") return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
+}
 
 type CatalogItem = {
   id: string;
+  kind?: "menu" | "nonMenu";
   name: string;
   itemCode: string | null;
   unit: string;
@@ -54,7 +78,8 @@ type CatalogItem = {
 
 type DraftLine = {
   key: string;
-  branchNonMenuItemId: string;
+  branchNonMenuItemId: string | null;
+  branchMenuItemId: string | null;
   itemName: string;
   itemCode: string | null;
   unit: string;
@@ -68,6 +93,7 @@ type DraftLine = {
 
 type PurchaseLineView = {
   branchNonMenuItemId?: string | null;
+  branchMenuItemId?: string | null;
   itemName: string;
   itemCode?: string | null;
   quantity: number;
@@ -206,11 +232,14 @@ export default function StaffPurchasesPage() {
   const [channel, setChannel] = useState<PurchaseChannel>("CASH");
   const [channelNote, setChannelNote] = useState("");
   const [note, setNote] = useState("");
-  const [stockType, setStockType] = useState<PurchaseStockType>("CONSUMABLE");
+  const [stockType, setStockType] = useState<PurchaseStockType>("RAW_MATERIAL");
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([]);
+  const [priceDraftByKey, setPriceDraftByKey] = useState<Record<string, string>>(
+    {},
+  );
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [docGenBusy, setDocGenBusy] = useState(false);
@@ -329,8 +358,9 @@ export default function StaffPurchasesPage() {
     setChannel("CASH");
     setChannelNote("");
     setNote("");
-    setStockType("CONSUMABLE");
+    setStockType("RAW_MATERIAL");
     setLines([]);
+    setPriceDraftByKey({});
     setImageUrls([]);
     setDetail(null);
     void suggestDocumentNo(docDate);
@@ -339,7 +369,7 @@ export default function StaffPurchasesPage() {
   function openEditFromDetail() {
     if (!detail || detail.status === "CANCELLED") return;
     const firstType = detail.lines.find((l) =>
-      l.stockType === "CONSUMABLE" || l.stockType === "EQUIPMENT",
+      isPurchaseFormStockType(l.stockType),
     )?.stockType as PurchaseStockType | undefined;
     setEditingId(detail.id);
     setEditingWasConfirmed(detail.status === "CONFIRMED");
@@ -348,23 +378,29 @@ export default function StaffPurchasesPage() {
     setChannel((detail.channel as PurchaseChannel) || "CASH");
     setChannelNote(detail.channelNote ?? "");
     setNote(detail.note ?? "");
-    setStockType(firstType ?? "CONSUMABLE");
+    setStockType(firstType ?? "RAW_MATERIAL");
     setImageUrls(detail.imageUrls ?? []);
+    setPriceDraftByKey({});
     setLines(
       detail.lines
-        .filter((l) => l.branchNonMenuItemId)
+        .filter((l) => l.branchNonMenuItemId || l.branchMenuItemId)
         .map((l) => ({
           key: newLineKey(),
-          branchNonMenuItemId: String(l.branchNonMenuItemId),
+          branchNonMenuItemId: l.branchNonMenuItemId
+            ? String(l.branchNonMenuItemId)
+            : null,
+          branchMenuItemId: l.branchMenuItemId
+            ? String(l.branchMenuItemId)
+            : null,
           itemName: l.itemName,
           itemCode: l.itemCode ?? null,
           unit: l.unit,
           unitPrice: l.unitPrice ?? 0,
           systemUnitPrice: l.systemUnitPrice ?? null,
           quantity: l.quantity,
-          stockType: (l.stockType === "EQUIPMENT"
-            ? "EQUIPMENT"
-            : "CONSUMABLE") as PurchaseStockType,
+          stockType: (isPurchaseFormStockType(l.stockType)
+            ? l.stockType
+            : "RAW_MATERIAL") as PurchaseStockType,
           imageUrl: l.imageUrl ?? null,
         })),
     );
@@ -425,12 +461,11 @@ export default function StaffPurchasesPage() {
   }
 
   function addFromCatalog(item: CatalogItem) {
-    if (
-      item.stockType !== "CONSUMABLE" &&
-      item.stockType !== "EQUIPMENT"
-    ) {
+    if (!isPurchaseFormStockType(item.stockType)) {
       return;
     }
+    const isMenu =
+      item.kind === "menu" || item.stockType === "RAW_MATERIAL";
     if (
       lockedStockType &&
       item.stockType !== lockedStockType
@@ -443,7 +478,11 @@ export default function StaffPurchasesPage() {
     }
     setStockType(item.stockType as PurchaseStockType);
     setLines((prev) => {
-      const existing = prev.find((l) => l.branchNonMenuItemId === item.id);
+      const existing = prev.find((l) =>
+        isMenu
+          ? l.branchMenuItemId === item.id
+          : l.branchNonMenuItemId === item.id,
+      );
       if (existing) {
         return prev.map((l) =>
           l.key === existing.key
@@ -455,7 +494,8 @@ export default function StaffPurchasesPage() {
         ...prev,
         {
           key: newLineKey(),
-          branchNonMenuItemId: item.id,
+          branchNonMenuItemId: isMenu ? null : item.id,
+          branchMenuItemId: isMenu ? item.id : null,
           itemName: item.name,
           itemCode: item.itemCode,
           unit: item.unit,
@@ -471,18 +511,39 @@ export default function StaffPurchasesPage() {
   }
 
   function setLineUnitPrice(key: string, raw: string) {
-    const trimmed = raw.trim();
-    if (trimmed === "") {
-      setLines((prev) =>
-        prev.map((l) => (l.key === key ? { ...l, unitPrice: null } : l)),
-      );
+    const cleaned = raw.replace(/,/g, "");
+    if (cleaned !== "" && !PRICE_DRAFT_RE.test(cleaned)) return;
+
+    setPriceDraftByKey((prev) => ({ ...prev, [key]: cleaned }));
+
+    if (cleaned === "" || cleaned === "." || cleaned.endsWith(".")) {
+      if (cleaned === "") {
+        setLines((prev) =>
+          prev.map((l) => (l.key === key ? { ...l, unitPrice: null } : l)),
+        );
+      }
       return;
     }
-    const n = Number(trimmed.replace(/,/g, ""));
-    if (!Number.isFinite(n) || n < 0) return;
+
+    const n = parseUnitPriceDraft(cleaned);
+    if (n == null) return;
     setLines((prev) =>
       prev.map((l) => (l.key === key ? { ...l, unitPrice: n } : l)),
     );
+  }
+
+  function commitLineUnitPrice(key: string) {
+    const draft = priceDraftByKey[key];
+    if (draft === undefined) return;
+    const n = parseUnitPriceDraft(draft);
+    setLines((prev) =>
+      prev.map((l) => (l.key === key ? { ...l, unitPrice: n } : l)),
+    );
+    setPriceDraftByKey((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   async function uploadImages(files: FileList | null) {
@@ -528,6 +589,17 @@ export default function StaffPurchasesPage() {
       toast.error("เพิ่มสินค้าอย่างน้อย 1 รายการ");
       return;
     }
+
+    const committedLines = lines.map((l) => {
+      const draft = priceDraftByKey[l.key];
+      if (draft === undefined) return l;
+      return { ...l, unitPrice: parseUnitPriceDraft(draft) };
+    });
+    if (Object.keys(priceDraftByKey).length > 0) {
+      setLines(committedLines);
+      setPriceDraftByKey({});
+    }
+
     setBusy(true);
     try {
       const payload = {
@@ -537,8 +609,9 @@ export default function StaffPurchasesPage() {
         channelNote: channelNote.trim() || null,
         note: note.trim() || null,
         imageUrls,
-        lines: lines.map((l) => ({
+        lines: committedLines.map((l) => ({
           branchNonMenuItemId: l.branchNonMenuItemId,
+          branchMenuItemId: l.branchMenuItemId,
           itemName: l.itemName,
           itemCode: l.itemCode,
           unit: l.unit,
@@ -847,7 +920,7 @@ export default function StaffPurchasesPage() {
                   {editingWasConfirmed
                     ? "แก้แล้วบันทึก — ระบบจะปรับสต๊อกให้ตรงเอกสาร"
                     : editingId
-                      ? "แก้ฉบับร่างแล้วบันทึกหรือยืนยันรับเข้าสต๊อก"
+                      ? "แก้ฉบับร่างแล้วบันทึกหรือยืนยันบิล"
                       : "หนึ่งวันสร้างได้หลายเอกสาร"}
                 </p>
               </div>
@@ -926,7 +999,7 @@ export default function StaffPurchasesPage() {
                 <p className="text-[14px] font-extrabold text-slate-900">
                   สินค้า
                 </p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   {PURCHASE_FORM_STOCK_TYPES.map((id) => {
                     const locked = lockedStockType != null;
                     const selected = activeStockType === id;
@@ -940,7 +1013,7 @@ export default function StaffPurchasesPage() {
                           if (locked) return;
                           setStockType(id);
                         }}
-                        className={`flex-1 rounded-full px-3 py-2.5 text-[13px] font-extrabold transition-colors ${
+                        className={`min-w-[5.5rem] flex-1 rounded-full px-3 py-2.5 text-[13px] font-extrabold transition-colors ${
                           selected
                             ? "bg-site-primary text-white shadow-sm"
                             : disabled
@@ -974,11 +1047,17 @@ export default function StaffPurchasesPage() {
                                   type="button"
                                   aria-label="ลบรายการ"
                                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-1 ring-rose-100 active:bg-rose-100"
-                                  onClick={() =>
+                                  onClick={() => {
                                     setLines((prev) =>
                                       prev.filter((l) => l.key !== line.key),
-                                    )
-                                  }
+                                    );
+                                    setPriceDraftByKey((prev) => {
+                                      if (!(line.key in prev)) return prev;
+                                      const next = { ...prev };
+                                      delete next[line.key];
+                                      return next;
+                                    });
+                                  }}
                                 >
                                   <IconTrash size={16} />
                                 </button>
@@ -1050,14 +1129,17 @@ export default function StaffPurchasesPage() {
                                 type="text"
                                 inputMode="decimal"
                                 value={
-                                  line.unitPrice == null
-                                    ? ""
-                                    : String(line.unitPrice)
+                                  priceDraftByKey[line.key] !== undefined
+                                    ? priceDraftByKey[line.key]
+                                    : line.unitPrice == null
+                                      ? ""
+                                      : String(line.unitPrice)
                                 }
                                 placeholder="0"
                                 onChange={(e) =>
                                   setLineUnitPrice(line.key, e.target.value)
                                 }
+                                onBlur={() => commitLineUnitPrice(line.key)}
                                 className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-right text-[14px] font-extrabold tabular-nums text-slate-900 outline-none ring-0 placeholder:font-semibold placeholder:text-slate-300"
                               />
                               <span className="ml-1.5 flex h-7 shrink-0 items-center rounded-full bg-site-primary-soft px-2.5 text-[12px] font-extrabold text-site-primary">
@@ -1269,7 +1351,7 @@ export default function StaffPurchasesPage() {
                     onClick={() => void savePurchase(true)}
                     className="rounded-2xl bg-site-primary py-3.5 text-[14px] font-extrabold text-white disabled:opacity-50"
                   >
-                    ยืนยันรับเข้าสต๊อก
+                    ยืนยันบิล
                   </button>
                 </div>
               )}
@@ -1436,7 +1518,7 @@ export default function StaffPurchasesPage() {
                     onClick={() => void confirmDetail()}
                     className="col-span-2 rounded-2xl bg-site-primary py-3.5 text-[14px] font-extrabold text-white disabled:opacity-50"
                   >
-                    ยืนยันรับเข้าสต๊อก
+                    ยืนยันบิล
                   </button>
                 ) : null}
               </div>
@@ -1473,7 +1555,10 @@ export default function StaffPurchasesPage() {
                 </p>
               ) : catalog.length === 0 ? (
                 <p className="py-8 text-center text-sm text-slate-400">
-                  ยังไม่มีสินค้าประเภทนี้ — เพิ่มในจัดการสต๊อกก่อน
+                  ยังไม่มีสินค้าประเภทนี้ —{" "}
+                  {activeStockType === "RAW_MATERIAL"
+                    ? "เพิ่มเมนูขายในหลังบ้านก่อน"
+                    : "เพิ่มในจัดการสต๊อกก่อน"}
                 </p>
               ) : (
                 <ul className="divide-y divide-slate-100">

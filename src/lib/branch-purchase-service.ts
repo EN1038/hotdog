@@ -9,6 +9,31 @@ import {
   type PurchaseCreateInput,
   type PurchaseUpdateInput,
 } from "@/lib/branch-purchase";
+import { ensureProdSchemaCompat } from "@/lib/schema-compat";
+
+type LinkedNonMenu = {
+  kind: "nonMenu";
+  id: string;
+  unit: string;
+  name: string;
+  itemCode: string | null;
+  stockType: string;
+  price: Prisma.Decimal | null;
+  imageUrl: string | null;
+};
+
+type LinkedMenu = {
+  kind: "menu";
+  id: string;
+  unit: string;
+  name: string;
+  itemCode: string | null;
+  stockType: "RAW_MATERIAL";
+  price: Prisma.Decimal | null;
+  imageUrl: string | null;
+};
+
+type LinkedMaster = LinkedNonMenu | LinkedMenu;
 
 export function serializePurchaseOrder<
   T extends {
@@ -29,6 +54,7 @@ export function serializePurchaseOrder<
     lines?: Array<{
       id: string;
       branchNonMenuItemId: string | null;
+      branchMenuItemId?: string | null;
       itemName: string;
       itemCode: string | null;
       unit: string;
@@ -38,6 +64,7 @@ export function serializePurchaseOrder<
       stockType: string;
       sortOrder: number;
       item?: { imageUrl: string | null } | null;
+      menuItem?: { imageUrl: string | null } | null;
     }>;
   },
 >(row: T) {
@@ -59,6 +86,7 @@ export function serializePurchaseOrder<
     lines: (row.lines ?? []).map((l) => ({
       id: l.id,
       branchNonMenuItemId: l.branchNonMenuItemId,
+      branchMenuItemId: l.branchMenuItemId ?? null,
       itemName: l.itemName,
       itemCode: l.itemCode,
       unit: l.unit,
@@ -68,7 +96,7 @@ export function serializePurchaseOrder<
       quantity: l.quantity,
       stockType: l.stockType,
       sortOrder: l.sortOrder,
-      imageUrl: l.item?.imageUrl ?? null,
+      imageUrl: l.menuItem?.imageUrl ?? l.item?.imageUrl ?? null,
     })),
   };
 }
@@ -78,6 +106,7 @@ const lineInclude = {
     orderBy: { sortOrder: "asc" as const },
     include: {
       item: { select: { imageUrl: true } },
+      menuItem: { select: { imageUrl: true } },
     },
   },
 };
@@ -100,41 +129,84 @@ async function loadLinkedMasters(
   branchId: string,
   lines: PurchaseCreateInput["lines"],
 ) {
-  const ids = [
+  const nonMenuIds = [
     ...new Set(
       lines
         .map((l) => l.branchNonMenuItemId?.trim())
         .filter((id): id is string => Boolean(id)),
     ),
   ];
-  if (ids.length === 0) {
-    return new Map<
-      string,
-      {
-        id: string;
-        unit: string;
-        name: string;
-        itemCode: string | null;
-        stockType: string;
-        price: Prisma.Decimal | null;
-      }
-    >();
+  const menuIds = [
+    ...new Set(
+      lines
+        .map((l) => l.branchMenuItemId?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const masters = new Map<string, LinkedMaster>();
+
+  if (nonMenuIds.length > 0) {
+    const found = await prisma.branchNonMenuItem.findMany({
+      where: { branchId, id: { in: nonMenuIds } },
+      select: {
+        id: true,
+        unit: true,
+        name: true,
+        itemCode: true,
+        stockType: true,
+        price: true,
+        imageUrl: true,
+      },
+    });
+    if (found.length !== nonMenuIds.length) {
+      throw new Error("มีสินค้าในรายการที่ไม่พบในสาขานี้");
+    }
+    for (const item of found) {
+      masters.set(item.id, {
+        kind: "nonMenu",
+        id: item.id,
+        unit: item.unit,
+        name: item.name,
+        itemCode: item.itemCode,
+        stockType: item.stockType,
+        price: item.price,
+        imageUrl: item.imageUrl,
+      });
+    }
   }
-  const found = await prisma.branchNonMenuItem.findMany({
-    where: { branchId, id: { in: ids } },
-    select: {
-      id: true,
-      unit: true,
-      name: true,
-      itemCode: true,
-      stockType: true,
-      price: true,
-    },
-  });
-  if (found.length !== ids.length) {
-    throw new Error("มีสินค้าในรายการที่ไม่พบในสาขานี้");
+
+  if (menuIds.length > 0) {
+    const found = await prisma.branchMenuItem.findMany({
+      where: { branchId, id: { in: menuIds }, isHidden: false },
+      select: {
+        id: true,
+        quantityUnit: true,
+        name: true,
+        itemCode: true,
+        price: true,
+        storefrontPrice: true,
+        imageUrl: true,
+      },
+    });
+    if (found.length !== menuIds.length) {
+      throw new Error("มีรายการขายในเอกสารที่ไม่พบในสาขานี้");
+    }
+    for (const item of found) {
+      masters.set(item.id, {
+        kind: "menu",
+        id: item.id,
+        unit: item.quantityUnit?.trim() || "ชิ้น",
+        name: item.name,
+        itemCode: item.itemCode,
+        stockType: "RAW_MATERIAL",
+        price: item.storefrontPrice ?? item.price,
+        imageUrl: item.imageUrl,
+      });
+    }
   }
-  return new Map(found.map((item) => [item.id, item]));
+
+  return masters;
 }
 
 /** Lock unit (and snapshot name/code/type/system price) from master. */
@@ -143,8 +215,13 @@ function lineCreateData(
   index: number,
   masters: Awaited<ReturnType<typeof loadLinkedMasters>>,
 ) {
-  const itemId = line.branchNonMenuItemId?.trim() || null;
-  const master = itemId ? masters.get(itemId) : undefined;
+  const nonMenuId = line.branchNonMenuItemId?.trim() || null;
+  const menuId = line.branchMenuItemId?.trim() || null;
+  const master = nonMenuId
+    ? masters.get(nonMenuId)
+    : menuId
+      ? masters.get(menuId)
+      : undefined;
   const systemFromMaster =
     master?.price != null ? Number(master.price) : null;
   const systemUnitPrice =
@@ -154,7 +231,8 @@ function lineCreateData(
         ? line.systemUnitPrice
         : null;
   return {
-    branchNonMenuItemId: itemId,
+    branchNonMenuItemId: nonMenuId,
+    branchMenuItemId: menuId,
     itemName: master?.name?.trim() || line.itemName.trim(),
     itemCode: master?.itemCode?.trim() || line.itemCode?.trim() || null,
     unit: (master?.unit?.trim() || line.unit.trim() || "ชิ้น").slice(0, 40),
@@ -173,6 +251,7 @@ export async function createPurchaseOrder(input: {
   staffId: string | null;
   data: PurchaseCreateInput;
 }) {
+  await ensureProdSchemaCompat();
   await assertDocumentNoAvailable(input.data.documentNo);
   const masters = await loadLinkedMasters(input.branchId, input.data.lines);
 
@@ -207,6 +286,13 @@ export async function createPurchaseOrder(input: {
   return serializePurchaseOrder(po);
 }
 
+type StockLineRef = {
+  branchNonMenuItemId: string | null;
+  branchMenuItemId?: string | null;
+  itemName: string;
+  quantity: number;
+};
+
 async function reverseConfirmedStock(
   tx: Prisma.TransactionClient,
   input: {
@@ -214,11 +300,7 @@ async function reverseConfirmedStock(
     staffId: string | null;
     documentNo: string;
     stockBatchId: string | null;
-    lines: Array<{
-      branchNonMenuItemId: string | null;
-      itemName: string;
-      quantity: number;
-    }>;
+    lines: StockLineRef[];
   },
 ) {
   if (input.stockBatchId) {
@@ -232,10 +314,62 @@ async function reverseConfirmedStock(
         cancelNote: `ยกเลิกจัดซื้อ ${input.documentNo}`,
       },
     });
+    await tx.branchMenuItemStockHistory.updateMany({
+      where: {
+        batchId: input.stockBatchId,
+        cancelledAt: null,
+      },
+      data: {
+        cancelledAt: new Date(),
+        cancelNote: `ยกเลิกจัดซื้อ ${input.documentNo}`,
+      },
+    });
   }
 
   const reverseBatchId = randomUUID();
   for (const line of input.lines) {
+    if (line.branchMenuItemId) {
+      const stock = await tx.branchMenuItemStock.findFirst({
+        where: {
+          menuItemId: line.branchMenuItemId,
+          branchId: input.branchId,
+        },
+      });
+      const oldQty = stock?.quantity ?? 0;
+      const nextQty = oldQty - line.quantity;
+      if (nextQty < 0) {
+        throw new Error(
+          `สต๊อก “${line.itemName}” ไม่พอที่จะยกเลิกจัดซื้อ (คงเหลือ ${oldQty})`,
+        );
+      }
+      await tx.branchMenuItemStock.upsert({
+        where: { menuItemId: line.branchMenuItemId },
+        update: { quantity: nextQty },
+        create: {
+          branchId: input.branchId,
+          menuItemId: line.branchMenuItemId,
+          quantity: nextQty,
+        },
+      });
+      await tx.branchMenuItem.update({
+        where: { id: line.branchMenuItemId },
+        data: { isOutOfStock: nextQty <= 0 },
+      });
+      await tx.branchMenuItemStockHistory.create({
+        data: {
+          branchId: input.branchId,
+          menuItemId: line.branchMenuItemId,
+          quantity: -line.quantity,
+          type: "ISSUE",
+          note: `ยกเลิกจัดซื้อ ${input.documentNo}`,
+          batchId: reverseBatchId,
+          documentNo: input.documentNo,
+          createdByStaffId: input.staffId,
+        },
+      });
+      continue;
+    }
+
     if (!line.branchNonMenuItemId) continue;
     const item = await tx.branchNonMenuItem.findFirst({
       where: { id: line.branchNonMenuItemId, branchId: input.branchId },
@@ -274,16 +408,49 @@ async function applyConfirmedStock(
     branchId: string;
     staffId: string | null;
     documentNo: string;
-    lines: Array<{
-      branchNonMenuItemId: string | null;
-      itemName: string;
-      quantity: number;
-    }>;
+    lines: StockLineRef[];
   },
 ) {
   const batchId = randomUUID();
   const noteBase = `จัดซื้อ ${input.documentNo}`;
   for (const line of input.lines) {
+    if (line.branchMenuItemId) {
+      const stock = await tx.branchMenuItemStock.findFirst({
+        where: {
+          menuItemId: line.branchMenuItemId,
+          branchId: input.branchId,
+        },
+      });
+      const oldQty = stock?.quantity ?? 0;
+      const nextQty = oldQty + line.quantity;
+      await tx.branchMenuItemStock.upsert({
+        where: { menuItemId: line.branchMenuItemId },
+        update: { quantity: nextQty },
+        create: {
+          branchId: input.branchId,
+          menuItemId: line.branchMenuItemId,
+          quantity: nextQty,
+        },
+      });
+      await tx.branchMenuItem.update({
+        where: { id: line.branchMenuItemId },
+        data: { isOutOfStock: nextQty <= 0 },
+      });
+      await tx.branchMenuItemStockHistory.create({
+        data: {
+          branchId: input.branchId,
+          menuItemId: line.branchMenuItemId,
+          quantity: line.quantity,
+          type: "STOCK_IN",
+          note: noteBase,
+          batchId,
+          documentNo: input.documentNo,
+          createdByStaffId: input.staffId,
+        },
+      });
+      continue;
+    }
+
     if (!line.branchNonMenuItemId) continue;
     const item = await tx.branchNonMenuItem.findFirst({
       where: { id: line.branchNonMenuItemId, branchId: input.branchId },
@@ -316,6 +483,7 @@ export async function updatePurchaseOrder(input: {
   staffId?: string | null;
   data: PurchaseUpdateInput;
 }) {
+  await ensureProdSchemaCompat();
   const existing = await prisma.branchPurchaseOrder.findFirst({
     where: { id: input.purchaseOrderId, branchId: input.branchId },
     include: lineInclude,
@@ -407,6 +575,7 @@ export async function deletePurchaseOrder(input: {
   purchaseOrderId: string;
   staffId?: string | null;
 }) {
+  await ensureProdSchemaCompat();
   const existing = await prisma.branchPurchaseOrder.findFirst({
     where: { id: input.purchaseOrderId, branchId: input.branchId },
     include: lineInclude,
@@ -437,6 +606,7 @@ export async function confirmPurchaseOrder(input: {
   purchaseOrderId: string;
   staffId: string | null;
 }) {
+  await ensureProdSchemaCompat();
   const existing = await prisma.branchPurchaseOrder.findFirst({
     where: { id: input.purchaseOrderId, branchId: input.branchId },
     include: lineInclude,
@@ -452,44 +622,25 @@ export async function confirmPurchaseOrder(input: {
     throw new Error("ต้องมีอย่างน้อย 1 รายการ");
   }
 
-  const batchId = randomUUID();
-  const noteBase = `จัดซื้อ ${existing.documentNo}`;
-
-  await prisma.$transaction(async (tx) => {
-    for (const line of existing.lines) {
-      if (!line.branchNonMenuItemId) continue;
-      const item = await tx.branchNonMenuItem.findFirst({
-        where: { id: line.branchNonMenuItemId, branchId: input.branchId },
-      });
-      if (!item) {
-        throw new Error(`ไม่พบสินค้า “${line.itemName}” ในสต๊อกสาขา`);
-      }
-      await tx.branchNonMenuItem.update({
-        where: { id: item.id },
-        data: { quantity: item.quantity + line.quantity },
-      });
-      await tx.branchNonMenuItemHistory.create({
-        data: {
-          branchNonMenuItemId: item.id,
-          quantity: line.quantity,
-          type: "STOCK_IN",
-          note: noteBase,
-          batchId,
-          documentNo: existing.documentNo,
-          createdByStaffId: input.staffId,
-        },
-      });
-    }
-
+  const batchId = await prisma.$transaction(async (tx) => {
+    const id = await applyConfirmedStock(tx, {
+      branchId: input.branchId,
+      staffId: input.staffId,
+      documentNo: existing.documentNo,
+      lines: existing.lines,
+    });
     await tx.branchPurchaseOrder.update({
       where: { id: existing.id },
       data: {
         status: "CONFIRMED",
         confirmedAt: new Date(),
-        stockBatchId: batchId,
+        stockBatchId: id,
       },
     });
+    return id;
   });
+
+  void batchId;
 
   const refreshed = await prisma.branchPurchaseOrder.findFirstOrThrow({
     where: { id: existing.id },

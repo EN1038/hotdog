@@ -13,7 +13,7 @@ export const PURCHASE_STOCK_TYPES = [
 export type PurchaseStockType = (typeof PURCHASE_STOCK_TYPES)[number];
 
 export const PURCHASE_STOCK_TYPE_LABEL: Record<PurchaseStockType, string> = {
-  CONSUMABLE: "สินค้าสิ้นเปลือง",
+  CONSUMABLE: "สิ้นเปลือง",
   RAW_MATERIAL: "วัตถุดิบ",
   EQUIPMENT: "อุปกรณ์",
   OTHER: "อื่น ๆ",
@@ -57,23 +57,53 @@ export const PURCHASE_STATUS_LABEL: Record<PurchaseStatus, string> = {
 
 export const MAX_PURCHASE_IMAGES = 20;
 
-export const purchaseLineSchema = z.object({
-  branchNonMenuItemId: z.string().trim().min(1).nullable().optional(),
-  itemName: z.string().trim().min(1).max(120),
-  itemCode: z.string().trim().max(40).nullable().optional(),
-  unit: z.string().trim().min(1).max(40),
-  unitPrice: z.number().finite().min(0).max(10_000_000).nullable().optional(),
-  /** Client hint; server overwrites from master when linked. */
-  systemUnitPrice: z
-    .number()
-    .finite()
-    .min(0)
-    .max(10_000_000)
-    .nullable()
-    .optional(),
-  quantity: z.number().int().positive().max(1_000_000),
-  stockType: z.enum(PURCHASE_STOCK_TYPES),
-});
+export const purchaseLineSchema = z
+  .object({
+    branchNonMenuItemId: z.string().trim().min(1).nullable().optional(),
+    branchMenuItemId: z.string().trim().min(1).nullable().optional(),
+    itemName: z.string().trim().min(1).max(120),
+    itemCode: z.string().trim().max(40).nullable().optional(),
+    unit: z.string().trim().min(1).max(40),
+    unitPrice: z.number().finite().min(0).max(10_000_000).nullable().optional(),
+    /** Client hint; server overwrites from master when linked. */
+    systemUnitPrice: z
+      .number()
+      .finite()
+      .min(0)
+      .max(10_000_000)
+      .nullable()
+      .optional(),
+    quantity: z.number().int().positive().max(1_000_000),
+    stockType: z.enum(PURCHASE_STOCK_TYPES),
+  })
+  .superRefine((line, ctx) => {
+    const nonMenu = line.branchNonMenuItemId?.trim() || null;
+    const menu = line.branchMenuItemId?.trim() || null;
+    if (line.stockType === "RAW_MATERIAL") {
+      if (!menu) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "วัตถุดิบต้องเลือกจากรายการขาย",
+          path: ["branchMenuItemId"],
+        });
+      }
+      if (nonMenu) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "วัตถุดิบไม่ใช้สินค้า Non-menu",
+          path: ["branchNonMenuItemId"],
+        });
+      }
+      return;
+    }
+    if (!nonMenu) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "ต้องเลือกสินค้าจากสต๊อกสาขา",
+        path: ["branchNonMenuItemId"],
+      });
+    }
+  });
 
 export const purchaseCreateSchema = z.object({
   documentDate: z

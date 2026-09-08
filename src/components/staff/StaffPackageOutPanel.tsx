@@ -9,6 +9,11 @@ import {
   fetchPackageLabelPreview,
   type StockLabelScanPreview,
 } from "@/lib/stock-label-scan";
+import {
+  playScanErrorSound,
+  playScanSuccessSound,
+  unlockScanFeedbackSound,
+} from "@/lib/staff-scan-feedback";
 
 type Props = {
   onBack: () => void;
@@ -28,12 +33,19 @@ export function StaffPackageOutPanel({ onBack }: Props) {
     async (raw: string) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
+      void unlockScanFeedbackSound();
       setLoading(true);
       try {
         const body = await fetchPackageLabelPreview("package-out", trimmed);
         setPreview(body);
+        playScanSuccessSound(
+          `${body.productName} ${body.quantity} ${body.unit}`,
+        );
       } catch (e) {
         setPreview(null);
+        playScanErrorSound(
+          e instanceof Error ? e.message : "ไม่พบรายการ",
+        );
         toast.error(
           "ค้นหาไม่สำเร็จ",
           e instanceof Error ? e.message : "ไม่พบรายการ",
@@ -48,9 +60,11 @@ export function StaffPackageOutPanel({ onBack }: Props) {
   async function confirmIssue() {
     if (!preview) return;
     if (!note.trim()) {
+      playScanErrorSound();
       toast.error("กรุณากรอกรายละเอียดการจ่ายออก");
       return;
     }
+    void unlockScanFeedbackSound();
     setBusy(true);
     try {
       const res = await fetch("/api/staff/stock/package-out", {
@@ -69,6 +83,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
           typeof body.error === "string" ? body.error : "จ่ายออกไม่สำเร็จ",
         );
       }
+      playScanSuccessSound(preview.productName);
       toast.success(
         "จ่ายรายการสำเร็จ",
         `${preview.productName} · ${preview.quantity} ${preview.unit}`,
@@ -77,6 +92,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
       setScanValue("");
       setNote("");
     } catch (e) {
+      playScanErrorSound();
       toast.error(
         "จ่ายออกไม่สำเร็จ",
         e instanceof Error ? e.message : "ลองใหม่",
@@ -88,6 +104,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
 
   function handleScanned(value: string) {
     setScannerOpen(false);
+    void unlockScanFeedbackSound();
     setScanValue(value);
     void lookup(value);
   }
@@ -115,7 +132,10 @@ export function StaffPackageOutPanel({ onBack }: Props) {
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <button
             type="button"
-            onClick={() => setScannerOpen(true)}
+            onClick={() => {
+              void unlockScanFeedbackSound();
+              setScannerOpen(true);
+            }}
             disabled={loading}
             className="group flex w-full flex-col items-center gap-4 px-6 py-10 transition active:scale-[0.99] disabled:opacity-60"
           >

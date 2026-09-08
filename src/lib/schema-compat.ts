@@ -39,6 +39,8 @@ export async function ensureProdSchemaCompat(): Promise<void> {
         `ALTER TABLE "${schema}"."BranchMenuItemStockHistory" ADD COLUMN IF NOT EXISTS "expiresAt" TIMESTAMP(3)`,
         `ALTER TABLE "${schema}"."BranchMenuItemStockHistory" ADD COLUMN IF NOT EXISTS "documentNo" TEXT`,
         `ALTER TABLE "${schema}"."BranchNonMenuItemHistory" ADD COLUMN IF NOT EXISTS "documentNo" TEXT`,
+        `ALTER TABLE "${schema}"."BranchPurchaseOrderLine" ADD COLUMN IF NOT EXISTS "branchMenuItemId" TEXT`,
+        `CREATE INDEX IF NOT EXISTS "BranchPurchaseOrderLine_branchMenuItemId_idx" ON "${schema}"."BranchPurchaseOrderLine"("branchMenuItemId")`,
         `CREATE INDEX IF NOT EXISTS "BranchMenuItemStockHistory_documentNo_idx" ON "${schema}"."BranchMenuItemStockHistory"("documentNo") WHERE "documentNo" IS NOT NULL`,
         `CREATE INDEX IF NOT EXISTS "BranchNonMenuItemHistory_documentNo_idx" ON "${schema}"."BranchNonMenuItemHistory"("documentNo") WHERE "documentNo" IS NOT NULL`,
         // Legacy inbound: treat recorded day as receive day (same as วันรับเข้า)

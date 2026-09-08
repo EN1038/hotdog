@@ -15,6 +15,11 @@ import {
   planLotNumbersForRows,
 } from "@/lib/stock-label-format";
 import { openPackageLabelPrint } from "@/lib/stock-package-label-print";
+import {
+  playScanErrorSound,
+  playScanSuccessSound,
+  unlockScanFeedbackSound,
+} from "@/lib/staff-scan-feedback";
 import { IconBack, IconPrinter, IconChevronDown, IconLinkSuffix } from "@/components/icons";
 
 type MenuItem = {
@@ -255,6 +260,7 @@ export function StaffPackageInPanel({
   }, [menuItems, consumableItems]);
 
   const applyItemToRows = useCallback((itemId: string, itemName: string) => {
+    void unlockScanFeedbackSound();
     setRows((prev) => {
       const empty = prev.find((row) => !row.itemId);
       const lastSame = [...prev].reverse().find((row) => row.itemId === itemId);
@@ -277,6 +283,7 @@ export function StaffPackageInPanel({
         createPackageRow({ itemId, expanded: true }),
       ];
     });
+    playScanSuccessSound(itemName);
     toast.success("เพิ่มรายการ", itemName);
   }, [toast]);
 
@@ -396,10 +403,12 @@ export function StaffPackageInPanel({
     if (busy) return;
     const validRows = rows.filter((r) => r.itemId && r.quantity > 0);
     if (validRows.length === 0) {
+      playScanErrorSound();
       toast.error("กรุณาเลือกสินค้าอย่างน้อย 1 รายการ");
       return;
     }
 
+    void unlockScanFeedbackSound();
     setBusy(true);
     try {
       const res = await fetch("/api/staff/stock/package-in", {
@@ -431,6 +440,9 @@ export function StaffPackageInPanel({
         await openPackageLabelPrint(toPrint);
       }
 
+      playScanSuccessSound(
+        willPrintAny ? "บันทึกและพิมพ์แล้ว" : "บันทึกสำเร็จ",
+      );
       toast.success(
         "บันทึกสำเร็จ",
         `${body.packageCount ?? validRows.length} รายการ${body.documentNo ? ` · ${body.documentNo}` : ""}`,
@@ -439,6 +451,7 @@ export function StaffPackageInPanel({
       const batchId = String(body.batchId ?? "");
       onSuccess?.(batchId);
     } catch (e) {
+      playScanErrorSound();
       toast.error(
         "บันทึกไม่สำเร็จ",
         e instanceof Error ? e.message : "ลองใหม่",
@@ -829,6 +842,7 @@ export function StaffPackageInPanel({
                             itemId: item.id,
                             expanded: true,
                           });
+                          playScanSuccessSound(item.name);
                         }
                         setPickerOpen(false);
                       }}
@@ -876,6 +890,7 @@ export function StaffPackageInPanel({
                             itemId: item.id,
                             expanded: true,
                           });
+                          playScanSuccessSound(item.name);
                         }
                         setPickerOpen(false);
                       }}

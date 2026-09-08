@@ -92,12 +92,6 @@ function parseAmount(raw: string): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-function bangkokYesterdayKey(today = bangkokDateKey()): string {
-  const d = new Date(`${today}T12:00:00+07:00`);
-  d.setTime(d.getTime() - 24 * 60 * 60 * 1000);
-  return bangkokDateKey(d);
-}
-
 function clampToToday(date: string, today = bangkokDateKey()): string {
   if (!isBangkokDateKey(date)) return today;
   return date > today ? today : date;
@@ -165,10 +159,7 @@ export function StaffAccountEntrySheet({
     );
   }
 
-  async function loadImportPanelDate(
-    rawDate: string,
-    opts?: { allowYesterdayFallback?: boolean },
-  ) {
+  async function loadImportPanelDate(rawDate: string) {
     const today = bangkokDateKey();
     const date = clampToToday(rawDate, today);
     setImportPanel((prev) => ({
@@ -179,41 +170,30 @@ export function StaffAccountEntrySheet({
     }));
 
     try {
-      let shifts = await fetchShiftsForDate(date);
-      let notice: string | null = null;
-      let resolvedDate = date;
+      const shifts = await fetchShiftsForDate(date);
 
-      if (
-        shifts.length === 0 &&
-        date === today &&
-        opts?.allowYesterdayFallback !== false
-      ) {
-        const yesterday = bangkokYesterdayKey(today);
-        const yShifts = await fetchShiftsForDate(yesterday);
-        if (yShifts.length > 0) {
-          shifts = yShifts;
-          resolvedDate = yesterday;
-          notice = "วันนี้ยังไม่มีรอบขาย — แสดงของเมื่อวาน";
-          toast.pushToast({
-            title: "วันนี้ยังไม่มีรอบขาย",
-            message: "แสดงรอบขายของเมื่อวานแทน",
-            tone: "info",
-          });
-        } else {
-          notice = "ยังไม่มีรอบขายวันนี้และเมื่อวาน";
-          toast.error("ยังไม่มีรอบขายวันนี้และเมื่อวาน");
-        }
-      } else if (shifts.length === 0) {
-        notice = "ไม่มีรอบขายในวันที่เลือก";
-        toast.error("ไม่มีรอบขายในวันที่เลือก");
+      if (shifts.length === 0) {
+        const notice = "ไม่มีรอบขายในวันที่เลือก";
+        toast.error(notice);
+        setImportPanel({
+          date,
+          shifts: [],
+          loading: false,
+          notice,
+        });
+        return;
       }
 
-      setEntryDate(resolvedDate);
+      if (shifts.length === 1) {
+        await applyShiftImport(shifts[0]!, date);
+        return;
+      }
+
       setImportPanel({
-        date: resolvedDate,
+        date,
         shifts,
         loading: false,
-        notice,
+        notice: null,
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "เชื่อมต่อไม่ได้");
@@ -271,7 +251,7 @@ export function StaffAccountEntrySheet({
     }));
     setImportPanel(null);
     toast.success(
-      `นำเข้าจากรอบ ${shift.roundNumber} แล้ว — ตรวจแล้วกดบันทึก`,
+      `ดึงยอดขายรอบ ${shift.roundNumber} แล้ว — ตรวจแล้วกดบันทึก`,
     );
   }
 
@@ -284,7 +264,7 @@ export function StaffAccountEntrySheet({
     const startDate = clampToToday(
       isBangkokDateKey(entryDate) ? entryDate : bangkokDateKey(),
     );
-    void loadImportPanelDate(startDate, { allowYesterdayFallback: true });
+    void loadImportPanelDate(startDate);
   }
 
   async function postIncome(payload: {
@@ -473,7 +453,7 @@ export function StaffAccountEntrySheet({
               {editing
                 ? "แก้ไขแล้วกดบันทึก"
                 : incomeCreate
-                  ? "กรอกยอดเงินสดและโอน — หรือกดนำเข้าจากรอบขาย"
+                  ? "กรอกยอดเงินสดและโอน — หรือกดยอดขายหลังเลือกวันที่"
                   : "เลือกรายรับหรือรายจ่าย แล้วกรอกข้อมูล"}
             </p>
           </div>
@@ -531,16 +511,6 @@ export function StaffAccountEntrySheet({
             <div>
               <p className="text-xs font-medium text-gray-600">วันที่รายการ</p>
               <div className="mt-1 flex items-stretch gap-2">
-                {showImport ? (
-                  <button
-                    type="button"
-                    onClick={() => openImportFromShifts()}
-                    disabled={Boolean(importPanel?.loading)}
-                    className="shrink-0 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-bold text-emerald-700 shadow-sm active:scale-[0.98] disabled:opacity-60"
-                  >
-                    นำเข้า
-                  </button>
-                ) : null}
                 <div className="min-w-0 flex-1">
                   <DateInput
                     value={entryDate}
@@ -554,6 +524,16 @@ export function StaffAccountEntrySheet({
                     className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
                   />
                 </div>
+                {showImport ? (
+                  <button
+                    type="button"
+                    onClick={() => openImportFromShifts()}
+                    disabled={Boolean(importPanel?.loading)}
+                    className="shrink-0 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-bold text-emerald-700 shadow-sm active:scale-[0.98] disabled:opacity-60"
+                  >
+                    ยอดขาย
+                  </button>
+                ) : null}
               </div>
               {incomeCreate && form.importRound != null ? (
                 <p className="mt-1 text-[11px] font-medium text-emerald-700">
@@ -721,12 +701,12 @@ export function StaffAccountEntrySheet({
           <div
             className="absolute inset-0 z-10 flex flex-col rounded-t-2xl bg-white sm:rounded-2xl"
             role="dialog"
-            aria-label="นำเข้ารายรับจากรอบขาย"
+            aria-label="ดึงยอดขายจากรอบ"
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <div>
                 <p className="text-base font-bold text-gray-900">
-                  นำเข้าจากรอบขาย
+                  ยอดขายจากรอบ
                 </p>
                 <p className="text-xs text-gray-500">
                   เลือกวันและรอบ — ระบบจะกรอกยอดเงินสดกับโอนให้
@@ -751,9 +731,7 @@ export function StaffAccountEntrySheet({
                   aria-label="วันที่รอบขาย"
                   onChange={(v) => {
                     if (!v) return;
-                    void loadImportPanelDate(clampToToday(v), {
-                      allowYesterdayFallback: true,
-                    });
+                    void loadImportPanelDate(clampToToday(v));
                   }}
                   className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
                 />

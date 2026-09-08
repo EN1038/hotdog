@@ -355,7 +355,13 @@ export function AccountsLedgerView({
     lines.push(`บัญชี · ${periodLabel}`);
     lines.push(`รายรับ: ${formatPrice(income.total)} บาท (${income.count} รายการ)`);
     lines.push(
+      `  เงินสด ${formatPrice(income.cash)} · โอน ${formatPrice(income.transfer)}`,
+    );
+    lines.push(
       `รายจ่าย: ${formatPrice(expense.total)} บาท (${expense.count} รายการ)`,
+    );
+    lines.push(
+      `  เงินสด ${formatPrice(expense.cash)} · โอน ${formatPrice(expense.transfer)}`,
     );
     lines.push(`คงเหลือ: ${formatPrice(net)} บาท`);
     lines.push(
@@ -544,6 +550,11 @@ export function AccountsLedgerView({
                 <p className="mt-0.5 text-[11px] text-white/80">
                   {income.count} รายการ
                 </p>
+                <p className="mt-1 text-[10px] font-semibold leading-snug text-white/85">
+                  เงินสด {formatPrice(income.cash)}฿
+                  <span className="mx-1 opacity-60">·</span>
+                  โอน {formatPrice(income.transfer)}฿
+                </p>
               </div>
               <div className="rounded-xl bg-rose-600 px-3 py-2.5 text-white">
                 <p className="text-[11px] font-medium text-white/85">รายจ่าย</p>
@@ -552,6 +563,11 @@ export function AccountsLedgerView({
                 </p>
                 <p className="mt-0.5 text-[11px] text-white/80">
                   {expense.count} รายการ
+                </p>
+                <p className="mt-1 text-[10px] font-semibold leading-snug text-white/85">
+                  เงินสด {formatPrice(expense.cash)}฿
+                  <span className="mx-1 opacity-60">·</span>
+                  โอน {formatPrice(expense.transfer)}฿
                 </p>
               </div>
               <div className="col-span-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">

@@ -1,9 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { IconPlus, IconChevronRight, IconClose, IconLinkSuffix } from "@/components/icons";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  IconBack,
+  IconPlus,
+  IconChevronRight,
+  IconClose,
+} from "@/components/icons";
 import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShell";
 import { useToast } from "@/components/admin/Toast";
 import {
@@ -11,6 +16,7 @@ import {
   matchMobileDatePreset,
   type MobileDatePresetId,
 } from "@/components/owner/OwnerDatePresetChips";
+import { LoadingState } from "@/components/LoadingState";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
 import type {
   OwnerBranchActiveShift,
@@ -26,13 +32,23 @@ import {
 import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
 import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
-import { ownerExpensesHref, ownerHomeHref, ownerWasteHref, ownerAgingHref, ownerCancelsHref, ownerStockFlowHref, ownerSummaryHref, ownerTopSellersHref, readOwnerViewRangeParams } from "@/lib/owner-view-query";
+import {
+  buildOwnerViewQuery,
+  ownerAgingHref,
+  ownerCancelsHref,
+  ownerExpensesHref,
+  ownerHomeHref,
+  ownerStockFlowHref,
+  ownerSummaryHref,
+  ownerTopSellersHref,
+  ownerWasteHref,
+  readOwnerViewRangeParams,
+} from "@/lib/owner-view-query";
 
 type BranchCard = {
   id: string;
   name: string;
   isOpen: boolean;
-  isTest: boolean;
   activeShift: OwnerBranchActiveShift | null;
   lastClosedShift: OwnerBranchLastClosedShift | null;
   completedRevenue: number;
@@ -54,14 +70,10 @@ type BranchCard = {
 function mergeBranchCards(
   branches: OwnerBranchRow[],
   byBranch: OwnerBranchShare[],
-  includeTest: boolean,
 ): BranchCard[] {
   const statsById = new Map(byBranch.map((row) => [row.branchId, row]));
   const scoped = branches.filter(
-    (b) =>
-      b.kind !== "WAREHOUSE" &&
-      !b.isHidden &&
-      (includeTest || !b.isTest),
+    (b) => b.kind !== "WAREHOUSE" && !b.isHidden && !b.isTest,
   );
 
   return scoped
@@ -71,7 +83,6 @@ function mergeBranchCards(
         id: b.id,
         name: b.name,
         isOpen: b.isOpen,
-        isTest: b.isTest,
         activeShift: b.activeShift ?? null,
         lastClosedShift: b.lastClosedShift ?? null,
         completedRevenue: row?.completedRevenue ?? 0,
@@ -104,6 +115,7 @@ function mergeBranchCards(
 function OwnerBranchesInner() {
   const { data } = useOwnerDashboard();
   const toast = useToast();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const today = bangkokDateKey();
   const initialView = readOwnerViewRangeParams(searchParams, today);
@@ -120,53 +132,67 @@ function OwnerBranchesInner() {
   );
   const [payload, setPayload] = useState<OwnerDashboardPayload | null>(null);
   const [loading, setLoading] = useState(false);
-  const [includeTest, setIncludeTest] = useState(false);
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [staffBranches, setStaffBranches] = useState<OwnerEnterStaffBranch[] | null>(
     null,
   );
+  const urlReady = useRef(false);
 
-  const load = useCallback(
-    async (rangeFrom: string, rangeTo: string, signal?: AbortSignal) => {
-      setLoading(true);
+  const writeViewQuery = useCallback(
+    (next: { from?: string; to?: string }) => {
+      const q = buildOwnerViewQuery({
+        from: next.from ?? from,
+        to: next.to ?? to,
+      });
+      router.replace(`/owner/branches${q}`, { scroll: false });
+    },
+    [from, router, to],
+  );
+
+  useEffect(() => {
+    const parsed = readOwnerViewRangeParams(searchParams, today);
+    if (!urlReady.current) {
+      urlReady.current = true;
+      return;
+    }
+    if (parsed.hasRange) {
+      setFrom(parsed.from);
+      setTo(parsed.to);
+      setDatePreset(
+        matchMobileDatePreset(parsed.from, parsed.to, today) ?? "custom",
+      );
+    }
+  }, [searchParams, today]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    setLoading(true);
+    void (async () => {
       try {
-        const params = new URLSearchParams({
-          from: rangeFrom,
-          to: rangeTo,
+        const params = new URLSearchParams({ from, to });
+        const res = await fetch(`/api/owner/dashboard?${params}`, {
+          signal: ac.signal,
         });
-        if (includeTest) params.set("includeTest", "1");
-        const res = await fetch(`/api/owner/dashboard?${params}`, { signal });
-        if (!res.ok || signal?.aborted) return;
+        if (!res.ok || ac.signal.aborted) return;
         const json = (await res.json()) as OwnerDashboardPayload;
-        if (signal?.aborted) return;
+        if (ac.signal.aborted) return;
         setPayload(json);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
       } finally {
-        if (!signal?.aborted) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
-    },
-    [includeTest],
-  );
-
-  useEffect(() => {
-    const ac = new AbortController();
-    void load(from, to, ac.signal);
+    })();
     return () => ac.abort();
-  }, [load, from, to]);
+  }, [from, to]);
 
   const branches = payload?.branches ?? data?.branches ?? [];
   const byBranch = payload?.byBranch ?? data?.byBranch ?? [];
   const cards = useMemo(
-    () => mergeBranchCards(branches, byBranch, includeTest),
-    [branches, byBranch, includeTest],
+    () => mergeBranchCards(branches, byBranch),
+    [branches, byBranch],
   );
-  const hasTestBranch =
-    payload?.hasTestBranch ??
-    data?.hasTestBranch ??
-    branches.some((b) => b.isTest);
   const openCount = cards.filter((c) => c.activeShift).length;
-  const closedCount = cards.length - openCount;
   const totalRevenue = cards.reduce((sum, c) => sum + c.completedRevenue, 0);
   const totalBills = cards.reduce((sum, c) => sum + c.completedCount, 0);
   const totalOpenBills = cards.reduce((sum, c) => sum + c.openCount, 0);
@@ -174,6 +200,7 @@ function OwnerBranchesInner() {
   const totalWasteValue = cards.reduce((sum, c) => sum + c.wasteValue, 0);
   const totalStockQty = cards.reduce((sum, c) => sum + c.saleStockQty, 0);
   const stockEnabled = Boolean(payload?.stockEnabled ?? data?.stockEnabled);
+  const homeHref = ownerHomeHref({ from, to, tab: "overview" });
 
   async function enterSell(branchId: string) {
     setEnteringId(branchId);
@@ -200,328 +227,267 @@ function OwnerBranchesInner() {
     }
   }
 
+  if (loading && cards.length === 0) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center px-4 py-10">
+        <LoadingState label="กำลังโหลดสาขา…" className="w-full max-w-sm" />
+      </div>
+    );
+  }
+
   return (
-    <div className="px-4 pb-6 pt-4">
-      <header className="mb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400">
-              Owner · Mobile
-            </p>
-            <h1 className="mt-1 text-[22px] font-black text-slate-900">
+    <div className="pb-6">
+      <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
+        <div className="flex items-center gap-2 px-4 pb-3 pt-3">
+          <Link
+            href={homeHref}
+            aria-label="กลับ"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 active:bg-slate-200"
+          >
+            <IconBack size={22} />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[17px] font-black text-slate-900">
               รวมทุกสาขา
             </h1>
-            <p className="mt-1 text-[14px] font-medium text-slate-500">
+            <p className="truncate text-[12px] font-medium text-slate-500">
               {cards.length > 0
-                ? `${cards.length} สาขา · กดการ์ดเพื่อดูยอดสาขานั้น`
+                ? `${cards.length} สาขา · เปิดรอบ ${openCount}`
                 : "ยังไม่มีสาขาในร้าน"}
-              {hasTestBranch && !includeTest ? " · ไม่รวมทดลอง" : ""}
             </p>
           </div>
           <Link
             href="/admin"
-            className="flex shrink-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center shadow-sm transition active:bg-slate-50"
+            aria-label="เพิ่มสาขา"
             title="จัดการและเพิ่มสาขา"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-site-primary text-white shadow-sm active:opacity-90"
           >
-            <IconPlus size={18} className="text-site-primary" />
-            <span className="mt-0.5 text-[10px] font-bold text-slate-600">
-              สาขา
-            </span>
+            <IconPlus size={18} />
           </Link>
         </div>
       </header>
 
-      {hasTestBranch ? (
-        <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-950">
-          <input
-            type="checkbox"
-            checked={includeTest}
-            onChange={(e) => setIncludeTest(e.target.checked)}
-          />
-          รวมสาขาทดลอง
-        </label>
-      ) : null}
+      <div
+        className={`space-y-3 px-4 pt-3 transition-opacity ${loading ? "opacity-70" : ""}`}
+      >
+        <MobileDateRangeControl
+          todayKey={today}
+          from={from}
+          to={to}
+          preset={datePreset}
+          maxDate={today}
+          onChange={({ from: nextFrom, to: nextTo, preset }) => {
+            setDatePreset(preset);
+            setFrom(nextFrom);
+            setTo(nextTo);
+            writeViewQuery({ from: nextFrom, to: nextTo });
+          }}
+        />
 
-      <MobileDateRangeControl
-        todayKey={today}
-        from={from}
-        to={to}
-        preset={datePreset}
-        maxDate={today}
-        onChange={({ from: nextFrom, to: nextTo, preset }) => {
-          setDatePreset(preset);
-          setFrom(nextFrom);
-          setTo(nextTo);
-        }}
-      />
-
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div className="rounded-2xl bg-white px-3 py-3 shadow-sm">
-          <p className="text-[11px] font-semibold text-slate-500">เปิดรอบ</p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-slate-900">
-            {openCount}/{cards.length}
-          </p>
-        </div>
-        <div className="rounded-2xl bg-white px-3 py-3 shadow-sm">
-          <p className="text-[11px] font-semibold text-slate-500">ยอดรวม</p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-site-primary">
-            ฿{formatPrice(totalRevenue)}
-          </p>
-          <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-            {formatPrice(totalBills)} บิล
-          </p>
-        </div>
-        <div className="rounded-2xl bg-white px-3 py-3 shadow-sm">
-          <p className="text-[11px] font-semibold text-slate-500">ค่าใช้จ่าย</p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-rose-700">
-            ฿{formatPrice(totalExpense)}
-          </p>
-        </div>
-        <div className="rounded-2xl bg-white px-3 py-3 shadow-sm">
-          <p className="text-[11px] font-semibold text-slate-500">
-            {stockEnabled ? "ของเสีย · สต๊อก" : "ของเสีย"}
-          </p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-orange-700">
-            ฿{formatPrice(totalWasteValue)}
-          </p>
-          {stockEnabled ? (
-            <p className="mt-0.5 text-[10px] font-semibold text-violet-600">
-              สต๊อก {formatPrice(totalStockQty)} ชิ้น
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-[1.15rem] bg-white px-3 py-3 shadow-sm ring-1 ring-slate-100">
+            <p className="text-[12px] font-bold text-slate-500">ยอดรวม</p>
+            <p className="mt-0.5 text-[18px] font-black tabular-nums text-site-primary">
+              ฿{formatPrice(totalRevenue)}
             </p>
-          ) : null}
+            <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+              {formatPrice(totalBills)} บิล
+              {totalOpenBills > 0
+                ? ` · ค้าง ${formatPrice(totalOpenBills)}`
+                : ""}
+            </p>
+          </div>
+          <div className="rounded-[1.15rem] bg-white px-3 py-3 shadow-sm ring-1 ring-slate-100">
+            <p className="text-[12px] font-bold text-slate-500">ค่าใช้จ่าย</p>
+            <p className="mt-0.5 text-[18px] font-black tabular-nums text-rose-700">
+              ฿{formatPrice(totalExpense)}
+            </p>
+            <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+              ของเสีย ฿{formatPrice(totalWasteValue)}
+              {stockEnabled
+                ? ` · สต๊อก ${formatPrice(totalStockQty)}`
+                : ""}
+            </p>
+          </div>
         </div>
-      </div>
 
-      {totalOpenBills > 0 ? (
-        <p className="mb-3 text-[13px] font-semibold text-amber-800">
-          ค้างทำอยู่ {formatPrice(totalOpenBills)} บิลในทุกสาขา
-        </p>
-      ) : null}
-
-      {loading && cards.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-500">กำลังโหลด…</p>
-      ) : cards.length === 0 ? (
-        <div className="rounded-2xl bg-white px-4 py-10 text-center shadow-sm">
-          <p className="text-sm text-slate-500">ยังไม่มีสาขาในร้าน</p>
-          <Link
-            href="/admin"
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-site-primary px-4 py-2.5 text-sm font-bold text-white shadow-sm active:opacity-90"
-          >
-            <IconPlus size={16} />
-            เพิ่มสาขาแรก
-          </Link>
-        </div>
-      ) : (
-        <ul className="space-y-3" aria-label="รายการสาขา">
-          {cards.map((card, index) => {
-            const rangeOpts = { branchId: card.id, from, to };
-            const overviewHref = ownerHomeHref(rangeOpts);
-            const wasteHref = ownerWasteHref(rangeOpts);
-            const expensesHref = ownerExpensesHref(rangeOpts);
-            const agingHref = ownerAgingHref({ branchId: card.id });
-            const cancelsHref = ownerCancelsHref(rangeOpts);
-            const stockFlowHref = ownerStockFlowHref(rangeOpts);
-            const summaryHref = ownerSummaryHref(rangeOpts);
-            const topSellersHref = ownerTopSellersHref(rangeOpts);
-            return (
-              <li key={card.id}>
-                <article className="overflow-hidden rounded-2xl bg-white shadow-sm">
-                  <Link
-                    href={overviewHref}
-                    className="block px-4 py-3.5 active:bg-slate-50"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[12px] font-bold tabular-nums text-slate-400">
-                            #{index + 1}
-                          </span>
-                          <h2 className="truncate text-[16px] font-extrabold text-slate-900">
-                            {card.name}
-                          </h2>
+        {cards.length === 0 ? (
+          <div className="rounded-[1.15rem] bg-white px-4 py-10 text-center shadow-sm ring-1 ring-slate-100">
+            <p className="text-sm text-slate-500">ยังไม่มีสาขาในร้าน</p>
+            <Link
+              href="/admin"
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-site-primary px-4 py-2.5 text-sm font-bold text-white shadow-sm active:opacity-90"
+            >
+              <IconPlus size={16} />
+              เพิ่มสาขาแรก
+            </Link>
+          </div>
+        ) : (
+          <ul className="space-y-3" aria-label="รายการสาขา">
+            {cards.map((card, index) => {
+              const rangeOpts = { branchId: card.id, from, to };
+              const overviewHref = ownerHomeHref(rangeOpts);
+              const wasteHref = ownerWasteHref(rangeOpts);
+              const expensesHref = ownerExpensesHref(rangeOpts);
+              const agingHref = ownerAgingHref({ branchId: card.id });
+              const cancelsHref = ownerCancelsHref(rangeOpts);
+              const stockFlowHref = ownerStockFlowHref(rangeOpts);
+              const summaryHref = ownerSummaryHref(rangeOpts);
+              const topSellersHref = ownerTopSellersHref(rangeOpts);
+              return (
+                <li key={card.id}>
+                  <article className="overflow-hidden rounded-[1.15rem] bg-white shadow-sm ring-1 ring-slate-100">
+                    <Link
+                      href={overviewHref}
+                      className="block px-4 py-3.5 active:bg-slate-50"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[12px] font-bold tabular-nums text-slate-400">
+                              #{index + 1}
+                            </span>
+                            <h2 className="truncate text-[16px] font-extrabold text-slate-900">
+                              {card.name}
+                            </h2>
+                            {card.activeShift ? (
+                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                เปิดรอบ
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 text-[12px] font-semibold text-slate-500">
+                            {card.activeShift ? (
+                              <OwnerBranchShiftLine shift={card.activeShift} />
+                            ) : (
+                              <OwnerBranchClosedShiftLine
+                                shift={card.lastClosedShift}
+                              />
+                            )}
+                            {card.openCount > 0
+                              ? ` · ค้าง ${formatPrice(card.openCount)} บิล`
+                              : ""}
+                            {card.cancelledCount > 0
+                              ? ` · ยกเลิก ${formatPrice(card.cancelledCount)}`
+                              : ""}
+                          </div>
                         </div>
-                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
-                          {card.activeShift ? (
-                            <OwnerBranchShiftLine shift={card.activeShift} />
+                        <IconChevronRight
+                          size={18}
+                          className="mt-1 shrink-0 text-slate-300"
+                          aria-hidden
+                        />
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500">
+                            ยอดขาย
+                          </p>
+                          <p className="mt-0.5 text-[15px] font-black tabular-nums text-site-primary">
+                            ฿{formatPrice(card.completedRevenue)}
+                          </p>
+                          <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
+                            {formatPrice(card.completedCount)} บิล
+                            {card.soldQty > 0
+                              ? ` · ${formatPrice(card.soldQty)} ชิ้น`
+                              : ""}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500">
+                            จ่าย · เสีย
+                          </p>
+                          <p className="mt-0.5 text-[15px] font-black tabular-nums text-rose-700">
+                            ฿{formatPrice(card.expenseTotal)}
+                          </p>
+                          <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-orange-700/80">
+                            เสีย ฿{formatPrice(card.wasteValue)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500">
+                            {stockEnabled ? "สต๊อกขาย" : "เหลือสุทธิ"}
+                          </p>
+                          {stockEnabled ? (
+                            <>
+                              <p className="mt-0.5 text-[15px] font-black tabular-nums text-violet-700">
+                                {formatPrice(card.saleStockQty)}
+                              </p>
+                              <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
+                                ฿{formatPrice(card.saleStockValue)}
+                              </p>
+                            </>
                           ) : (
-                            <OwnerBranchClosedShiftLine
-                              shift={card.lastClosedShift}
-                            />
+                            <>
+                              <p className="mt-0.5 text-[15px] font-black tabular-nums text-sky-800">
+                                ฿{formatPrice(card.netAfterWaste)}
+                              </p>
+                              <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                                ขาย−จ่าย−เสีย
+                              </p>
+                            </>
                           )}
-                          {card.isTest ? (
-                            <span className="text-slate-500"> · ทดลอง</span>
-                          ) : null}
-                          {card.openCount > 0
-                            ? ` · ค้าง ${formatPrice(card.openCount)} บิล`
-                            : ""}
-                          {card.cancelledCount > 0
-                            ? ` · ยกเลิก ${formatPrice(card.cancelledCount)}`
-                            : ""}
                         </div>
                       </div>
-                      <IconChevronRight size={18} className="shrink-0 text-slate-300" aria-hidden />
+                    </Link>
+
+                    <div className="grid grid-cols-4 border-t border-slate-100 text-center text-[11px] font-bold">
+                      <Link
+                        href={summaryHref}
+                        className="py-2.5 text-site-primary-medium active:bg-site-primary-soft"
+                      >
+                        ยอดขาย
+                      </Link>
+                      <Link
+                        href={stockEnabled ? stockFlowHref : topSellersHref}
+                        className="border-l border-slate-100 py-2.5 text-violet-800 active:bg-violet-50"
+                      >
+                        {stockEnabled ? "สต๊อก" : "ขายดี"}
+                      </Link>
+                      <Link
+                        href={expensesHref}
+                        className="border-l border-slate-100 py-2.5 text-rose-800 active:bg-rose-50"
+                      >
+                        จ่าย
+                      </Link>
+                      <button
+                        type="button"
+                        disabled={enteringId === card.id}
+                        onClick={() => void enterSell(card.id)}
+                        className="border-l border-slate-100 py-2.5 text-site-primary active:bg-slate-50 disabled:opacity-60"
+                      >
+                        {enteringId === card.id ? "…" : "ขาย"}
+                      </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-4">
-                      <div>
-                        <p className="text-[11px] font-semibold text-slate-500">
-                          ยอดขาย
-                        </p>
-                        <p className="mt-0.5 text-[15px] font-black tabular-nums text-site-primary">
-                          ฿{formatPrice(card.completedRevenue)}
-                        </p>
-                        <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
-                          {formatPrice(card.completedCount)} บิล
-                          {card.soldQty > 0
-                            ? ` · ${formatPrice(card.soldQty)} ชิ้น`
-                            : ""}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-semibold text-slate-500">
-                          เหลือสุทธิ
-                        </p>
-                        <p className="mt-0.5 text-[15px] font-black tabular-nums text-sky-800">
-                          ฿{formatPrice(card.netAfterWaste)}
-                        </p>
-                        <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                          ขาย−จ่าย−เสีย
-                        </p>
-                      </div>
-                      {stockEnabled ? (
-                        <div>
-                          <p className="text-[11px] font-semibold text-slate-500">
-                            สต๊อกขาย
-                          </p>
-                          <p className="mt-0.5 text-[15px] font-black tabular-nums text-violet-700">
-                            {formatPrice(card.saleStockQty)}
-                          </p>
-                          <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
-                            ฿{formatPrice(card.saleStockValue)}
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-[11px] font-semibold text-slate-500">
-                            เงินสด / โอน
-                          </p>
-                          <p className="mt-0.5 text-[13px] font-black tabular-nums text-slate-800">
-                            ฿{formatPrice(card.cashRevenue)}
-                          </p>
-                          <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
-                            โอน ฿{formatPrice(card.transferRevenue)}
-                          </p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-[11px] font-semibold text-slate-500">
-                          ของเสีย
-                        </p>
-                        <p className="mt-0.5 text-[15px] font-black tabular-nums text-orange-700">
-                          {formatPrice(card.wasteQty)}
-                          <span className="text-[11px] font-bold"> ชิ้น</span>
-                        </p>
-                        <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
-                          ฿{formatPrice(card.wasteValue)}
-                        </p>
-                      </div>
+                    <div className="grid grid-cols-3 border-t border-slate-100 text-center text-[11px] font-semibold text-slate-600">
+                      <Link
+                        href={wasteHref}
+                        className="py-2 active:bg-orange-50"
+                      >
+                        ของเสีย
+                      </Link>
+                      <Link
+                        href={stockEnabled ? agingHref : cancelsHref}
+                        className="border-l border-slate-100 py-2 active:bg-violet-50"
+                      >
+                        {stockEnabled ? "ค้างอายุ" : "ยกเลิก"}
+                      </Link>
+                      <Link
+                        href={branchAdminBasePath(card.id, { ownerShell: true })}
+                        className="border-l border-slate-100 py-2 active:bg-slate-50"
+                      >
+                        จัดการ
+                      </Link>
                     </div>
-
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <div className="rounded-xl bg-rose-50 px-3 py-2">
-                        <p className="text-[11px] font-semibold text-rose-700">
-                          ค่าใช้จ่าย
-                        </p>
-                        <p className="mt-0.5 text-[14px] font-black tabular-nums text-rose-900">
-                          ฿{formatPrice(card.expenseTotal)}
-                        </p>
-                        <p className="text-[10px] font-semibold text-rose-700/70">
-                          {formatPrice(card.expenseCount)} รายการ
-                        </p>
-                      </div>
-                      <div className="rounded-xl bg-slate-50 px-3 py-2">
-                        <p className="text-[11px] font-semibold text-slate-500">
-                          เงินสด · โอน
-                        </p>
-                        <p className="mt-0.5 text-[13px] font-black tabular-nums text-slate-800">
-                          ฿{formatPrice(card.cashRevenue)}
-                          <span className="mx-1 font-semibold text-slate-300">
-                            /
-                          </span>
-                          ฿{formatPrice(card.transferRevenue)}
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
-
-                  <div className="grid grid-cols-4 border-t border-slate-100 text-center text-[11px] font-bold">
-                    <Link
-                      href={summaryHref}
-                      className="py-2.5 text-site-primary-medium active:bg-site-primary-soft"
-                    >
-                      ยอดขาย
-                    </Link>
-                    <Link
-                      href={wasteHref}
-                      className="border-l border-slate-100 py-2.5 text-orange-800 active:bg-orange-50"
-                    >
-                      ของเสีย
-                    </Link>
-                    <Link
-                      href={expensesHref}
-                      className="border-l border-slate-100 py-2.5 text-rose-800 active:bg-rose-50"
-                    >
-                      จ่าย
-                    </Link>
-                    <Link
-                      href={stockEnabled ? agingHref : cancelsHref}
-                      className="border-l border-slate-100 py-2.5 text-violet-800 active:bg-violet-50"
-                    >
-                      {stockEnabled ? "ค้างอายุ" : "ยกเลิก"}
-                    </Link>
-                  </div>
-
-                  <div className="grid grid-cols-4 border-t border-slate-100 text-center text-[11px] font-bold">
-                    <Link
-                      href={topSellersHref}
-                      className="py-2.5 text-site-primary-medium active:bg-site-primary-soft"
-                    >
-                      ขายดี
-                    </Link>
-                    <Link
-                      href={stockEnabled ? stockFlowHref : overviewHref}
-                      className="border-l border-slate-100 py-2.5 text-violet-800 active:bg-violet-50"
-                    >
-                      {stockEnabled ? "สต๊อก" : "ดูยอด"}
-                    </Link>
-                    <Link
-                      href={branchAdminBasePath(card.id, { ownerShell: true })}
-                      className="border-l border-slate-100 py-2.5 text-slate-700 active:bg-slate-50"
-                    >
-                      จัดการ
-                    </Link>
-                    <button
-                      type="button"
-                      disabled={enteringId === card.id}
-                      onClick={() => void enterSell(card.id)}
-                      className="border-l border-slate-100 py-2.5 text-site-primary active:bg-slate-50 disabled:opacity-60"
-                    >
-                      {enteringId === card.id ? "…" : "ขาย"}
-                    </button>
-                  </div>
-                </article>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <p className="mt-4 text-center text-[12px] font-medium text-slate-400">
-        อยากดูยอดรวมทั้งร้าน?{" "}
-        <Link href="/owner/summary" className="font-bold text-slate-600">
-          <IconLinkSuffix size={14}>ภาพรวมร้าน</IconLinkSuffix>
-        </Link>
-      </p>
+                  </article>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
       {staffBranches ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">

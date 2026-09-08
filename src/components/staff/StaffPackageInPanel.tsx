@@ -667,14 +667,31 @@ export function StaffPackageInPanel({
                       </span>
                       <input
                         type="number"
+                        inputMode="numeric"
                         min={1}
                         max={9999}
-                        value={row.quantity}
-                        onChange={(e) =>
+                        value={row.quantity > 0 ? row.quantity : ""}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === "") {
+                            updateRow(row.key, { quantity: 0 });
+                            return;
+                          }
+                          const n = Number(raw);
+                          if (!Number.isFinite(n)) return;
                           updateRow(row.key, {
-                            quantity: Math.max(1, Number(e.target.value) || 1),
-                          })
-                        }
+                            quantity: Math.min(
+                              9999,
+                              Math.max(0, Math.floor(n)),
+                            ),
+                          });
+                        }}
+                        onBlur={() => {
+                          if (row.quantity < 1) {
+                            updateRow(row.key, { quantity: 1 });
+                          }
+                        }}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[16px] font-extrabold"
                       />
                     </label>
@@ -706,17 +723,31 @@ export function StaffPackageInPanel({
                       </span>
                       <input
                         type="number"
+                        inputMode="numeric"
                         min={1}
                         max={99}
-                        value={row.stickerCopies}
-                        onChange={(e) =>
+                        value={row.stickerCopies > 0 ? row.stickerCopies : ""}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === "") {
+                            updateRow(row.key, { stickerCopies: 0 });
+                            return;
+                          }
+                          const n = Number(raw);
+                          if (!Number.isFinite(n)) return;
                           updateRow(row.key, {
-                            stickerCopies: Math.max(
-                              1,
-                              Math.min(99, Number(e.target.value) || 1),
+                            stickerCopies: Math.min(
+                              99,
+                              Math.max(0, Math.floor(n)),
                             ),
-                          })
-                        }
+                          });
+                        }}
+                        onBlur={() => {
+                          if (row.stickerCopies < 1) {
+                            updateRow(row.key, { stickerCopies: 1 });
+                          }
+                        }}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[16px] font-extrabold"
                       />
                     </label>

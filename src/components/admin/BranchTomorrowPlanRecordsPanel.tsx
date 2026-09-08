@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { flushSync } from "react-dom";
 import {
   AdminEmptyState,
@@ -39,6 +39,7 @@ type PlanStatus = "CONFIRMED" | "CANCELLED";
 type PlanListItem = {
   id: string;
   planDate: string;
+  roundNo: number;
   status: PlanStatus;
   statusLabel: string;
   note: string | null;
@@ -48,6 +49,19 @@ type PlanListItem = {
   lineCount: number;
   totalConfirmedQty: number;
   totalSuggestedQty: number;
+};
+
+type PlanDayListItem = {
+  planDate: string;
+  roundCount: number;
+  confirmedRoundCount: number;
+  status: PlanStatus;
+  statusLabel: string;
+  lineCount: number;
+  totalConfirmedQty: number;
+  confirmedAt: string;
+  confirmedByUsername: string | null;
+  rounds: PlanListItem[];
 };
 
 type PlanDetailLine = {
@@ -61,11 +75,25 @@ type PlanDetailLine = {
   suggestedQty: number;
   parStock: number;
   availableStock: number;
+  lastRoundNo?: number;
+  changedFromPrev?: boolean;
+  prevQty?: number | null;
 };
 
 type PlanDetail = PlanListItem & {
   branchName: string;
   lines: PlanDetailLine[];
+};
+
+type PlanDayDetail = {
+  planDate: string;
+  branchName: string;
+  rounds: PlanDetail[];
+  effectiveLines: PlanDetailLine[];
+  lineCount: number;
+  totalConfirmedQty: number;
+  roundCount: number;
+  confirmedRoundCount: number;
 };
 
 const STATUS_TONE: Record<PlanStatus, string> = {
@@ -105,10 +133,14 @@ export function BranchTomorrowPlanRecordsPanel({
   const { confirm } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [items, setItems] = useState<PlanListItem[]>([]);
+  const [days, setDays] = useState<PlanDayListItem[]>([]);
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>(
+    {},
+  );
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"ALL" | PlanStatus>("ALL");
   const [detail, setDetail] = useState<PlanDetail | null>(null);
+  const [dayDetail, setDayDetail] = useState<PlanDayDetail | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
   const [noteDraft, setNoteDraft] = useState("");
@@ -130,10 +162,10 @@ export function BranchTomorrowPlanRecordsPanel({
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error("โหลดไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
-        setItems([]);
+        setDays([]);
         return;
       }
-      setItems((json.items ?? []) as PlanListItem[]);
+      setDays((json.days ?? []) as PlanDayListItem[]);
     } finally {
       setLoading(false);
     }
@@ -143,14 +175,35 @@ export function BranchTomorrowPlanRecordsPanel({
     void load();
   }, [load, refreshKey]);
 
+  function toggleDay(planDate: string) {
+    setExpandedDates((prev) => ({ ...prev, [planDate]: !prev[planDate] }));
+  }
+
+  async function openDayOverview(planDate: string) {
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/admin/branches/${branchId}/inventory/tomorrow-plans?date=${encodeURIComponent(planDate)}`,
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error("เปิดภาพรวมวันไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
+        return;
+      }
+      setDayDetail(json as PlanDayDetail);
+      setDetail(null);
+      setEditMode(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function openDetail(row: PlanListItem, startEdit = false) {
     setBusy(true);
     try {
       const params = new URLSearchParams();
       if (row.planDate) params.set("planDate", row.planDate);
-      const res = await fetch(
-        planApiPath(branchId, row.id) + `?${params}`,
-      );
+      const res = await fetch(planApiPath(branchId, row.id) + `?${params}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error("เปิดรายละเอียดไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
@@ -161,6 +214,7 @@ export function BranchTomorrowPlanRecordsPanel({
         toast.error("เปิดรายละเอียดไม่สำเร็จ", "รูปแบบข้อมูลไม่ถูกต้อง");
         return;
       }
+      setDayDetail(null);
       setDetail(payload);
       setNoteDraft(payload.note ?? "");
       const draft: Record<string, string> = {};
@@ -183,23 +237,16 @@ export function BranchTomorrowPlanRecordsPanel({
         confirmedQty: Number.isInteger(n) && n >= 0 ? n : line.confirmedQty,
       };
     });
-    if (itemsPayload.some((row) => row.confirmedQty < 0)) {
-      toast.error("จำนวนไม่ถูกต้อง");
-      return;
-    }
     setBusy(true);
     try {
-      const res = await fetch(
-        planApiPath(branchId, detail.id),
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            note: noteDraft.trim() || null,
-            items: itemsPayload,
-          }),
-        },
-      );
+      const res = await fetch(planApiPath(branchId, detail.id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          note: noteDraft.trim() || null,
+          items: itemsPayload,
+        }),
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error("บันทึกไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
@@ -208,7 +255,7 @@ export function BranchTomorrowPlanRecordsPanel({
       const payload = json as PlanDetail;
       setDetail(payload);
       setEditMode(false);
-      toast.success("แก้ไขแผนแล้ว");
+      toast.success("แก้ไขรอบแล้ว");
       await load();
     } finally {
       setBusy(false);
@@ -218,25 +265,22 @@ export function BranchTomorrowPlanRecordsPanel({
   async function setPlanStatus(next: PlanStatus) {
     if (!detail) return;
     const ok = await confirm({
-      title: next === "CANCELLED" ? "ยกเลิกแผนนี้?" : "ยืนยันแผนนี้อีกครั้ง?",
+      title: next === "CANCELLED" ? "ยกเลิกรอบนี้?" : "ยืนยันรอบนี้อีกครั้ง?",
       message:
         next === "CANCELLED"
-          ? "แผนจะยังอยู่ในรายการสถานะยกเลิก จนกว่าจะลบถาวร"
+          ? "รอบที่ยกเลิกจะไม่เข้าภาพรวมวัน"
           : "จะเปลี่ยนสถานะกลับเป็นยืนยันแล้ว",
-      confirmLabel: next === "CANCELLED" ? "ยกเลิกแผน" : "ยืนยัน",
+      confirmLabel: next === "CANCELLED" ? "ยกเลิกรอบ" : "ยืนยัน",
       tone: next === "CANCELLED" ? "danger" : "primary",
     });
     if (!ok) return;
     setBusy(true);
     try {
-      const res = await fetch(
-        planApiPath(branchId, detail.id),
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: next }),
-        },
-      );
+      const res = await fetch(planApiPath(branchId, detail.id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error("เปลี่ยนสถานะไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
@@ -252,24 +296,23 @@ export function BranchTomorrowPlanRecordsPanel({
 
   async function removePlan(planId: string) {
     const ok = await confirm({
-      title: "ลบแผนผลิต-เติมนี้?",
-      message: "ลบทั้งเอกสารและทุกรายการในแผน — กู้คืนไม่ได้",
+      title: "ลบรอบนี้?",
+      message: "ลบเฉพาะรอบนี้ — รอบอื่นของวันเดียวกันยังอยู่ กู้คืนไม่ได้",
       confirmLabel: "ลบถาวร",
       tone: "danger",
     });
     if (!ok) return;
     setBusy(true);
     try {
-      const res = await fetch(
-        planApiPath(branchId, planId),
-        { method: "DELETE" },
-      );
+      const res = await fetch(planApiPath(branchId, planId), {
+        method: "DELETE",
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error("ลบไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
         return;
       }
-      toast.success("ลบแผนแล้ว");
+      toast.success("ลบรอบแล้ว");
       setDetail(null);
       await load();
     } finally {
@@ -280,7 +323,7 @@ export function BranchTomorrowPlanRecordsPanel({
   async function removeLine(lineId: string) {
     if (!detail) return;
     const ok = await confirm({
-      title: "ลบรายการนี้ออกจากแผน?",
+      title: "ลบรายการนี้ออกจากรอบ?",
       confirmLabel: "ลบรายการ",
       tone: "danger",
     });
@@ -297,7 +340,7 @@ export function BranchTomorrowPlanRecordsPanel({
         return;
       }
       if (!json.plan) {
-        toast.success("ลบแผนแล้ว เพราะไม่มีรายการเหลือ");
+        toast.success("ลบรอบแล้ว เพราะไม่มีรายการเหลือ");
         setDetail(null);
       } else {
         const payload = json.plan as PlanDetail;
@@ -316,35 +359,68 @@ export function BranchTomorrowPlanRecordsPanel({
   }
 
   const filteredHint = useMemo(() => {
-    if (status === "ALL" && !q.trim()) return `${items.length} แผน`;
-    return `พบ ${items.length} แผน`;
-  }, [items.length, status, q]);
+    const roundTotal = days.reduce((s, d) => s + d.roundCount, 0);
+    if (status === "ALL" && !q.trim()) {
+      return `${days.length} วัน · ${roundTotal} รอบ`;
+    }
+    return `พบ ${days.length} วัน · ${roundTotal} รอบ`;
+  }, [days, status, q]);
+
+  const activeShareLines = dayDetail
+    ? dayDetail.effectiveLines
+    : detail?.lines ?? [];
 
   const shareText = useMemo(() => {
+    if (dayDetail) {
+      return formatConfirmedPlanShareText({
+        branchName: dayDetail.branchName,
+        planDate: dayDetail.planDate,
+        statusLabel: "ภาพรวมวัน",
+        effective: true,
+        roundCount: dayDetail.roundCount,
+        items: dayDetail.effectiveLines.map((line) => ({
+          productCode: line.productCode,
+          name: line.name,
+          confirmedQty: line.confirmedQty,
+          suggestedQty: line.suggestedQty,
+          parStock: line.parStock,
+          availableStock: line.availableStock,
+        })),
+      });
+    }
     if (!detail || detail.lines.length === 0) return "";
     return formatConfirmedPlanShareText({
       branchName: detail.branchName,
       planDate: detail.planDate,
       statusLabel: detail.statusLabel,
       note: noteDraft || detail.note,
+      roundNo: detail.roundNo,
       items: detail.lines.map((line) => ({
         productCode: line.productCode,
         name: line.name,
-        confirmedQty: Number.parseInt(qtyDraft[line.id] ?? "", 10) >= 0
-          ? Number.parseInt(qtyDraft[line.id] ?? "", 10)
-          : line.confirmedQty,
+        confirmedQty:
+          Number.parseInt(qtyDraft[line.id] ?? "", 10) >= 0
+            ? Number.parseInt(qtyDraft[line.id] ?? "", 10)
+            : line.confirmedQty,
         suggestedQty: line.suggestedQty,
         parStock: line.parStock,
         availableStock: line.availableStock,
       })),
     });
-  }, [detail, noteDraft, qtyDraft]);
+  }, [dayDetail, detail, noteDraft, qtyDraft]);
 
   function planShareFilename() {
-    const slug = (detail?.branchName ?? "สาขา")
+    const src = dayDetail ?? detail;
+    const slug = (src?.branchName ?? "สาขา")
       .replace(/[^\w\u0E00-\u0E7F\-]+/g, "_")
       .slice(0, 40);
-    return `PlanRefill_${slug}_${detail?.planDate ?? ""}.png`;
+    const roundPart =
+      dayDetail != null
+        ? "effective"
+        : detail?.roundNo != null
+          ? `r${detail.roundNo}`
+          : "";
+    return `PlanRefill_${slug}_${src?.planDate ?? ""}${roundPart ? `_${roundPart}` : ""}.png`;
   }
 
   async function capturePlanPng() {
@@ -365,12 +441,14 @@ export function BranchTomorrowPlanRecordsPanel({
   }
 
   async function handleShareImage() {
-    if (exportBusy || !detail || detail.lines.length === 0) return;
+    if (exportBusy || activeShareLines.length === 0) return;
     setExportBusy("share");
     setExportMsg("");
     try {
       const dataUrl = await capturePlanPng();
-      const title = `แผนผลิต-เติม — ${detail.branchName}`;
+      const title = dayDetail
+        ? `แผนผลิต-เติม — ${dayDetail.branchName} (ภาพรวม)`
+        : `แผนผลิต-เติม — ${detail?.branchName}`;
       const result = await sharePngDataUrl(dataUrl, planShareFilename(), title);
       if (result.error === "cancelled") {
         setExportMsg("");
@@ -396,7 +474,7 @@ export function BranchTomorrowPlanRecordsPanel({
   }
 
   async function handleSaveImage() {
-    if (exportBusy || !detail || detail.lines.length === 0) return;
+    if (exportBusy || activeShareLines.length === 0) return;
     setExportBusy("save");
     setExportMsg("");
     try {
@@ -418,10 +496,7 @@ export function BranchTomorrowPlanRecordsPanel({
   }
 
   async function handleCopyText() {
-    if (exportBusy || !shareText) {
-      toast.error("ไม่มีรายการส่งผลิต");
-      return;
-    }
+    if (exportBusy || !shareText) return;
     setExportBusy("copy");
     setExportMsg("");
     try {
@@ -441,6 +516,18 @@ export function BranchTomorrowPlanRecordsPanel({
     }
   }
 
+  const modalOpen = detail != null || dayDetail != null;
+  const modalTitle = dayDetail
+    ? `${dayDetail.branchName} · ${dayDetail.planDate} (${bangkokWeekdayLabel(dayDetail.planDate)}) · ภาพรวมวัน`
+    : detail
+      ? `${detail.branchName} · ${detail.planDate} รอบ #${detail.roundNo}`
+      : "รายละเอียดแผน";
+  const modalDescription = dayDetail
+    ? `${dayDetail.roundCount} รอบ · ${dayDetail.lineCount} รายการ effective · รวม ${dayDetail.totalConfirmedQty.toLocaleString("th-TH")} ชิ้น`
+    : detail
+      ? `${detail.statusLabel} · ${detail.lineCount} รายการ · รวม ${detail.totalConfirmedQty.toLocaleString("th-TH")} ชิ้น`
+      : undefined;
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -450,16 +537,13 @@ export function BranchTomorrowPlanRecordsPanel({
               แผนผลิต-เติม
             </h3>
             <p className="mt-1 text-sm text-gray-600">
-              แผนที่ยืนยันแล้ว — ค้นหา ดูรายละเอียด แก้ไข หรือลบได้ กดสร้างแผนใหม่เพื่อคำนวณส่งผลิต
+              จัดกลุ่มตามวัน — ขยายดูแต่ละรอบ · ภาพรวมวันใช้ค่าสุดท้ายต่อเมนู
+              (รอบหลังทับเฉพาะรายการที่แตะ)
             </p>
           </div>
           {onCreatePlan ? (
-            <button
-              type="button"
-              className={btnPrimary}
-              onClick={onCreatePlan}
-            >
-              สร้างแผนใหม่
+            <button type="button" className={btnPrimary} onClick={onCreatePlan}>
+              สร้างรอบใหม่
             </button>
           ) : null}
         </div>
@@ -492,10 +576,10 @@ export function BranchTomorrowPlanRecordsPanel({
 
       {loading ? (
         <AdminLoadingState label="กำลังโหลดรายการแผน…" />
-      ) : items.length === 0 ? (
+      ) : days.length === 0 ? (
         <AdminEmptyState
           title="ยังไม่มีแผนที่ยืนยัน"
-          description={`กดสร้างแผนใหม่ เพื่อคำนวณรายการจาก${PAR_STOCK_SHORT_LABEL}แล้วยืนยันส่งผลิต`}
+          description={`กดสร้างรอบใหม่ เพื่อคำนวณรายการจาก${PAR_STOCK_SHORT_LABEL}แล้วยืนยันส่งผลิต`}
           action={
             onCreatePlan ? (
               <button
@@ -503,7 +587,7 @@ export function BranchTomorrowPlanRecordsPanel({
                 className={btnPrimary}
                 onClick={onCreatePlan}
               >
-                สร้างแผนใหม่
+                สร้างรอบใหม่
               </button>
             ) : null
           }
@@ -515,98 +599,256 @@ export function BranchTomorrowPlanRecordsPanel({
               <tr>
                 <th className="px-3 py-3">วันที่แผน</th>
                 <th className="px-3 py-3">สถานะ</th>
-                <th className="px-3 py-3 text-right">รายการ</th>
+                <th className="px-3 py-3 text-right">รอบ</th>
+                <th className="px-3 py-3 text-right">รายการ (effective)</th>
                 <th className="px-3 py-3 text-right">รวมชิ้น</th>
-                <th className="px-3 py-3">ยืนยันเมื่อ</th>
+                <th className="px-3 py-3">อัปเดตล่าสุด</th>
                 <th className="px-3 py-3 text-right">จัดการ</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((row) => (
-                <tr key={row.id} className={adminTrClass}>
-                  <td className="px-3 py-2.5">
-                    <p className="font-medium text-gray-900">{row.planDate}</p>
-                    <p className="text-xs text-gray-500">
-                      {bangkokWeekdayLabel(row.planDate)}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span
-                      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONE[row.status]}`}
-                    >
-                      {row.statusLabel}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    {row.lineCount.toLocaleString("th-TH")}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold">
-                    {row.totalConfirmedQty.toLocaleString("th-TH")}
-                  </td>
-                  <td className="px-3 py-2.5 text-sm text-gray-600">
-                    <p>{formatBangkokDateTime(row.confirmedAt)}</p>
-                    {row.confirmedByUsername ? (
-                      <p className="text-xs text-gray-400">
-                        {row.confirmedByUsername}
-                      </p>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className={btnOutline}
-                        onClick={() => void openDetail(row)}
-                      >
-                        ดู
-                      </button>
-                      <button
-                        type="button"
-                        className={btnOutline}
-                        onClick={() => void openDetail(row, true)}
-                        title="แก้ไข"
-                      >
-                        <IconEdit size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className={btnOutline}
-                        onClick={() => void removePlan(row.id)}
-                        title="ลบ"
-                      >
-                        <IconTrash size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {days.map((day) => {
+                const open = Boolean(expandedDates[day.planDate]);
+                return (
+                  <Fragment key={day.planDate}>
+                    <tr className={adminTrClass}>
+                      <td className="px-3 py-2.5">
+                        <button
+                          type="button"
+                          className="text-left"
+                          onClick={() => toggleDay(day.planDate)}
+                        >
+                          <p className="font-medium text-gray-900">
+                            <span className="mr-1 inline-block w-3 text-gray-400">
+                              {open ? "▾" : "▸"}
+                            </span>
+                            {day.planDate}
+                          </p>
+                          <p className="pl-4 text-xs text-gray-500">
+                            {bangkokWeekdayLabel(day.planDate)}
+                          </p>
+                        </button>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONE[day.status]}`}
+                        >
+                          {day.statusLabel}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {day.roundCount.toLocaleString("th-TH")}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {day.lineCount.toLocaleString("th-TH")}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold">
+                        {day.totalConfirmedQty.toLocaleString("th-TH")}
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600">
+                        <p>{formatBangkokDateTime(day.confirmedAt)}</p>
+                        {day.confirmedByUsername ? (
+                          <p className="text-xs text-gray-400">
+                            {day.confirmedByUsername}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            className={btnOutline}
+                            onClick={() => void openDayOverview(day.planDate)}
+                          >
+                            ภาพรวมวัน
+                          </button>
+                          <button
+                            type="button"
+                            className={btnOutline}
+                            onClick={() => toggleDay(day.planDate)}
+                          >
+                            {open ? "ย่อ" : "ขยาย"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {open
+                      ? day.rounds.map((row) => (
+                          <tr
+                            key={row.id}
+                            className="border-t border-slate-100 bg-slate-50/80"
+                          >
+                            <td className="px-3 py-2 pl-8" colSpan={2}>
+                              <p className="text-sm font-medium text-gray-800">
+                                รอบ #{row.roundNo}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {formatBangkokDateTime(row.confirmedAt)}
+                                {row.confirmedByUsername
+                                  ? ` · ${row.confirmedByUsername}`
+                                  : ""}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span
+                                className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONE[row.status]}`}
+                              >
+                                {row.statusLabel}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {row.lineCount.toLocaleString("th-TH")}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold">
+                              {row.totalConfirmedQty.toLocaleString("th-TH")}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-500">
+                              {row.note?.trim() || "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  className={btnOutline}
+                                  onClick={() => void openDetail(row)}
+                                >
+                                  ดู
+                                </button>
+                                <button
+                                  type="button"
+                                  className={btnOutline}
+                                  onClick={() => void openDetail(row, true)}
+                                  title="แก้ไข"
+                                >
+                                  <IconEdit size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className={btnOutline}
+                                  onClick={() => void removePlan(row.id)}
+                                  title="ลบ"
+                                >
+                                  <IconTrash size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
       <AdminModal
-        open={detail != null}
+        open={modalOpen}
         onClose={() => {
           if (!busy) {
             setDetail(null);
+            setDayDetail(null);
             setEditMode(false);
           }
         }}
         busy={busy}
-        title={
-          detail
-            ? `${detail.branchName} · แผน ${detail.planDate} (${bangkokWeekdayLabel(detail.planDate)})`
-            : "รายละเอียดแผน"
-        }
-        description={
-          detail
-            ? `${detail.statusLabel} · ${detail.lineCount} รายการ · รวม ${detail.totalConfirmedQty.toLocaleString("th-TH")} ชิ้น`
-            : undefined
-        }
+        title={modalTitle}
+        description={modalDescription}
         maxWidthClassName="max-w-4xl"
       >
-        {detail ? (
+        {dayDetail ? (
+          <div className="space-y-4 overflow-y-auto p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <ShareExportMenu
+                busy={exportBusy}
+                message={exportMsg}
+                disabled={busy || dayDetail.effectiveLines.length === 0}
+                className={btnOutline}
+                label="แชร์ภาพรวม"
+                sheetTitle={`แชร์ภาพรวม — ${dayDetail.branchName}`}
+                sheetHint="แชร์ค่าสุดท้ายของวัน (effective)"
+                onShareImage={handleShareImage}
+                onSaveImage={handleSaveImage}
+                onCopyText={handleCopyText}
+              />
+            </div>
+            {dayDetail.rounds.length > 1 ? (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                มี {dayDetail.roundCount} รอบ — รายการที่เปลี่ยนข้ามรอบจะไฮไลต์ในตาราง
+              </p>
+            ) : null}
+            <div
+              ref={captureRef}
+              className="overflow-hidden rounded-xl border border-gray-200 bg-white"
+            >
+              {exportCapturing ? (
+                <div className="border-b border-gray-100 px-4 py-3">
+                  <p className="text-sm font-semibold text-gray-900">
+                    แผนผลิต-เติม — {dayDetail.branchName} (ภาพรวมวัน)
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {dayDetail.planDate} · {dayDetail.roundCount} รอบ ·{" "}
+                    {captureStamp}
+                  </p>
+                </div>
+              ) : null}
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2">สินค้า</th>
+                      <th className="px-3 py-2 text-right">ยืนยัน (effective)</th>
+                      <th className="px-3 py-2 text-right">รอบล่าสุด</th>
+                      <th className="px-3 py-2 text-right">
+                        {PAR_STOCK_SHORT_LABEL} / คงเหลือ
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {dayDetail.effectiveLines.map((line) => (
+                      <tr
+                        key={line.id}
+                        className={
+                          line.changedFromPrev ? "bg-amber-50/60" : undefined
+                        }
+                      >
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <MenuThumb url={line.imageUrl} name={line.name} />
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {line.name}
+                              </p>
+                              {line.changedFromPrev ? (
+                                <p className="text-xs font-medium text-amber-700">
+                                  เปลี่ยนจาก{" "}
+                                  {line.prevQty != null
+                                    ? line.prevQty.toLocaleString("th-TH")
+                                    : "—"}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-sky-800">
+                          {line.confirmedQty.toLocaleString("th-TH")}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gray-600">
+                          #{line.lastRoundNo ?? "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gray-500">
+                          {line.parStock.toLocaleString("th-TH")} /{" "}
+                          {line.availableStock.toLocaleString("th-TH")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : detail ? (
           <div className="space-y-4 overflow-y-auto p-5">
             <div className="flex flex-wrap items-center gap-2">
               {!editMode ? (
@@ -633,8 +875,8 @@ export function BranchTomorrowPlanRecordsPanel({
                 message={exportMsg}
                 disabled={busy || detail.lines.length === 0}
                 className={btnOutline}
-                label="แชร์"
-                sheetTitle={`แชร์แผน — ${detail.branchName}`}
+                label="แชร์รอบนี้"
+                sheetTitle={`แชร์รอบ #${detail.roundNo} — ${detail.branchName}`}
                 sheetHint="แชร์รูป บันทึกรูป หรือคัดลอกข้อความ ส่งทีมผลิต"
                 onShareImage={handleShareImage}
                 onSaveImage={handleSaveImage}
@@ -647,7 +889,7 @@ export function BranchTomorrowPlanRecordsPanel({
                   onClick={() => void setPlanStatus("CANCELLED")}
                   disabled={busy}
                 >
-                  ยกเลิกแผน
+                  ยกเลิกรอบ
                 </button>
               ) : (
                 <button
@@ -685,7 +927,7 @@ export function BranchTomorrowPlanRecordsPanel({
               {exportCapturing ? (
                 <div className="border-b border-gray-100 px-4 py-3">
                   <p className="text-sm font-semibold text-gray-900">
-                    แผนผลิต-เติม — {detail.branchName}
+                    แผนผลิต-เติม — {detail.branchName} · รอบ #{detail.roundNo}
                   </p>
                   <p className="text-xs text-gray-500">
                     {detail.planDate} ({bangkokWeekdayLabel(detail.planDate)}) ·{" "}
@@ -694,75 +936,93 @@ export function BranchTomorrowPlanRecordsPanel({
                 </div>
               ) : null}
               <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-600">
-                  <tr>
-                    <th className="px-3 py-2">สินค้า</th>
-                    <th className="px-3 py-2 text-right">ควรส่ง</th>
-                    <th className="px-3 py-2 text-right">ยืนยัน</th>
-                    <th className="px-3 py-2 text-right">{PAR_STOCK_SHORT_LABEL} / คงเหลือ</th>
-                    {editMode ? <th className="px-3 py-2" /> : null}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {detail.lines.map((line) => (
-                    <tr key={line.id}>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <MenuThumb url={line.imageUrl} name={line.name} />
-                          <div>
-                            <p className="font-medium text-gray-900">{line.name}</p>
-                            {line.category ? (
-                              <p className="mt-0.5 text-xs text-gray-400">
-                                {line.category}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-amber-800">
-                        {line.suggestedQty.toLocaleString("th-TH")}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {editMode ? (
-                          <input
-                            className={`${adminInputClass} ml-auto w-20 py-1 text-right tabular-nums`}
-                            type="number"
-                            min={0}
-                            value={qtyDraft[line.id] ?? String(line.confirmedQty)}
-                            onChange={(e) =>
-                              setQtyDraft((prev) => ({
-                                ...prev,
-                                [line.id]: e.target.value,
-                              }))
-                            }
-                          />
-                        ) : (
-                          <span className="font-semibold tabular-nums text-sky-800">
-                            {line.confirmedQty.toLocaleString("th-TH")}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                        {line.parStock.toLocaleString("th-TH")} /{" "}
-                        {line.availableStock.toLocaleString("th-TH")}
-                      </td>
-                      {editMode ? (
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-red-600 hover:underline"
-                            onClick={() => void removeLine(line.id)}
-                            disabled={busy}
-                          >
-                            ลบ
-                          </button>
-                        </td>
-                      ) : null}
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2">สินค้า</th>
+                      <th className="px-3 py-2 text-right">ควรส่ง</th>
+                      <th className="px-3 py-2 text-right">ยืนยัน</th>
+                      <th className="px-3 py-2 text-right">
+                        {PAR_STOCK_SHORT_LABEL} / คงเหลือ
+                      </th>
+                      {editMode ? <th className="px-3 py-2" /> : null}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {detail.lines.map((line) => (
+                      <tr
+                        key={line.id}
+                        className={
+                          line.changedFromPrev ? "bg-amber-50/60" : undefined
+                        }
+                      >
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <MenuThumb url={line.imageUrl} name={line.name} />
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {line.name}
+                              </p>
+                              {line.changedFromPrev ? (
+                                <p className="text-xs font-medium text-amber-700">
+                                  {line.prevQty == null
+                                    ? "รายการใหม่ในรอบนี้"
+                                    : `เปลี่ยนจาก ${line.prevQty.toLocaleString("th-TH")}`}
+                                </p>
+                              ) : null}
+                              {line.category ? (
+                                <p className="mt-0.5 text-xs text-gray-400">
+                                  {line.category}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-amber-800">
+                          {line.suggestedQty.toLocaleString("th-TH")}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {editMode ? (
+                            <input
+                              className={`${adminInputClass} ml-auto w-20 py-1 text-right tabular-nums`}
+                              type="number"
+                              min={0}
+                              value={
+                                qtyDraft[line.id] ?? String(line.confirmedQty)
+                              }
+                              onChange={(e) =>
+                                setQtyDraft((prev) => ({
+                                  ...prev,
+                                  [line.id]: e.target.value,
+                                }))
+                              }
+                            />
+                          ) : (
+                            <span className="font-semibold tabular-nums text-sky-800">
+                              {line.confirmedQty.toLocaleString("th-TH")}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gray-500">
+                          {line.parStock.toLocaleString("th-TH")} /{" "}
+                          {line.availableStock.toLocaleString("th-TH")}
+                        </td>
+                        {editMode ? (
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-red-600 hover:underline"
+                              onClick={() => void removeLine(line.id)}
+                              disabled={busy}
+                            >
+                              ลบ
+                            </button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

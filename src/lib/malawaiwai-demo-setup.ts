@@ -494,6 +494,7 @@ async function cloneBranchOperationalData(
       data: {
         branchId: targetBranchId,
         planDate: plan.planDate,
+        roundNo: plan.roundNo ?? 1,
         status: plan.status,
         note: plan.note,
         confirmedAt: plan.confirmedAt,

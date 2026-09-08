@@ -5,6 +5,10 @@ import {
   resolveMenuItemProductCode,
 } from "@/lib/inventory/inventory-menu-code";
 import {
+  mergeTomorrowPlanRounds,
+  type TomorrowPlanQtyDiff,
+} from "@/lib/inventory/inventory-tomorrow-plan-merge";
+import {
   getTomorrowPlanHeaderDb,
   getTomorrowPlanLineDb,
   legacyPlanId,
@@ -23,6 +27,7 @@ export const TOMORROW_PLAN_STATUS_LABELS: Record<
 export type TomorrowPlanListItem = {
   id: string;
   planDate: string;
+  roundNo: number;
   status: BranchTomorrowPlanStatus;
   statusLabel: string;
   note: string | null;
@@ -32,6 +37,19 @@ export type TomorrowPlanListItem = {
   lineCount: number;
   totalConfirmedQty: number;
   totalSuggestedQty: number;
+};
+
+export type TomorrowPlanDayListItem = {
+  planDate: string;
+  roundCount: number;
+  confirmedRoundCount: number;
+  status: BranchTomorrowPlanStatus;
+  statusLabel: string;
+  lineCount: number;
+  totalConfirmedQty: number;
+  confirmedAt: string;
+  confirmedByUsername: string | null;
+  rounds: TomorrowPlanListItem[];
 };
 
 export type TomorrowPlanDetailLine = {
@@ -47,6 +65,9 @@ export type TomorrowPlanDetailLine = {
   parStock: number;
   availableStock: number;
   confirmedAt: string;
+  lastRoundNo?: number;
+  changedFromPrev?: boolean;
+  prevQty?: number | null;
 };
 
 export type TomorrowPlanDetail = TomorrowPlanListItem & {
@@ -54,9 +75,22 @@ export type TomorrowPlanDetail = TomorrowPlanListItem & {
   lines: TomorrowPlanDetailLine[];
 };
 
+export type TomorrowPlanDayDetail = {
+  planDate: string;
+  branchName: string;
+  rounds: TomorrowPlanDetail[];
+  effectiveLines: TomorrowPlanDetailLine[];
+  diffs: TomorrowPlanQtyDiff[];
+  lineCount: number;
+  totalConfirmedQty: number;
+  roundCount: number;
+  confirmedRoundCount: number;
+};
+
 type PlanHeaderRow = {
   id: string;
   planDate: string;
+  roundNo: number;
   status: BranchTomorrowPlanStatus;
   note: string | null;
   confirmedAt: Date;
@@ -69,6 +103,7 @@ function mapListItem(plan: PlanHeaderRow): TomorrowPlanListItem {
   return {
     id: plan.id,
     planDate: plan.planDate,
+    roundNo: plan.roundNo ?? 1,
     status: plan.status,
     statusLabel: TOMORROW_PLAN_STATUS_LABELS[plan.status],
     note: plan.note,
@@ -126,6 +161,76 @@ function mapDetailLine(line: {
   };
 }
 
+function fallbackDetailLine(line: {
+  id: string;
+  menuItemId: string;
+  confirmedQty: number;
+  suggestedQty: number;
+  parStock: number;
+  availableStock: number;
+  confirmedAt: Date;
+}): TomorrowPlanDetailLine {
+  return {
+    id: line.id,
+    menuItemId: line.menuItemId,
+    productCode: line.menuItemId.slice(-8).toUpperCase(),
+    hasManualItemCode: false,
+    name: "เมนู",
+    category: null,
+    imageUrl: null,
+    confirmedQty: line.confirmedQty,
+    suggestedQty: line.suggestedQty,
+    parStock: line.parStock,
+    availableStock: line.availableStock,
+    confirmedAt: line.confirmedAt.toISOString(),
+  };
+}
+
+function groupRoundsIntoDays(
+  rounds: TomorrowPlanListItem[],
+): TomorrowPlanDayListItem[] {
+  const byDate = new Map<string, TomorrowPlanListItem[]>();
+  for (const round of rounds) {
+    const list = byDate.get(round.planDate) ?? [];
+    list.push(round);
+    byDate.set(round.planDate, list);
+  }
+
+  const days: TomorrowPlanDayListItem[] = [];
+  for (const [planDate, dayRounds] of byDate) {
+    const sorted = [...dayRounds].sort(
+      (a, b) =>
+        a.roundNo - b.roundNo || a.confirmedAt.localeCompare(b.confirmedAt),
+    );
+    const confirmed = sorted.filter((r) => r.status === "CONFIRMED");
+    const latest = sorted.reduce((a, b) =>
+      a.confirmedAt >= b.confirmedAt ? a : b,
+    );
+    const status: BranchTomorrowPlanStatus =
+      confirmed.length > 0 ? "CONFIRMED" : "CANCELLED";
+
+    days.push({
+      planDate,
+      roundCount: sorted.length,
+      confirmedRoundCount: confirmed.length,
+      status,
+      statusLabel: TOMORROW_PLAN_STATUS_LABELS[status],
+      lineCount: 0,
+      totalConfirmedQty: 0,
+      confirmedAt: latest.confirmedAt,
+      confirmedByUsername: latest.confirmedByUsername,
+      rounds: sorted,
+    });
+  }
+
+  days.sort(
+    (a, b) =>
+      b.planDate.localeCompare(a.planDate) ||
+      b.confirmedAt.localeCompare(a.confirmedAt),
+  );
+  return days;
+}
+
 async function listTomorrowPlansFromLines(input: {
   branchId: string;
   q?: string;
@@ -181,10 +286,9 @@ async function listTomorrowPlansFromLines(input: {
       group.lines[0]!.confirmedAt,
     );
     items.push({
-      id:
-        group.planId ??
-        legacyPlanId(input.branchId, group.planDate),
+      id: group.planId ?? legacyPlanId(input.branchId, group.planDate),
       planDate: group.planDate,
+      roundNo: 1,
       status: "CONFIRMED",
       statusLabel: TOMORROW_PLAN_STATUS_LABELS.CONFIRMED,
       note: null,
@@ -205,11 +309,75 @@ async function listTomorrowPlansFromLines(input: {
   return items;
 }
 
+async function enrichDaysWithEffective(
+  branchId: string,
+  days: TomorrowPlanDayListItem[],
+): Promise<TomorrowPlanDayListItem[]> {
+  if (days.length === 0) return days;
+  const lineDb = getTomorrowPlanLineDb();
+  if (!lineDb) return days;
+
+  const planIds = days.flatMap((d) =>
+    d.rounds.filter((r) => r.status === "CONFIRMED").map((r) => r.id),
+  );
+  if (planIds.length === 0) return days;
+
+  const lines = await lineDb.findMany({
+    where: {
+      branchId,
+      planId: { in: planIds.filter((id) => !id.startsWith("legacy:")) },
+    },
+    select: {
+      planId: true,
+      menuItemId: true,
+      confirmedQty: true,
+      suggestedQty: true,
+      parStock: true,
+      availableStock: true,
+      confirmedAt: true,
+    },
+  });
+  const linesByPlan = new Map<string, typeof lines>();
+  for (const line of lines) {
+    if (!line.planId) continue;
+    const list = linesByPlan.get(line.planId) ?? [];
+    list.push(line);
+    linesByPlan.set(line.planId, list);
+  }
+
+  return days.map((day) => {
+    const confirmed = day.rounds.filter((r) => r.status === "CONFIRMED");
+    const { effectiveLines } = mergeTomorrowPlanRounds(
+      confirmed.map((r) => ({
+        roundNo: r.roundNo,
+        status: r.status,
+        confirmedAt: r.confirmedAt,
+        lines: (linesByPlan.get(r.id) ?? []).map((line) => ({
+          menuItemId: line.menuItemId,
+          confirmedQty: line.confirmedQty,
+          suggestedQty: line.suggestedQty,
+          parStock: line.parStock,
+          availableStock: line.availableStock,
+          confirmedAt: line.confirmedAt.toISOString(),
+        })),
+      })),
+    );
+    return {
+      ...day,
+      lineCount: effectiveLines.length,
+      totalConfirmedQty: effectiveLines.reduce(
+        (s, l) => s + l.confirmedQty,
+        0,
+      ),
+    };
+  });
+}
+
 export async function listTomorrowPlans(input: {
   branchId: string;
   q?: string;
   status?: BranchTomorrowPlanStatus | "ALL";
-}): Promise<{ items: TomorrowPlanListItem[] }> {
+}): Promise<{ days: TomorrowPlanDayListItem[]; items: TomorrowPlanListItem[] }> {
   const q = input.q?.trim() ?? "";
   const status =
     input.status && input.status !== "ALL" ? input.status : undefined;
@@ -217,95 +385,89 @@ export async function listTomorrowPlans(input: {
   const headerDb = getTomorrowPlanHeaderDb();
   const lineDb = getTomorrowPlanLineDb();
   if (!lineDb) {
-    return { items: [] };
+    return { days: [], items: [] };
   }
+
+  let rounds: TomorrowPlanListItem[] = [];
 
   if (headerDb) {
     try {
       const plans = await headerDb.findMany({
-      where: {
-        branchId: input.branchId,
-        ...(status ? { status } : {}),
-        ...(q
-          ? {
-              OR: [
-                { planDate: { contains: q } },
-                { note: { contains: q } },
-                {
-                  lines: {
-                    some: {
-                      menuItem: {
-                        OR: [
-                          { name: { contains: q, mode: "insensitive" } },
-                          { itemCode: { contains: q, mode: "insensitive" } },
-                        ],
+        where: {
+          branchId: input.branchId,
+          ...(status ? { status } : {}),
+          ...(q
+            ? {
+                OR: [
+                  { planDate: { contains: q } },
+                  { note: { contains: q } },
+                  {
+                    lines: {
+                      some: {
+                        menuItem: {
+                          OR: [
+                            { name: { contains: q, mode: "insensitive" } },
+                            { itemCode: { contains: q, mode: "insensitive" } },
+                          ],
+                        },
                       },
                     },
                   },
-                },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        confirmedByAdmin: { select: { username: true } },
-        lines: { select: { confirmedQty: true, suggestedQty: true } },
-      },
-      orderBy: [{ planDate: "desc" }, { confirmedAt: "desc" }],
-      take: 200,
+                ],
+              }
+            : {}),
+        },
+        include: {
+          confirmedByAdmin: { select: { username: true } },
+          lines: { select: { confirmedQty: true, suggestedQty: true } },
+        },
+        orderBy: [
+          { planDate: "desc" },
+          { roundNo: "asc" },
+          { confirmedAt: "desc" },
+        ],
+        take: 500,
       });
 
       if (plans.length > 0) {
-        return { items: plans.map(mapListItem) };
+        rounds = plans.map((plan) =>
+          mapListItem({
+            ...plan,
+            roundNo: plan.roundNo ?? 1,
+          }),
+        );
       }
     } catch (error) {
       console.error("[tomorrow-plans] header list failed", error);
     }
   }
 
-  const items = await listTomorrowPlansFromLines({
-    branchId: input.branchId,
-    q,
-  });
-  return {
-    items: status ? items.filter((row) => row.status === status) : items,
-  };
+  if (rounds.length === 0) {
+    rounds = await listTomorrowPlansFromLines({
+      branchId: input.branchId,
+      q,
+    });
+    if (status) {
+      rounds = rounds.filter((row) => row.status === status);
+    }
+  }
+
+  let days = groupRoundsIntoDays(rounds);
+  days = await enrichDaysWithEffective(input.branchId, days);
+
+  return { days, items: rounds };
 }
 
 type HeaderRow = {
   id: string;
   planDate: string;
+  roundNo?: number;
   status: BranchTomorrowPlanStatus;
   note: string | null;
   confirmedAt: Date;
   updatedAt: Date;
   confirmedByAdmin: { username: string } | null;
 };
-
-function fallbackDetailLine(line: {
-  id: string;
-  menuItemId: string;
-  confirmedQty: number;
-  suggestedQty: number;
-  parStock: number;
-  availableStock: number;
-  confirmedAt: Date;
-}): TomorrowPlanDetailLine {
-  return {
-    id: line.id,
-    menuItemId: line.menuItemId,
-    productCode: line.menuItemId.slice(-8).toUpperCase(),
-    hasManualItemCode: false,
-    name: "เมนู",
-    category: null,
-    imageUrl: null,
-    confirmedQty: line.confirmedQty,
-    suggestedQty: line.suggestedQty,
-    parStock: line.parStock,
-    availableStock: line.availableStock,
-    confirmedAt: line.confirmedAt.toISOString(),
-  };
-}
 
 export async function getTomorrowPlanDetail(input: {
   branchId: string;
@@ -340,14 +502,10 @@ export async function getTomorrowPlanDetail(input: {
 
   const planDate =
     legacy?.planDate ?? header?.planDate ?? input.planDate ?? undefined;
+  // Scope lines to this round only (do not OR with planDate — that mixes rounds).
   const lineWhere = legacy
     ? { branchId: legacy.branchId, planDate: legacy.planDate }
-    : planDate
-      ? {
-          branchId: input.branchId,
-          OR: [{ planId: header?.id ?? input.planId }, { planDate }],
-        }
-      : { branchId: input.branchId, planId: input.planId };
+    : { branchId: input.branchId, planId: header?.id ?? input.planId };
 
   let rawLines: Array<{
     id: string;
@@ -382,7 +540,7 @@ export async function getTomorrowPlanDetail(input: {
       rawLines = await lineDb.findMany({ where: lineWhere });
     } catch (plainError) {
       console.error("[tomorrow-plans] lines plain failed", plainError);
-      if (planDate) {
+      if (legacy && planDate) {
         rawLines = await lineDb.findMany({
           where: { branchId: input.branchId, planDate },
         });
@@ -410,6 +568,7 @@ export async function getTomorrowPlanDetail(input: {
   const headerRow: PlanHeaderRow = {
     id: header?.id ?? input.planId,
     planDate: planDate ?? rawLines[0]?.planDate ?? "",
+    roundNo: header?.roundNo ?? 1,
     status: header?.status ?? "CONFIRMED",
     note: header?.note ?? null,
     confirmedAt,
@@ -421,14 +580,176 @@ export async function getTomorrowPlanDetail(input: {
     })),
   };
 
-  return {
+  const detail: TomorrowPlanDetail = {
     ...mapListItem(headerRow),
     branchName,
     lines: sortDetailLines(
       rawLines.map((line) =>
-        line.menuItem ? mapDetailLine(line as Parameters<typeof mapDetailLine>[0]) : fallbackDetailLine(line),
+        line.menuItem
+          ? mapDetailLine(line as Parameters<typeof mapDetailLine>[0])
+          : fallbackDetailLine(line),
       ),
     ),
+  };
+
+  // Highlight lines that differ from the previous confirmed round on the same day.
+  if (headerDb && detail.planDate && detail.status === "CONFIRMED") {
+    try {
+      const prevHeader = await headerDb.findFirst({
+        where: {
+          branchId: input.branchId,
+          planDate: detail.planDate,
+          status: "CONFIRMED",
+          roundNo: { lt: detail.roundNo },
+        },
+        orderBy: { roundNo: "desc" },
+        select: { id: true },
+      });
+      if (prevHeader) {
+        const prevLines = await lineDb.findMany({
+          where: { planId: prevHeader.id },
+          select: { menuItemId: true, confirmedQty: true },
+        });
+        const prevByMenu = new Map(
+          prevLines.map((l) => [l.menuItemId, l.confirmedQty]),
+        );
+        for (const line of detail.lines) {
+          const prevQty = prevByMenu.get(line.menuItemId);
+          if (prevQty == null) {
+            line.changedFromPrev = true;
+            line.prevQty = null;
+          } else if (prevQty !== line.confirmedQty) {
+            line.changedFromPrev = true;
+            line.prevQty = prevQty;
+          } else {
+            line.changedFromPrev = false;
+            line.prevQty = prevQty;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[tomorrow-plans] prev round annotate failed", error);
+    }
+  }
+
+  return detail;
+}
+
+export async function getTomorrowPlanDay(input: {
+  branchId: string;
+  planDate: string;
+}): Promise<TomorrowPlanDayDetail> {
+  const headerDb = getTomorrowPlanHeaderDb();
+  if (!headerDb) throw new Error("NOT_FOUND");
+
+  const headers = await headerDb.findMany({
+    where: { branchId: input.branchId, planDate: input.planDate },
+    select: { id: true },
+    orderBy: [{ roundNo: "asc" }, { confirmedAt: "asc" }],
+  });
+  if (headers.length === 0) throw new Error("NOT_FOUND");
+
+  const rounds: TomorrowPlanDetail[] = [];
+  for (const header of headers) {
+    rounds.push(
+      await getTomorrowPlanDetail({
+        branchId: input.branchId,
+        planId: header.id,
+        planDate: input.planDate,
+      }),
+    );
+  }
+
+  const { effectiveLines: merged, diffs } = mergeTomorrowPlanRounds(
+    rounds.map((r) => ({
+      roundNo: r.roundNo,
+      status: r.status,
+      confirmedAt: r.confirmedAt,
+      lines: r.lines.map((line) => ({
+        id: line.id,
+        menuItemId: line.menuItemId,
+        productCode: line.productCode,
+        hasManualItemCode: line.hasManualItemCode,
+        name: line.name,
+        category: line.category,
+        imageUrl: line.imageUrl,
+        confirmedQty: line.confirmedQty,
+        suggestedQty: line.suggestedQty,
+        parStock: line.parStock,
+        availableStock: line.availableStock,
+        confirmedAt: line.confirmedAt,
+      })),
+    })),
+  );
+
+  const diffByMenu = new Map(diffs.map((d) => [d.menuItemId, d]));
+  const effectiveLines = sortDetailLines(
+    merged.map((line) => {
+      const diff = diffByMenu.get(line.menuItemId);
+      return {
+        id: line.id ?? `${line.menuItemId}:${line.lastRoundNo}`,
+        menuItemId: line.menuItemId,
+        productCode: line.productCode ?? "",
+        hasManualItemCode: line.hasManualItemCode ?? false,
+        name: line.name ?? "",
+        category: line.category ?? null,
+        imageUrl: line.imageUrl ?? null,
+        confirmedQty: line.confirmedQty,
+        suggestedQty: line.suggestedQty,
+        parStock: line.parStock,
+        availableStock: line.availableStock,
+        confirmedAt: line.confirmedAt ?? "",
+        lastRoundNo: line.lastRoundNo,
+        changedFromPrev: Boolean(diff),
+        prevQty: diff?.fromQty ?? null,
+      };
+    }),
+  );
+
+  // Annotate each round's lines with change vs previous confirmed round.
+  const confirmedRounds = rounds
+    .filter((r) => r.status === "CONFIRMED")
+    .sort((a, b) => a.roundNo - b.roundNo);
+  for (let i = 0; i < confirmedRounds.length; i++) {
+    const round = confirmedRounds[i]!;
+    const prev = confirmedRounds[i - 1];
+    const prevByMenu = new Map(
+      (prev?.lines ?? []).map((l) => [l.menuItemId, l.confirmedQty]),
+    );
+    for (const line of round.lines) {
+      if (!prev) {
+        line.changedFromPrev = false;
+        line.prevQty = null;
+        continue;
+      }
+      const prevQty = prevByMenu.get(line.menuItemId);
+      if (prevQty == null) {
+        line.changedFromPrev = true;
+        line.prevQty = null;
+      } else if (prevQty !== line.confirmedQty) {
+        line.changedFromPrev = true;
+        line.prevQty = prevQty;
+      } else {
+        line.changedFromPrev = false;
+        line.prevQty = prevQty;
+      }
+    }
+  }
+
+  const confirmedRoundCount = rounds.filter(
+    (r) => r.status === "CONFIRMED",
+  ).length;
+
+  return {
+    planDate: input.planDate,
+    branchName: rounds[0]?.branchName ?? "สาขา",
+    rounds,
+    effectiveLines,
+    diffs,
+    lineCount: effectiveLines.length,
+    totalConfirmedQty: effectiveLines.reduce((s, l) => s + l.confirmedQty, 0),
+    roundCount: rounds.length,
+    confirmedRoundCount,
   };
 }
 
@@ -525,10 +846,11 @@ export async function deleteTomorrowPlan(input: {
   }).catch(() => null);
   if (!detail) throw new Error("NOT_FOUND");
 
+  // Delete only this round's lines + header (not the whole day).
   await lineDb.deleteMany({
     where: {
       branchId: input.branchId,
-      OR: [{ planId: input.planId }, { planDate: detail.planDate }],
+      planId: input.planId,
     },
   });
 
@@ -540,14 +862,7 @@ export async function deleteTomorrowPlan(input: {
   });
   if (header) {
     await headerDb.delete({ where: { id: header.id } });
-    return;
   }
-
-  await headerDb
-    .deleteMany({
-      where: { branchId: input.branchId, planDate: detail.planDate },
-    })
-    .catch(() => {});
 }
 
 export async function deleteTomorrowPlanLine(input: {

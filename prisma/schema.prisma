@@ -805,6 +805,8 @@ model BranchTomorrowPlan {
   id                 String                    @id @default(cuid())
   branchId           String
   planDate           String
+  /// 1-based round within branch+planDate (multiple confirms per day).
+  roundNo            Int                       @default(1)
   status             BranchTomorrowPlanStatus  @default(CONFIRMED)
   note               String?
   confirmedAt        DateTime                  @default(now())
@@ -815,12 +817,13 @@ model BranchTomorrowPlan {
   confirmedByAdmin Admin?                   @relation(fields: [confirmedByAdminId], references: [id], onDelete: SetNull)
   lines            BranchTomorrowPlanLine[]
 
-  @@unique([branchId, planDate])
+  @@unique([branchId, planDate, roundNo])
   @@index([branchId, status])
+  @@index([branchId, planDate])
   @@index([planDate])
 }
 
-/// Confirmed production/refill qty for a branch menu item on a plan date (Bangkok YYYY-MM-DD).
+/// Confirmed production/refill qty for a branch menu item in one plan round.
 model BranchTomorrowPlanLine {
   id                 String   @id @default(cuid())
   planId             String?
@@ -839,7 +842,7 @@ model BranchTomorrowPlanLine {
   menuItem         BranchMenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
   confirmedByAdmin Admin?              @relation(fields: [confirmedByAdminId], references: [id], onDelete: SetNull)
 
-  @@unique([branchId, menuItemId, planDate])
+  @@unique([planId, menuItemId])
   @@index([branchId, planDate])
   @@index([menuItemId])
   @@index([planId])

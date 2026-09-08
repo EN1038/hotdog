@@ -310,10 +310,17 @@ export function BranchTomorrowPlanPanel({
         toast.error("ยืนยันไม่สำเร็จ", json.error ?? "กรุณาลองใหม่");
         return;
       }
-      const payload = json as TomorrowPlanApiResult;
+      const payload = json as TomorrowPlanApiResult & {
+        saved?: number;
+        roundNo?: number;
+      };
       setData(payload);
       setConfirmDraft(defaultConfirmDraft(payload.items));
-      toast.success(`ยืนยันส่งผลิต ${confirmItems.length} รายการแล้ว`);
+      toast.success(
+        payload.roundNo != null
+          ? `ยืนยันรอบ ${payload.roundNo} · ${confirmItems.length} รายการแล้ว`
+          : `ยืนยันส่งผลิต ${confirmItems.length} รายการแล้ว`,
+      );
       onBackToList?.();
     } finally {
       setBusy(false);
@@ -482,12 +489,27 @@ export function BranchTomorrowPlanPanel({
             {data?.lastConfirmedAt ? (
               <p className="mt-1 text-xs text-gray-500">
                 ยืนยันล่าสุด {formatBangkokDateTime(data.lastConfirmedAt)}
+                {(data.existingRoundCount ?? 0) > 0
+                  ? ` · มี ${data.existingRoundCount} รอบแล้ว · รอบถัดไป #${data.nextRoundNo ?? 1}`
+                  : ""}
               </p>
             ) : (
               <p className="mt-1 text-xs text-gray-500">
                 ยังไม่เคยยืนยันส่งผลิตสำหรับพรุ่งนี้
+                {data?.nextRoundNo
+                  ? ` · รอบแรกจะเป็น #${data.nextRoundNo}`
+                  : ""}
               </p>
             )}
+            {(data?.existingRoundCount ?? 0) > 0 ? (
+              <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                กดยืนยันจะสร้าง{" "}
+                <span className="font-semibold">
+                  รอบใหม่ #{data?.nextRoundNo ?? 1}
+                </span>
+                {" "}ไม่ทับรอบเก่า — รายการที่ไม่ได้แตะคงค่าจากรอบก่อนในภาพรวมวัน
+              </p>
+            ) : null}
             {data?.summary?.branchParTarget != null ? (
               <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">
                 ขายเฉลี่ย ~{(data.summary.totalAvgDailySales ?? 0).toLocaleString("th-TH")}{" "}
@@ -554,7 +576,7 @@ export function BranchTomorrowPlanPanel({
               onClick={() => void saveConfirm()}
               disabled={busy || loading || confirmItems.length === 0}
             >
-              {`ยืนยันส่งผลิต${confirmItems.length > 0 ? ` (${confirmItems.length})` : ""}`}
+              {`ยืนยันรอบ #${data?.nextRoundNo ?? 1}${confirmItems.length > 0 ? ` (${confirmItems.length})` : ""}`}
             </button>
             <button
               type="button"

@@ -63,6 +63,8 @@ export const menuItemCreateSchema = z
     sellShabu: z.boolean().optional(),
     /** Default shelf life days when receiving fresh sale stock */
     defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
+    /** Target on-hand qty (BranchMenuItemParStock); null clears to 0 */
+    parStock: z.number().int().min(0).max(1_000_000).nullable().optional(),
     /** Printable product / barcode code (unique per branch when set) */
     itemCode: menuItemCodeSchema,
   })
@@ -98,6 +100,8 @@ export const menuItemPatchSchema = z
     sellFry: z.boolean().optional(),
     sellShabu: z.boolean().optional(),
     defaultShelfLifeDays: z.number().int().min(0).max(365).nullable().optional(),
+    /** Target on-hand qty (BranchMenuItemParStock); null clears to 0 */
+    parStock: z.number().int().min(0).max(1_000_000).nullable().optional(),
     itemCode: menuItemCodeSchema,
   })
   .merge(menuChannelPriceSchema.partial());

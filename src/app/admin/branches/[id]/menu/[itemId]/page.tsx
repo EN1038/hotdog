@@ -44,6 +44,10 @@ import {
   isManualMenuItemCode,
   resolveMenuItemProductCode,
 } from "@/lib/inventory/inventory-menu-code";
+import {
+  PAR_STOCK_LABEL,
+  PAR_STOCK_SHORT_LABEL,
+} from "@/lib/inventory/inventory-par-labels";
 import { ProductLabelPrintButton } from "@/components/admin/ProductLabelPrintButton";
 
 type MenuItemDetail = {
@@ -76,6 +80,7 @@ type MenuItemDetail = {
   isOutOfStock: boolean;
   sortOrder: number;
   defaultShelfLifeDays?: number | null;
+  parStock?: number | null;
   optionGroups: BranchOptionGroup[];
   optionGroupIds?: string[];
 };
@@ -113,6 +118,7 @@ type FormState = {
   isOutOfStock: boolean;
   sortOrder: string;
   defaultShelfLifeDays: string;
+  parStock: string;
 };
 
 const EMPTY_ITEM: MenuItemDetail = {
@@ -145,6 +151,7 @@ const EMPTY_ITEM: MenuItemDetail = {
   isOutOfStock: false,
   sortOrder: 0,
   defaultShelfLifeDays: null,
+  parStock: null,
   optionGroups: [],
   optionGroupIds: [],
 };
@@ -176,6 +183,7 @@ const EMPTY_FORM: FormState = {
   isOutOfStock: false,
   sortOrder: "0",
   defaultShelfLifeDays: "",
+  parStock: "",
 };
 
 const sectionClass = "rounded-xl border border-gray-200 bg-white p-4";
@@ -292,6 +300,10 @@ export default function MenuItemEditorPage() {
       defaultShelfLifeDays:
         data.defaultShelfLifeDays != null
           ? String(data.defaultShelfLifeDays)
+          : "",
+      parStock:
+        data.parStock != null && data.parStock > 0
+          ? String(data.parStock)
           : "",
     });
     const ids = data.optionGroupIds ?? data.optionGroups.map((g) => g.id);
@@ -509,6 +521,21 @@ export default function MenuItemEditorPage() {
           const n = Number.parseInt(t, 10);
           return Number.isFinite(n) && n >= 0 ? n : null;
         })(),
+        ...(isCreate
+          ? (() => {
+              const t = form.parStock.trim();
+              if (!t) return {};
+              const n = Number.parseInt(t, 10);
+              return Number.isFinite(n) && n >= 0 ? { parStock: n } : {};
+            })()
+          : {
+              parStock: (() => {
+                const t = form.parStock.trim();
+                if (!t) return null;
+                const n = Number.parseInt(t, 10);
+                return Number.isFinite(n) && n >= 0 ? n : null;
+              })(),
+            }),
         optionGroupIds: selectedGroupIds,
       };
 
@@ -1177,6 +1204,51 @@ export default function MenuItemEditorPage() {
                 onClick={() =>
                   setForm((f) => ({ ...f, defaultShelfLifeDays: "" }))
                 }
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600"
+              >
+                ล้าง
+              </button>
+            </div>
+
+            <label className={`${adminLabelClass} mt-4`}>
+              {PAR_STOCK_LABEL}ในสต็อก
+            </label>
+            <p className="mb-2 text-xs text-gray-500">
+              เป้าเทียบกับยอดคงเหลือ / แผนผลิต — ไม่ใช่ยอดในคลังจริง
+            </p>
+            <input
+              type="number"
+              min={0}
+              max={1_000_000}
+              className={adminInputClass}
+              value={form.parStock}
+              placeholder={`เช่น 50 · ว่าง = ยังไม่ตั้ง${PAR_STOCK_SHORT_LABEL}`}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  parStock: e.target.value,
+                }))
+              }
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[10, 20, 30, 50, 100].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      parStock: String(n),
+                    }))
+                  }
+                  className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-800"
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, parStock: "" }))}
                 className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600"
               >
                 ล้าง

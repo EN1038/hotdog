@@ -13,6 +13,7 @@ import { computeTomorrowForecast } from "@/lib/inventory/inventory-forecast";
 import { formatReasonLabels } from "@/lib/inventory/inventory-reason-codes";
 import { loadBranchSalesMetricsMap } from "@/lib/inventory/inventory-sales-metrics";
 import { deriveInventoryStatus } from "@/lib/inventory/inventory-status";
+import { mergeTomorrowPlanRounds } from "@/lib/inventory/inventory-tomorrow-plan-merge";
 import {
   deriveParComparison,
   type ParComparisonKind,
@@ -87,6 +88,10 @@ export type TomorrowPlanResult = {
   branchName: string;
   computedAt: string;
   lastConfirmedAt: string | null;
+  /** Confirmed rounds already saved for tomorrowDate. */
+  existingRoundCount: number;
+  /** Next round number if the user confirms again. */
+  nextRoundNo: number;
   items: TomorrowPlanRow[];
   summary: {
     refillRequiredCount: number;
@@ -121,15 +126,90 @@ export async function loadBranchTomorrowPlan(
   const { metricsByMenuId, menuItems } =
     await loadBranchSalesMetricsMap(branchId);
 
-  let confirmRecords: Array<{
-    menuItemId: string;
-    confirmedQty: number;
-    confirmedAt: Date;
-  }> = [];
+  let confirmByMenuId = new Map<
+    string,
+    { confirmedQty: number; confirmedAt: Date }
+  >();
+  let existingRoundCount = 0;
+  let nextRoundNo = 1;
+  let lastConfirmedAt: string | null = null;
   try {
+    const headerDb = getTomorrowPlanHeaderDb();
     const lineDb = getTomorrowPlanLineDb();
-    if (lineDb) {
-      confirmRecords = await lineDb.findMany({
+    if (headerDb && lineDb) {
+      const headers = await headerDb.findMany({
+        where: { branchId, planDate: tomorrowDate },
+        select: {
+          id: true,
+          roundNo: true,
+          status: true,
+          confirmedAt: true,
+        },
+        orderBy: [{ roundNo: "asc" }, { confirmedAt: "asc" }],
+      });
+      existingRoundCount = headers.length;
+      const maxRound = headers.reduce(
+        (max, h) => Math.max(max, h.roundNo ?? 1),
+        0,
+      );
+      nextRoundNo = maxRound + 1;
+
+      const confirmedHeaders = headers.filter((h) => h.status === "CONFIRMED");
+      if (confirmedHeaders.length > 0) {
+        const lines = await lineDb.findMany({
+          where: {
+            branchId,
+            planDate: tomorrowDate,
+            planId: { in: confirmedHeaders.map((h) => h.id) },
+          },
+          select: {
+            planId: true,
+            menuItemId: true,
+            confirmedQty: true,
+            confirmedAt: true,
+          },
+        });
+        const linesByPlan = new Map<string, typeof lines>();
+        for (const line of lines) {
+          if (!line.planId) continue;
+          const list = linesByPlan.get(line.planId) ?? [];
+          list.push(line);
+          linesByPlan.set(line.planId, list);
+        }
+        const { effectiveLines } = mergeTomorrowPlanRounds(
+          confirmedHeaders.map((h) => ({
+            roundNo: h.roundNo ?? 1,
+            status: h.status,
+            confirmedAt: h.confirmedAt.toISOString(),
+            lines: (linesByPlan.get(h.id) ?? []).map((line) => ({
+              menuItemId: line.menuItemId,
+              confirmedQty: line.confirmedQty,
+              suggestedQty: 0,
+              parStock: 0,
+              availableStock: 0,
+              confirmedAt: line.confirmedAt.toISOString(),
+            })),
+          })),
+        );
+        confirmByMenuId = new Map(
+          effectiveLines.map((line) => [
+            line.menuItemId,
+            {
+              confirmedQty: line.confirmedQty,
+              confirmedAt: new Date(line.confirmedAt ?? Date.now()),
+            },
+          ]),
+        );
+        lastConfirmedAt = confirmedHeaders
+          .reduce(
+            (latest, row) =>
+              row.confirmedAt > latest ? row.confirmedAt : latest,
+            confirmedHeaders[0]!.confirmedAt,
+          )
+          .toISOString();
+      }
+    } else if (lineDb) {
+      const confirmRecords = await lineDb.findMany({
         where: { branchId, planDate: tomorrowDate },
         select: {
           menuItemId: true,
@@ -137,6 +217,20 @@ export async function loadBranchTomorrowPlan(
           confirmedAt: true,
         },
       });
+      confirmByMenuId = new Map(
+        confirmRecords.map((c) => [c.menuItemId, c]),
+      );
+      if (confirmRecords.length > 0) {
+        existingRoundCount = 1;
+        nextRoundNo = 2;
+        lastConfirmedAt = confirmRecords
+          .reduce(
+            (latest, row) =>
+              row.confirmedAt > latest ? row.confirmedAt : latest,
+            confirmRecords[0]!.confirmedAt,
+          )
+          .toISOString();
+      }
     }
   } catch (error) {
     console.error("[tomorrow-plan] load confirms", error);
@@ -151,9 +245,6 @@ export async function loadBranchTomorrowPlan(
     },
   });
   const parByMenuId = new Map(parRecords.map((p) => [p.menuItemId, p]));
-  const confirmByMenuId = new Map(
-    confirmRecords.map((c) => [c.menuItemId, c]),
-  );
 
   const soldRows = menuItems.map((menu) => {
     const metrics = metricsByMenuId.get(menu.id)!;
@@ -279,17 +370,6 @@ export async function loadBranchTomorrowPlan(
       ? computeSkewerBranchParTarget(totalAvgDailySales)
       : null;
 
-  const lastConfirmedAt =
-    confirmRecords.length === 0
-      ? null
-      : confirmRecords
-          .reduce(
-            (latest, row) =>
-              row.confirmedAt > latest ? row.confirmedAt : latest,
-            confirmRecords[0]!.confirmedAt,
-          )
-          .toISOString();
-
   return {
     planMode: TOMORROW_PLAN_MODE,
     tomorrowDate,
@@ -298,6 +378,8 @@ export async function loadBranchTomorrowPlan(
     branchName: branch.name,
     computedAt: new Date().toISOString(),
     lastConfirmedAt,
+    existingRoundCount,
+    nextRoundNo,
     items,
     summary: {
       refillRequiredCount: items.filter((i) => i.suggestedRefill > 0).length,
@@ -322,7 +404,12 @@ export async function saveConfirmedTomorrowPlan(input: {
   branchId: string;
   adminId?: string;
   items: Array<{ menuItemId: string; confirmedQty: number }>;
-}): Promise<{ saved: number; planDate: string }> {
+}): Promise<{
+  saved: number;
+  planDate: string;
+  planId: string;
+  roundNo: number;
+}> {
   if (input.items.length === 0) {
     throw new Error("EMPTY");
   }
@@ -340,46 +427,33 @@ export async function saveConfirmedTomorrowPlan(input: {
   }
 
   const lineDb = getTomorrowPlanLineDb();
-  if (!lineDb?.upsert) {
+  const headerDb = getTomorrowPlanHeaderDb();
+  if (!lineDb?.createMany || !headerDb?.create) {
     throw new Error("SCHEMA_NOT_READY");
   }
 
-  let headerId: string | null = null;
-  const headerDb = getTomorrowPlanHeaderDb();
-  if (headerDb?.upsert) {
-    const header = await headerDb.upsert({
-      where: {
-        branchId_planDate: {
-          branchId: input.branchId,
-          planDate: plan.tomorrowDate,
-        },
-      },
-      create: {
-        branchId: input.branchId,
-        planDate: plan.tomorrowDate,
-        status: "CONFIRMED",
-        confirmedByAdminId: input.adminId ?? null,
-      },
-      update: {
-        status: "CONFIRMED",
-        confirmedByAdminId: input.adminId ?? null,
-      },
-    });
-    headerId = header.id;
-  }
+  const existing = await headerDb.findMany({
+    where: { branchId: input.branchId, planDate: plan.tomorrowDate },
+    select: { roundNo: true },
+  });
+  const roundNo =
+    existing.reduce((max, row) => Math.max(max, row.roundNo ?? 1), 0) + 1;
 
-  for (const item of input.items) {
-    const row = byId.get(item.menuItemId)!;
-    await lineDb.upsert({
-      where: {
-        branchId_menuItemId_planDate: {
-          branchId: input.branchId,
-          menuItemId: item.menuItemId,
-          planDate: plan.tomorrowDate,
-        },
-      },
-      create: {
-        planId: headerId,
+  const header = await headerDb.create({
+    data: {
+      branchId: input.branchId,
+      planDate: plan.tomorrowDate,
+      roundNo,
+      status: "CONFIRMED",
+      confirmedByAdminId: input.adminId ?? null,
+    },
+  });
+
+  await lineDb.createMany({
+    data: input.items.map((item) => {
+      const row = byId.get(item.menuItemId)!;
+      return {
+        planId: header.id,
         branchId: input.branchId,
         menuItemId: item.menuItemId,
         planDate: plan.tomorrowDate,
@@ -388,17 +462,14 @@ export async function saveConfirmedTomorrowPlan(input: {
         parStock: row.parStock,
         availableStock: row.availableStock,
         confirmedByAdminId: input.adminId ?? null,
-      },
-      update: {
-        planId: headerId,
-        confirmedQty: item.confirmedQty,
-        suggestedQty: row.suggestedRefill,
-        parStock: row.parStock,
-        availableStock: row.availableStock,
-        confirmedByAdminId: input.adminId ?? null,
-      },
-    });
-  }
+      };
+    }),
+  });
 
-  return { saved: input.items.length, planDate: plan.tomorrowDate };
+  return {
+    saved: input.items.length,
+    planDate: plan.tomorrowDate,
+    planId: header.id,
+    roundNo,
+  };
 }

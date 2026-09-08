@@ -413,13 +413,8 @@ export function BranchStockPanel({
     return list;
   }, [typedCatalog, categoryFilter, manageQ]);
 
-  const showParColumn = useMemo(() => {
-    if (!data) return false;
-    if (typeFilter !== "ALL" && typeFilter !== "SALE_ITEM") return false;
-    return data.products.some(
-      (p) => p.stockType === "SALE_ITEM" && p.parStock != null,
-    );
-  }, [data, typeFilter]);
+  const showParColumn =
+    typeFilter === "ALL" || typeFilter === "SALE_ITEM";
 
   const manageStockTypeLabel =
     typeFilter !== "ALL" ? STOCK_TYPE_LABEL[typeFilter] : "สต๊อก";
@@ -439,9 +434,13 @@ export function BranchStockPanel({
       const seq = seqById.get(item.id) ?? 0;
       const code = item.productCode ? `[${item.productCode}] ` : "";
       const parPart =
-        item.stockType === "SALE_ITEM" && item.parStock != null
+        item.stockType === "SALE_ITEM" &&
+        item.parStock != null &&
+        item.parStock > 0
           ? ` · ${PAR_STOCK_SHORT_LABEL} ${item.parStock}`
-          : "";
+          : item.stockType === "SALE_ITEM"
+            ? ` · ${PAR_STOCK_SHORT_LABEL} —`
+            : "";
       lines.push(
         `${seq}. ${code}${item.name}: คงเหลือ ${dbBalance}${item.unit ? ` ${item.unit}` : ""}${parPart}`,
       );
@@ -1256,7 +1255,8 @@ export function BranchStockPanel({
                         const seq = seqById.get(item.id) ?? 0;
                         const hasPar =
                           item.stockType === "SALE_ITEM" &&
-                          item.parStock != null;
+                          item.parStock != null &&
+                          item.parStock > 0;
                         const belowPar = hasPar && dbBalance < item.parStock!;
                         return (
                           <li
@@ -1269,10 +1269,10 @@ export function BranchStockPanel({
                               </p>
                             </div>
                             <div className="flex shrink-0 items-stretch gap-1.5">
-                              {hasPar ? (
+                              {item.stockType === "SALE_ITEM" ? (
                                 <div className="min-w-[2.75rem] rounded-lg bg-sky-50 px-2 py-1.5 text-center text-sky-800">
                                   <p className="text-sm font-black tabular-nums leading-none">
-                                    {item.parStock}
+                                    {hasPar ? item.parStock : "—"}
                                   </p>
                                   <p className="mt-0.5 text-[9px] font-semibold">
                                     {PAR_STOCK_SHORT_LABEL}
@@ -1340,7 +1340,9 @@ export function BranchStockPanel({
                           item.lowStockAlert == null ? 0 : item.lowStockAlert;
                         const unitPrice = Number(item.price ?? 0);
                         const hasPar =
-                          item.stockType === "SALE_ITEM" && item.parStock != null;
+                          item.stockType === "SALE_ITEM" &&
+                          item.parStock != null &&
+                          item.parStock > 0;
                         const belowPar = hasPar && dbBalance < item.parStock!;
                         return (
                           <tr key={item.id} className="hover:bg-slate-50 transition-colors">
@@ -1372,9 +1374,10 @@ export function BranchStockPanel({
                                       </span>
                                     ) : null}
                                   </div>
-                                  {hasPar ? (
+                                  {showParColumn && item.stockType === "SALE_ITEM" ? (
                                     <div className="mt-0.5 text-[11px] font-bold text-sky-700 sm:hidden">
-                                      {PAR_STOCK_SHORT_LABEL} {item.parStock} {item.unit}
+                                      {PAR_STOCK_SHORT_LABEL}{" "}
+                                      {hasPar ? `${item.parStock} ${item.unit}` : "—"}
                                     </div>
                                   ) : null}
                                 </div>

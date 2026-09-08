@@ -172,6 +172,10 @@ export function formatConfirmedPlanShareText(input: {
   planDate: string;
   statusLabel: string;
   note?: string | null;
+  roundNo?: number;
+  roundCount?: number;
+  /** When sharing day effective view */
+  effective?: boolean;
   items: Array<{
     productCode: string;
     name: string;
@@ -191,9 +195,15 @@ export function formatConfirmedPlanShareText(input: {
     return `${i + 1}. [${row.productCode}] ${row.name} — ส่งผลิต ${row.confirmedQty} (${parPart})`;
   });
 
+  const roundPart = input.effective
+    ? `ภาพรวมวัน${input.roundCount != null ? ` · ${input.roundCount} รอบ` : ""}`
+    : input.roundNo != null
+      ? `รอบ ${input.roundNo}`
+      : null;
+
   return [
     `📦 แผนผลิต-เติม — ${input.branchName}`,
-    `วันที่ ${input.planDate} (${weekday}) · ${input.statusLabel}`,
+    `วันที่ ${input.planDate} (${weekday}) · ${input.statusLabel}${roundPart ? ` · ${roundPart}` : ""}`,
     ...(input.note?.trim() ? [`หมายเหตุ: ${input.note.trim()}`] : []),
     "",
     ...lines,

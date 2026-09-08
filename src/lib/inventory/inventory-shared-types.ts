@@ -107,6 +107,8 @@ export type TomorrowPlanApiResult = {
   branchName: string;
   computedAt?: string;
   lastConfirmedAt?: string | null;
+  existingRoundCount?: number;
+  nextRoundNo?: number;
   items: TomorrowPlanApiRow[];
   summary: {
     refillRequiredCount: number;

@@ -3,7 +3,10 @@ import { requireBranchAccess } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { ensureProdSchemaCompat } from "@/lib/schema-compat";
-import { listTomorrowPlans } from "@/lib/inventory/inventory-tomorrow-plan-records";
+import {
+  getTomorrowPlanDay,
+  listTomorrowPlans,
+} from "@/lib/inventory/inventory-tomorrow-plan-records";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -27,11 +30,31 @@ export async function GET(request: Request, { params }: Params) {
       .object({
         q: z.string().optional(),
         status: z.enum(["ALL", "CONFIRMED", "CANCELLED"]).optional(),
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
       })
       .parse({
         q: searchParams.get("q") ?? undefined,
         status: searchParams.get("status") ?? undefined,
+        date: searchParams.get("date") ?? undefined,
       });
+
+    if (parsed.date) {
+      try {
+        const day = await getTomorrowPlanDay({
+          branchId,
+          planDate: parsed.date,
+        });
+        return jsonOk(day);
+      } catch (error) {
+        if (error instanceof Error && error.message === "NOT_FOUND") {
+          return jsonError("ไม่พบแผนในวันนี้", 404);
+        }
+        throw error;
+      }
+    }
 
     const result = await listTomorrowPlans({
       branchId,

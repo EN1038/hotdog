@@ -10,6 +10,8 @@ import {
   getBranchActivityContext,
   logAdminActivity,
 } from "@/lib/admin-activity";
+import { setManualParStock } from "@/lib/inventory/inventory-par-stock";
+import { PAR_STOCK_LABEL } from "@/lib/inventory/inventory-par-labels";
 import {
   buildMenuPricingWriteData,
   menuItemCreateSchema,
@@ -23,8 +25,28 @@ const reorderSchema = z.object({
 
 const itemInclude = {
   category: { select: { id: true, name: true, sortOrder: true } },
+  parStock: { select: { parStock: true } },
   ...menuItemOptionGroupInclude,
 } as const;
+
+function serializeMenuItemWithPar<
+  T extends {
+    optionGroupLinks: Parameters<
+      typeof flattenMenuItemOptionGroups
+    >[0]["optionGroupLinks"];
+    parStock?: { parStock: number } | null;
+  },
+>(item: T) {
+  const { parStock: parRel, ...rest } = item;
+  return {
+    ...flattenMenuItemOptionGroups(
+      rest as Omit<T, "parStock"> & {
+        optionGroupLinks: T["optionGroupLinks"];
+      },
+    ),
+    parStock: parRel?.parStock ?? null,
+  };
+}
 
 export async function GET(_request: Request, { params }: Params) {
   try {
@@ -38,7 +60,7 @@ export async function GET(_request: Request, { params }: Params) {
       include: itemInclude,
       orderBy: [{ isHidden: "asc" }, { sortOrder: "asc" }, { createdAt: "desc" }],
     });
-    return jsonOk(items.map((item) => flattenMenuItemOptionGroups(item)));
+    return jsonOk(items.map((item) => serializeMenuItemWithPar(item)));
   } catch (error) {
     return handleApiError(error);
   }
@@ -132,6 +154,27 @@ export async function POST(request: Request, { params }: Params) {
       include: itemInclude,
     });
 
+    if (body.parStock !== undefined) {
+      try {
+        await setManualParStock({
+          branchId,
+          menuItemId: item.id,
+          parStock: body.parStock ?? 0,
+          adminId: session.adminId,
+        });
+      } catch (err) {
+        if (err instanceof Error && err.message === "INVALID_PAR") {
+          return jsonError(`${PAR_STOCK_LABEL}ไม่ถูกต้อง`, 400);
+        }
+        throw err;
+      }
+    }
+
+    const refreshed = await prisma.branchMenuItem.findFirstOrThrow({
+      where: { id: item.id },
+      include: itemInclude,
+    });
+
     const ctx = await getBranchActivityContext(branchId);
     await logAdminActivity(session, {
       action: "menu.create",
@@ -143,10 +186,10 @@ export async function POST(request: Request, { params }: Params) {
       entityType: "menu",
       entityId: item.id,
       entityName: item.name,
-      metadata: { price: body.price },
+      metadata: { price: body.price, parStock: body.parStock ?? null },
     });
 
-    return jsonOk(flattenMenuItemOptionGroups(item), 201);
+    return jsonOk(serializeMenuItemWithPar(refreshed), 201);
   } catch (error) {
     return handleApiError(error);
   }
@@ -208,7 +251,7 @@ export async function PATCH(request: Request, { params }: Params) {
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
 
-    return jsonOk(orderedItems.map((item) => flattenMenuItemOptionGroups(item)));
+    return jsonOk(orderedItems.map((item) => serializeMenuItemWithPar(item)));
   } catch (error) {
     return handleApiError(error);
   }

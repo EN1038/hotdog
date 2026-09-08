@@ -3115,7 +3115,8 @@ function StaffStockContent() {
                                       )?.quantity ?? 0;
                                     const hasPar =
                                       item.stockType === "SALE_ITEM" &&
-                                      item.parStock != null;
+                                      item.parStock != null &&
+                                      item.parStock > 0;
                                     const isBelowPar =
                                       hasPar && dbBalance < item.parStock!;
                                     const isLow =
@@ -3173,10 +3174,10 @@ function StaffStockContent() {
                                           </p>
                                         </div>
                                         <div className="flex shrink-0 items-stretch gap-1.5">
-                                          {hasPar ? (
+                                          {item.stockType === "SALE_ITEM" ? (
                                             <div className="min-w-[3.25rem] rounded-xl bg-sky-50 px-2 py-2 text-center text-sky-800">
                                               <p className="text-lg font-black tabular-nums leading-none">
-                                                {item.parStock}
+                                                {hasPar ? item.parStock : "—"}
                                               </p>
                                               <p className="mt-0.5 text-[10px] font-semibold">
                                                 {PAR_STOCK_SHORT_LABEL}

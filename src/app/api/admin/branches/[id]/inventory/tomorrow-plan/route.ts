@@ -103,24 +103,25 @@ export async function PATCH(request: Request, { params }: Params) {
       return jsonError("สาขาคลังกลางไม่มีเมนูขาย");
     }
 
-    const { saved, planDate } = await saveConfirmedTomorrowPlan({
-      branchId,
-      adminId: session.adminId,
-      items: body.items,
-    });
+    const { saved, planDate, planId, roundNo } =
+      await saveConfirmedTomorrowPlan({
+        branchId,
+        adminId: session.adminId,
+        items: body.items,
+      });
 
     await logAdminActivity(session, {
       action: "branch.update",
-      summary: `ยืนยันส่งผลิต ${saved} รายการ สาขา ${branch.name} (${planDate})`,
+      summary: `ยืนยันส่งผลิต รอบ ${roundNo} · ${saved} รายการ สาขา ${branch.name} (${planDate})`,
       branchId: branch.id,
       branchName: branch.name,
-      entityType: "branch",
-      entityId: branch.id,
-      metadata: { saved, planDate },
+      entityType: "tomorrow_plan",
+      entityId: planId,
+      metadata: { saved, planDate, planId, roundNo },
     });
 
     const result = await loadBranchTomorrowPlan(branchId);
-    return jsonOk({ ...result, saved });
+    return jsonOk({ ...result, saved, planId, roundNo });
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === "EMPTY") {

@@ -642,7 +642,7 @@ export default function StaffPage() {
     }
   }
 
-  if (loading) {
+  if (loading && orders.length === 0 && !branchName) {
     return (
       <StaffAppShell active="orders" showHeader={false}>
         <main className="flex min-h-[60vh] items-center justify-center px-4">
@@ -654,7 +654,7 @@ export default function StaffPage() {
 
   return (
     <StaffAppShell active="orders">
-    <main className="p-4">
+    <main className={`p-4 ${loading ? "opacity-70" : ""}`}>
       {/* หัวสั้น: ชื่อ + สถานะ | เสียง/พิมพ์ + รอบ */}
       <header className="mb-2.5">
         <div className="flex items-start justify-between gap-2">

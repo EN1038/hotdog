@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -92,8 +93,11 @@ export function OwnerAppShell({
       router.replace("/admin");
       return;
     }
+    // Cold start only — keep previous dashboard when navigating tabs
+    if (data) return;
+    setLoading(true);
     reload();
-  }, [loaded, session, router, reload, pathname]);
+  }, [loaded, session, router, reload, pathname, data]);
 
   useEffect(() => {
     if (!loaded || session) return;
@@ -170,9 +174,10 @@ export function OwnerAppShell({
         }
       : null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!data?.brand) return;
     document.documentElement.style.setProperty("--site-primary", accent);
-  }, [accent]);
+  }, [accent, data?.brand]);
 
   const tabs: {
     id: OwnerShellTab;
@@ -215,6 +220,10 @@ export function OwnerAppShell({
 
   if (!loaded || !session || session.isPlatformAdmin) {
     return <PageLoadingScreen label="กำลังเข้าสู่ร้าน…" />;
+  }
+
+  if (!data) {
+    return <PageLoadingScreen label="กำลังโหลดร้าน…" />;
   }
 
   return (

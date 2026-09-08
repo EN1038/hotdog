@@ -602,7 +602,7 @@ export default function StorePage() {
 
   const backHref = staffKeyedOrder ? "/staff" : "/order";
 
-  if (loading) {
+  if (loading && !branch) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f5f5f6] px-4">
         <LoadingState className="w-full max-w-sm border-0 bg-transparent shadow-none" />

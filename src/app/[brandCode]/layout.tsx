@@ -4,12 +4,12 @@ import { OrderBrandingShell } from "@/components/customer/OrderBrandingShell";
 import { prisma } from "@/lib/db";
 import { localizedName } from "@/lib/localized";
 import { buildOrderShareMetadata } from "@/lib/order-og";
+import { brandColorFromApi } from "@/lib/color";
 
 type Params = { params: Promise<{ brandCode: string }> };
 
 /**
- * Only used by generateMetadata — cache() ensures a single DB call per request.
- * BrandLayout itself does NOT call Prisma to avoid RSC 500 on connection drop.
+ * Shared by generateMetadata + BrandLayout — cache() ensures a single DB call per request.
  */
 const loadBrandMeta = cache(async (brandCode: string) => {
   try {
@@ -23,6 +23,7 @@ const loadBrandMeta = cache(async (brandCode: string) => {
         siteDescription: true,
         logoUrl: true,
         coverImageUrl: true,
+        color: true,
         branches: {
           where: { isHidden: false, isTest: false },
           select: { imageUrl: true },
@@ -64,15 +65,41 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   }
 }
 
-/**
- * No DB call here — brand branding is loaded client-side by OrderBrandingShell
- * (reads sessionStorage set by syncActiveBrandFromApi in the store page).
- * This avoids RSC 500 errors when the DB connection drops in production.
- */
-export default function BrandLayout({
+export default async function BrandLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
+  params: Promise<{ brandCode: string }>;
 }) {
-  return <OrderBrandingShell>{children}</OrderBrandingShell>;
+  const { brandCode } = await params;
+  const brand = await loadBrandMeta(brandCode);
+  const name = brand
+    ? localizedName(brand.name, brand.nameTh, brand.nameEn)
+    : null;
+  const primaryColor = brand ? brandColorFromApi(brand.color) : null;
+  const initialBrandOverride = brand
+    ? {
+        siteName: name ?? brand.name,
+        siteTitle: brand.siteTitle?.trim() || name || brand.name,
+        siteDescription: brand.siteDescription,
+        logoUrl: brand.logoUrl,
+        primaryColor,
+      }
+    : null;
+
+  return (
+    <>
+      {primaryColor ? (
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `:root{--site-primary:${primaryColor}}`,
+          }}
+        />
+      ) : null}
+      <OrderBrandingShell initialBrandOverride={initialBrandOverride}>
+        {children}
+      </OrderBrandingShell>
+    </>
+  );
 }

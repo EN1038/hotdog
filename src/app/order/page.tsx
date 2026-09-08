@@ -510,14 +510,16 @@ export default function BranchListPage() {
         {userLocation ? "สาขาใกล้คุณ" : "สาขาทั้งหมด"}
       </h2>
 
-      {loading ? (
+      {loading && branches.length === 0 ? (
         <LoadingState className="mt-8 border-0 bg-transparent shadow-none" />
       ) : filtered.length === 0 ? (
         <p className="mt-8 text-center text-sm text-gray-400">
           ไม่พบสาขาที่ค้นหา
         </p>
       ) : (
-        <div className="space-y-3 px-4">
+        <div
+          className={`space-y-3 px-4 transition-opacity ${loading ? "opacity-70" : ""}`}
+        >
           {filtered.map((b) => {
             const km = branchDistanceKm(b, userLocation);
             return (

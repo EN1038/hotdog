@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import {
   SiteBrandingProvider,
   type BrandingOverride,
 } from "@/components/customer/SiteBrandingProvider";
+import { PageLoadingScreen } from "@/components/PageLoadingScreen";
 import { brandColorFromApi } from "@/lib/color";
 import {
   loadActiveBrand,
@@ -42,16 +43,28 @@ export function OrderBrandingShell({
   const [override, setOverride] = useState<BrandingOverride | null>(
     initialBrandOverride,
   );
+  const [hydrated, setHydrated] = useState(false);
+
+  useLayoutEffect(() => {
+    const saved = loadActiveBrand();
+    setOverride(saved ? toOverride(saved) : initialBrandOverride);
+    setHydrated(true);
+  }, [initialBrandOverride]);
 
   useEffect(() => {
     function refresh() {
       const saved = loadActiveBrand();
       setOverride(saved ? toOverride(saved) : initialBrandOverride);
     }
-    refresh();
     window.addEventListener(BRAND_UPDATED_EVENT, refresh);
     return () => window.removeEventListener(BRAND_UPDATED_EVENT, refresh);
   }, [initialBrandOverride]);
+
+  const needsBrandGate = Boolean(initialBrandOverride) && !hydrated && !override?.primaryColor;
+
+  if (needsBrandGate) {
+    return <PageLoadingScreen label="กำลังโหลดร้าน…" />;
+  }
 
   return (
     <SiteBrandingProvider brandOverride={override}>

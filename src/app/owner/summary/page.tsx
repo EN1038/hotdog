@@ -1,17 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { OwnerAppShell, useOwnerDashboard } from "@/components/owner/OwnerAppShell";
 import {
-  OwnerAgingAttentionCard,
-  OwnerCancelSummary,
   OwnerDailyRevenueBars,
   OwnerHourlyRevenueBars,
-  OwnerTopSellersList,
   OwnerWeekdayRevenueBars,
 } from "@/components/owner/OwnerOverviewExtras";
+import { OwnerHomeTopSellersPanel } from "@/components/owner/OwnerHomeTopSellersPanel";
 import {
   MobileDateRangeControl,
   matchMobileDatePreset,
@@ -20,23 +18,63 @@ import {
 import { OwnerBranchFilterBar } from "@/components/owner/OwnerBranchFilterBar";
 import {
   SalesOverviewCards,
-  SalesReportMetrics,
   SalesShareSection,
 } from "@/components/merchant/SalesSummaryView";
 import { bangkokDateKey, formatPrice } from "@/lib/constants";
-import { EMPTY_SALES_REPORT_STATS } from "@/lib/sales-report-shared";
 import type { OwnerDashboardPayload } from "@/lib/owner-dashboard";
+import { LoadingState } from "@/components/LoadingState";
 import {
   buildOwnerViewQuery,
   ownerAgingHref,
   ownerCancelsHref,
   ownerExpensesHref,
+  ownerHomeHref,
   ownerStockFlowHref,
   ownerTopSellersHref,
   ownerWasteHref,
   readOwnerViewRangeParams,
 } from "@/lib/owner-view-query";
-import { IconChevronRight } from "@/components/icons";
+import {
+  IconBack,
+  IconBoxes,
+  IconClipboard,
+  IconExpense,
+  IconReceipt,
+  IconWaste,
+} from "@/components/icons";
+
+function ShortcutTile({
+  href,
+  title,
+  value,
+  icon,
+  toneClass,
+}: {
+  href: string;
+  title: string;
+  value: string;
+  icon: ReactNode;
+  toneClass: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-[1.15rem] bg-white px-3 py-3.5 shadow-sm ring-1 ring-slate-100 active:bg-slate-50"
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${toneClass}`}
+      >
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-[12px] font-bold text-slate-500">{title}</p>
+        <p className="mt-0.5 truncate text-[14px] font-extrabold tabular-nums text-[#0b2a4a]">
+          {value}
+        </p>
+      </div>
+    </Link>
+  );
+}
 
 function OwnerSummaryInner() {
   const { data } = useOwnerDashboard();
@@ -56,8 +94,6 @@ function OwnerSummaryInner() {
   );
   const [payload, setPayload] = useState<OwnerDashboardPayload | null>(null);
   const [loading, setLoading] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [includeTest, setIncludeTest] = useState(false);
   const urlReady = useRef(false);
 
   const writeViewQuery = useCallback(
@@ -99,7 +135,6 @@ function OwnerSummaryInner() {
     void (async () => {
       try {
         const params = new URLSearchParams({ from, to });
-        if (includeTest) params.set("includeTest", "1");
         if (filterBranchId) params.set("branchId", filterBranchId);
         const res = await fetch(`/api/owner/dashboard?${params}`, {
           signal: ac.signal,
@@ -115,35 +150,19 @@ function OwnerSummaryInner() {
       }
     })();
     return () => ac.abort();
-  }, [from, to, filterBranchId, includeTest]);
+  }, [from, to, filterBranchId]);
 
-  const stats = payload?.stats ?? data?.stats ?? EMPTY_SALES_REPORT_STATS;
-  const hasTestBranch =
-    payload?.hasTestBranch ??
-    data?.hasTestBranch ??
-    (data?.branches ?? []).some((b) => b.isTest);
-  const byBranch = (payload?.byBranch ?? []).map((row) => ({
-    key: row.branchId,
-    label: row.branchName,
-    completedRevenue: row.completedRevenue,
-    completedCount: row.completedCount,
-  }));
-  const stockEnabled = Boolean(payload?.stockEnabled);
+  const stats = payload?.stats ?? data?.stats ?? null;
+  const stockEnabled = Boolean(payload?.stockEnabled ?? data?.stockEnabled);
   const filterBranches = (payload?.branches ?? data?.branches ?? []).filter(
-    (b) =>
-      !b.isHidden &&
-      b.kind !== "WAREHOUSE" &&
-      (includeTest || !b.isTest),
+    (b) => !b.isHidden && b.kind !== "WAREHOUSE" && !b.isTest,
   );
   const liveBranchCount = filterBranches.length;
   const filterBranchName = filterBranchId
     ? filterBranches.find((b) => b.id === filterBranchId)?.name
     : null;
-  const wasteHref = ownerWasteHref({
-    branchId: filterBranchId,
-    from,
-    to,
-  });
+  const multiDay = from !== to;
+  const wasteHref = ownerWasteHref({ branchId: filterBranchId, from, to });
   const expenseHref = ownerExpensesHref({
     branchId: filterBranchId,
     from,
@@ -165,87 +184,94 @@ function OwnerSummaryInner() {
     from,
     to,
   });
+  const homeHref = ownerHomeHref({
+    branchId: filterBranchId,
+    from,
+    to,
+    tab: "overview",
+  });
+
+  if (loading && !stats) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center px-4 py-10">
+        <LoadingState label="กำลังโหลดสรุปยอด…" className="w-full max-w-sm" />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center px-4 py-10">
+        <LoadingState label="กำลังโหลดสรุปยอด…" className="w-full max-w-sm" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-3 px-4 pb-6 pt-3">
-      <header className="mb-1">
-        <h1 className="text-[20px] font-black text-site-primary">ภาพรวมร้าน</h1>
-        <p className="mt-1 text-[13px] font-medium text-slate-500">
-          ยอดสุทธิ · ประเภทบิล · วันในสัปดาห์ · ชั่วโมง · สต๊อก
-          {hasTestBranch && !includeTest ? " (ไม่รวมสาขาทดลอง)" : ""}
-        </p>
+    <div className="pb-6">
+      <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
+        <div className="flex items-center gap-2 px-4 pb-3 pt-3">
+          <Link
+            href={homeHref}
+            aria-label="กลับ"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 active:bg-slate-200"
+          >
+            <IconBack size={22} />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[17px] font-black text-slate-900">
+              ภาพรวมร้าน
+            </h1>
+            {filterBranchName ? (
+              <p className="truncate text-[12px] font-medium text-slate-500">
+                {filterBranchName}
+              </p>
+            ) : liveBranchCount > 1 ? (
+              <p className="truncate text-[12px] font-medium text-slate-500">
+                {liveBranchCount} สาขา
+              </p>
+            ) : null}
+          </div>
+        </div>
       </header>
 
-      {liveBranchCount > 1 && !filterBranchId ? (
-        <Link
-          href="/owner/branches"
-          className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-site-primary-soft bg-site-primary-soft px-4 py-3.5 active:bg-site-primary-soft"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-site-primary-strong">
-              รวม {liveBranchCount} สาขา
-            </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-site-primary-medium/80">
-              ดูการ์ดรายสาขา · กดเพื่อกรองดูยอดสาขานั้น
-            </p>
-          </div>
-          <IconChevronRight size={18} className="shrink-0 text-site-primary" aria-hidden />
-        </Link>
-      ) : null}
+      <div
+        className={`space-y-3 px-4 pt-3 transition-opacity ${loading ? "opacity-70" : ""}`}
+      >
+        <MobileDateRangeControl
+          todayKey={today}
+          from={from}
+          to={to}
+          preset={datePreset}
+          maxDate={today}
+          onChange={({ from: nextFrom, to: nextTo, preset }) => {
+            setDatePreset(preset);
+            setFrom(nextFrom);
+            setTo(nextTo);
+            writeViewQuery({ from: nextFrom, to: nextTo });
+          }}
+          trailing={
+            <OwnerBranchFilterBar
+              branches={filterBranches}
+              value={filterBranchId}
+              onChange={(id) => {
+                setFilterBranchId(id);
+                writeViewQuery({ branchId: id });
+              }}
+            />
+          }
+        />
 
-      {hasTestBranch ? (
-        <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-950">
-          <input
-            type="checkbox"
-            checked={includeTest}
-            onChange={(e) => setIncludeTest(e.target.checked)}
-          />
-          รวมข้อมูลสาขาทดลอง
-        </label>
-      ) : null}
-
-      <MobileDateRangeControl
-        todayKey={today}
-        from={from}
-        to={to}
-        preset={datePreset}
-        maxDate={today}
-        onChange={({ from: nextFrom, to: nextTo, preset }) => {
-          setDatePreset(preset);
-          setFrom(nextFrom);
-          setTo(nextTo);
-          writeViewQuery({ from: nextFrom, to: nextTo });
-        }}
-        trailing={
-          <OwnerBranchFilterBar
-            branches={filterBranches}
-            value={filterBranchId}
-            onChange={(id) => {
-              setFilterBranchId(id);
-              writeViewQuery({ branchId: id });
-            }}
-          />
-        }
-      />
-
-      {filterBranchName ? (
-        <p className="mb-3 text-[13px] font-semibold text-site-primary-medium">
-          กำลังดูสาขา · {filterBranchName}
-        </p>
-      ) : null}
-
-      <div className="space-y-3">
         <SalesOverviewCards
           loading={loading}
-          onOpenSalesDetail={() => setDetailOpen((v) => !v)}
           wasteHref={wasteHref}
           expenseHref={expenseHref}
           cancelHref={cancelHref}
           stockHref={stockHref}
           data={{
             stockEnabled,
-            saleStockQty: payload?.saleStockQty ?? 0,
-            saleStockValue: payload?.saleStockValue ?? 0,
+            saleStockQty: payload?.saleStockQty ?? data?.saleStockQty ?? 0,
+            saleStockValue: payload?.saleStockValue ?? data?.saleStockValue ?? 0,
             completedRevenue: stats.completedRevenue ?? 0,
             cashRevenue: stats.cashRevenue ?? 0,
             transferRevenue: stats.transferRevenue ?? 0,
@@ -263,148 +289,106 @@ function OwnerSummaryInner() {
           }}
         />
 
-        <Link
-          href={expenseHref}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 active:bg-rose-100"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-rose-950">
-              เปิดบัญชี
-            </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-rose-800/80">
-              {formatPrice(stats.expenseCount ?? 0)} รายจ่าย · ฿
-              {formatPrice(stats.expenseTotal ?? 0)} · รายรับ–รายจ่าย
-            </p>
-          </div>
-          <IconChevronRight size={18} className="shrink-0 text-rose-700" aria-hidden />
-        </Link>
+        <div className="grid grid-cols-2 gap-2">
+          <ShortcutTile
+            href={expenseHref}
+            title="บัญชี"
+            value={`฿${formatPrice(stats.expenseTotal ?? 0)}`}
+            icon={<IconExpense size={18} />}
+            toneClass="bg-rose-50 text-rose-700"
+          />
+          <ShortcutTile
+            href={wasteHref}
+            title="ของเสีย"
+            value={`${formatPrice(stats.wasteQty ?? 0)} ชิ้น`}
+            icon={<IconWaste size={18} />}
+            toneClass="bg-orange-50 text-orange-700"
+          />
+          <ShortcutTile
+            href={cancelHref}
+            title="ยกเลิก"
+            value={`${formatPrice(stats.cancelledCount ?? 0)} บิล`}
+            icon={<IconClipboard size={18} />}
+            toneClass="bg-slate-100 text-slate-700"
+          />
+          <ShortcutTile
+            href={agingHref}
+            title="ค้างอายุ"
+            value={
+              payload?.aging?.stockActive
+                ? `${payload.aging.attentionCount} รายการ`
+                : "ดูสถานะ"
+            }
+            icon={<IconBoxes size={18} />}
+            toneClass="bg-amber-50 text-amber-800"
+          />
+        </div>
 
-        <Link
-          href={wasteHref}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3.5 active:bg-orange-100"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-orange-950">
-              รายการของเสีย
-            </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-orange-800/80">
-              {formatPrice(stats.wasteQty ?? 0)} ชิ้น · ฿
-              {formatPrice(stats.wasteValue ?? 0)} · กดดูรายละเอียด
-            </p>
-          </div>
-          <IconChevronRight size={18} className="shrink-0 text-orange-700" aria-hidden />
-        </Link>
-
-        <Link
-          href={cancelHref}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 active:bg-slate-100"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-slate-900">
-              บิลที่ยกเลิก
-            </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-slate-600">
-              {formatPrice(stats.cancelledCount ?? 0)} บิล · ฿
-              {formatPrice(stats.cancelledRevenue ?? 0)} · กดดูเหตุผล
-            </p>
-          </div>
-          <IconChevronRight size={18} className="shrink-0 text-slate-500" aria-hidden />
-        </Link>
-
-        <Link
-          href={agingHref}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5 active:bg-amber-100"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-amber-950">
-              สต๊อกค้างอายุ
-            </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-amber-800/80">
-              {payload?.aging?.stockActive
-                ? `ต้องดู ${payload.aging.attentionCount} รายการ · กดดูรายละเอียด`
-                : "กดดูสถานะสต๊อกค้างอายุ"}
-            </p>
-          </div>
-          <IconChevronRight size={18} className="shrink-0 text-amber-700" aria-hidden />
-        </Link>
-
-        <OwnerAgingAttentionCard
-          aging={payload?.aging}
-          loading={loading}
-          href={agingHref}
-        />
-
-        <OwnerCancelSummary
-          cancelledCount={stats.cancelledCount ?? 0}
-          cancelledRevenue={stats.cancelledRevenue ?? 0}
-          reasons={payload?.cancelReasons ?? []}
-          loading={loading}
-        />
-
-        <OwnerDailyRevenueBars
-          days={payload?.days ?? []}
-          loading={loading}
-        />
+        {multiDay ? (
+          <OwnerDailyRevenueBars
+            days={payload?.days ?? []}
+            loading={loading}
+            collapsible={false}
+          />
+        ) : null}
 
         <OwnerWeekdayRevenueBars
           weekdays={payload?.weekdays ?? []}
           loading={loading}
+          collapsible={false}
         />
 
         <OwnerHourlyRevenueBars
           hours={payload?.hours ?? []}
           loading={loading}
+          collapsible={false}
         />
 
-        <Link
+        <OwnerHomeTopSellersPanel
+          from={from}
+          to={to}
+          branchId={filterBranchId}
           href={topSellersHref}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-site-primary-soft bg-site-primary-soft px-4 py-3.5 active:bg-site-primary-soft"
-        >
-          <div className="min-w-0">
-            <p className="text-[15px] font-extrabold text-site-primary-strong">
-              วิเคราะห์เมนูขายดี
-            </p>
-            <p className="mt-0.5 text-[12px] font-semibold text-site-primary-medium/80">
-              ค้นหา · เรียงลำดับ · เทียบสาขา
-            </p>
-          </div>
-          <IconChevronRight size={18} className="shrink-0 text-site-primary" aria-hidden />
-        </Link>
-
-        <OwnerTopSellersList
-          items={payload?.topSellers ?? []}
-          loading={loading}
-          href={topSellersHref}
+          title="เมนูขายดี"
+          linkLabel="วิเคราะห์"
+          limit={10}
+          collapsible={false}
         />
 
-        <SalesShareSection
-          title="สัดส่วนการชำระ"
-          slices={payload?.byPayment ?? []}
-          totalRevenue={stats.completedRevenue ?? 0}
-          chartStyle="donut"
-        />
-        <SalesShareSection
-          title="ประเภทบิล"
-          slices={payload?.byFulfillment ?? []}
-          totalRevenue={stats.completedRevenue ?? 0}
-          chartStyle="donut"
-        />
-        <SalesShareSection
-          title="ช่องทางการขาย"
-          slices={payload?.byChannel ?? []}
-          totalRevenue={stats.completedRevenue ?? 0}
-          chartStyle="donut"
-        />
+        {(payload?.byPayment?.length ?? 0) > 0 ? (
+          <SalesShareSection
+            title="การชำระ"
+            slices={payload?.byPayment ?? []}
+            totalRevenue={stats.completedRevenue ?? 0}
+            chartStyle="donut"
+            cardChrome
+            collapsible={false}
+            icon={<IconReceipt size={20} />}
+          />
+        ) : null}
 
-        {detailOpen ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <SalesReportMetrics
-              stats={{ ...EMPTY_SALES_REPORT_STATS, ...stats }}
-              byChannel={payload?.byChannel ?? []}
-              byPayment={payload?.byPayment ?? []}
-              byBranch={byBranch}
-            />
-          </div>
+        {(payload?.byFulfillment?.length ?? 0) > 0 ? (
+          <SalesShareSection
+            title="ประเภทบิล"
+            slices={payload?.byFulfillment ?? []}
+            totalRevenue={stats.completedRevenue ?? 0}
+            chartStyle="donut"
+            cardChrome
+            collapsible={false}
+            icon={<IconClipboard size={20} />}
+          />
+        ) : null}
+
+        {(payload?.byChannel?.length ?? 0) > 0 ? (
+          <SalesShareSection
+            title="ช่องทางขาย"
+            slices={payload?.byChannel ?? []}
+            totalRevenue={stats.completedRevenue ?? 0}
+            chartStyle="donut"
+            cardChrome
+            collapsible={false}
+            icon={<IconBoxes size={20} />}
+          />
         ) : null}
       </div>
     </div>

@@ -1583,7 +1583,7 @@ function StaffStockContent() {
     }
   }
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
         <LoadingState className="w-full max-w-sm" recoveryAfterMs={8000} />
@@ -1633,7 +1633,9 @@ function StaffStockContent() {
 
   return (
     <StaffAppShell active="stock">
-      <div className="space-y-4 px-4 py-6 max-w-lg mx-auto pb-32">
+      <div
+        className={`space-y-4 px-4 py-6 max-w-lg mx-auto pb-32 transition-opacity ${loading ? "opacity-70" : ""}`}
+      >
         {!data.stockActive ? (
           <div className="rounded-2xl bg-white p-4 shadow-sm text-center">
             <p className="text-sm font-bold text-slate-900">สาขานี้ยังไม่เปิดระบบสต๊อก</p>

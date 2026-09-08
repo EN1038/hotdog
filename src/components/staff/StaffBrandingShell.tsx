@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   SiteBrandingProvider,
   type BrandingOverride,
 } from "@/components/customer/SiteBrandingProvider";
+import { PageLoadingScreen } from "@/components/PageLoadingScreen";
 import {
   loadStaffBrand,
   saveStaffBrand,
@@ -40,13 +41,27 @@ export function StaffBrandingShell({
   const pathname = usePathname();
   const isAuthPage = pathname === "/staff/login";
   const [override, setOverride] = useState<BrandingOverride | null>(null);
+  const [brandingReady, setBrandingReady] = useState(isAuthPage);
+
+  useLayoutEffect(() => {
+    if (isAuthPage) {
+      setOverride(null);
+      setBrandingReady(true);
+      return;
+    }
+    const saved = loadStaffBrand();
+    if (saved) {
+      setOverride(toOverride(saved));
+      setBrandingReady(true);
+    }
+  }, [isAuthPage]);
 
   useEffect(() => {
     function refreshFromCache() {
       const saved = loadStaffBrand();
       setOverride(saved ? toOverride(saved) : null);
+      if (saved?.primaryColor) setBrandingReady(true);
     }
-    refreshFromCache();
     window.addEventListener(BRAND_UPDATED_EVENT, refreshFromCache);
 
     if (isAuthPage) {
@@ -59,14 +74,18 @@ export function StaffBrandingShell({
     fetch("/api/staff/branding")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { brand?: Parameters<typeof staffBrandFromApi>[0] } | null) => {
-        if (cancelled || !data?.brand) return;
-        const next = staffBrandFromApi(data.brand);
-        if (!next) return;
-        applyBrand(next);
-        setOverride(toOverride(next));
+        if (cancelled) return;
+        if (data?.brand) {
+          const next = staffBrandFromApi(data.brand);
+          if (next) {
+            applyBrand(next);
+            setOverride(toOverride(next));
+          }
+        }
+        setBrandingReady(true);
       })
       .catch(() => {
-        /* login page หรือ session หมดอายุ — คง theme จาก cache/platform */
+        if (!cancelled) setBrandingReady(true);
       });
 
     return () => {
@@ -74,6 +93,10 @@ export function StaffBrandingShell({
       window.removeEventListener(BRAND_UPDATED_EVENT, refreshFromCache);
     };
   }, [isAuthPage]);
+
+  if (!isAuthPage && !brandingReady) {
+    return <PageLoadingScreen label="กำลังโหลดร้าน…" />;
+  }
 
   return (
     <SiteBrandingProvider brandOverride={isAuthPage ? null : override}>

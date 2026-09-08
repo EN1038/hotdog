@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Prompt } from "next/font/google";
 import { getPlatformSettings } from "@/lib/platform-settings";
+import { normalizePrimaryColor, DEFAULT_BRAND_COLOR } from "@/lib/color";
 import { AppProviders } from "@/components/AppProviders";
 import "./globals.css";
 
@@ -51,15 +52,22 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const settings = await getPlatformSettings();
+  const primary = normalizePrimaryColor(
+    settings.primaryColor,
+    DEFAULT_BRAND_COLOR,
+  );
+
   return (
     <html
       lang="th"
       className={`${prompt.variable} h-full antialiased`}
+      style={{ ["--site-primary" as string]: primary }}
     >
       <body className="min-h-full flex flex-col font-sans">
         <AppProviders>{children}</AppProviders>

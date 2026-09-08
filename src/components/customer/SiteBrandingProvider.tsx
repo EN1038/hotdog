@@ -3,13 +3,14 @@
 import {
   createContext,
   useContext,
+  useLayoutEffect,
   useEffect,
   useMemo,
   useState,
 } from "react";
 import type { PlatformSettingsData } from "@/lib/platform-branding";
 import { PLATFORM_SETTINGS_DEFAULTS } from "@/lib/platform-branding";
-import { DEFAULT_BRAND_COLOR, parseHexColor, normalizePrimaryColor } from "@/lib/color";
+import { normalizePrimaryColor } from "@/lib/color";
 
 export type BrandingOverride = {
   siteName?: string;
@@ -137,7 +138,7 @@ export function SiteBrandingProvider({
     [platform, brandOverride],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.style.setProperty(
       "--site-primary",
       settings.primaryColor,

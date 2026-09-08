@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { IconImage, IconCalendar, IconClose, IconTrend, IconLinkSuffix } from "@/components/icons";
+import {
+  IconImage,
+  IconCalendar,
+  IconChartBars,
+  IconClipboard,
+  IconClose,
+  IconTrend,
+  IconLinkSuffix,
+} from "@/components/icons";
 import { formatPrice } from "@/lib/constants";
 import type {
   ShopDailyPoint,
@@ -176,6 +184,62 @@ function OverviewShowSwitch({
   );
 }
 
+function OverviewCardHeader({
+  title,
+  subtitle,
+  icon,
+  collapsible,
+  show,
+  onToggle,
+  switchLabel,
+  href,
+  linkLabel,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  icon?: ReactNode;
+  collapsible: boolean;
+  show: boolean;
+  onToggle: (next: boolean) => void;
+  switchLabel: string;
+  href?: string;
+  linkLabel?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {icon ? (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-site-primary-soft text-site-primary">
+            {icon}
+          </span>
+        ) : null}
+        <div className="min-w-0">
+          <h2 className="text-[14px] font-extrabold text-[#0b2a4a]">{title}</h2>
+          {href && linkLabel ? (
+            <Link
+              href={href}
+              className="mt-0.5 inline-block text-[12px] font-bold text-site-primary"
+            >
+              <IconLinkSuffix size={13}>{linkLabel}</IconLinkSuffix>
+            </Link>
+          ) : subtitle ? (
+            <div className="mt-0.5 text-[12px] font-semibold text-slate-500">
+              {subtitle}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {collapsible ? (
+        <OverviewShowSwitch
+          checked={show}
+          onChange={onToggle}
+          label={switchLabel}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 /** ตัวเลขบนแท่งกราฟ — ย่อเมื่อวันเยอะเพื่อไม่ทับกัน */
 function formatBarAmount(n: number, compact: boolean): string {
   if (n <= 0) return "0";
@@ -192,44 +256,43 @@ export function ShopDailyRevenueBars({
   days,
   loading,
   defaultOpen = false,
+  collapsible = true,
 }: {
   days: ShopDailyPoint[];
   loading?: boolean;
   defaultOpen?: boolean;
+  collapsible?: boolean;
 }) {
-  const [show, setShow] = useState(defaultOpen);
+  const [show, setShow] = useState(collapsible ? defaultOpen : true);
   const maxRevenue = Math.max(1, ...days.map((d) => d.revenueBaht));
   const total = days.reduce((a, d) => a + d.revenueBaht, 0);
   const compact = days.length > 7;
+  const open = collapsible ? show : true;
 
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+      className={`rounded-[1.25rem] bg-white p-4 shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100 ${
         loading ? "opacity-60" : ""
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[15px] font-extrabold text-slate-900">
-            ยอดขายรายวัน
-          </h2>
-          {!show ? (
-            <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
-              รวม {formatPrice(total)} ฿
-            </p>
-          ) : null}
-        </div>
-        <OverviewShowSwitch
-          checked={show}
-          onChange={setShow}
-          label="แสดงยอดขายรายวัน"
-        />
-      </div>
-      {!show ? null : days.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
+      <OverviewCardHeader
+        title="ยอดขายรายวัน"
+        icon={<IconChartBars size={20} />}
+        subtitle={
+          !open ? (
+            <span className="tabular-nums">รวม {formatPrice(total)} ฿</span>
+          ) : null
+        }
+        collapsible={collapsible}
+        show={show}
+        onToggle={setShow}
+        switchLabel="แสดงยอดขายรายวัน"
+      />
+      {!open ? null : days.length === 0 ? (
+        <p className="mt-3 py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
       ) : (
         <>
-          <p className="mb-2 text-right text-[12px] font-semibold tabular-nums text-slate-500">
+          <p className="mb-2 mt-3 text-right text-[12px] font-semibold tabular-nums text-slate-500">
             รวม {formatPrice(total)} ฿
           </p>
           <div className="flex h-44 items-end gap-1 overflow-x-auto pb-1">
@@ -269,6 +332,7 @@ export function ShopTopSellersList({
   items,
   loading,
   defaultOpen = false,
+  collapsible = true,
   href,
   title = "สินค้าขายดี Top 10",
   linkLabel = "เปิดหน้าวิเคราะห์เต็ม",
@@ -276,11 +340,13 @@ export function ShopTopSellersList({
   items: ShopTopSeller[];
   loading?: boolean;
   defaultOpen?: boolean;
+  collapsible?: boolean;
   href?: string;
   title?: string;
   linkLabel?: string;
 }) {
-  const [show, setShow] = useState(defaultOpen);
+  const [show, setShow] = useState(collapsible ? defaultOpen : true);
+  const open = collapsible ? show : true;
 
   return (
     <section
@@ -288,33 +354,18 @@ export function ShopTopSellersList({
         loading ? "opacity-60" : ""
       }`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-site-primary-soft text-site-primary">
-            <IconTrend size={20} />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-[14px] font-extrabold text-[#0b2a4a]">
-              {title}
-            </h2>
-            {href ? (
-              <Link
-                href={href}
-                className="mt-0.5 inline-block text-[12px] font-bold text-site-primary"
-              >
-                <IconLinkSuffix size={13}>{linkLabel}</IconLinkSuffix>
-              </Link>
-            ) : null}
-          </div>
-        </div>
-        <OverviewShowSwitch
-          checked={show}
-          onChange={setShow}
-          label={`แสดง${title}`}
-        />
-      </div>
-      {!show ? null : items.length === 0 ? (
-        <p className="py-4 text-center text-sm text-slate-400">
+      <OverviewCardHeader
+        title={title}
+        icon={<IconTrend size={20} />}
+        href={href}
+        linkLabel={linkLabel}
+        collapsible={collapsible}
+        show={show}
+        onToggle={setShow}
+        switchLabel={`แสดง${title}`}
+      />
+      {!open ? null : items.length === 0 ? (
+        <p className="mt-3 py-4 text-center text-sm text-slate-400">
           ยังไม่มียอดขายในช่วงนี้
         </p>
       ) : (
@@ -485,12 +536,15 @@ export function ShopHourlyRevenueBars({
   hours,
   loading,
   defaultOpen = false,
+  collapsible = true,
 }: {
   hours: ShopHourlyPoint[];
   loading?: boolean;
   defaultOpen?: boolean;
+  collapsible?: boolean;
 }) {
-  const [show, setShow] = useState(defaultOpen);
+  const [show, setShow] = useState(collapsible ? defaultOpen : true);
+  const open = collapsible ? show : true;
   const active = hours.filter((h) => h.orderCount > 0 || h.revenueBaht > 0);
   const display = active.length > 0 ? active : hours;
   const maxRevenue = Math.max(1, ...display.map((h) => h.revenueBaht));
@@ -501,35 +555,31 @@ export function ShopHourlyRevenueBars({
 
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+      className={`rounded-[1.25rem] bg-white p-4 shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100 ${
         loading ? "opacity-60" : ""
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[15px] font-extrabold text-slate-900">
-            ยอดขายรายชั่วโมง
-          </h2>
-          {!show ? (
-            <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
+      <OverviewCardHeader
+        title="ยอดขายรายชั่วโมง"
+        icon={<IconChartBars size={20} />}
+        subtitle={
+          !open ? (
+            <span className="tabular-nums">
               รวม {formatPrice(total)} ฿
-              {peak && peak.revenueBaht > 0
-                ? ` · พีก ${peak.label}:00`
-                : ""}
-            </p>
-          ) : null}
-        </div>
-        <OverviewShowSwitch
-          checked={show}
-          onChange={setShow}
-          label="แสดงยอดขายรายชั่วโมง"
-        />
-      </div>
-      {!show ? null : display.every((h) => h.revenueBaht <= 0) ? (
-        <p className="py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
+              {peak && peak.revenueBaht > 0 ? ` · พีก ${peak.label}:00` : ""}
+            </span>
+          ) : null
+        }
+        collapsible={collapsible}
+        show={show}
+        onToggle={setShow}
+        switchLabel="แสดงยอดขายรายชั่วโมง"
+      />
+      {!open ? null : display.every((h) => h.revenueBaht <= 0) ? (
+        <p className="mt-3 py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
       ) : (
         <>
-          <p className="mb-2 text-right text-[12px] font-semibold tabular-nums text-slate-500">
+          <p className="mb-2 mt-3 text-right text-[12px] font-semibold tabular-nums text-slate-500">
             รวม {formatPrice(total)} ฿
             {peak && peak.revenueBaht > 0
               ? ` · พีก ${peak.label}:00 · ${formatPrice(peak.revenueBaht)} ฿`
@@ -574,12 +624,15 @@ export function ShopWeekdayRevenueBars({
   weekdays,
   loading,
   defaultOpen = true,
+  collapsible = true,
 }: {
   weekdays: ShopWeekdayPoint[];
   loading?: boolean;
   defaultOpen?: boolean;
+  collapsible?: boolean;
 }) {
-  const [show, setShow] = useState(defaultOpen);
+  const [show, setShow] = useState(collapsible ? defaultOpen : true);
+  const open = collapsible ? show : true;
   const maxRevenue = Math.max(1, ...weekdays.map((d) => d.revenueBaht));
   const total = weekdays.reduce((a, d) => a + d.revenueBaht, 0);
   const peak = [...weekdays].sort(
@@ -592,30 +645,23 @@ export function ShopWeekdayRevenueBars({
         loading ? "opacity-60" : ""
       }`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-site-primary-soft text-site-primary">
-            <IconCalendar size={20} />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-[14px] font-extrabold text-[#0b2a4a]">
-              ยอดขายแยกวันในสัปดาห์
-            </h2>
-            {!show ? (
-              <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
-                รวม {formatPrice(total)} ฿
-                {peak && peak.revenueBaht > 0 ? ` · พีกวัน${peak.label}` : ""}
-              </p>
-            ) : null}
-          </div>
-        </div>
-        <OverviewShowSwitch
-          checked={show}
-          onChange={setShow}
-          label="แสดงยอดขายแยกวันในสัปดาห์"
-        />
-      </div>
-      {!show ? null : weekdays.every((d) => d.revenueBaht <= 0) ? (
+      <OverviewCardHeader
+        title="ยอดขายแยกวันในสัปดาห์"
+        icon={<IconCalendar size={20} />}
+        subtitle={
+          !open ? (
+            <span className="tabular-nums">
+              รวม {formatPrice(total)} ฿
+              {peak && peak.revenueBaht > 0 ? ` · พีกวัน${peak.label}` : ""}
+            </span>
+          ) : null
+        }
+        collapsible={collapsible}
+        show={show}
+        onToggle={setShow}
+        switchLabel="แสดงยอดขายแยกวันในสัปดาห์"
+      />
+      {!open ? null : weekdays.every((d) => d.revenueBaht <= 0) ? (
         <p className="mt-3 py-6 text-center text-sm text-slate-400">ไม่มีข้อมูล</p>
       ) : (
         <>
@@ -664,47 +710,48 @@ export function ShopCancelSummary({
   reasons,
   loading,
   defaultOpen = true,
+  collapsible = true,
 }: {
   cancelledCount: number;
   cancelledRevenue: number;
   reasons: SalesReportCancelReason[];
   loading?: boolean;
   defaultOpen?: boolean;
+  collapsible?: boolean;
 }) {
-  const [show, setShow] = useState(defaultOpen);
+  const [show, setShow] = useState(collapsible ? defaultOpen : true);
+  const open = collapsible ? show : true;
 
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+      className={`rounded-[1.25rem] bg-white p-4 shadow-[0_2px_16px_rgba(6,43,75,0.06)] ring-1 ring-slate-100 ${
         loading ? "opacity-60" : ""
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[15px] font-extrabold text-slate-900">
-            บิลที่ยกเลิก
-          </h2>
-          <p className="mt-0.5 text-[12px] font-semibold tabular-nums text-slate-500">
+      <OverviewCardHeader
+        title="บิลที่ยกเลิก"
+        icon={<IconClipboard size={20} />}
+        subtitle={
+          <span className="tabular-nums">
             {formatPrice(cancelledCount)} บิล · ฿
             {formatPrice(cancelledRevenue)}
-          </p>
-        </div>
-        <OverviewShowSwitch
-          checked={show}
-          onChange={setShow}
-          label="แสดงเหตุผลยกเลิก"
-        />
-      </div>
-      {!show ? null : cancelledCount <= 0 ? (
-        <p className="py-4 text-center text-sm text-slate-400">
+          </span>
+        }
+        collapsible={collapsible}
+        show={show}
+        onToggle={setShow}
+        switchLabel="แสดงเหตุผลยกเลิก"
+      />
+      {!open ? null : cancelledCount <= 0 ? (
+        <p className="mt-3 py-4 text-center text-sm text-slate-400">
           ไม่มีบิลยกเลิกในช่วงนี้
         </p>
       ) : reasons.length === 0 ? (
-        <p className="py-4 text-center text-sm text-slate-400">
+        <p className="mt-3 py-4 text-center text-sm text-slate-400">
           มีการยกเลิก แต่ยังไม่ระบุเหตุผล
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="mt-3 space-y-2">
           {reasons.map((row) => (
             <li
               key={row.reason}

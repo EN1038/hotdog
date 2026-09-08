@@ -520,6 +520,7 @@ export function SalesShareSection({
   /** การ์ดขาวพร้อมไอคอน — ให้โทนเดียวกับบล็อกวิเคราะห์หน้าแรก owner */
   cardChrome = false,
   icon,
+  collapsible = true,
 }: {
   title: string;
   slices: SalesShareSlice[];
@@ -529,9 +530,12 @@ export function SalesShareSection({
   defaultOpen?: boolean;
   cardChrome?: boolean;
   icon?: ReactNode;
+  /** false = always show chart, hide toggle */
+  collapsible?: boolean;
 }) {
   const visible = slices.filter((s) => s.completedRevenue > 0);
-  const [show, setShow] = useState(defaultOpen);
+  const [show, setShow] = useState(collapsible ? defaultOpen : true);
+  const open = collapsible ? show : true;
   const useDonut = chartStyle === "donut" || visible.length > 1;
 
   let cursor = 0;
@@ -544,7 +548,7 @@ export function SalesShareSection({
     return `${color} ${start}% ${cursor}%`;
   });
 
-  const switchBtn = (
+  const switchBtn = collapsible ? (
     <button
       type="button"
       role="switch"
@@ -559,9 +563,9 @@ export function SalesShareSection({
         style={{ left: show ? "1.65rem" : "0.2rem" }}
       />
     </button>
-  );
+  ) : null;
 
-  const body = !show ? null : visible.length === 0 ? (
+  const body = !open ? null : visible.length === 0 ? (
     <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-[15px] text-slate-500">
       ยังไม่มียอดขายในช่วงนี้
     </p>

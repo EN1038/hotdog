@@ -46,6 +46,7 @@ import { OwnerHomeTopSellersPanel } from "@/components/owner/OwnerHomeTopSellers
 import { OwnerBranchShiftLine } from "@/components/owner/OwnerBranchShiftLine";
 import { OwnerBranchClosedShiftLine } from "@/components/owner/OwnerBranchClosedShiftLine";
 import { SalesShareSection } from "@/components/merchant/SalesSummaryView";
+import { PageLoadingScreen } from "@/components/PageLoadingScreen";
 import { branchAdminBasePath } from "@/lib/branch-admin-path";
 import {
   ownerExpensesHref,
@@ -852,17 +853,11 @@ function OwnerHomeInner() {
   }, [data, loading, brandSetupOpen, searchParams]);
 
   if (loading && !data) {
-    return (
-      <p className="px-4 py-10 text-center text-sm text-slate-500">กำลังโหลด…</p>
-    );
+    return <PageLoadingScreen label="กำลังโหลด…" />;
   }
 
   if (shopRedirecting) {
-    return (
-      <p className="px-4 py-10 text-center text-sm text-slate-500">
-        กำลังเข้าหน้าร้าน…
-      </p>
-    );
+    return <PageLoadingScreen label="กำลังเข้าหน้าร้าน…" />;
   }
 
   const orderSubtitle =
@@ -1267,7 +1262,7 @@ function OwnerHomeInner() {
             branchId={filterBranchId}
             href={topSellersHref}
             title="เมนูขายดี"
-            linkLabel="วิเคราะห์ · เทียบสาขา"
+            linkLabel="วิเคราะห์"
             limit={5}
           />
 

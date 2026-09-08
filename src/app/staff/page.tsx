@@ -420,7 +420,7 @@ export default function StaffHomePage() {
     };
   }, [stockOn, meta?.activeShift?.id]);
 
-  if (loading) {
+  if (loading && !meta) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
         <LoadingState className="w-full max-w-sm" recoveryAfterMs={8000} />
@@ -480,7 +480,9 @@ export default function StaffHomePage() {
   return (
     <StaffAppShell active="home">
       <AddToHomeScreenBanner />
-      <div className="flex min-h-[calc(100dvh-11.25rem)] flex-col gap-3 px-3 pb-3 pt-3">
+      <div
+        className={`flex min-h-[calc(100dvh-11.25rem)] flex-col gap-3 px-3 pb-3 pt-3 transition-opacity ${loading ? "opacity-70" : ""}`}
+      >
         {stockOn && hasAgingAlert ? (
           <Link
             href="/staff/stock/aging"

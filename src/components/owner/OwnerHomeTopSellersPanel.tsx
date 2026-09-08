@@ -32,6 +32,8 @@ type Props = {
   linkLabel?: string;
   limit?: number;
   defaultOpen?: boolean;
+  /** false = always show list, no toggle (summary page) */
+  collapsible?: boolean;
 };
 
 function OverviewShowSwitch({
@@ -116,11 +118,13 @@ export function OwnerHomeTopSellersPanel({
   branchId = null,
   href,
   title = "เมนูขายดี",
-  linkLabel = "วิเคราะห์ · เทียบสาขา",
+  linkLabel = "วิเคราะห์",
   limit = 5,
   defaultOpen = true,
+  collapsible = true,
 }: Props) {
-  const [show, setShow] = useState(defaultOpen);
+  const [show, setShow] = useState(collapsible ? defaultOpen : true);
+  const open = collapsible ? show : true;
   const [optionFilter, setOptionFilter] = useState<string | null>(null);
   const [items, setItems] = useState<TopSellerRow[]>([]);
   const [optionSummary, setOptionSummary] = useState<OptionQtySlice[]>([]);
@@ -210,17 +214,19 @@ export function OwnerHomeTopSellersPanel({
             </Link>
           </div>
         </div>
-        <OverviewShowSwitch
-          checked={show}
-          onChange={setShow}
-          label={`แสดง${title}`}
-        />
+        {collapsible ? (
+          <OverviewShowSwitch
+            checked={show}
+            onChange={setShow}
+            label={`แสดง${title}`}
+          />
+        ) : null}
       </div>
 
-      {!show ? null : (
+      {!open ? null : (
         <>
           {showChips ? (
-            <div className="mt-3 space-y-1.5">
+            <div className="mt-3">
               <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <div className="flex flex-nowrap gap-2 px-4">
                   {chips.map((opt) => {
@@ -252,14 +258,10 @@ export function OwnerHomeTopSellersPanel({
                 </div>
               </div>
               {optionFilter != null ? (
-                <p className="text-[11px] font-semibold text-amber-800">
-                  จัดอันดับเฉพาะ · {optionLabel}
+                <p className="mt-1.5 text-[11px] font-semibold text-amber-800">
+                  · {optionLabel}
                 </p>
-              ) : (
-                <p className="text-[11px] font-medium text-slate-500">
-                  เลื่อนชิปเพื่อเลือกย่าง ทอด ฯลฯ
-                </p>
-              )}
+              ) : null}
             </div>
           ) : null}
 
@@ -269,7 +271,7 @@ export function OwnerHomeTopSellersPanel({
             </p>
           ) : loadError ? (
             <p className="mt-3 py-4 text-center text-sm text-slate-400">
-              โหลดเมนูขายดีไม่สำเร็จ — ลองใหม่หรือเปิดหน้าวิเคราะห์
+              โหลดไม่สำเร็จ
             </p>
           ) : items.length === 0 ? (
             <p className="mt-3 py-4 text-center text-sm text-slate-400">

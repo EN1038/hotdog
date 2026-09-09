@@ -260,6 +260,9 @@ class MainActivity : AppCompatActivity() {
             filePathCallback?.onReceiveValue(null)
             filePathCallback = null
         }
+        if (this::bridge.isInitialized) {
+            bridge.release()
+        }
         printService.closeAll()
         super.onDestroy()
     }

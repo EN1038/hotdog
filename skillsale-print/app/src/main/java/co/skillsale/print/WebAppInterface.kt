@@ -24,6 +24,11 @@ class WebAppInterface(
     private val webViewProvider: () -> WebView,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val scanFeedback = ScanFeedbackPlayer(activity)
+
+    fun release() {
+        scanFeedback.release()
+    }
 
     private val selectLauncher =
         activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -58,6 +63,24 @@ class WebAppInterface(
 
     @JavascriptInterface
     fun isPrintBridge(): Boolean = true
+
+    /** Beep + optional Thai spoken label after a successful scan / save. */
+    @JavascriptInterface
+    fun playScanSuccess(spokenLabel: String?) {
+        scanFeedback.playSuccess(spokenLabel)
+    }
+
+    /** Beep + optional Thai spoken reason after a failed scan / save. */
+    @JavascriptInterface
+    fun playScanError(spokenLabel: String?) {
+        scanFeedback.playError(spokenLabel)
+    }
+
+    /** No-op on Android; kept so the web unlock call is safe. */
+    @JavascriptInterface
+    fun unlockScanFeedback() {
+        scanFeedback.unlock()
+    }
 
     @JavascriptInterface
     fun getSelectedPrinter(): String {

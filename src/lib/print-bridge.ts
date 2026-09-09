@@ -45,6 +45,10 @@ type AndroidPrintBridge = {
   printQueueNumber?: (queueNumber: string) => string;
   printQueueTickets?: (json: string) => string;
   printPackageLabels?: (json: string) => string;
+  /** Native scan feedback (SkillSale Print 1.3.0+) */
+  playScanSuccess?: (spokenLabel?: string | null) => void;
+  playScanError?: (spokenLabel?: string | null) => void;
+  unlockScanFeedback?: () => void;
 };
 
 declare global {

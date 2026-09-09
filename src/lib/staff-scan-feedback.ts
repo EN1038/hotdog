@@ -1,24 +1,40 @@
-/** Scan / package feedback: short beep + Thai spoken name via Web Speech API.
- * Disabled inside SkillSale Print WebView — AudioContext/TTS can break the native print bridge.
+/** Scan / package feedback: beep + Thai spoken name.
+ * Browser: Web Audio + speechSynthesis.
+ * SkillSale Print APK: native ToneGenerator + TextToSpeech via Android bridge
+ * (Web Audio/TTS in WebView breaks the print bridge).
  */
+
+import { hasPrintBridge } from "@/lib/print-bridge";
 
 let sharedCtx: AudioContext | null = null;
 let preferredThaiVoice: SpeechSynthesisVoice | null = null;
 let voicesReady = false;
 
-/** Native print APK WebView — skip Web Audio / speechSynthesis entirely. */
-function isNativePrintWebView(): boolean {
-  if (typeof window === "undefined") return true;
-  if (window.__SKILLSALE_PRINT__) return true;
-  if (window.Android) return true;
-  if (typeof navigator !== "undefined" && /SkillSalePrint/i.test(navigator.userAgent)) {
-    return true;
+function getNativeScanBridge(): {
+  playScanSuccess?: (spokenLabel?: string | null) => void;
+  playScanError?: (spokenLabel?: string | null) => void;
+  unlockScanFeedback?: () => void;
+} | null {
+  if (typeof window === "undefined") return null;
+  const bridge = window.Android;
+  if (!bridge) return null;
+  if (
+    typeof bridge.playScanSuccess !== "function" &&
+    typeof bridge.playScanError !== "function"
+  ) {
+    return null;
   }
-  return false;
+  return bridge;
+}
+
+/** Print WebView without native scan APIs — never use Web Audio/TTS there. */
+function mustSkipWebAudio(): boolean {
+  if (getNativeScanBridge()) return false;
+  return hasPrintBridge();
 }
 
 function getAudioContext(): AudioContext | null {
-  if (typeof window === "undefined" || isNativePrintWebView()) return null;
+  if (typeof window === "undefined" || mustSkipWebAudio()) return null;
   const AC =
     window.AudioContext ||
     (window as unknown as { webkitAudioContext?: typeof AudioContext })
@@ -52,7 +68,7 @@ function beep(
 
 function refreshThaiVoice() {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
-  if (isNativePrintWebView()) return;
+  if (mustSkipWebAudio()) return;
   const voices = window.speechSynthesis.getVoices();
   if (voices.length === 0) return;
   voicesReady = true;
@@ -64,7 +80,7 @@ function refreshThaiVoice() {
 
 function ensureVoices() {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
-  if (isNativePrintWebView()) return;
+  if (mustSkipWebAudio()) return;
   refreshThaiVoice();
   if (!voicesReady) {
     window.speechSynthesis.addEventListener(
@@ -77,7 +93,7 @@ function ensureVoices() {
 
 function speakThai(text: string) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
-  if (isNativePrintWebView()) return;
+  if (mustSkipWebAudio()) return;
   const cleaned = text.replace(/\s+/g, " ").trim();
   if (!cleaned) return;
 
@@ -129,9 +145,18 @@ function playErrorBeep() {
   });
 }
 
-/** Call from a click / scan gesture so audio + speech are allowed. */
+/** Call from a click / scan gesture so browser audio + speech are allowed. */
 export async function unlockScanFeedbackSound(): Promise<void> {
-  if (isNativePrintWebView()) return;
+  const native = getNativeScanBridge();
+  if (native) {
+    try {
+      native.unlockScanFeedback?.();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  if (mustSkipWebAudio()) return;
 
   try {
     const ctx = getAudioContext();
@@ -166,7 +191,16 @@ export async function unlockScanFeedbackSound(): Promise<void> {
  * Pass a Thai label (product name) to speak it after a short chirp.
  */
 export function playScanSuccessSound(spokenLabel?: string | null): void {
-  if (isNativePrintWebView()) return;
+  const native = getNativeScanBridge();
+  if (native?.playScanSuccess) {
+    try {
+      native.playScanSuccess(spokenLabel?.trim() || "");
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  if (mustSkipWebAudio()) return;
   try {
     playSuccessBeep();
     const label = spokenLabel?.trim();
@@ -180,7 +214,16 @@ export function playScanSuccessSound(spokenLabel?: string | null): void {
 
 /** Not found / failed — optional spoken reason */
 export function playScanErrorSound(spokenLabel?: string | null): void {
-  if (isNativePrintWebView()) return;
+  const native = getNativeScanBridge();
+  if (native?.playScanError) {
+    try {
+      native.playScanError(spokenLabel?.trim() || "ไม่พบรายการ");
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  if (mustSkipWebAudio()) return;
   try {
     playErrorBeep();
     const label = spokenLabel?.trim() || "ไม่พบรายการ";

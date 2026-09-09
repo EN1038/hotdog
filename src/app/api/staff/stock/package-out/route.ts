@@ -208,22 +208,34 @@ export async function POST(request: Request) {
   }
 }
 
-/** GET — lookup label by QR or label code for scan preview */
+/** GET — without qr/labelCode: branch helper chips; with params: scan preview */
 export async function GET(request: Request) {
   try {
     const session = await requireStaff();
     const { searchParams } = new URL(request.url);
     const qr = searchParams.get("qr")?.trim();
     const labelCode = searchParams.get("labelCode")?.trim();
-    if (!qr && !labelCode) {
-      return jsonError("กรุณากรอกรหัสป้ายหรือสแกน QR");
-    }
 
     const branch = await prisma.branch.findUnique({
       where: { id: session.branchId },
       select: { id: true, brandId: true },
     });
     if (!branch?.brandId) return jsonError("สาขาไม่มีแบรนด์", 400);
+
+    if (!qr && !labelCode) {
+      const brandBranches = await prisma.branch.findMany({
+        where: {
+          brandId: branch.brandId,
+          id: { not: branch.id },
+          kind: "STORE",
+          isHidden: false,
+          isTest: false,
+        },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+      return jsonOk({ brandBranches });
+    }
 
     const label = await resolveBrandStockLabel({
       brandId: branch.brandId,

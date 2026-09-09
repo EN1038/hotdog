@@ -436,13 +436,14 @@ export function StaffPackageInPanel({
       const toPrint = labels.filter(
         (l: { copies?: number }) => (l.copies ?? 1) > 0,
       );
+      // Beep before native print so feedback is heard even if print blocks the UI.
+      playScanSuccessSound(
+        toPrint.length > 0 ? "บันทึกแล้ว กำลังพิมพ์" : "บันทึกสำเร็จ",
+      );
       if (toPrint.length > 0) {
         await openPackageLabelPrint(toPrint);
       }
 
-      playScanSuccessSound(
-        toPrint.length > 0 ? "บันทึกและพิมพ์แล้ว" : "บันทึกสำเร็จ",
-      );
       toast.success(
         "บันทึกสำเร็จ",
         `${body.packageCount ?? validRows.length} รายการ${body.documentNo ? ` · ${body.documentNo}` : ""}`,

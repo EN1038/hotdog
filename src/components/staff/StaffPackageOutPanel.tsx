@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconBack, IconQrScan } from "@/components/icons";
 import { LoadingState } from "@/components/LoadingState";
 import { useToast } from "@/components/admin/Toast";
@@ -15,9 +15,17 @@ import {
   unlockScanFeedbackSound,
 } from "@/lib/staff-scan-feedback";
 
+type BrandBranch = { id: string; name: string };
+
 type Props = {
   onBack: () => void;
 };
+
+function issueNoteForBranch(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("สาขา") ? trimmed : `สาขา ${trimmed}`;
+}
 
 export function StaffPackageOutPanel({ onBack }: Props) {
   const toast = useToast();
@@ -26,8 +34,49 @@ export function StaffPackageOutPanel({ onBack }: Props) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [targetBranchId, setTargetBranchId] = useState<string | null>(null);
+  const [brandBranches, setBrandBranches] = useState<BrandBranch[]>([]);
   const [scannerOpen, setScannerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/staff/stock/package-out");
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const rows = Array.isArray(body.brandBranches) ? body.brandBranches : [];
+        setBrandBranches(
+          rows
+            .map((b: { id?: unknown; name?: unknown }) => ({
+              id: String(b.id ?? ""),
+              name: String(b.name ?? "").trim(),
+            }))
+            .filter((b: BrandBranch) => b.id && b.name),
+        );
+      } catch {
+        /* helper optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectTargetBranch = useCallback(
+    (branch: BrandBranch) => {
+      if (targetBranchId === branch.id) {
+        setTargetBranchId(null);
+        const auto = issueNoteForBranch(branch.name);
+        if (note.trim() === auto) setNote("");
+        return;
+      }
+      setTargetBranchId(branch.id);
+      setNote(issueNoteForBranch(branch.name));
+    },
+    [note, targetBranchId],
+  );
 
   const lookup = useCallback(
     async (raw: string) => {
@@ -91,6 +140,7 @@ export function StaffPackageOutPanel({ onBack }: Props) {
       setPreview(null);
       setScanValue("");
       setNote("");
+      setTargetBranchId(null);
     } catch (e) {
       playScanErrorSound();
       toast.error(
@@ -234,11 +284,51 @@ export function StaffPackageOutPanel({ onBack }: Props) {
                   <span className="mb-1.5 block text-[12px] font-semibold text-slate-600">
                     รายละเอียดการจ่ายออก *
                   </span>
+                  {brandBranches.length > 0 ? (
+                    <div className="mb-2">
+                      <p className="mb-1.5 text-[11px] font-semibold text-slate-500">
+                        เลือกสาขา (ไม่บังคับ) — กดเพื่อใส่ชื่ออัตโนมัติ
+                      </p>
+                      <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                        {brandBranches.map((b) => {
+                          const active = targetBranchId === b.id;
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => selectTargetBranch(b)}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+                                active
+                                  ? "bg-amber-500 text-white"
+                                  : "bg-white text-slate-700 ring-1 ring-slate-200 active:bg-slate-100"
+                              }`}
+                            >
+                              {b.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                   <textarea
                     value={note}
-                    onChange={(e) => setNote(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setNote(next);
+                      if (targetBranchId) {
+                        const selected = brandBranches.find(
+                          (b) => b.id === targetBranchId,
+                        );
+                        if (
+                          selected &&
+                          next.trim() !== issueNoteForBranch(selected.name)
+                        ) {
+                          setTargetBranchId(null);
+                        }
+                      }
+                    }}
                     rows={2}
-                    placeholder="เช่น ส่งไปสาขา X / ใช้ในครัว"
+                    placeholder="เช่น ส่งไปสาขา X / ใช้ในครัว — หรือเลือกสาขาด้านบน"
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[14px] font-semibold focus:border-site-primary focus:outline-none focus:ring-2 focus:ring-site-primary/20"
                   />
                 </label>
